@@ -8,6 +8,26 @@ import { addDays, countdownText, formatDate, parseDate, relativeDayText, today }
 import { normalizeEstimate, Validation, validateEstimate } from '../domain/Validate';
 import { ChipButton } from './ChipButton';
 import { BackHandler, backStack } from '../util/BackStack';
+import { GLASS_CARD_BLUR, GLASS_CARD_EDGE, GLASS_CARD_RADIUS, GLASS_CARD_SHADOW,
+  GLASS_CARD_TINT, GLASS_PANEL_BLUR, GLASS_PANEL_EDGE, GLASS_PANEL_TINT } from './Glass';
+
+// 文件内 @Styles（Glass.ets 顶部说明了为什么不能跨文件 export）
+@Styles
+function glassCard() {
+  .backgroundBlurStyle(GLASS_CARD_BLUR)
+  .backgroundColor(GLASS_CARD_TINT)
+  .borderRadius(GLASS_CARD_RADIUS)
+  .border({ width: 1, color: GLASS_CARD_EDGE })
+  .shadow(GLASS_CARD_SHADOW)
+}
+
+@Styles
+function glassShell() {
+  .backgroundBlurStyle(GLASS_PANEL_BLUR)
+  .backgroundColor(GLASS_PANEL_TINT)
+  .borderRadius(16)
+  .border({ width: 1, color: GLASS_PANEL_EDGE })
+}
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'ClassOUT';
@@ -432,8 +452,7 @@ export struct TodoInbox {
     }
     .width('100%')
     .padding(12)
-    .backgroundColor('#FFFFFF')
-    .borderRadius(10)
+    .glassCard()
     .border({ width: 1, color: '#E3E8F0' })
     .margin({ bottom: 8 })
   }
@@ -475,8 +494,7 @@ export struct TodoInbox {
     }
     .width('100%')
     .padding(12)
-    .backgroundColor('#FFFFFF')
-    .borderRadius(10)
+    .glassCard()
     .margin({ bottom: 8 })
     .onClick((): void => this.openEdit(t))
   }
@@ -754,8 +772,7 @@ export struct TodoInbox {
       }
       .width('100%')
       .padding(18)
-      .backgroundColor('#FFFFFF')
-      .borderRadius(14)
+      .glassShell()
     }
     .width('100%')
     .height('100%')
@@ -874,7 +891,8 @@ export struct TodoInbox {
           }
           .width('100%')
           .padding({ left: 16, right: 16, top: 8, bottom: 12 })
-          .backgroundColor('#F5F6F8')
+          // 底色交给 PageBackground
+          .backgroundColor(Color.Transparent)
         }
       }
       .width('100%')

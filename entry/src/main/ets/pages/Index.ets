@@ -15,7 +15,26 @@ import { PlanDayView } from '../view/PlanDayView';
 import { CourseManager } from '../view/CourseManager';
 import { SettingsPage } from '../view/SettingsPage';
 import { backStack } from '../util/BackStack';
+import { GLASS_PANEL_BLUR, GLASS_PANEL_EDGE, GLASS_PANEL_TINT, PageBackground } from '../view/Glass';
+
 import { ChipButton } from '../view/ChipButton';
+
+// 文件内 @Styles（Glass.ets 顶部说明了为什么不能跨文件 export）
+@Styles
+function glassPanel() {
+  .backgroundBlurStyle(GLASS_PANEL_BLUR)
+  .backgroundColor(GLASS_PANEL_TINT)
+  .border({ width: 1, color: GLASS_PANEL_EDGE })
+}
+
+@Styles
+function glassSheet() {
+  .backgroundBlurStyle(GLASS_PANEL_BLUR)
+  .backgroundColor(GLASS_PANEL_TINT)
+  .borderRadius(16)
+  .border({ width: 1, color: GLASS_PANEL_EDGE })
+  .shadow({ radius: 24, color: 'rgba(28,45,90,0.18)', offsetX: 0, offsetY: 8 })
+}
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'ClassOUT';
@@ -516,7 +535,7 @@ struct Index {
     }
     .width('100%')
     .padding({ left: 16, right: 16, top: 12, bottom: 10 })
-    .backgroundColor('#FFFFFF')
+    .glassPanel()
   }
 
   @Builder
@@ -540,7 +559,7 @@ struct Index {
     }
     .width('100%')
     .padding({ left: 4, right: 4, top: 6, bottom: 6 })
-    .backgroundColor('#FFFFFF')
+    .glassPanel()
   }
 
   @Builder
@@ -647,8 +666,7 @@ struct Index {
     }
     .width('100%')
     .height(54)
-    .backgroundColor('#FFFFFF')
-    .border({ width: { top: 1 }, color: '#EDEFF3' })
+    .glassPanel()
   }
 
   @Builder
@@ -813,8 +831,7 @@ struct Index {
       }
       .width('100%')
       .padding(18)
-      .backgroundColor('#FFFFFF')
-      .borderRadius(14)
+      .glassSheet()
     }
     .width('100%')
     .height('100%')
@@ -873,8 +890,7 @@ struct Index {
       }
       .width('100%')
       .padding(18)
-      .backgroundColor('#FFFFFF')
-      .borderRadius(14)
+      .glassSheet()
     }
     .width('100%')
     .height('100%')
@@ -968,8 +984,7 @@ struct Index {
       }
       .width('100%')
       .padding(18)
-      .backgroundColor('#FFFFFF')
-      .borderRadius(14)
+      .glassSheet()
     }
     .width('100%')
     .height('100%')
@@ -979,6 +994,9 @@ struct Index {
 
   build() {
     Stack() {
+      // 玻璃态的"可透物"：铺在所有内容之下。
+      // 各页面根容器都不再设不透明底色，否则会把这一层挡掉、玻璃白做。
+      PageBackground()
       Column() {
         if (this.loading) {
           Column() {
@@ -1037,9 +1055,20 @@ struct Index {
       }
       .width('100%')
       .height('100%')
-      .backgroundColor('#F5F6F8')
+      // 底色交给 PageBackground（见 Glass.ets）
+      .backgroundColor(Color.Transparent)
 
       if (this.showManager) {
+        // ⚠️ 玻璃浮层需要一层"背板"。
+        //    管理课程原来是**直接盖在课表上**的（没有遮罩）；玻璃化之后底下的课表
+        //    会**透过来还能读**（看到周一的字、课程色块），看起来像渲染故障而不是玻璃。
+        //    这里垫一层厚厚的浅色毛玻璃，把底下的内容糊成一片柔和的底色，
+        //    上面的玻璃卡片才是"压在一层材质上"，而不是"压在课表上"。
+        Column()
+          .width('100%')
+          .height('100%')
+          .backgroundColor('rgba(238,243,252,0.66)')
+          .backgroundBlurStyle(BlurStyle.COMPONENT_ULTRA_THICK)
         CourseManager({
           semesterId: this.semester.id,
           close: (): void => {

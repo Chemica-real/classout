@@ -24,6 +24,33 @@ import { addDays, formatDate, hhmmToMin, minToHHmm, parseDate, relativeDayText, 
 import { ChipButton } from './ChipButton';
 import { hapticLongPress } from '../util/Haptics';
 import { BackHandler, backStack } from '../util/BackStack';
+import { GLASS_CARD_BLUR, GLASS_CARD_EDGE, GLASS_CARD_RADIUS, GLASS_CARD_SHADOW,
+  GLASS_CARD_TINT, GLASS_PANEL_BLUR, GLASS_PANEL_EDGE, GLASS_PANEL_TINT } from './Glass';
+
+// 文件内 @Styles（Glass.ets 顶部说明了为什么不能跨文件 export）
+@Styles
+function glassCard() {
+  .backgroundBlurStyle(GLASS_CARD_BLUR)
+  .backgroundColor(GLASS_CARD_TINT)
+  .borderRadius(GLASS_CARD_RADIUS)
+  .border({ width: 1, color: GLASS_CARD_EDGE })
+  .shadow(GLASS_CARD_SHADOW)
+}
+
+@Styles
+function glassPanel() {
+  .backgroundBlurStyle(GLASS_PANEL_BLUR)
+  .backgroundColor(GLASS_PANEL_TINT)
+  .border({ width: 1, color: GLASS_PANEL_EDGE })
+}
+
+@Styles
+function glassShell() {
+  .backgroundBlurStyle(GLASS_PANEL_BLUR)
+  .backgroundColor(GLASS_PANEL_TINT)
+  .borderRadius(16)
+  .border({ width: 1, color: GLASS_PANEL_EDGE })
+}
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'ClassOUT';
@@ -1745,7 +1772,10 @@ export struct PlanDayView {
               }
               .width(140)
               .padding(10)
-              .backgroundColor(this.selectedTodoId === t.id ? '#E4EDFF' : '#FFFFFF')
+              // 托盘卡也是玻璃：选中态用半透明蓝，未选中用玻璃薄纱
+              .backgroundBlurStyle(GLASS_CARD_BLUR)
+              .backgroundColor(this.selectedTodoId === t.id
+                ? 'rgba(46,107,230,0.18)' : GLASS_CARD_TINT)
               .borderRadius(10)
               .border({
                 width: this.selectedTodoId === t.id ? 1.5 : 1,
@@ -1796,7 +1826,8 @@ export struct PlanDayView {
               }
               .width(140)
               .padding(10)
-              .backgroundColor('#FFF8EC')
+              .backgroundBlurStyle(GLASS_CARD_BLUR)
+              .backgroundColor('rgba(255,246,226,0.55)')
               .borderRadius(10)
               .border({ width: 1, color: '#F0DFC0' })
               .margin({ right: 8 })
@@ -2078,8 +2109,7 @@ export struct PlanDayView {
       }
       .width('100%')
       .padding(18)
-      .backgroundColor('#FFFFFF')
-      .borderRadius(14)
+      .glassShell()
       }
       .constraintSize({ maxHeight: '88%' })
       .scrollBar(BarState.Off)
@@ -2148,7 +2178,7 @@ export struct PlanDayView {
         }
         .width('100%')
         .padding({ left: 8, right: 12, top: 10, bottom: 8 })
-        .backgroundColor('#FFFFFF')
+        .glassPanel()
 
         // 三日视图的列头：每列显示自己的日期，中间那列高亮（侧列只读，所以不做点击）
         if (this.viewCols > COLS_DAY) {
@@ -2178,7 +2208,7 @@ export struct PlanDayView {
           }
           .width('100%')
           .padding({ left: AXIS_W })
-          .backgroundColor('#FFFFFF')
+          .glassPanel()
         }
 
         // 时间网格
@@ -2299,6 +2329,7 @@ export struct PlanDayView {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#FFFFFF')
+    // 底色交给 PageBackground；网格本身不做玻璃（要读准时间）
+    .backgroundColor(Color.Transparent)
   }
 }

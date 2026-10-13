@@ -20,6 +20,25 @@ import { ReminderSettings, loadReminderSettings, saveReminderSettings } from '..
 import { Validation, validateRestWindow } from '../domain/Validate';
 import { WEEKDAY_CN, hhmmToMin, minToHHmm } from '../util/DateUtil';
 import { ChipButton } from './ChipButton';
+import { GLASS_CARD_BLUR, GLASS_CARD_EDGE, GLASS_CARD_RADIUS, GLASS_CARD_SHADOW,
+  GLASS_CARD_TINT, GLASS_PANEL_BLUR, GLASS_PANEL_EDGE, GLASS_PANEL_TINT } from './Glass';
+
+// 文件内 @Styles（见 Glass.ets 顶部注释：@Styles 不能跨文件 export）
+@Styles
+function glassCard() {
+  .backgroundBlurStyle(GLASS_CARD_BLUR)
+  .backgroundColor(GLASS_CARD_TINT)
+  .borderRadius(GLASS_CARD_RADIUS)
+  .border({ width: 1, color: GLASS_CARD_EDGE })
+  .shadow(GLASS_CARD_SHADOW)
+}
+
+@Styles
+function glassPanel() {
+  .backgroundBlurStyle(GLASS_PANEL_BLUR)
+  .backgroundColor(GLASS_PANEL_TINT)
+  .border({ width: 1, color: GLASS_PANEL_EDGE })
+}
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'ClassOUT';
@@ -254,8 +273,7 @@ export struct SettingsPage {
     }
     .width('100%')
     .padding(16)
-    .backgroundColor('#FFFFFF')
-    .borderRadius(12)
+    .glassCard()
     .alignItems(HorizontalAlign.Start)
   }
 
@@ -390,8 +408,7 @@ export struct SettingsPage {
     }
     .width('100%')
     .padding(16)
-    .backgroundColor('#FFFFFF')
-    .borderRadius(12)
+    .glassCard()
     .alignItems(HorizontalAlign.Start)
     .margin({ top: 12 })
   }
@@ -406,8 +423,7 @@ export struct SettingsPage {
       }
       .width('100%')
       .padding({ left: 16, right: 16, top: 12, bottom: 12 })
-      .backgroundColor('#FFFFFF')
-      .border({ width: { bottom: 1 }, color: '#EDEFF3' })
+      .glassPanel()
 
       Scroll() {
         Column() {
@@ -437,6 +453,6 @@ export struct SettingsPage {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#F5F6F8')
+    // 底色交给 Index 的 PageBackground（玻璃要有东西可透），这里保持透明
   }
 }

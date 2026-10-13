@@ -15,6 +15,24 @@ import { TEMPLATE_VARS, TemplateCheck, Validation, validateSectionTimes, validat
 import { renderTitle } from '../domain/TodoGenerator';
 import { ChipButton } from './ChipButton';
 import { BackHandler, backStack } from '../util/BackStack';
+import { GLASS_CARD_BLUR, GLASS_CARD_EDGE, GLASS_CARD_SHADOW,
+  GLASS_CARD_TINT, GLASS_PANEL_BLUR, GLASS_PANEL_EDGE, GLASS_PANEL_TINT } from './Glass';
+
+// 文件内 @Styles（Glass.ets 顶部说明了为什么不能跨文件 export）
+@Styles
+function glassCard() {
+  .backgroundBlurStyle(GLASS_CARD_BLUR)
+  .backgroundColor(GLASS_CARD_TINT)
+  .border({ width: 1, color: GLASS_CARD_EDGE })
+  .shadow(GLASS_CARD_SHADOW)
+}
+
+@Styles
+function glassPanel() {
+  .backgroundBlurStyle(GLASS_PANEL_BLUR)
+  .backgroundColor(GLASS_PANEL_TINT)
+  .border({ width: 1, color: GLASS_PANEL_EDGE })
+}
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'ClassOUT';
@@ -821,8 +839,7 @@ export struct CourseManager {
     }
     .width('100%')
     .padding({ left: 16, right: 16, top: 12, bottom: 12 })
-    .backgroundColor('#FFFFFF')
-    .border({ width: { bottom: 1 }, color: '#EDEFF3' })
+    .glassPanel()
   }
 
   @Builder
@@ -854,7 +871,7 @@ export struct CourseManager {
           }
           .width('100%')
           .padding(12)
-          .backgroundColor('#FFFFFF')
+          .glassCard()
           .borderRadius(10)
           .margin({ bottom: 8 })
           .onClick((): void => {
@@ -873,7 +890,7 @@ export struct CourseManager {
           }
           .width('100%')
           .padding(12)
-          .backgroundColor('#FFFFFF')
+          .glassCard()
           .borderRadius(10)
           .margin({ bottom: 8 })
           .onClick((): void => {
@@ -892,7 +909,7 @@ export struct CourseManager {
           }
           .width('100%')
           .padding(12)
-          .backgroundColor('#FFFFFF')
+          .glassCard()
           .borderRadius(10)
           .margin({ bottom: 8 })
           .onClick((): void => this.openBackup())
@@ -974,7 +991,7 @@ export struct CourseManager {
             }
             .width('100%')
             .padding(12)
-            .backgroundColor('#FFFFFF')
+            .glassCard()
             .borderRadius(10)
             .margin({ bottom: 8 })
             .onClick((): void => this.openCourse(c))
@@ -1026,7 +1043,7 @@ export struct CourseManager {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#F5F6F8')
+    .backgroundColor(Color.Transparent)
   }
 
   @Builder
@@ -1194,7 +1211,7 @@ export struct CourseManager {
               }
               .width('100%')
               .padding(10)
-              .backgroundColor('#FFFFFF')
+              .glassCard()
               .borderRadius(8)
 
               // 删时段会让这节课直接从课表消失，且没有撤销 —— 拦一道确认
@@ -1250,7 +1267,7 @@ export struct CourseManager {
               }
               .width('100%')
               .padding(10)
-              .backgroundColor('#FFFFFF')
+              .glassCard()
               .borderRadius(8)
 
               // 删模板会让这门课以后不再自动生成待办 —— 拦一道确认
@@ -1302,7 +1319,7 @@ export struct CourseManager {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#F5F6F8')
+    .backgroundColor(Color.Transparent)
   }
 
   @Builder
@@ -1395,7 +1412,7 @@ export struct CourseManager {
             }
             .width('100%')
             .padding(10)
-            .backgroundColor('#FFFFFF')
+            .glassCard()
             .borderRadius(8)
             .margin({ bottom: 6 })
           }, (s: Semester) => `sem-${s.id}`)
@@ -1469,7 +1486,7 @@ export struct CourseManager {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#F5F6F8')
+    .backgroundColor(Color.Transparent)
   }
 
   // ---------------- 备份与恢复 ----------------
@@ -1650,7 +1667,7 @@ export struct CourseManager {
             .fontColor('#4A5568')
             .width('100%')
             .padding(10)
-            .backgroundColor('#FFFFFF')
+            .glassCard()
             .borderRadius(8)
         }
         .width('100%')
@@ -1663,7 +1680,7 @@ export struct CourseManager {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#F5F6F8')
+    .backgroundColor(Color.Transparent)
   }
 
   @Builder
@@ -1768,7 +1785,7 @@ export struct CourseManager {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#F5F6F8')
+    .backgroundColor(Color.Transparent)
   }
 
   @Builder
@@ -1868,7 +1885,10 @@ export struct CourseManager {
       }
       .width('100%')
       .padding(18)
-      .backgroundColor('#FFFFFF')
+      .backgroundBlurStyle(GLASS_PANEL_BLUR)
+      .backgroundColor(GLASS_PANEL_TINT)
+      .border({ width: 1, color: GLASS_PANEL_EDGE })
+      .shadow({ radius: 24, color: 'rgba(28,45,90,0.18)', offsetX: 0, offsetY: 8 })
       .borderRadius(14)
     }
     .width('100%')
@@ -2007,7 +2027,10 @@ export struct CourseManager {
       }
       .width('100%')
       .padding(18)
-      .backgroundColor('#FFFFFF')
+      .backgroundBlurStyle(GLASS_PANEL_BLUR)
+      .backgroundColor(GLASS_PANEL_TINT)
+      .border({ width: 1, color: GLASS_PANEL_EDGE })
+      .shadow({ radius: 24, color: 'rgba(28,45,90,0.18)', offsetX: 0, offsetY: 8 })
       .borderRadius(14)
     }
     .width('100%')
@@ -2066,6 +2089,7 @@ export struct CourseManager {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#F5F6F8')
+    // 底色交给 PageBackground（玻璃要有东西可透）
+    .backgroundColor(Color.Transparent)
   }
 }
