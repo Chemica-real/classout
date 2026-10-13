@@ -9,7 +9,16 @@
 ClassOUT 是一款**纯离线鸿蒙原生（ArkTS）「课表 + 待办 + 计划」三合一 App**，
 已成功签名并**安装在用户的真机（华为 nova 15）上运行**，启动无崩溃、种子课表渲染正确、
 自动生成待办跑通、提醒已落入系统日历。
-**唯一剩下的是：用户还没给出"实际用起来的手感反馈"**——而 UI 手感无法远程验证（原因见 §7）。
+
+当前健康度：**干净构建 `ERROR: 0`、警告 5 条（均为刻意保留）、离线断言 211 项全绿**。
+已建 git 仓库（`ChemicaWorkspace/ClassOUT`，本地无远端），工作区干净。
+
+**接手第一件事**：读 §5「已验证 vs 未验证」，那里标了**哪些是实测过的、哪些没有**。
+本文件里凡是我没验证的，都会明写"未验证"——请不要把"应该能行"当成"已验证"。
+
+**两件事悬着（见 §10）**：
+1. **计划页的边缘自动滚动**刚修完一处真 bug（块向下漂），**修复效果尚未由用户真机确认**。
+2. **计划页改版（单日/三日/整周视图）设计已定稿但未开始编码**，见 `PLAN_REDESIGN.md`。
 
 ---
 
@@ -18,27 +27,42 @@ ClassOUT 是一款**纯离线鸿蒙原生（ArkTS）「课表 + 待办 + 计划�
 ```bash
 cd /home/chemica/ChemicaWorkspace/ClassOUT
 
+# ---- 构建与装机 ----
 ./build.sh assembleHap            # 编译（产物 entry/build/default/outputs/default/entry-default-unsigned.hap）
+./build.sh clean                  # 清干净再构建（每次改完都建议跑一遍）
 ./sign-and-install.sh             # 只签名
 ./sign-and-install.sh --install   # 签名 + 装到手机
 ./hdc.sh list targets             # 设备连接检查
-./logs.sh --errors                # 看最近的 ERROR/FATAL
+
+# ---- 看日志 ----
+./logs.sh --errors                # 最近的 ERROR/FATAL
 ./logs.sh                         # 实时滚动 App 日志（tag=ClassOUT）
-./tools/watch-logs.sh             # 实时滚动 + 落盘到 .logs/live.log（给 agent 边干活边读用）
-./tools/domain-check/run.sh       # 离线断言（当前 188 项，必须全绿）
+./tools/watch-logs.sh             # 实时滚动 + 落盘到 .logs/live.log（给 agent 边干活边读）
+
+# ---- 验证 ----
+./tools/domain-check/run.sh       # 离线断言（当前 211 项，必须全绿）
+./tools/plan-state.py             # 远程查计划页状态（刻度位置/块位置/顶部提示）
+
+# ---- git ----
+git log --oneline                 # 5 个 commit，工作区应干净
 ```
 
-**全量重建也要能过**（每次改完都建议跑一次）：
+**全量重建也要能过**：
 
 ```bash
 ./build.sh clean && ./build.sh assembleHap
 ```
 
-预期：`ERROR: 0`，`WARN: 5`（其中 4 条是故意留的 `getContext` 废弃警告，1 条是 `No signingConfig`，都别"顺手修掉"，见 §7）。
+预期：`ERROR: 0`，警告恰好 5 条（4 条是故意留的 `getContext` 废弃警告，1 条是 `No signingConfig`，
+**都别"顺手修掉"**，见 §6.3）。
+
+> ⚠️ **签名需要口令**，它**不在仓库里**：在 `signing/local.env`（被 gitignore）。
+> 没有它 `sign-and-install.sh` 会明确报错。模板见 `signing/local.env.example`。
+> 详见 §2.1。
 
 ---
 
-## 2. 环境（全部路径与密码）
+## 2. 环境（路径与签名口令）
 
 | 东西 | 位置 |
 |---|---|
@@ -48,14 +72,37 @@ cd /home/chemica/ChemicaWorkspace/ClassOUT
 | └ 自带 node | `<CLI>/tool/node`（v18.20.1）|
 | JDK 17（Temurin） | `/home/chemica/ChemicaWorkspace/toolchain/jdk`（`PackageHap` 任务需要 java）|
 | hvigor 家目录 | 被 `HVIGOR_USER_HOME` 重定向到 `<项目>/.hvigor`（保持自包含，不写 `$HOME`）|
-| 签名材料 | `ClassOUT/signing/`：`classout.p12`（密钥库）、`ClassOUT.cer`、`classoutprofileDebug.p7b`。**口令不在仓库里** —— 在 `signing/local.env`（被 gitignore），模板见 `signing/local.env.example` |
+| 签名材料 | `ClassOUT/signing/`：`classout.p12`（密钥库）、`ClassOUT.cer`、`classoutprofileDebug.p7b` |
+| **签名口令** | **`signing/local.env`**（**被 gitignore，不在仓库里**），模板 `signing/local.env.example` |
 
 **工具链获取方式**：华为官方 Linux 命令行工具（`commandline-tools-linux-x64-5.1.0.840.zip`，2.15GB），
 从 `https://repo.huaweicloud.com/harmonyos/ohpm/5.1.0/` 下载（**免登录**，sha256 已校验）。
 26.0.0 版本只在华为登录页上，需要账号。**DevEco Studio 图形 IDE 不支持 Linux 发行版**，
 所以整个项目是纯命令行开发，没有 IDE、没有预览器。
 
-> 如果想升到 API 26 的 SDK（拿 64 条代理提醒配额，见 §6），需要用户去华为开发者页面下载 26.0.0 版 CLI。
+### 2.1 🔐 秘密不入库（这条改过，别再改回去）
+
+**做过的事**：`classout.p12` 私钥 + 它的口令，两者任一泄露都能把 App 签成用户身份。
+原先口令**硬编码在 3 个会被提交的文件里**（`sign-and-install.sh` 的兜底默认值、
+`HANDOFF.md`、`signing/README.md`）。**一旦 commit 就永久留在 git 历史里，删不干净。**
+
+**现在的状态**：
+
+- 口令只在 `signing/local.env` → 被 `.gitignore` 挡住。
+- `sign-and-install.sh` 从那里读（或读同名环境变量），**没有硬编码兜底**；
+  缺口令时明确报错并告诉你怎么建。
+- 所有入库文件里搜不到口令：`git grep -l '<口令>'` 应为空。
+- 私钥/证书本体（`*.p12` `*.csr` `*.cer` `*.p7b`）也全在 `.gitignore` 里。
+
+**接手时请勿**：把口令写回任何入库文件、或提交 `signing/local.env`。
+自检命令：
+
+```bash
+git grep -l 'CLASS_OUT_KEY_PWD=' ; git ls-files | grep -iE '\.(p12|csr|cer|p7b)$|local\.env$'
+# 两条都应该没有输出
+```
+
+> 如果想升到 API 26 的 SDK（拿 64 条代理提醒配额，见 §6.1），需要用户去华为开发者页面下载 26.0.0 版 CLI。
 
 ---
 
@@ -80,8 +127,9 @@ cd /home/chemica/ChemicaWorkspace/ClassOUT
 
 > 📐 **计划页正在改版**，设计已与用户逐条确认并定稿在 **`PLAN_REDESIGN.md`**。
 > 动 `PlanDayView.ets` 之前**先读那份**；里面记了两条被用户明确否掉的方案
-> （内容驱动时间窗、空档折叠），别重新提。状态：设计定稿、尚未编码，
-> 第一步是给用户看字号截图（13/14/15vp 三档）。
+> （内容驱动时间窗、空档折叠），别重新提。状态：设计定稿、尚未编码。
+> **字号试版已放弃**（用户 2026-10-13 说"字号的事不用管了"），
+> `LAYOUT_A/B/C/D` 开关和 `tools/font-chooser.sh` 可以直接删。
 
 ```
 entry/src/main/ets/
@@ -102,10 +150,18 @@ entry/src/main/ets/
 ├── domain/Briefing.ets          每日简报正文（纯函数）
 ├── domain/CalendarReminders.ets ★ 把提醒写进系统日历（代理提醒不可用时的出路）
 ├── domain/ReminderScheduler.ets 四类提醒的候选构建 + 代理提醒发布 + 预算控制
+├── util/Haptics.ets             长按振动反馈（权限 VIBRATE，失败静默）
+├── view/ChipButton.ets          ★ 可选中的胶囊（@Component + @Prop，见 §6.4）
 ├── view/TodoInbox.ets           待确认收件箱 / 待办 / 考试 / 新建编辑
-├── view/PlanDayView.ets         计划日视图（拖拽、找空档、完成联动）
+├── view/PlanDayView.ets         计划日视图（长按拖动、边缘自动滚动、找空档、完成联动）
 ├── view/CourseManager.ets       课程/时段/模板/学期/节次/休息时段/提醒设置/备份恢复
 └── pages/Index.ets              主页面（课表周视图 + 三个标签 + 单周覆盖面板）
+
+tools/                            不是 App 的一部分，是给人和 agent 用的
+├── domain-check/                离线断言 harness（见 §8）
+├── watch-logs.sh                实时日志 + 落盘 .logs/live.log
+├── plan-state.py                远程查计划页状态（刻度/块位置/提示）
+└── font-chooser.sh              ⚠️ 临时：字号试版（话题已放弃，可删）
 ```
 
 **数据模型要点**：
@@ -133,6 +189,8 @@ entry/src/main/ets/
 | 全新安装路径 | 卸载重装后：种子 → 生成 → 日历同步，全链路正常 |
 | **课表页渲染（最近一次复装后）** | 截图确认第 6 周课表格子完整，**两门习题课都在修正后的位置**（课甲习题=周三第10节、课乙习题=周四第10节，绿色虚线框）|
 | 底部导航栏 | 三个标签在课表页 / 计划页均完整可见（见下方 bug 表）|
+| **长按振动** | 装机后日志 `haptic: long-press vibration fired`；`bm dump` 的 `reqPermissionStates` 全 0（已授予）。详见 §6.5.2 |
+| 计划页**中间区域**拖动 | 用户实测确认「屏幕不动、块跟手」✅（**仅中间区域**；靠边缘的问题见 bug 表最后一行）|
 
 > ⚠️ 关于"用户手机上是不是旧数据"：本机 `bm dump` 的 `installTime` = **2026-10-13 10:25:53**，
 > 晚于种子修正时间，且截图确认习题课位置正确。**所以手机上已经是修正版数据**，
@@ -143,7 +201,13 @@ entry/src/main/ets/
 | 现象 | 根因 | 修复 | 验证程度 |
 |---|---|---|---|
 | 点底部「待办」（「计划」同病）标签后，**底部导航栏整个消失** | `TodoInbox` / `PlanDayView` 的根节点是 `height('100%')`，而它们是 `Index` 主 `Column` 的**直接子节点**。`height('100%')` 取的是父 Column 的**整个高度**（不是"扣掉兄弟之后剩下的高度"），于是它们占满整屏，把同为子节点的 54vp `TabBar` 顶到屏幕外。「课表」标签页没这个病，因为那里用的是 `Scroll().layoutWeight(1)` | 在 `pages/Index.ets` 里给这两个组件各包一层 `Column().width('100%').layoutWeight(1)`，让它们只吃剩余空间 | 计划页/课表页截图已确认；待办页同一处修复，**待用户点一下确认** |
-| 待办拖进网格后**仍留在「待安排」托盘里，可以反复拖出重复块** | `PlanDayView.poolTodos()` 只过滤了 `status === Active`，**漏了"当天已经排过"**。同一个文件里的 `poolLessons()`（虚拟课时托盘）是正确过滤的，所以这是漏改而非设计 | 抽成纯函数 `PlanMath.selectPoolTodos(todos, blocks)`：active 且**当天**没有块才进托盘。`poolTodos()` 改为调用它 | 见下方「关键：只用当天过滤」，离线断言 **188 项全绿**（新增 6 项 + 变异测试验证有效）；**尚未在真机上重拖验证** |
+| 待办拖进网格后**仍留在「待安排」托盘里，可以反复拖出重复块** | `PlanDayView.poolTodos()` 只过滤了 `status === Active`，**漏了"当天已经排过"**。同一个文件里的 `poolLessons()`（虚拟课时托盘）是正确过滤的，所以这是漏改而非设计 | 抽成纯函数 `PlanMath.selectPoolTodos(todos, blocks)`：active 且**当天**没有块才进托盘。`poolTodos()` 改为调用它 | 断言覆盖 + 变异测试；**尚未在真机上重拖确认** |
+
+| 新建待办界面里胶囊按钮**点了没有任何视觉反应** | 那是个 `@Builder Chip(text, selected, onTap)`，而 **`@Builder` 的参数按值传入、首次渲染后固化**，`selected` 变了也不会重渲染。全项目 4 处同样写法（37 个调用点） | 抽成 `view/ChipButton.ets`（`@Component` + `@Prop selected`）。详见 §6.4 | ✅ 真机 `uitest` 点击 + 截图比对 |
+| 15 分钟块**文字压出块外**、右侧把手被压掉 | 块高按「1 分钟 = 1vp」只有 13vp，而正文字号 14vp 的一行就要约 19vp | 块高 < 阈值时改用**紧凑排版**（单行「标题 + 开始时间」、字号 `LAYOUT.compact`、不画完成圆圈）。详见 `PLAN_REDESIGN.md` §7.4 | ✅ 截图确认 |
+| **从块上起手完全滚不动** | 最初用 `.gesture(GestureGroup(Parallel, LongPress, Pan))`，它和父级 `Scroll` **抢手势**，抢到手后又因"没武装"什么都不做 | 改用 **`parallelGesture(LongPressGesture)`**。详见 §6.5.1 | ✅ 真机验证：立刻上划会滚动且不振 |
+| 边缘自动滚动时块**比屏幕走得快** | 滚动补偿做了两次（定时器里一次、Move 里一次） | 补偿只保留一处；抽成 `PlanMath.dragOffsetWithScroll` + 11 项断言 | 断言 + 变异测试 |
+| 边缘自动滚动时块**向下漂、松手后时间跳到约 2.4 小时之前** | **手指停住不再产生 Move 事件**，而自动滚动继续跑 → `offsetY` 不再重算，块跟着网格漂；松手时 `endMove` 用这个漂掉的值落库 | 定时器里按**同一公式、同一基准**重算 `offsetY`。详见 §6.5.3 | 根因由**真机日志**定位；断言 211 项 + 变异测试。**修复效果尚未由用户确认** |
 
 **这条的通用教训**：往 `Index` 主 Column 里加任何新的全屏子组件，**不要给它 `height('100%')`**，
 要么用 `layoutWeight(1)`，要么包一层带 `layoutWeight(1)` 的容器。否则就会顶掉 `TabBar`。
@@ -156,12 +220,16 @@ entry/src/main/ets/
 
 > 已排的**重复块**是修复前产生的脏数据，修完不会自动消失（本机就有）。让用户在块上长按/点开删掉多余的那几个即可。
 
-### ❌ 未验证（都需要用户动手，见 §7 为什么我做不到）
+### ❌ 未验证（接手时请特别小心这里）
 
+- ⚠️ **计划页边缘自动滚动的修复效果 —— 最高优先，用户还没试。**
+  最后一次修复（块向下漂）只经过日志分析 + 断言，**没有真机确认**。
+- **`@Builder` → `ChipButton` 改造只在「新建待办」界面验证过**；
+  另外 3 处（`PlanDayView` 块编辑面板、`CourseManager`、`Index` 单周覆盖/补课面板）
+  是同一处修改，但我**没有逐个点过**。
 - **所有 UI 交互**：确认/编辑/删除待办、拖拽待办进网格、拖动色块改时间、
   拖底边改时长、单周覆盖面板、课程编辑、备份导出/恢复。
-  （「标签页切换」已由用户实测；「导航栏消失」已修复；「拖拽后托盘不消失」已修复但未真机复验。）
-- **手感**：字号大小、拖拽跟手度、按钮点击热区。
+- **手感**：字号大小（试版开关还挂着，见 §7.3）、拖拽跟手度、按钮点击热区。
 - **真实提醒是否响铃**：事件在日历里、带 15 分钟提前量，但"到点弹不弹通知"没人确认过。
 - 长时间运行 / 跨天补生成 / 跨周切换的边界。
 
@@ -271,6 +339,63 @@ entry/src/main/ets/
 | `.onTouch(...)` | 不注册手势，完全不参与竞争 | ✅ 滚动正常，但收不到 Scroll 接管后的 Move |
 | `.parallelGesture(LongPressGesture(...))` | 与 Scroll **并行**，被抢走时系统 Cancel | ✅ 滚动正常 + 长按能触发（当前方案） |
 
+### 6.5.2 振动权限 `VIBRATE` 对侧载应用可用（实测）
+
+`ohos.permission.VIBRATE` 是 `availableLevel: normal` + `grantMode: system_grant`：
+**侧载应用安装即授予、不弹窗、不需要 ACL**。
+
+实测证据：装机后 `bm dump -n com.chemica.classout` 的 `reqPermissionStates` 为 `[0,0,0,0]`
+（0 = 已授予），真机日志出现 `haptic: long-press vibration fired`
+（`startVibration()` 的 Promise 成功回调里打的，不是"调用了没报错"）。
+
+⚠️ **不要拿它和 §6.1 的 `PUBLISH_AGENT_REMINDER` 类比。** 那个也是
+`normal` + `system_grant`，但配额实际被卡死在 0 条。**同类字段不代表同类结果，必须实测。**
+
+`util/Haptics.ets` 的设计：
+- `vibrator.isSupportEffectSync()` 探一次并缓存（设备没马达就直接跳过）。
+- **失败一律静默** —— 振动只是锦上添花，不该让长按失效，更不该抛异常。
+- 只在**长按确认**时调一次，不在移动过程中连续调（否则会嗡嗡嗡）。
+- kit 名是 `@kit.SensorServiceKit`，**不是** `@kit.SensorsKit`。
+
+### 6.5.3 自动滚动时"块跟着网格漂"—— 一次靠日志破案的过程
+
+**症状**：长按块拖到屏幕顶部边缘区，块不跟手、**向下漂**（和手指方向相反），
+松手后块的时间跳到约 2.4 小时之前。
+
+**为什么之前的推理全错**：块用绝对定位（`position({x, y})`），
+它的窗口位置 = 网格原点 + 块在网格内的 y + `offsetY`。
+推导出来的补偿公式是对的，所以"块向下漂"在数学上**无法由补偿误差产生** ——
+说明还有一个我没算进去的因素。我靠读代码猜了几轮，全部落空。
+
+**破案靠的是日志**（在触发点、每步、抬手各埋一条）：
+
+```
+# 手指停在 173.958 一直没动，而 offsetY 从 -195 一路涨到 -50.79
+MOVE touchY=173.95 ... scrolled=-64  -> offsetY=-131.0
+EDGE tick step=-16 scroll 256 -> 240
+MOVE touchY=173.95 ... scrolled=-80  -> offsetY=-115.0
+...
+EDGE tick step=-16 scroll 192 -> 176
+MOVE touchY=173.95 ... scrolled=-144 -> offsetY=-50.79
+UP final offsetY=-50.79
+```
+
+`offsetY` 变大 = 块在网格坐标里往下走 = 屏幕上向下漂。**根因**：
+
+> **手指停住时不再产生 Move 事件**，而自动滚动还在继续 →
+> `offsetY` 不再重算 → 块留在网格坐标里跟着视图跑。
+
+而 `endMove` 用的就是这个漂掉的 `offsetY`，所以**时间也错了**（数据问题，不只是手感）。
+
+**修复**：在自动滚动定时器里按**同一公式、同一基准**（按下时的 scroll）重算 `offsetY`。
+定时器与 MOVE 不是"两次叠加"，而是**同一个公式的两个执行时机**（手指停 / 手指动）。
+
+> ⚠️ 中途我曾以为定时器里那次是"重复补偿"而删掉它 —— 那让症状更明显。
+> **别删。** `PlanMath.dragOffsetWithScroll` 的文档注释和 `test.ts` 里
+> 「手指停住、网格从 320 滚到 176」那条断言就是防这个的。
+
+**方法论教训**：涉及"两个独立运动源叠加"的问题，**读代码推断不如埋点看数据**。
+这次我猜了三四轮，日志一拉就定位了。
 ---
 
 ### 6.6 「所有块完成 → 待办自动完成」必须查跨天
@@ -381,7 +506,7 @@ for ty, b, t in walk(d, []):
 ## 8. 离线断言 harness（本项目的核心工程实践）
 
 `tools/domain-check/` 把**不依赖鸿蒙 API 的纯逻辑**抽出来，用本地 tsc 编译后跑断言。
-**当前 188 项，必须全绿。**
+**当前 211 项，必须全绿。**
 
 ```bash
 ./tools/domain-check/run.sh
@@ -392,11 +517,41 @@ for ty, b, t in walk(d, []):
 用项目本地的 typescript 编译后跑 `test.ts` 的断言。
 
 **为什么值得维护**：这个 App 没法在真机上反复试（装一次要签名+重装，UI 又没法自动点），
-所以「算一下」的部分必须能在本地秒验。它已经**实际抓到过 4 个真 bug**：
-跨天块完成误判、种子数据错一天、ddl 规则边界、简报正文格式。
+所以「算一下」的部分必须能在本地秒验。它**实际抓到过 8 个以上真 bug**，包括：
+跨天块完成误判、种子数据错一天、ddl 规则边界、简报正文格式、
+`hourList()` 多画一行、时长被悄悄吸附、`windowForContent` 夹紧错误、
+以及拖动位移的滚动补偿。
 
 **加断言的规矩**：任何新的纯逻辑（计算、格式化、规则）都抽到 `domain/` 下的纯模块里，
 再在 `test.ts` 里加断言。**改数据也要能触发断言失败**——这是刻意的，让数据改动必须经过显式确认。
+
+### 8.1 ⚠️ 加完断言要做"变异测试"
+
+**光看断言全绿不算数** —— 要确认它**真的能失败**。做法：故意把源码改坏（回到 bug 状态），
+跑一遍，看断言是否报错；然后恢复。本项目的实践：
+
+```bash
+cp entry/src/main/ets/domain/PlanMath.ets /tmp/pm.bak
+# 手工造一个变异（比如把 '<' 改成 '<='、把补偿去掉）
+./tools/domain-check/run.sh   # 应该 FAIL
+cp /tmp/pm.bak entry/src/main/ets/domain/PlanMath.ets
+./tools/domain-check/run.sh   # 应该恢复全绿
+```
+
+最近几次改动都做了这一步，每次都确认断言会炸。**没做过变异测试的断言，可信度要打折。**
+
+### 8.2 抽纯逻辑时注意"参数语义"
+
+这轮我在写断言时**连续三次把期望值写错**，都是因为搞错了参数语义：
+
+| 踩的坑 | 正确语义 |
+|---|---|
+| 把节次编号当时间（写了 690 当 11:30，其实是 19:30 = 1170） | `PKU_SECTION_TIMES` 里是 `startMin`/`endMin` |
+| `dropRange(axis, y, dur)` 的第二个参数是 **y（vp）**，不是分钟 | y = 目标分钟 − 轴起点 |
+| 以为 `dragOffset` 里的 `blocks` 是按日期过滤过的 | 由调用方保证只传当天 |
+
+**写断言失败时，先怀疑自己的期望值，再怀疑实现** —— 但这轮里有一次确实是实现错
+（`windowForContent` 的 `end` 被 `floorStart` 夹住），所以两边都要看。
 
 ---
 
@@ -421,19 +576,33 @@ for ty, b, t in walk(d, []):
 
 ## 10. 下一步（优先级从高到低）
 
-1. **计划页改版** —— 设计已定稿在 `PLAN_REDESIGN.md`，用户主动要求的。
-   第一步是给用户看字号截图（13/14/15vp 三档），**由他按眼睛定，不要替他定**。
-2. **继续拿 UI 手感反馈**。`TESTING.md` 的清单还有大半没走过（F 组的手感问题还没答完）。
-   已由用户实测发现并修掉 2 个 bug（导航栏消失、待办拖拽后托盘不消失），都在 §5。
-3. **确认提醒真的会响**（事件在日历里、带提前量，但没人确认过到点会不会弹通知）。
-4. **`showWeekend` 单独决策**：课表页永远画 7 列，而本学期周末 0 节课，
+1. ⚠️ **确认计划页边缘自动滚动的修复**（最高优先）。用户报的"块向下漂"已按日志定位并修，
+   但**修复效果没有真机确认**。让他长按块 → 拖到屏幕顶/底部边缘区停留几秒 → 看块是否
+   稳稳停在手指下。若还漂，看日志里的 `DRAG up offsetY=… scrolled=…`（每次松手打一条）。
+2. **计划页改版** —— 设计已定稿在 `PLAN_REDESIGN.md`（单日 / 三日 / 整周视图）。
+   用户 2026-10-13 明确说**字号的事不用管了**，所以 §7.3 那个试版开关
+   （`LAYOUT_A/B/C/D`）和 `tools/font-chooser.sh` 可以**直接清掉**，不必重启这个话题。
+3. **继续拿 UI 手感反馈**。`TESTING.md` 的清单还有大半没走过。
+   `ChipButton` 改造只在「新建待办」界面点过，另外 3 处没验（见 §5）。
+4. **确认提醒真的会响**（事件在日历里、带提前量，但没人确认过到点会不会弹通知）。
+5. **`showWeekend` 单独决策**：课表页永远画 7 列，而本学期周末 0 节课，
    等于 28.6% 横向宽度恒空。这是个产品选择（没课的周末要不要藏），
    可能比加视图更划算。**不要顺手改**，问用户。
-5. 可选：给日历同步加个开关（用户目前选"全写"，但以后可能想调）。
-6. 可选：升级到 API 26 SDK（需要用户登录华为开发者页面下载 26.0.0 CLI），
+6. 可选：给日历同步加个开关（用户目前选"全写"，但以后可能想调）。
+7. 可选：升级到 API 26 SDK（需要用户登录华为开发者页面下载 26.0.0 CLI），
    可能解锁代理提醒的 64 条配额。
 
 **别做的事**：在没有用户反馈前重构、加功能、换架构。真机上的未知数比代码里的多。
+
+### 10.1 已知的技术债（坦白列出）
+
+| 债 | 说明 |
+|---|---|
+| 边缘自动滚动的**手感**没调过 | 触发区 60vp、步长 16vp/50ms 都是我拍的数，用户没试过 |
+| 拖动期间的**吸附**行为未定 | 拖动落点现在会吸附到 15 分钟刻度；用户没说过这是否符合预期 |
+| 改时长（拖底边）**没有一起验证** | 这轮只测了"移动块"，拖底边改时长沿用了同一套长按/补偿逻辑，但**没单独测过** |
+| `tools/font-chooser.sh` 是临时工具 | 字号话题已放弃，可以删 |
+| `PlanDayView.ets` 已 1500 行 | 计划页改版时应该顺手拆分（网格 / 托盘 / 块渲染 / 编辑面板） |
 
 ---
 
@@ -444,6 +613,11 @@ for ty, b, t in walk(d, []):
 - **他的产品观点很明确，而且经常比"常规做法"更对**（比如"课时是一等公民"这个模型是他提的）。
   拿不准的设计决定**问，不要替他决定**。
 - **他讨厌冗长的一次性输出**，设计阶段明确要求过"用问答卡片一次问几个，不要列一大串"。
+  **一次只问一个问题**，用 `ask_user_question`。
 - **他偏好诚实的进展汇报**：说清"验证过什么/没验证过什么"，不要用"应该没问题"糊过去。
+  这一轮我几次把"我猜的"说成"应该"，后来都被他的实测推翻 —— 宁可说"没验证"。
+- **他的描述往往比我的推理准**。这轮"块速度略大于屏幕""块向下漂不跟手"两句，
+  都精确对应了真实根因（补偿两次 / 手指停住不重算）。**先把他的现象当事实，再找机制。**
 - 已确认的产品决定（不要推翻）：零联网、APK 路线否决、代理提醒→系统日历且**全写**、
-  手动录入、不做子任务、ddl 规则可选、静默补生成而非下课时打扰。
+  手动录入、不做子任务、ddl 规则可选、静默补生成而非下课时打扰、
+  计划页三种视图（单日/三日/整周）、待安排留底部（见 `PLAN_REDESIGN.md`）。
