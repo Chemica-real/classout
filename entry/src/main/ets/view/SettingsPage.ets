@@ -20,14 +20,18 @@ import { ReminderSettings, loadReminderSettings, saveReminderSettings } from '..
 import { Validation, validateRestWindow } from '../domain/Validate';
 import { WEEKDAY_CN, hhmmToMin, minToHHmm } from '../util/DateUtil';
 import { ChipButton } from './ChipButton';
+import { image } from '@kit.ImageKit';
+import { WallpaperRepo } from '../data/WallpaperRepo';
+import { PAGE_GRADIENT_A, PAGE_GRADIENT_B, PAGE_GRADIENT_C, WALLPAPER_VEIL } from './Glass';
 import { GLASS_CARD_BLUR, GLASS_CARD_EDGE, GLASS_CARD_RADIUS, GLASS_CARD_SHADOW,
-  GLASS_CARD_TINT, GLASS_PANEL_BLUR, GLASS_PANEL_EDGE, GLASS_PANEL_TINT } from './Glass';
+  GLASS_CARD_BOTTOM, GLASS_CARD_TOP, GLASS_PANEL_BLUR, GLASS_PANEL_BOTTOM,
+  GLASS_PANEL_EDGE, GLASS_PANEL_TOP } from './Glass';
 
 // 文件内 @Styles（见 Glass.ets 顶部注释：@Styles 不能跨文件 export）
 @Styles
 function glassCard() {
   .backgroundBlurStyle(GLASS_CARD_BLUR)
-  .backgroundColor(GLASS_CARD_TINT)
+  .linearGradient({ angle: 180, colors: [[GLASS_CARD_TOP, 0.0], [GLASS_CARD_BOTTOM, 1.0]] })
   .borderRadius(GLASS_CARD_RADIUS)
   .border({ width: 1, color: GLASS_CARD_EDGE })
   .shadow(GLASS_CARD_SHADOW)
@@ -36,7 +40,7 @@ function glassCard() {
 @Styles
 function glassPanel() {
   .backgroundBlurStyle(GLASS_PANEL_BLUR)
-  .backgroundColor(GLASS_PANEL_TINT)
+  .linearGradient({ angle: 180, colors: [[GLASS_PANEL_TOP, 0.0], [GLASS_PANEL_BOTTOM, 1.0]] })
   .border({ width: 1, color: GLASS_PANEL_EDGE })
 }
 
@@ -62,10 +66,15 @@ export struct SettingsPage {
   @State pendingDeleteKey: string = '';
   @State toast: string = '';
   @State loading: boolean = true;
+  /** 自定义背景在沙盒里的路径；'' = 用默认渐变（见 view/Glass.ets） */
+  @StorageLink('wallpaper') @Watch('onWallpaperChanged') wallpaper: string = '';
+  /** 设置页里的背景缩略图 */
+  @State wallPreview: image.PixelMap | undefined = undefined;
   /** toast 自动消失的定时器（-1 = 没在计时） */
   private toastTimer: number = -1;
 
   aboutToAppear(): void {
+    this.refreshPreview();
     this.load();
   }
 
@@ -106,6 +115,67 @@ export struct SettingsPage {
       this.toast = '';
       this.toastTimer = -1;
     }, 2200);
+  }
+
+  // ---------------- 背景（玻璃态的"可透物"） ----------------
+
+  /**
+   * 冷启动时由 `Index.init()` 从 kv 写进 AppStorage；这里选完图也写同一个键。
+   * 用 @StorageLink 是为了让 `PageBackground` 那一层**立刻**跟着换 ——
+   * 两个组件隔着好几层，走 AppStorage 比一路传回调干净。
+   */
+  onWallpaperChanged(): void {
+    this.refreshPreview();
+  }
+
+  private refreshPreview(): void {
+    const p: string = this.wallpaper;
+    if (p.length === 0) {
+      this.wallPreview = undefined;
+      return;
+    }
+    this.decodePreview(p).catch((e: Object): void => {
+      hilog.warn(DOMAIN, TAG, 'preview decode failed: %{public}s', JSON.stringify(e));
+    });
+  }
+
+  private async decodePreview(p: string): Promise<void> {
+    const pm: image.PixelMap | undefined = await WallpaperRepo.decode(p, 400, 200);
+    // 期间又换了一张 → 丢弃这次结果
+    if (this.wallpaper !== p) {
+      return;
+    }
+    this.wallPreview = pm;
+  }
+
+  private pickWallpaper(): void {
+    this.doPickWallpaper().catch((e: Object): void => {
+      hilog.error(DOMAIN, TAG, 'pick wallpaper failed: %{public}s', JSON.stringify(e));
+      this.showToast('选图失败，用默认渐变');
+    });
+  }
+
+  private async doPickWallpaper(): Promise<void> {
+    const ctx: common.UIAbilityContext = this.context();
+    const path: string = await WallpaperRepo.pick(ctx);
+    if (path.length === 0) {
+      return;   // 用户取消
+    }
+    AppStorage.setOrCreate('wallpaper', path);
+    this.showToast('背景已换（所有玻璃面跟着变）');
+  }
+
+  private clearWallpaper(): void {
+    this.doClearWallpaper().catch((e: Object): void => {
+      hilog.error(DOMAIN, TAG, 'clear wallpaper failed: %{public}s', JSON.stringify(e));
+    });
+  }
+
+  private async doClearWallpaper(): Promise<void> {
+    const ctx: common.UIAbilityContext = this.context();
+    await WallpaperRepo.clear(ctx);
+    AppStorage.setOrCreate('wallpaper', '');
+    this.showToast('已恢复默认渐变背景');
   }
 
   // ---------------- 提醒设置 ----------------
@@ -304,6 +374,76 @@ export struct SettingsPage {
   }
 
   @Builder
+  WallpaperCard() {
+    Column() {
+      this.SectionTitle('背景',
+        '玻璃态要有东西可透才好看。默认是柔和渐变；换成自己的照片后，所有玻璃面会自动跟着变。')
+
+      // 预览：渐变永远在底层（没图时就是它），有图才盖上去 + 同一层可读性薄纱
+      Stack() {
+        Column()
+          .width('100%')
+          .height('100%')
+          .linearGradient({
+            angle: 160,
+            colors: [[PAGE_GRADIENT_A, 0.0], [PAGE_GRADIENT_B, 0.42], [PAGE_GRADIENT_C, 1.0]]
+          })
+        if (this.wallPreview !== undefined) {
+          Image(this.wallPreview)
+            .width('100%')
+            .height('100%')
+            .objectFit(ImageFit.Cover)
+            .draggable(false)
+          Column()
+            .width('100%')
+            .height('100%')
+            .backgroundColor(WALLPAPER_VEIL)
+            .hitTestBehavior(HitTestMode.None)
+        }
+        // 预览里也放一块玻璃，直观看到"玻璃压在这层背景上"的效果
+        Column() {
+          Text(this.wallpaper.length > 0 ? '自定义照片' : '默认渐变')
+            .fontSize(12)
+            .fontColor('#12161F')
+        }
+        .padding({ left: 12, right: 12, top: 6, bottom: 6 })
+        .glassCard()
+      }
+      .width('100%')
+      .height(110)
+      .borderRadius(12)
+      .clip(true)
+
+      Row() {
+        Button('从相册选一张')
+          .backgroundColor('#2E6BE6')
+          .fontColor('#FFFFFF')
+          .layoutWeight(1)
+          .onClick((): void => this.pickWallpaper())
+        if (this.wallpaper.length > 0) {
+          Button('恢复默认渐变')
+            .backgroundColor('#EEF1F6')
+            .fontColor('#4A5568')
+            .layoutWeight(1)
+            .margin({ left: 10 })
+            .onClick((): void => this.clearWallpaper())
+        }
+      }
+      .width('100%')
+      .margin({ top: 12 })
+
+      Text('照片会拷进 App 内部保存，不联网、也不需要相册权限。')
+        .fontSize(11)
+        .fontColor('#8A98AC')
+        .margin({ top: 8 })
+    }
+    .width('100%')
+    .padding(16)
+    .glassCard()
+    .alignItems(HorizontalAlign.Start)
+  }
+
+  @Builder
   RestCard() {
     Column() {
       this.SectionTitle('不可排时段',
@@ -440,6 +580,7 @@ export struct SettingsPage {
               .margin({ bottom: 12 })
           }
 
+          this.WallpaperCard()
           this.ReminderCard()
           this.RestCard()
         }

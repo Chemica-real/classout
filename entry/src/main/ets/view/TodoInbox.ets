@@ -9,13 +9,14 @@ import { normalizeEstimate, Validation, validateEstimate } from '../domain/Valid
 import { ChipButton } from './ChipButton';
 import { BackHandler, backStack } from '../util/BackStack';
 import { GLASS_CARD_BLUR, GLASS_CARD_EDGE, GLASS_CARD_RADIUS, GLASS_CARD_SHADOW,
-  GLASS_CARD_TINT, GLASS_PANEL_BLUR, GLASS_PANEL_EDGE, GLASS_PANEL_TINT } from './Glass';
+  GLASS_CARD_BOTTOM, GLASS_CARD_TOP, GLASS_PANEL_BLUR, GLASS_PANEL_BOTTOM,
+  GLASS_PANEL_EDGE, GLASS_PANEL_TOP } from './Glass';
 
 // 文件内 @Styles（Glass.ets 顶部说明了为什么不能跨文件 export）
 @Styles
 function glassCard() {
   .backgroundBlurStyle(GLASS_CARD_BLUR)
-  .backgroundColor(GLASS_CARD_TINT)
+  .linearGradient({ angle: 180, colors: [[GLASS_CARD_TOP, 0.0], [GLASS_CARD_BOTTOM, 1.0]] })
   .borderRadius(GLASS_CARD_RADIUS)
   .border({ width: 1, color: GLASS_CARD_EDGE })
   .shadow(GLASS_CARD_SHADOW)
@@ -24,7 +25,7 @@ function glassCard() {
 @Styles
 function glassShell() {
   .backgroundBlurStyle(GLASS_PANEL_BLUR)
-  .backgroundColor(GLASS_PANEL_TINT)
+  .linearGradient({ angle: 180, colors: [[GLASS_PANEL_TOP, 0.0], [GLASS_PANEL_BOTTOM, 1.0]] })
   .borderRadius(16)
   .border({ width: 1, color: GLASS_PANEL_EDGE })
 }

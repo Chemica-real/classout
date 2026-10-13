@@ -15,7 +15,9 @@ import { PlanDayView } from '../view/PlanDayView';
 import { CourseManager } from '../view/CourseManager';
 import { SettingsPage } from '../view/SettingsPage';
 import { backStack } from '../util/BackStack';
-import { GLASS_PANEL_BLUR, GLASS_PANEL_EDGE, GLASS_PANEL_TINT, PageBackground } from '../view/Glass';
+import { GLASS_PANEL_BLUR, GLASS_PANEL_BOTTOM, GLASS_PANEL_EDGE, GLASS_PANEL_TOP,
+  PageBackground } from '../view/Glass';
+import { WallpaperRepo } from '../data/WallpaperRepo';
 
 import { ChipButton } from '../view/ChipButton';
 
@@ -23,14 +25,14 @@ import { ChipButton } from '../view/ChipButton';
 @Styles
 function glassPanel() {
   .backgroundBlurStyle(GLASS_PANEL_BLUR)
-  .backgroundColor(GLASS_PANEL_TINT)
+  .linearGradient({ angle: 180, colors: [[GLASS_PANEL_TOP, 0.0], [GLASS_PANEL_BOTTOM, 1.0]] })
   .border({ width: 1, color: GLASS_PANEL_EDGE })
 }
 
 @Styles
 function glassSheet() {
   .backgroundBlurStyle(GLASS_PANEL_BLUR)
-  .backgroundColor(GLASS_PANEL_TINT)
+  .linearGradient({ angle: 180, colors: [[GLASS_PANEL_TOP, 0.0], [GLASS_PANEL_BOTTOM, 1.0]] })
   .borderRadius(16)
   .border({ width: 1, color: GLASS_PANEL_EDGE })
   .shadow({ radius: 24, color: 'rgba(28,45,90,0.18)', offsetX: 0, offsetY: 8 })
@@ -154,6 +156,9 @@ struct Index {
 
   private async init(): Promise<void> {
     const ctx: common.UIAbilityContext = this.context();
+    // 冷启动恢复自定义背景（没有就用渐变兜底）。AppStorage 是内存态，所以每次启动都要读回来；
+    // 设置页选完图会直接写 AppStorage，PageBackground 靠 @StorageLink 立刻跟着换。
+    AppStorage.setOrCreate('wallpaper', await WallpaperRepo.load(ctx));
     const sem: Semester = await Seeder.ensureSemester(ctx);
     this.semester = sem;
     await Seeder.ensureRestWindows(ctx);
@@ -1059,16 +1064,16 @@ struct Index {
       .backgroundColor(Color.Transparent)
 
       if (this.showManager) {
-        // ⚠️ 玻璃浮层需要一层"背板"。
-        //    管理课程原来是**直接盖在课表上**的（没有遮罩）；玻璃化之后底下的课表
-        //    会**透过来还能读**（看到周一的字、课程色块），看起来像渲染故障而不是玻璃。
-        //    这里垫一层厚厚的浅色毛玻璃，把底下的内容糊成一片柔和的底色，
-        //    上面的玻璃卡片才是"压在一层材质上"，而不是"压在课表上"。
+        // 管理课程原来**直接盖在课表上**（没有遮罩）。玻璃化的正解不是"把背景盖掉"，
+        // 而是**把模糊做够**——让底下的课表变成"磨砂玻璃后面的柔和色块"：
+        // **既保留背景信息（若隐若现），又不干扰前景**（这就是玻璃态说明里的第 ② 条）。
+        // 所以这里是一层**较透**的薄纱 + **很厚的模糊**：
+        // 薄纱太浓就变成"把背景抹掉"（那是错的），太淡则底下的字还能读（看着像渲染故障）。
         Column()
           .width('100%')
           .height('100%')
-          .backgroundColor('rgba(238,243,252,0.66)')
-          .backgroundBlurStyle(BlurStyle.COMPONENT_ULTRA_THICK)
+          .backgroundColor('rgba(248,250,254,0.30)')
+          .backgroundBlurStyle(BlurStyle.COMPONENT_THICK)
         CourseManager({
           semesterId: this.semester.id,
           close: (): void => {
