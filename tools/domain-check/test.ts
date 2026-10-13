@@ -13,9 +13,9 @@ import { computeWeekSessions, weekOfDate } from './Timetable';
 import { maskAll, maskFromText, maskToText, maskHas } from './WeekMask';
 import { countdownText, minToHHmm, parseDate } from './DateUtil';
 import { computeDdl, renderTitle } from './TodoGenerator';
-import { TimeAxis, DEFAULT_WINDOW, WINDOW_MAX_END, allBlocksDone, dropRange, findFreeSlot,
-  moveRange, normalizeDuration, normalizeWindow, overlaps, resizeRange, selectPoolTodos, snap,
-  sortPoolTodos, windowForContent } from './PlanMath';
+import { TimeAxis, DEFAULT_WINDOW, WINDOW_MAX_END, allBlocksDone, dragOffsetWithScroll,
+  dropRange, findFreeSlot, moveRange, normalizeDuration, normalizeWindow, overlaps, resizeRange,
+  selectPoolTodos, snap, sortPoolTodos, windowForContent } from './PlanMath';
 
 /**
  * 断言用的固定时间轴：06:00–24:00。
@@ -650,6 +650,33 @@ function canBeginMove(armedId: number, blockId: number): boolean {
 check('没长按过 → 不给拖', `${canBeginMove(0, 7)}`, 'false');
 check('长按了另一个块 → 也不给拖', `${canBeginMove(3, 7)}`, 'false');
 check('长按了这个块 → 给拖', `${canBeginMove(7, 7)}`, 'true');
+
+// ---------- 拖动位移的滚动补偿（回归自"块比屏幕走得快"）----------
+// 场景：用户长按块后拖动，同时网格因边缘自动滚动而滚动。
+// 块要钉在手指下，块相对网格的位移必须是「手指位移 - 网格滚动量」。
+console.log('【拖动位移：滚动补偿】');
+
+check('网格没滚 → 位移就等于手指位移',
+  `${dragOffsetWithScroll(100, 0)}`, '100');
+check('网格向下滚 50、手指不动 → 块要向上挪 50 才留在原位',
+  `${dragOffsetWithScroll(0, 50)}`, '-50');
+check('网格向上滚 50、手指不动 → 块向下挪 50',
+  `${dragOffsetWithScroll(0, -50)}`, '50');
+// ★ 这条是那个 bug 的回归断言：
+//   自动滚动每滚 N，块只应补偿 N 一次。补偿两次就会变成 -2N，块比屏幕多走 N。
+check('补偿只做一次（做两次会变成 -2N，块就比屏幕快了）',
+  `${dragOffsetWithScroll(0, 50)}`, '-50');
+check('手指下移 200、同时网格下滚 50 → 净位移 150',
+  `${dragOffsetWithScroll(200, 50)}`, '150');
+check('手指上移 200、同时网格上滚 50 → 净位移 -150',
+  `${dragOffsetWithScroll(-200, -50)}`, '-150');
+// 不变式：无论网格怎么滚，"块在窗口中的位置"必须只由手指决定
+for (const scroll of [0, 30, -30, 90, -90]) {
+  const touch: number = 120;
+  const blockInWindow: number = dragOffsetWithScroll(touch, scroll) + scroll;
+  check(`网格滚 ${scroll} 时，块在窗口中的位置仍等于手指位移 ${touch}`,
+    `${blockInWindow}`, `${touch}`);
+}
 
 // ---------- 汇总 ----------
 console.log('');

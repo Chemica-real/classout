@@ -8,7 +8,8 @@ import { TodoRepo } from '../data/TodoRepo';
 import { sessionsOnDate } from '../domain/Timetable';
 import { generateForLesson } from '../domain/TodoGenerator';
 import { TimeAxis, DEFAULT_AXIS, MIN_BLOCK_MIN, allBlocksDone,
-  dropRange, durationToH, findFreeSlot, moveRange, normalizeDuration, resizeRange,
+  dragOffsetWithScroll, dropRange, durationToH, findFreeSlot, moveRange, normalizeDuration,
+  resizeRange,
   selectPoolTodos, sortPoolTodos } from '../domain/PlanMath';
 import { addDays, formatDate, minToHHmm, parseDate, relativeDayText, today, WEEKDAY_CN,
   weekdayOf } from '../util/DateUtil';
@@ -155,8 +156,6 @@ export struct PlanDayView {
   private touchWinY: number = 0;
   /** 开始移动/改时长那一刻的网格滚动位置。自动滚动产生的偏移量用它算 */
   private dragStartScroll: number = 0;
-  /** 拖动过程中**自动滚动**累计产生的偏移（不算用户自己滚动的那部分） */
-  private autoScrolled: number = 0;
   /** 网格**可视区**上边界（窗口坐标） */
   /** 武装拖动期间是否锁住 Scroll 自身滚动（锁住后只允许边缘自动滚） */
   @State gridScrollLocked: boolean = false;
@@ -454,6 +453,10 @@ export struct PlanDayView {
     this.pressStartY = event.touches.length > 0 ? event.touches[0].windowY : 0;
     this.lastTouchY = this.pressStartY;
     this.pressActive = true;
+    // ★ 滚动基准在**按下**时记录，且整个拖动期间**不再改**。
+    //   块位移公式里的 touchDeltaY 是以按下点为基准的，
+    //   若基准滚动位置改成"武装那一刻"，两者基准不一致 → 块会漂。
+    this.dragStartScroll = this.gridScroller.currentOffset().yOffset;
     this.disarm();
   }
 
@@ -473,8 +476,6 @@ export struct PlanDayView {
     this.gridScrollLocked = true;
     this.armedMoveId = b.id;
     this.armedResizeId = 0;
-    this.dragStartScroll = this.gridScroller.currentOffset().yOffset;
-    this.autoScrolled = 0;
     hapticLongPress();
     this.hint = '已激活，上下拖动可以改时间；点空白处取消';
   }
@@ -483,8 +484,6 @@ export struct PlanDayView {
     this.gridScrollLocked = true;
     this.armedResizeId = b.id;
     this.armedMoveId = 0;
-    this.dragStartScroll = this.gridScroller.currentOffset().yOffset;
-    this.autoScrolled = 0;
     hapticLongPress();
     this.hint = '已激活，上下拖动底边可以改时长';
   }
@@ -519,11 +518,10 @@ export struct PlanDayView {
     this.edgeTimer = setInterval((): void => {
       const step: number = atTop ? -PlanDayView.EDGE_STEP : PlanDayView.EDGE_STEP;
       this.gridScroller.scrollBy(0, step);
-      this.autoScrolled += step;
-      // 网格滚了之后，块相对网格的偏移必须反向补偿，
-      // 否则块会跟着视图一起跑（等于偷偷改了块的开始时间）
-      const now: number = this.gridScroller.currentOffset().yOffset;
-      this.dragOffsetY = (this.touchWinY - this.pressStartY) - (now - this.dragStartScroll);
+      // ★ 这里**只滚屏幕，不要碰 dragOffsetY**。
+      //   块的位移由 Move 里那个公式算（它已经减掉了「网格滚掉的那部分」）。
+      //   早期版本在这里又减了一次滚动量 → 块每秒多走一个 EDGE_STEP，
+      //   表现为「块比屏幕走得快」（用户实测报过）。
       this.updateEdgeScroll();
     }, PlanDayView.EDGE_INTERVAL);
   }
@@ -565,7 +563,7 @@ export struct PlanDayView {
     // 补偿网格滚动：块要钉在手指下，就必须减去"网格自己滚掉的那部分"。
     // 否则网格一滚，块相对网格就跑了（等于块的开始时间被偷偷改掉）。
     const scrolled: number = this.gridScroller.currentOffset().yOffset - this.dragStartScroll;
-    this.dragOffsetY = dy - scrolled;
+    this.dragOffsetY = dragOffsetWithScroll(dy, scrolled);
     this.updateEdgeScroll();
   }
 
@@ -590,6 +588,7 @@ export struct PlanDayView {
     this.pressStartY = event.touches.length > 0 ? event.touches[0].windowY : 0;
     this.lastTouchY = this.pressStartY;
     this.pressActive = true;
+    this.dragStartScroll = this.gridScroller.currentOffset().yOffset;
     this.disarm();
   }
 
@@ -607,7 +606,7 @@ export struct PlanDayView {
     event.stopPropagation();
     this.resizeBlockId = b.id;
     const scrolled2: number = this.gridScroller.currentOffset().yOffset - this.dragStartScroll;
-    this.resizeOffsetY = dy - scrolled2;
+    this.resizeOffsetY = dragOffsetWithScroll(dy, scrolled2);
     this.updateEdgeScroll();
   }
 

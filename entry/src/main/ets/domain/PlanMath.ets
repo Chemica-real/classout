@@ -283,6 +283,25 @@ export function findFreeSlot(axis: TimeAxis, busy: number[][], rest: number[][],
 }
 
 /**
+ * 拖动块时的位移：把"手指移动"换算成"块相对网格的位移"。
+ *
+ * 块是网格里的绝对定位元素，所以让块**钉在手指下**的条件是：
+ *   手指的窗口位置 - 网格滚动量 == 常数
+ * 于是：
+ *   块位移 = 手指窗口位移 - 网格滚动量
+ *
+ * ⚠️ 这个减法是**唯一**该做补偿的地方。
+ * 曾经的 bug：自动滚动定时器里又减了一次滚动量 → 块每滚一步就多走一个 EDGE_STEP，
+ * 表现为"块比屏幕走得快"（用户实测：靠近上沿时块和屏幕都向下，块速度略大于屏幕）。
+ *
+ * @param touchDeltaY  手指的窗口坐标位移（相对按下点）
+ * @param scrollDeltaY 网格滚动量（当前 - 按下时）
+ */
+export function dragOffsetWithScroll(touchDeltaY: number, scrollDeltaY: number): number {
+  return touchDeltaY - scrollDeltaY;
+}
+
+/**
  * 「待安排」托盘里该显示哪些待办。
  *
  * 规则：状态为 active、且**给定日期**还没有排过块。
