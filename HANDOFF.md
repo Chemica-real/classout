@@ -236,6 +236,42 @@ entry/src/main/ets/
 - **北大校本部一天 12 节**（第 9、12 节机动），不是 10 节。
 - **鸿蒙不允许后台常驻**（延迟任务最小 2 小时）→「下课立刻生成」实现为
   **下次打开 App 时静默补生成**，时间戳仍记为该节课的下课时刻。
+- **SDK 里的 kit 名字别猜**：振动在 `@kit.SensorServiceKit`（不是 `@kit.SensorsKit`）。
+  `ls <SDK>/ets/kits/` 一眼就知道。
+- **`onTouch` 收不到"父级 Scroll 接管后的 Move 事件"**（实测）。
+  所以任何依赖 Move 流来判断手势意图的逻辑（比如"移动了就取消长按"）都不可靠。
+
+### 6.5.1 ⚠️ 触摸事件层 ≠ 手势识别层（这个坑很大，记下来）
+
+判断一个控件和**父级可滚动容器**谁该响应时，必须分清两个层面：
+
+| 层面 | 手段 | 能不能影响 Scroll 的滚动 |
+|---|---|---|
+| **触摸事件** | `event.stopPropagation()` / `event.preventDefault()` | **不能**（实测拖动时网格照样滚了 78px） |
+| **手势识别** | `GestureGroup` / `parallelGesture` / 手势仲裁 API | 能，但机制完全不同 |
+
+**教训**：我曾在触摸事件层反复尝试阻止 Scroll，全部失败，因为 Scroll 的滚动是
+**手势识别层**的行为。正确的层面是下面这套：
+
+```ts
+// 手势仲裁：每个手势即将被接受时回调，能拿到响应链上**包括父级 Scroll** 的所有识别器
+.onGestureRecognizerJudgeBegin(
+  (event: BaseGestureEvent, current: GestureRecognizer,
+   recognizers: Array<GestureRecognizer>) => GestureJudgeResult)
+// GestureJudgeResult: CONTINUE（不干预）| REJECT（否决）| PENDING
+// GestureRecognizer.setEnabled(false) 可以直接关掉某个识别器
+// shouldBuiltInRecognizerParallelWith() 让**内置手势**（就是 Scroll 的拖动）与你的手势并行
+```
+
+**三种挂手势方式的区别（都实测过）**：
+
+| 方式 | 与父级 Scroll 的关系 | 结果 |
+|---|---|---|
+| `.gesture(GestureGroup(Parallel, LongPress, Pan))` | **抢**手势 | ❌ 从块上起手**完全滚不动**（用户报的 bug） |
+| `.onTouch(...)` | 不注册手势，完全不参与竞争 | ✅ 滚动正常，但收不到 Scroll 接管后的 Move |
+| `.parallelGesture(LongPressGesture(...))` | 与 Scroll **并行**，被抢走时系统 Cancel | ✅ 滚动正常 + 长按能触发（当前方案） |
+
+---
 
 ### 6.6 「所有块完成 → 待办自动完成」必须查跨天
 

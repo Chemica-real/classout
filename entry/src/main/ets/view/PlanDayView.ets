@@ -513,9 +513,16 @@ export struct PlanDayView {
     if (this.edgeTimer !== -1) {
       return;   // 已经在滚了
     }
+    const startScroll: number = this.gridScroller.currentOffset().yOffset;
+    hilog.info(DOMAIN, TAG,
+      'EDGE start dir=%{public}d touchY=%{public}d view=[%{public}d,%{public}d] scroll=%{public}d offsetY=%{public}d',
+      dir, this.touchWinY, this.gridViewTop, this.gridViewBottom, startScroll, this.dragOffsetY);
     this.edgeTimer = setInterval((): void => {
       const step: number = dir * PlanDayView.EDGE_STEP;
+      const before: number = this.gridScroller.currentOffset().yOffset;
       this.gridScroller.scrollBy(0, step);
+      hilog.info(DOMAIN, TAG, 'EDGE tick step=%{public}d scroll %{public}d -> %{public}d',
+        step, before, this.gridScroller.currentOffset().yOffset);
       // ★ 这里**只滚屏幕，不要碰 dragOffsetY**。
       //   块的位移由 Move 里那个公式算（它已经减掉了「网格滚掉的那部分」）。
       //   早期版本在这里又减了一次滚动量 → 块每秒多走一个 EDGE_STEP，
@@ -562,11 +569,17 @@ export struct PlanDayView {
     // 否则网格一滚，块相对网格就跑了（等于块的开始时间被偷偷改掉）。
     const scrolled: number = this.gridScroller.currentOffset().yOffset - this.dragStartScroll;
     this.dragOffsetY = dragOffsetWithScroll(dy, scrolled);
+    hilog.info(DOMAIN, TAG,
+      'MOVE touchY=%{public}d pressY=%{public}d dy=%{public}d scrollNow=%{public}d scrollBase=%{public}d scrolled=%{public}d -> offsetY=%{public}d',
+      this.lastTouchY, this.pressStartY, dy, this.gridScroller.currentOffset().yOffset,
+      this.dragStartScroll, scrolled, this.dragOffsetY);
     this.updateEdgeScroll();
   }
 
   /** 触摸抬起：位移落库、解除武装 */
   private onBlockTouchUp(b: PlanBlock): void {
+    hilog.info(DOMAIN, TAG, 'UP final offsetY=%{public}d armedMove=%{public}d scrollFinal=%{public}d',
+      this.dragOffsetY, this.armedMoveId, this.gridScroller.currentOffset().yOffset);
     this.pressActive = false;
     this.stopEdgeScroll();
     if (this.dragBlockId === b.id) {
