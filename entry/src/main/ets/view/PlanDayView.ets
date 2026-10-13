@@ -236,11 +236,6 @@ export struct PlanDayView {
     return columnX(this.gridW, this.viewCols, i);
   }
 
-  /** 侧列只读：不能选中、不能开编辑窗、不能拖、不能缩放（用户要求） */
-  private isReadOnlyCol(i: number): boolean {
-    return i !== this.centerCol();
-  }
-
   /** 块画在哪一列：拖拽中的块跟着手指跨列，其余就按它自己所在的列 */
   private blockColOf(b: PlanBlock, ci: number): number {
     if (this.isDragging(b) && this.viewCols > COLS_DAY) {
@@ -433,19 +428,21 @@ export struct PlanDayView {
     return this.todoCourseId(b.todoId);
   }
 
-  private placeLesson(l: VirtualLesson, startMin: number, duration: number): void {
-    this.doPlaceLesson(l, startMin, duration).catch((e: Object): void => {
+  private placeLesson(l: VirtualLesson, startMin: number, duration: number,
+    date: string): void {
+    this.doPlaceLesson(l, startMin, duration, date).catch((e: Object): void => {
       hilog.error(DOMAIN, TAG, 'place lesson failed: %{public}s', JSON.stringify(e));
     });
   }
 
-  private async doPlaceLesson(l: VirtualLesson, startMin: number, duration: number): Promise<void> {
+  private async doPlaceLesson(l: VirtualLesson, startMin: number, duration: number,
+    date: string): Promise<void> {
     const ctx: common.UIAbilityContext = this.context();
     const block: PlanBlock = {
       id: 0,
       todoId: 0,
       lessonId: l.id,
-      date: this.date,
+      date: date,
       startMin: startMin,
       endMin: startMin + duration,
       done: false
@@ -464,7 +461,7 @@ export struct PlanDayView {
       this.showHint('这天（或剩余时间）排不下了，换一天试试');
       return;
     }
-    this.placeLesson(l, slot, normalizeDuration(LESSON_MIN));
+    this.placeLesson(l, slot, normalizeDuration(LESSON_MIN), this.date);
     this.showHint(`已排到 ${minToHHmm(slot)}`);
   }
 
@@ -526,17 +523,13 @@ export struct PlanDayView {
    *         ③ 都没有 → 给一句提示。
    */
   private onGridTap(event: ClickEvent): void {
-    // 三日视图里点的是哪一列？（单日视图恒为中心列）
-    let inCenter: boolean = true;
-    if (this.viewCols > COLS_DAY) {
-      inCenter = columnAtX(this.gridW, this.viewCols, event.windowX - this.gridLeft)
-        === this.centerCol();
-    }
-    if (this.selectedTodoId > 0 && !inCenter) {
-      // 侧列只读：不往侧列里排（排到别的天要走"跨天拖拽"或 ‹ › 换天）
-      this.showHint('侧列只是展示，排待办请点中间那一列');
-      return;
-    }
+    // 点在哪一列就排到那一天（三日视图）。命中不到列（点在时间轴上）→ 退回中心列。
+    // ⚠️ 用户要求"点侧列**不换天**"：这里只影响排到哪天，不改 this.date。
+    const tapCol: number = this.viewCols > COLS_DAY
+      ? dropColumnOrFallback(this.gridW, this.viewCols, event.windowX - this.gridLeft,
+        this.centerCol())
+      : this.centerCol();
+    const tapDate: string = this.dateOfCol(tapCol);
     if (this.selectedTodoId > 0) {
       const todo: Todo | undefined = this.selectedTodo();
       if (todo !== undefined) {
@@ -548,7 +541,7 @@ export struct PlanDayView {
         const rawY: number = event.windowY - this.gridTop;
         const localY: number = rawY > 0 ? rawY : 0;
         const range: number[] = dropRange(AXIS, localY, todo.estimateMin);
-        this.place(todo, range[0], range[1] - range[0]);
+        this.place(todo, range[0], range[1] - range[0], tapDate);
         return;
       }
     }
@@ -567,11 +560,7 @@ export struct PlanDayView {
    * 第一下把块选中，第二下落在**已选中**的块上，于是直接开窗。
    * 这样单击选中没有延迟，也不会有"点了没反应"的观感。
    */
-  private onBlockTap(b: PlanBlock, ci: number): void {
-    // 侧列只读：点了不选中、不开窗（用户要求换天只能用 ‹ ›）
-    if (this.isReadOnlyCol(ci)) {
-      return;
-    }
+  private onBlockTap(b: PlanBlock): void {
     // 长按之后被系统补发的那次 onClick：不算点击（用户要求长按 ≠ 点击）
     if (this.longPressHandled) {
       this.longPressHandled = false;
@@ -598,6 +587,12 @@ export struct PlanDayView {
     // DragEvent.getY() 自 API 10 起废弃，用窗口坐标减去网格顶边
     const rawY: number = event.getWindowY() - this.gridTop;
     const localY: number = rawY > 0 ? rawY : 0;
+    // 放到哪一列就排到那一天（三日视图）
+    const dropCol: number = this.viewCols > COLS_DAY
+      ? dropColumnOrFallback(this.gridW, this.viewCols, event.getWindowX() - this.gridLeft,
+        this.centerCol())
+      : this.centerCol();
+    const dropDate: string = this.dateOfCol(dropCol);
 
     if (lessonId > 0) {
       const l: VirtualLesson | undefined = this.lessonOf(lessonId);
@@ -605,7 +600,7 @@ export struct PlanDayView {
         return;
       }
       const range: number[] = dropRange(AXIS, localY, LESSON_MIN);
-      this.placeLesson(l, range[0], range[1] - range[0]);
+      this.placeLesson(l, range[0], range[1] - range[0], dropDate);
       return;
     }
 
@@ -617,7 +612,7 @@ export struct PlanDayView {
       return;
     }
     const range: number[] = dropRange(AXIS, localY, todo.estimateMin);
-    this.place(todo, range[0], range[1] - range[0]);
+    this.place(todo, range[0], range[1] - range[0], dropDate);
   }
 
   // ---- 拖拽改时间 ----
@@ -672,10 +667,6 @@ export struct PlanDayView {
    *   `parallelGesture` 让长按**和 Scroll 并行识别**，被 Scroll 抢走时系统直接 Cancel 它。
    */
   private onBlockLongPress(b: PlanBlock, ci: number): void {
-    // 侧列只读：不能拖
-    if (this.isReadOnlyCol(ci)) {
-      return;
-    }
     // 两步模型的守卫（在 domain/PlanLayout.canBeginDrag，有断言）：
     // 只有**已选中**的块才进入拖拽，未选中的长按完全不响应
     if (!canBeginDrag(this.selectedBlockId, b.id)) {
@@ -683,8 +674,10 @@ export struct PlanDayView {
     }
     hapticLongPress();
     this.longPressHandled = true;
-    // 跨天拖拽的起点：当前块所在的列
-    this.dragColIndex = this.centerCol();
+    // 跨天拖拽的起点 = **这块自己所在的列**。
+    // ⚠️ 这里以前写成 centerCol()：侧列的块一按下去就会先跳到中间列（潜伏 bug，
+    //   在"侧列只读"时期不会暴露，三列都可拖之后就一定会现形）。
+    this.dragColIndex = ci;
     // 长按后禁用 Scroll 自己滚 —— 移动块时时间轴要钉住，
     // 只有 updateEdgeScroll() 在边缘处用代码滚（用户要求）。
     this.gridScrollLocked = true;
@@ -831,8 +824,8 @@ export struct PlanDayView {
    * 双指缩放开始：只在**选中的那一块**上生效（用户要求「在选中状态下，双指缩放以更改时长」）。
    * 记录按下那一刻的结束分钟作为基准 —— 用基准而不是"当前值"，手指抖动不会累积误差。
    */
-  private beginPinch(b: PlanBlock, ci: number): void {
-    if (this.isReadOnlyCol(ci) || this.selectedBlockId !== b.id) {
+  private beginPinch(b: PlanBlock): void {
+    if (this.selectedBlockId !== b.id) {
       return;
     }
     this.pinchBlockId = b.id;
@@ -1192,23 +1185,24 @@ export struct PlanDayView {
       this.showHint('这天（或剩余时间）排不下了，换一天试试');
       return;
     }
-    this.place(t, slot, normalizeDuration(t.estimateMin));
+    this.place(t, slot, normalizeDuration(t.estimateMin), this.date);
     this.showHint(`已排到 ${minToHHmm(slot)}`);
   }
 
-  private place(todo: Todo, startMin: number, duration: number): void {
-    this.doPlace(todo, startMin, duration).catch((e: Object): void => {
+  private place(todo: Todo, startMin: number, duration: number, date: string): void {
+    this.doPlace(todo, startMin, duration, date).catch((e: Object): void => {
       hilog.error(DOMAIN, TAG, 'place block failed: %{public}s', JSON.stringify(e));
     });
   }
 
-  private async doPlace(todo: Todo, startMin: number, duration: number): Promise<void> {
+  private async doPlace(todo: Todo, startMin: number, duration: number,
+    date: string): Promise<void> {
     const ctx: common.UIAbilityContext = this.context();
     const block: PlanBlock = {
       id: 0,
       todoId: todo.id,
       lessonId: 0,
-      date: this.date,
+      date: date,
       startMin: startMin,
       endMin: startMin + duration,
       done: false
@@ -1229,11 +1223,8 @@ export struct PlanDayView {
     });
   }
 
-  /** 侧列只读：点完成圆圈也不生效 */
-  private onBlockToggleDone(block: PlanBlock, ci: number): void {
-    if (this.isReadOnlyCol(ci)) {
-      return;
-    }
+  /** 点完成圆圈：三列都可点 */
+  private onBlockToggleDone(block: PlanBlock): void {
     this.toggleBlockDone(block);
   }
 
@@ -1462,15 +1453,27 @@ export struct PlanDayView {
     }, (i: number) => `csep-${i}`)
   }
 
-  /** 拖拽中留在原位的虚线空位 */
+  /**
+   * 拖拽中留在原位的虚线空位。
+   *
+   * ⚠️ 宽度必须按**列宽**算，不能再用 `CONTENT_W`（那是"整条内容区"的宽度）：
+   * 三日视图里 x 是某一列的左边缘，配 `CONTENT_W` 就会从这一列起画满整屏，
+   * 右边拖出去一大截（用户实测报"虚线框右侧过长"）。单日视图 colWidthOf 返回的
+   * 仍然是 CONTENT_W，所以单日行为不变。
+   */
   @Builder
   DragGhost() {
     Column()
-      .width(CONTENT_W)
+      .width(this.colWidthOf(this.ghostCol()))
       .height(this.ghostH())
       .borderRadius(6)
       .border({ width: 2, color: '#B0B8C4', style: BorderStyle.Dashed })
-      .position({ x: this.colXOf(this.colIndexOfBlock(this.dragBlockId)), y: this.ghostY() })
+      .position({ x: this.colXOf(this.ghostCol()), y: this.ghostY() })
+  }
+
+  /** 虚线空位画在哪一列 = 被拖的块原来所在的那一列 */
+  private ghostCol(): number {
+    return this.colIndexOfBlock(this.dragBlockId);
   }
 
   @Builder
@@ -1483,7 +1486,7 @@ export struct PlanDayView {
             .fontSize(LAYOUT.title)
             .fontColor(b.done ? '#2E6BE6' : '#FFFFFF')
             .margin({ right: 6 })
-            .onClick((): void => this.onBlockToggleDone(b, ci))
+            .onClick((): void => this.onBlockToggleDone(b))
           Column() {
             Text(this.blockTitle(b))
               .fontSize(LAYOUT.title)
@@ -1509,15 +1512,15 @@ export struct PlanDayView {
         .borderRadius(6)
         // 选中即黑框高亮（用户要的"选中状态加黑框"）
         .border({
-          width: this.isReadOnlyCol(ci) ? 0 : (this.isSelected(b) || this.isDragging(b) ? 2 : 0),
+          width: this.isSelected(b) || this.isDragging(b) ? 2 : 0,
           color: '#12161F'
         })
-        .onClick((): void => this.onBlockTap(b, ci))
+        .onClick((): void => this.onBlockTap(b))
         // 双指缩放改时长。挂在**内层内容**上而不是外层 Stack：
         // 外层已经用 parallelGesture 挂了长按，同一个节点再挂一个手势有可能把前一个顶掉。
         .gesture(
           PinchGesture({ fingers: 2 })
-            .onActionStart((): void => this.beginPinch(b, ci))
+            .onActionStart((): void => this.beginPinch(b))
             .onActionUpdate((event: GestureEvent): void => this.updatePinch(b, event))
             .onActionEnd((): void => this.endPinch(b))
         )
@@ -1547,13 +1550,13 @@ export struct PlanDayView {
         .opacity(this.isDragging(b) ? 0.72 : (b.done ? 0.5 : 0.95))
         .borderRadius(6)
         .border({
-          width: this.isReadOnlyCol(ci) ? 0 : (this.isSelected(b) || this.isDragging(b) ? 2 : 0),
+          width: this.isSelected(b) || this.isDragging(b) ? 2 : 0,
           color: '#12161F'
         })
-        .onClick((): void => this.onBlockTap(b, ci))
+        .onClick((): void => this.onBlockTap(b))
         .gesture(
           PinchGesture({ fingers: 2 })
-            .onActionStart((): void => this.beginPinch(b, ci))
+            .onActionStart((): void => this.beginPinch(b))
             .onActionUpdate((event: GestureEvent): void => this.updatePinch(b, event))
             .onActionEnd((): void => this.endPinch(b))
         )
@@ -2117,8 +2120,10 @@ export struct PlanDayView {
               Column() {
                 Text(columnHeaderText(cd))
                   .fontSize(LAYOUT.tray)
+                  // 三列都可操作，所以侧列不再画成"灰掉不可用"；
+                  // 只有"当前查看日"那一列加粗 + 灰底（它是 ‹ › 的基准）
                   .fontWeight(ci === this.centerCol() ? FontWeight.Medium : FontWeight.Normal)
-                  .fontColor(ci === this.centerCol() ? '#12161F' : '#B0B8C4')
+                  .fontColor(ci === this.centerCol() ? '#12161F' : '#5A6478')
                 if (cd === formatDate(today())) {
                   Text('今天')
                     .fontSize(LAYOUT.cardSub)
