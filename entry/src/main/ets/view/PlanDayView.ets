@@ -14,6 +14,10 @@ import { TimeAxis, DEFAULT_AXIS, allBlocksDone,
   selectPoolTodos } from '../domain/PlanMath';
 import { BLOCK_MIN_MIN, DURATION_STEP_MIN, pinchDeltaLabel, pinchEnd, resizeEndTo,
   totalBlockMinutes } from '../domain/Validate';
+// 版式常量与列几何都搬去了 domain/PlanLayout：那边能进离线断言，
+// 而且 test.ts 直接 import 同一份（以前是抄一遍再断言，抄错了也发现不了）
+import { AXIS_W, canBeginDrag, compactMinH, compactThreshold, LAYOUT, MIN_VISIBLE_H,
+  tapAction, TAP_OPEN } from '../domain/PlanLayout';
 import { addDays, formatDate, hhmmToMin, minToHHmm, parseDate, relativeDayText, today, WEEKDAY_CN,
   weekdayOf } from '../util/DateUtil';
 import { ChipButton } from './ChipButton';
@@ -33,12 +37,6 @@ const AXIS: TimeAxis = DEFAULT_AXIS;
 const GRID_H: number = AXIS.height();
 
 /**
- * 左侧时间轴的宽度：刻度文字 40vp + 6vp 间隙。
- * 所有「从时间轴右边起画」的元素都用它做 x。
- */
-const AXIS_W: number = 46;
-
-/**
  * 课程灰带 / 计划块 / 截止标记的宽度 = 父级满宽 **减去**时间轴。
  *
  * ⚠️ 这是一个真 bug 的修复（用户报「计划页面右侧在屏幕外」）：
@@ -47,88 +45,11 @@ const AXIS_W: number = 46;
  * 块的右侧内边距和内容全被 Scroll 视口裁掉。
  * 时间轴那条 Divider 本来就用 `layoutWeight(1)` 扣掉了 46vp —— 可见原意就是「内容区 = 100% − 46vp」，
  * 只是宽度忘了一起扣。
+ *
+ * ⚠️ 只用于**单日视图**。三日视图要走按列算出来的具体宽度（见 PlanLayout.columnWidth），
+ * 不能用这个 calc 串。
  */
 const CONTENT_W: string = `calc(100% - ${AXIS_W}vp)`;
-
-
-/**
- * ★ 字号试版开关（临时，只为给用户看 13/14/15vp 三档对比截图，见 PLAN_REDESIGN.md §7）
- *
- * 改这一个数字就能重建出另一档，不用改散落各处的 fontSize。
- * 试版结束后这套常量保留（它本来就是好实践），但 SELECTED 会定成一档。
- *
- * 每档的构成：
- *   title  = 网格里块标题（待办/课时）
- *   sub    = 块副文字（时间范围）、位置
- *   hour   = 时间轴刻度
- *   tray   = 待安排格里的文字
- *   cardSub= 次级说明文字（"预计 N 分钟"等）
- */
-class LayoutSpec {
-  title: number;
-  sub: number;
-  hour: number;
-  tray: number;
-  cardSub: number;
-  chip: number;
-  /**
-   * 短块（放不下「标题+副文字」两行时）用的紧凑字号。
-   * 用户明确要求：「长度 15min 的计划可以例外地把字体放小以便包含」。
-   * 15 分钟的块按 1 分钟 = 1vp 只有 13vp 高，正文字号必然溢出，
-   * 所以在**不改变块的真实高度**的前提下把内容压进去。
-   */
-  compact: number;
-
-  constructor(title: number, sub: number, hour: number, tray: number,
-    cardSub: number, chip: number, compact: number) {
-    this.title = title;
-    this.sub = sub;
-    this.hour = hour;
-    this.tray = tray;
-    this.cardSub = cardSub;
-    this.chip = chip;
-    this.compact = compact;
-  }
-}
-
-const LAYOUT_A: LayoutSpec = new LayoutSpec(12, 9, 10, 12, 10, 12, 10);
-const LAYOUT_B: LayoutSpec = new LayoutSpec(13, 10, 11, 13, 11, 13, 10);
-const LAYOUT_C: LayoutSpec = new LayoutSpec(14, 11, 12, 14, 12, 14, 10);
-const LAYOUT_D: LayoutSpec = new LayoutSpec(15, 12, 13, 15, 12, 14, 11);
-
-/** ← 改这里切换档位（A=现状 12/9，B=13/10，C=14/11，D=15/12） */
-const LAYOUT: LayoutSpec = LAYOUT_C;
-
-/**
- * 块的最小**视觉**高度（vp），不是最小**时长**。
- *
- * ⚠️ 这里曾经算错两次，记下来：
- *   1. 最初把分钟常量 MIN_BLOCK_MIN 当 vp 用（预览 15vp、松手 13vp），前后不一致；
- *   2. 后来改成「装得下标题+副文字」的高度（46vp；那个函数已废弃删除）——
- *      但 1 分钟 = 1vp 是全项目约定，块高必须等于真实时长。
- *      给 15 分钟的块画 46vp 会让它盖住后面 31 分钟、把那些时段点不到。
- *
- * 正确的最小值只用来**防止拖动时块塌成不可见**，13 分钟的块就是 13vp。
- * 装不下的内容是靠紧凑排版（LAYOUT.compact）压进去的，不是靠把块画高。
- */
-const MIN_VISIBLE_H: number = 6;
-
-/**
- * 紧凑块的最小高度：**文字的行高**，不是时长。
- *
- * 13vp 的块（15 分钟）装不下一整行字 —— 实测 10vp 字号的行高约 14–16vp，
- * 用 13vp 会把字上下各切掉一截。所以紧凑块允许比它的时长高一点点（最多 3vp），
- * 代价是它下方的 3vp 会被盖住；这是用户明确要的取舍
- * （「长度 15min 的计划可以例外地把字体放小以便包含」）。
- */
-function compactMinH(): number {
-  return Math.ceil(LAYOUT.compact * 1.4);
-}
-
-/** 块高度小于此值时改用紧凑排版（单行：标题 + 时间，去掉完成圆圈） */
-function compactThreshold(): number {
-  return Math.ceil(LAYOUT.title * 1.35) + Math.ceil(LAYOUT.sub * 1.35);
-}
 
 @Component
 export struct PlanDayView {
@@ -499,7 +420,9 @@ export struct PlanDayView {
       this.longPressHandled = false;
       return;
     }
-    if (this.selectedBlockId === b.id) {
+    // 判据在 domain/PlanLayout.tapAction（有离线断言）：
+    // 已选中的同一条再单击 = 开编辑窗；否则 = 选中/改选
+    if (tapAction(this.selectedBlockId, b.id) === TAP_OPEN) {
       this.openEditor(b);
       return;
     }
@@ -592,7 +515,9 @@ export struct PlanDayView {
    *   `parallelGesture` 让长按**和 Scroll 并行识别**，被 Scroll 抢走时系统直接 Cancel 它。
    */
   private onBlockLongPress(b: PlanBlock): void {
-    if (this.selectedBlockId !== b.id) {
+    // 两步模型的守卫（在 domain/PlanLayout.canBeginDrag，有断言）：
+    // 只有**已选中**的块才进入拖拽，未选中的长按完全不响应
+    if (!canBeginDrag(this.selectedBlockId, b.id)) {
       return;
     }
     hapticLongPress();

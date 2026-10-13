@@ -31,6 +31,9 @@ const DAY_END_MIN: number = AX.endMin;
 import { buildBriefing } from './Briefing';
 import { BackupBundle, backupSummary, countBackup, emptyBundle, parseBackup,
   serializeBackup } from './Backup';
+import { AXIS_W, compactMinH, compactThreshold, COLS_DAY, COLS_THREE, columnAtX, columnHeaderText,
+  columnWidth, columnX, contentWidth, centerIndex, dayDates, dropColumnOrFallback, canBeginDrag,
+  LAYOUT, TAP_OPEN, TAP_SELECT, tapAction } from './PlanLayout';
 import { findRuleConflicts, isStepMultiple, migrateEstimate, normalizeEstimate, pinchDeltaLabel,
   pinchEnd, resizeEndTo, spanOfRule, totalBlockMinutes, validateEstimate, validateRestWindow,
   validateSectionTime, validateSectionTimes, validateSessionRule } from './Validate';
@@ -595,66 +598,90 @@ check('不修改传入数组（纯函数）',
   '有|无');
 
 // ---------- 块的排版分档（紧凑 vs 常规）----------
-// 这些数字必须和 PlanDayView 里的 LayoutSpec / compactThreshold / compactMinH 一致。
-// 它们只在真机上肉眼验证过，这里钉住公式，防止以后改字号时把分档改坏。
+// ★ 这里**直接 import 生产代码的常量与公式**（domain/PlanLayout）。
+//   以前这一节把 LayoutSpec 的档位和两个公式**又抄了一遍**，注释还写着
+//   "这些数字必须和 PlanDayView 里的一致" —— 抄一遍的断言发现不了漂移
+//   （这正是本轮那个拖拽符号 bug 的同类错误）。现在两边共用一份。
 console.log('【块排版分档】');
 
-interface Tiers { title: number; sub: number; compact: number; }
-const TIERS: Tiers[] = [
-  { title: 12, sub: 9, compact: 10 },
-  { title: 13, sub: 10, compact: 10 },
-  { title: 14, sub: 11, compact: 10 },
-  { title: 15, sub: 12, compact: 11 },
-];
-
-const compactThresholdOf = (t: Tiers): number =>
-  Math.ceil(t.title * 1.35) + Math.ceil(t.sub * 1.35);
-const compactMinHOf = (t: Tiers): number => Math.ceil(t.compact * 1.4);
-/** 块按真实时长算的高度 = 时长 - 2（和 PlanDayView.blockTimedH 一致） */
+/** 块按真实时长算的高度 = 时长 − 2（和 PlanDayView.blockTimedH 一致） */
 const timedH = (min: number): number => min - 2;
+const TH: number = compactThreshold();
+const MINH: number = compactMinH();
 
-for (const t of TIERS) {
-  const th = compactThresholdOf(t);
-  const tag = `${t.title}/${t.sub}(紧凑${t.compact})`;
-  check(`${tag}：15 分钟块走紧凑`, `${timedH(15) < th}`, 'true');
-  check(`${tag}：20 分钟块走紧凑`, `${timedH(20) < th}`, 'true');
-  check(`${tag}：60 分钟块走常规`, `${timedH(60) >= th}`, 'true');
-  check(`${tag}：紧凑块被撑到至少 ${compactMinHOf(t)}vp（否则字会被切）`,
-    `${compactMinHOf(t) >= Math.ceil(t.compact * 1.4)}`, 'true');
-  // 撑高必须 <= 真实时长 + 一个可接受的小量，否则会明显盖住后面
-  check(`${tag}：撑高不超过真实时长 +4vp`, `${compactMinHOf(t) - timedH(15) <= 4}`, 'true');
-  // 紧凑字号必须小于正文字号（这正是"例外放小"的意思）
-  check(`${tag}：紧凑字号 < 正文字号`, `${t.compact < t.title}`, 'true');
-}
-// 15 分钟块撑高后必须装得下一行字，否则回到"文字被裁"的老 bug
-check('15 分钟块撑高后 >= 紧凑字号行高',
-  `${compactMinHOf(TIERS[2]) >= Math.ceil(TIERS[2].compact * 1.4)}`, 'true');
+check('当前档位：15 分钟块走紧凑', `${timedH(15) < TH}`, 'true');
+check('当前档位：20 分钟块走紧凑', `${timedH(20) < TH}`, 'true');
+check('当前档位：34 分钟块走紧凑（临界下方）', `${timedH(34) < TH}`, 'true');
+check('当前档位：36 分钟块走常规（临界上方）', `${timedH(36) >= TH}`, 'true');
+check('当前档位：60 分钟块走常规', `${timedH(60) >= TH}`, 'true');
+check('当前档位：紧凑块撑高装得下一行紧凑字', `${MINH >= Math.ceil(LAYOUT.compact * 1.4)}`, 'true');
+check('当前档位：15 分钟块撑高不超过真实时长 +4vp', `${MINH - timedH(15) <= 4}`, 'true');
+check('当前档位：紧凑字号小于正文字号', `${LAYOUT.compact < LAYOUT.title}`, 'true');
+// 钉住具体数字：改字号必须显式改这一行（否则说明你顺手改坏了档位）
+check('排版分档的具体数字（title/sub/compact/阈值/撑高）',
+  `${LAYOUT.title}/${LAYOUT.sub}/${LAYOUT.compact}/${TH}/${MINH}`, '14/11/10/34/14');
 
-// ---------- 「长按才可拖」的守卫判据 ----------
-// 交互模型（用户要求）：
-//   默认上下滑动 = 滚动时间轴
-//   长按块       = 振动 + 进入"已激活"，才允许拖动移位
-//   长按底边把手 = 振动 + 才允许改时长（**仅当块够高、真的画了把手**）
-// 后一条的守卫很重要：紧凑块不画把手，而把手手势挂在块内层、块手势挂外层，
-// 两者会同时收到长按 —— 少了守卫会振两下并同时武装两种模式（真机实测踩到过）。
-console.log('【长按才可拖：把手守卫】');
+// ---------- 选中 / 长按 状态机（2026-10-14 替换掉旧的"长按武装 + 把手"）----------
+// 用户定的模型：
+//   单击块 = 选中（黑框）；已选中的同一条再单击 = 开编辑窗
+//   单击另一条 = 直接改选；单击空白 = 取消选中
+//   长按**已选中**的块 = 振动 + 进入拖拽（两步，不能省）
+//   长按未选中的块 = 什么都不做（保证"想滚动时间轴"的人不会误拖）
+//   底边「⋯」把手已删除 → 改时长只走双指缩放与编辑窗（旧的手把守卫断言随之作废）
+// ★ 断言调用的是**生产代码里的同一个函数**，不是在这里重写一遍判据。
+console.log('【选中 / 长按 状态机】');
 
-for (const t of TIERS) {
-  const th = compactThresholdOf(t);
-  const tag = `${t.title}/${t.sub}`;
-  // 常规块：画了把手 → 允许武装 resize
-  check(`${tag}：60 分钟块画把手 → 允许武装改时长`, `${timedH(60) >= th}`, 'true');
-  // 紧凑块：不画把手 → 必须拒绝武装 resize（否则一次长按振两下）
-  check(`${tag}：15 分钟块无把手 → 拒绝武装改时长`, `${timedH(15) >= th}`, 'false');
-  check(`${tag}：20 分钟块无把手 → 拒绝武装改时长`, `${timedH(20) >= th}`, 'false');
-}
-// 移动模式的守卫：只有 armedMoveId 命中才允许开始拖（这是"默认滚动不误拖"的核心）
-function canBeginMove(armedId: number, blockId: number): boolean {
-  return armedId === blockId;
-}
-check('没长按过 → 不给拖', `${canBeginMove(0, 7)}`, 'false');
-check('长按了另一个块 → 也不给拖', `${canBeginMove(3, 7)}`, 'false');
-check('长按了这个块 → 给拖', `${canBeginMove(7, 7)}`, 'true');
+check('未选中时单击 → 选中', `${tapAction(0, 7)}`, TAP_SELECT);
+check('单击另一条 → 改选它', `${tapAction(3, 7)}`, TAP_SELECT);
+check('单击已选中的同一条 → 开编辑窗', `${tapAction(7, 7)}`, TAP_OPEN);
+
+check('长按未选中的块 → 不放行（想滚动的人不会误拖）', `${canBeginDrag(0, 7)}`, 'false');
+check('长按另一条已选中的块 → 也不放行', `${canBeginDrag(3, 7)}`, 'false');
+check('长按已选中的这个块 → 放行', `${canBeginDrag(7, 7)}`, 'true');
+check('blockId 为 0（无效块）→ 永不放行', `${canBeginDrag(0, 0)}`, 'false');
+
+// ---------- 列几何（三日视图） ----------
+// 时间轴占 46vp，剩下的宽度按列数均分。全部是 vp（Area / 事件坐标都是 vp）。
+console.log('【列几何：三日视图】');
+
+check('时间轴宽度', `${AXIS_W}`, '46');
+check('单日视图的列数', `${COLS_DAY}`, '1');
+check('三日视图的列数', `${COLS_THREE}`, '3');
+check('内容区宽 = 视口 − 时间轴', `${contentWidth(406)}`, '360');
+check('视口比时间轴还窄 → 夹到 0，不给负数', `${contentWidth(40)}`, '0');
+check('恰等于时间轴宽 → 0', `${contentWidth(46)}`, '0');
+check('单日：列宽 = 全部内容区', `${columnWidth(406, 1)}`, '360');
+check('三日：列宽 = 内容区 / 3', `${columnWidth(406, 3)}`, '120');
+check('列数非法 → 列宽 0', `${columnWidth(406, 0)}`, '0');
+check('第 0 列左边缘 = 时间轴右边', `${columnX(406, 3, 0)}`, '46');
+check('第 1 列左边缘', `${columnX(406, 3, 1)}`, '166');
+check('第 2 列左边缘', `${columnX(406, 3, 2)}`, '286');
+
+check('命中：落在时间轴上 → -1（不改天）', `${columnAtX(406, 3, 20)}`, '-1');
+check('命中：x 为负（拖到网格左侧外）→ -1', `${columnAtX(406, 3, -50)}`, '-1');
+check('命中：时间轴右边界 → 第 0 列', `${columnAtX(406, 3, 46)}`, '0');
+check('命中：第 0 列中间', `${columnAtX(406, 3, 100)}`, '0');
+check('命中：第 0/1 列分界 → 第 1 列', `${columnAtX(406, 3, 166)}`, '1');
+check('命中：第 1 列中间', `${columnAtX(406, 3, 220)}`, '1');
+check('命中：第 2 列中间', `${columnAtX(406, 3, 350)}`, '2');
+check('命中：右边界内一点点（405）→ 第 2 列', `${columnAtX(406, 3, 405)}`, '2');
+// 列的区间是**左闭右开**：x == 内容区宽 算"落在外面" → -1（不改天，比误判成第 3 列安全）
+check('命中：网格右边缘是开区间（x == 宽）→ -1', `${columnAtX(406, 3, 406)}`, '-1');
+check('命中：超出网格右边 → -1', `${columnAtX(406, 3, 460)}`, '-1');
+check('命中：单日视图里任何网格内位置都是第 0 列', `${columnAtX(406, 1, 300)}`, '0');
+check('命中：列宽为 0（还没量到宽度）→ -1', `${columnAtX(46, 3, 100)}`, '-1');
+check('落点：命中不到就回退到当前列', `${dropColumnOrFallback(406, 3, 10, 1)}`, '1');
+check('落点：命中到就用命中的列', `${dropColumnOrFallback(406, 3, 350, 1)}`, '2');
+
+check('三天：中间那列 = 当前查看日',
+  `${dayDates('2026-10-14', 3).join('|')}`, '2026-10-13|2026-10-14|2026-10-15');
+check('三天：跨月也算对',
+  `${dayDates('2026-11-01', 3).join('|')}`, '2026-10-31|2026-11-01|2026-11-02');
+check('单日：只有当前查看日', `${dayDates('2026-10-14', 1).join('|')}`, '2026-10-14');
+check('列数非法 → 空数组', `${dayDates('2026-10-14', 0).length}`, '0');
+check('中间列下标：三日 = 1', `${centerIndex(3)}`, '1');
+check('中间列下标：单日 = 0', `${centerIndex(1)}`, '0');
+check('列头文字：10/14 是周三', `${columnHeaderText('2026-10-14')}`, '10/14 周三');
 
 // ---------- 拖动位移的滚动补偿 ----------
 // 场景：用户长按块后拖动，同时网格因边缘自动滚动而滚动。
