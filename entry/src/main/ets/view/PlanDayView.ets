@@ -513,20 +513,24 @@ export struct PlanDayView {
     if (this.edgeTimer !== -1) {
       return;   // 已经在滚了
     }
-    const startScroll: number = this.gridScroller.currentOffset().yOffset;
-    hilog.info(DOMAIN, TAG,
-      'EDGE start dir=%{public}d touchY=%{public}d view=[%{public}d,%{public}d] scroll=%{public}d offsetY=%{public}d',
-      dir, this.touchWinY, this.gridViewTop, this.gridViewBottom, startScroll, this.dragOffsetY);
     this.edgeTimer = setInterval((): void => {
       const step: number = dir * PlanDayView.EDGE_STEP;
-      const before: number = this.gridScroller.currentOffset().yOffset;
       this.gridScroller.scrollBy(0, step);
-      hilog.info(DOMAIN, TAG, 'EDGE tick step=%{public}d scroll %{public}d -> %{public}d',
-        step, before, this.gridScroller.currentOffset().yOffset);
-      // ★ 这里**只滚屏幕，不要碰 dragOffsetY**。
-      //   块的位移由 Move 里那个公式算（它已经减掉了「网格滚掉的那部分」）。
-      //   早期版本在这里又减了一次滚动量 → 块每秒多走一个 EDGE_STEP，
-      //   表现为「块比屏幕走得快」（用户实测报过）。
+      // ★ 必须在这里重算 offsetY，而且要和 MOVE 用**同一个公式、同一个基准**。
+      //
+      //   为什么非在这里不可：**手指停住不动时不再产生 Move 事件**，
+      //   而自动滚动还在继续。若不在这里重算，块就不会跟着补偿，
+      //   它会留在网格坐标里、跟着视图一起跑 —— 用户实测：
+      //   「手指停在 173.958 不动，offsetY 却从 -195 一路涨到 -50.79」，
+      //   表现为块向下漂，而且**松手时 endMove 会用这个漂掉的 offsetY 落库**，
+      //   块的时间会跳到约 2.4 小时之前（数据错误，不只是手感）。
+      //
+      //   曾经把它删掉过，理由是"和 MOVE 重复补偿"—— 那是错的：
+      //   这两个地方是**同一个公式的两个执行时机**（手指动 / 手指停），
+      //   不是两次叠加。删掉它反而把"手指停住"这个洞暴露出来。
+      const dy: number = this.lastTouchY - this.pressStartY;
+      const scrolled: number = this.gridScroller.currentOffset().yOffset - this.dragStartScroll;
+      this.dragOffsetY = dragOffsetWithScroll(dy, scrolled);
       this.updateEdgeScroll();
     }, PlanDayView.EDGE_INTERVAL);
   }
@@ -569,17 +573,13 @@ export struct PlanDayView {
     // 否则网格一滚，块相对网格就跑了（等于块的开始时间被偷偷改掉）。
     const scrolled: number = this.gridScroller.currentOffset().yOffset - this.dragStartScroll;
     this.dragOffsetY = dragOffsetWithScroll(dy, scrolled);
-    hilog.info(DOMAIN, TAG,
-      'MOVE touchY=%{public}d pressY=%{public}d dy=%{public}d scrollNow=%{public}d scrollBase=%{public}d scrolled=%{public}d -> offsetY=%{public}d',
-      this.lastTouchY, this.pressStartY, dy, this.gridScroller.currentOffset().yOffset,
-      this.dragStartScroll, scrolled, this.dragOffsetY);
     this.updateEdgeScroll();
   }
 
   /** 触摸抬起：位移落库、解除武装 */
   private onBlockTouchUp(b: PlanBlock): void {
-    hilog.info(DOMAIN, TAG, 'UP final offsetY=%{public}d armedMove=%{public}d scrollFinal=%{public}d',
-      this.dragOffsetY, this.armedMoveId, this.gridScroller.currentOffset().yOffset);
+    hilog.info(DOMAIN, TAG, 'DRAG up offsetY=%{public}d touched=%{public}s scrolled=%{public}d',
+      this.dragOffsetY, `${this.armedMoveId > 0}`, this.gridScroller.currentOffset().yOffset);
     this.pressActive = false;
     this.stopEdgeScroll();
     if (this.dragBlockId === b.id) {

@@ -671,6 +671,27 @@ check('手指下移 200、同时网格下滚 50 → 净位移 150',
   `${dragOffsetWithScroll(200, 50)}`, '150');
 check('手指上移 200、同时网格上滚 50 → 净位移 -150',
   `${dragOffsetWithScroll(-200, -50)}`, '-150');
+// ★ 用户实测报的那个 bug：手指停住、网格还在自动滚。
+//   旧实现只在 Move 里重算位移，而手指停住就没有 Move 事件 →
+//   位移停留在旧值、块跟着网格漂走，松手时还把这个漂掉的值落库（时间跳到 2.4h 之前）。
+//   这里逐帧模拟"手指不动 + 网格每帧滚 16"，验证块在窗口中的位置全程不变。
+{
+  const touchDelta: number = -194.791667;   // 手指按住不动（日志里的真实值）
+  const scrollBase: number = 320;
+  let allPinned: boolean = true;
+  for (let s2 = scrollBase; s2 >= 176; s2 -= 16) {
+    const offset: number = dragOffsetWithScroll(touchDelta, s2 - scrollBase);
+    const blockInWindow: number = offset + (s2 - scrollBase);
+    if (blockInWindow !== touchDelta) {
+      allPinned = false;
+    }
+  }
+  check('手指停住、网格从 320 滚到 176（每帧 16）→ 块全程钉在手指处',
+    `${allPinned}`, 'true');
+  check('   └ 滚到 176 时算出的位移（应把滚动量补回来）',
+    `${dragOffsetWithScroll(touchDelta, 176 - scrollBase)}`, `${touchDelta + (scrollBase - 176)}`);
+}
+
 // 不变式：无论网格怎么滚，"块在窗口中的位置"必须只由手指决定
 for (const scroll of [0, 30, -30, 90, -90]) {
   const touch: number = 120;
