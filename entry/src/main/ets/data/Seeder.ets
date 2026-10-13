@@ -42,6 +42,19 @@ export class Seeder {
     return courses.length > 0;
   }
 
+  /**
+   * 一次性数据迁移（幂等，每次启动都跑）。
+   *
+   * 目前只有一项：把旧的待办时长静默搬到合法值（对齐到最近的 5 分钟、夹进 [15,600]，
+   * 考试类的 0 豁免）。写成幂等 + 每次启动都跑，是为了让「从备份恢复进来的旧数据」
+   * 也立刻被纠正，而不是留着不合法值在库里。
+   *
+   * 返回被改动的条数。
+   */
+  static async migrateData(context: common.Context): Promise<number> {
+    return await TodoRepo.normalizeAllEstimates(context);
+  }
+
   /** 首次启动写入默认不可排时段（午休/晚饭/睡觉），用户可改 */
   static async ensureRestWindows(context: common.Context): Promise<void> {
     const n: number = await TimetableRepo.countRestWindows(context);

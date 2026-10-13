@@ -318,22 +318,87 @@ export function edgeScrollDirection(touchWinY: number, viewTop: number, viewBott
 }
 
 /**
- * 拖动块时的位移：把"手指移动"换算成"块相对网格的位移"。
+ * 触摸点进入边缘触发区的**深度**：0 = 刚跨进触发区边界，edgeZone = 已经贴到（或越过）屏幕边。
  *
- * 块是网格里的绝对定位元素，所以让块**钉在手指下**的条件是：
- *   手指的窗口位置 - 网格滚动量 == 常数
- * 于是：
- *   块位移 = 手指窗口位移 - 网格滚动量
+ * 为什么需要它：旧的自动滚动是「每 50ms 硬跳 16vp」，不论贴得多深速度都一样，
+ * 用户看到的是一格一格的台阶（实测报「拖到最上最下时不跟手、时间轴跳动不顺滑」）。
+ * 有了深度就能让速度随深度线性增长 —— 刚进区几乎不动、贴边最快。
+ */
+export function edgeScrollDepth(touchWinY: number, viewTop: number, viewBottom: number,
+  edgeZone: number): number {
+  const dir: number = edgeScrollDirection(touchWinY, viewTop, viewBottom, edgeZone);
+  if (dir === 0 || edgeZone <= 0) {
+    return 0;
+  }
+  const fromEdge: number = dir < 0 ? touchWinY - viewTop : viewBottom - touchWinY;
+  return clamp(edgeZone - fromEdge, 0, edgeZone);
+}
+
+/**
+ * 自动滚动**每帧**该走多少 vp：按进入深度线性加速，并至少 1vp
+ *（否则刚跨过触发边界时会「定时器已经在跑但画面不动」，看着像卡住）。
+ */
+export function edgeScrollStep(depth: number, edgeZone: number, maxStep: number): number {
+  if (edgeZone <= 0 || maxStep <= 0) {
+    return 0;
+  }
+  const frac: number = clamp(depth / edgeZone, 0, 1);
+  const s: number = maxStep * frac;
+  if (s < 1) {
+    return 1;
+  }
+  if (s > maxStep) {
+    return maxStep;
+  }
+  return Math.round(s);
+}
+
+/**
+ * 按「日期 → 开始时间」排序块的副本。
+ * 编辑窗里「这个待办还在别的哪天排了块」必须按时间读，否则用户看到的顺序是随机的。
+ */
+export function sortBlocksByTime(blocks: PlanBlock[]): PlanBlock[] {
+  const out: PlanBlock[] = blocks.slice();
+  out.sort((a: PlanBlock, b: PlanBlock): number => {
+    if (a.date < b.date) {
+      return -1;
+    }
+    if (a.date > b.date) {
+      return 1;
+    }
+    if (a.startMin !== b.startMin) {
+      return a.startMin - b.startMin;
+    }
+    return a.id - b.id;
+  });
+  return out;
+}
+
+/**
+ * 拖动块时的位移：把"手指移动"换算成"块相对网格内容的位移"。
  *
- * ⚠️ 这个减法是**唯一**该做补偿的地方。
- * 曾经的 bug：自动滚动定时器里又减了一次滚动量 → 块每滚一步就多走一个 EDGE_STEP，
- * 表现为"块比屏幕走得快"（用户实测：靠近上沿时块和屏幕都向下，块速度略大于屏幕）。
+ * 推导（块是网格内容里的绝对定位元素）：
+ *   块在窗口里的位置 = 内容在窗口里的顶边 + 块在内容里的 y
+ *                    = (视口顶边 − 滚动量) + (原 y + dragOffsetY)
+ *   要让它**钉在手指下**（窗口位置 = 按下点 + 手指位移），就得：
+ *       dragOffsetY = 手指位移 **+** 滚动量
+ *
+ * 物理直觉：手指停在屏幕下边缘不动、屏幕继续往下滚（露出更晚的时间），
+ * 网格内容整体上移；块若不跟着往下推，就会留在原地、从手指底下溜走。
+ *
+ * ⚠️⚠️ 这里原先写的是 `touchDeltaY - scrollDeltaY`，**符号是反的**。
+ * 症状正是用户报的「拖到屏幕上下边缘时待办不再跟手跑」——
+ * 自动滚动时块朝着与滚动相反的方向多跑一倍，直接逃离手指。
+ *
+ * 旧断言没抓到它，是因为那些断言把同一套错误模型又写了一遍
+ * （"块在窗口中的位置 = 位移 ＋ 滚动量"）——
+ * **把实现重述一遍的断言，发现不了建模错误。** 这是本轮最值得记的教训。
  *
  * @param touchDeltaY  手指的窗口坐标位移（相对按下点）
- * @param scrollDeltaY 网格滚动量（当前 - 按下时）
+ * @param scrollDeltaY 网格滚动量（当前 − 按下时）；向下滚为正
  */
 export function dragOffsetWithScroll(touchDeltaY: number, scrollDeltaY: number): number {
-  return touchDeltaY - scrollDeltaY;
+  return touchDeltaY + scrollDeltaY;
 }
 
 /**

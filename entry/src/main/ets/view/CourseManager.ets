@@ -11,6 +11,7 @@ import { BackupBundle, backupSummary, parseBackup } from '../domain/Backup';
 import { ReminderSettings, loadReminderSettings, saveReminderSettings } from '../domain/ReminderScheduler';
 import { maskAll, maskFromText, maskToText } from '../model/WeekMask';
 import { WEEKDAY_CN, hhmmToMin, minToHHmm } from '../util/DateUtil';
+import { validateRestWindow, validateSectionTimes, validateSessionRule, Validation } from '../domain/Validate';
 import { ChipButton } from './ChipButton';
 
 const DOMAIN: number = 0x0000;
@@ -118,7 +119,16 @@ export struct CourseManager {
   @State newSemWeeks: number = 16;
   @State cloneFromCurrent: boolean = true;
 
-  @State confirmDeleteCourseId: number = 0;
+  /**
+   * 正在等二次确认的删除操作，形如 'course-3' / 'rule-5' / 'tpl-2' / 'rest-7'。
+   * '' = 当前没有待确认的删除。
+   *
+   * ⚠️ 这里曾经是 `confirmDeleteCourseId: number`，而**全文件没有任何一处把它设成非 0**
+   * （只有声明、两处读、两处写 0），所以课程列表里那段「确定删除这门课？」的确认行
+   * 是永远不可能出现的死代码；真正能点到的删除按钮在课程编辑页，那里根本没有确认。
+   * 用户实测「点删除没反应、必须手动返回才发现删掉了」就是这么来的。
+   */
+  @State pendingDeleteKey: string = '';
   @State confirmClear: boolean = false;
   @State toast: string = '';
 
@@ -295,10 +305,17 @@ export struct CourseManager {
     });
   }
 
+  /**
+   * 删除课程。删完**必须回到课程列表**，否则屏幕上还是那张课程编辑表单
+   * （`mode` 仍是 'course'，`editCourse` 还是被删掉的那份数据），
+   * 看起来就是"点了没反应"，用户只能手动返回才发现已经删了。
+   */
   private async doDeleteCourse(c: Course): Promise<void> {
     const ctx: common.UIAbilityContext = this.context();
     await TimetableRepo.deleteCourse(ctx, c.id);
-    this.confirmDeleteCourseId = 0;
+    this.pendingDeleteKey = '';
+    this.toast = `已删除「${c.shortName.length > 0 ? c.shortName : c.name}」`;
+    this.mode = 'list';
     await this.reload();
   }
 
@@ -327,6 +344,12 @@ export struct CourseManager {
     const total: number = this.semester === undefined ? 16 : this.semester.totalWeeks;
     this.ruleDraft.weeksMask = maskFromText(this.ruleWeeksText, total);
     this.ruleDraft.courseId = this.editCourse.id;
+    // 「课程始末时间正确性」的落点：节次必须存在、开始不晚于结束、时间落在一天之内
+    const verdict: Validation = validateSessionRule(this.ruleDraft, this.editSections);
+    if (!verdict.ok) {
+      this.toast = verdict.message;
+      return;
+    }
     if (this.ruleDraft.id === 0) {
       await TimetableRepo.insertRule(ctx, this.ruleDraft);
     } else {
@@ -358,6 +381,8 @@ export struct CourseManager {
   private async doDeleteRule(r: SessionRule): Promise<void> {
     const ctx: common.UIAbilityContext = this.context();
     await TimetableRepo.deleteRule(ctx, r.id);
+    this.pendingDeleteKey = '';
+    this.toast = '已删除该时段';
     this.editRules = this.filterRules(await TimetableRepo.listRules(ctx, this.editCourse.semesterId),
       this.editCourse.id);
     await this.reload();
@@ -408,6 +433,8 @@ export struct CourseManager {
   private async doDeleteTemplate(t: TodoTemplate): Promise<void> {
     const ctx: common.UIAbilityContext = this.context();
     await TodoRepo.deleteTemplate(ctx, t.id);
+    this.pendingDeleteKey = '';
+    this.toast = '已删除该模板';
     this.editTemplates = await TodoRepo.listTemplatesByCourse(ctx, this.editCourse.id);
     await this.reload();
   }
@@ -480,20 +507,20 @@ export struct CourseManager {
       this.toast = '时间格式应为 HH:mm，比如 12:00';
       return;
     }
-    const s: number = hhmmToMin(this.newRestStart);
-    const e: number = hhmmToMin(this.newRestEnd);
-    if (isNaN(s) || isNaN(e) || e <= s) {
-      this.toast = '结束时间要晚于开始时间';
-      return;
-    }
     const label: string = this.newRestLabel.trim().length > 0 ? this.newRestLabel.trim() : '休息';
-    await TimetableRepo.insertRestWindow(ctx, {
+    const draft: RestWindow = {
       id: 0,
       weekday: this.newRestWeekday,
-      startMin: s,
-      endMin: e,
+      startMin: hhmmToMin(this.newRestStart),
+      endMin: hhmmToMin(this.newRestEnd),
       label: label
-    });
+    };
+    const verdict: Validation = validateRestWindow(draft);
+    if (!verdict.ok) {
+      this.toast = verdict.message;
+      return;
+    }
+    await TimetableRepo.insertRestWindow(ctx, draft);
     this.newRestLabel = '';
     this.toast = '已添加不可排时段';
     await this.reload();
@@ -508,6 +535,8 @@ export struct CourseManager {
   private async doDeleteRest(w: RestWindow): Promise<void> {
     const ctx: common.UIAbilityContext = this.context();
     await TimetableRepo.deleteRestWindow(ctx, w.id);
+    this.pendingDeleteKey = '';
+    this.toast = '已删除该不可排时段';
     await this.reload();
   }
 
@@ -561,6 +590,13 @@ export struct CourseManager {
     if (sem === undefined) {
       return;
     }
+    // ⚠️ 这里原来会**静默**把 `endMin <= startMin` 的节次改成 `start + 50`。
+    // 悄悄改用户填的数字是这个项目被用户抓到过的 bug，改成明确报错、拒绝保存。
+    const verdict: Validation = validateSectionTimes(this.editSections);
+    if (!verdict.ok) {
+      this.toast = verdict.message;
+      return;
+    }
     const existing: SectionTime[] = await TimetableRepo.listSectionTimes(ctx, sem.id);
     const keep: Set<number> = new Set<number>();
     for (const st of this.editSections) {
@@ -572,9 +608,6 @@ export struct CourseManager {
       }
     }
     for (const st of this.editSections) {
-      if (st.endMin <= st.startMin) {
-        st.endMin = st.startMin + 50;
-      }
       await TimetableRepo.upsertSectionTime(ctx, sem.id, st);
     }
     this.toast = '节次时间已保存';
@@ -649,6 +682,44 @@ export struct CourseManager {
       .fontColor('#8A94A6')
       .width('100%')
       .margin({ top: 12, bottom: 4 })
+  }
+
+  /**
+   * 删除前的二次确认行。
+   *
+   * `key` 与 `pendingDeleteKey` 比对决定是否显示 —— 由调用方用 `if (...)` 包住，
+   * 所以这里不需要响应式（@Builder 的参数按值固化，见 HANDOFF §6.4；
+   * 节点是随 `if` 新建/销毁的，不存在"参数变了内部不重渲"的问题）。
+   */
+  @Builder
+  DeleteConfirmRow(message: string, key: string, onConfirm: () => void) {
+    Row() {
+      Text(message)
+        .fontSize(11)
+        .fontColor('#C0392B')
+        .layoutWeight(1)
+      Text('取消')
+        .fontSize(12)
+        .fontColor('#5A6478')
+        .padding({ left: 10, right: 10 })
+        .onClick((): void => {
+          this.pendingDeleteKey = '';
+        })
+      Text('删除')
+        .fontSize(12)
+        .fontColor('#FFFFFF')
+        .backgroundColor('#D64545')
+        .borderRadius(8)
+        .padding({ left: 10, right: 10, top: 4, bottom: 4 })
+        .onClick(onConfirm)
+    }
+    .width('100%')
+    .margin({ top: 8 })
+  }
+
+  /** 二次确认用的键 */
+  private deleteKey(kind: string, id: number): string {
+    return `${kind}-${id}`;
   }
 
   @Builder
@@ -856,30 +927,9 @@ export struct CourseManager {
                   .margin({ top: 4 })
               }
 
-              if (this.confirmDeleteCourseId === c.id) {
-                Row() {
-                  Text('确定删除这门课及其所有时段？')
-                    .fontSize(11)
-                    .fontColor('#C0392B')
-                    .layoutWeight(1)
-                  Text('取消')
-                    .fontSize(12)
-                    .fontColor('#5A6478')
-                    .padding({ left: 10, right: 10 })
-                    .onClick((): void => {
-                      this.confirmDeleteCourseId = 0;
-                    })
-                  Text('删除')
-                    .fontSize(12)
-                    .fontColor('#FFFFFF')
-                    .backgroundColor('#D64545')
-                    .borderRadius(8)
-                    .padding({ left: 10, right: 10, top: 4, bottom: 4 })
-                    .onClick((): void => this.deleteCourse(c))
-                }
-                .width('100%')
-                .margin({ top: 8 })
-              }
+              // 这里原本有一段「确定删除这门课？」的确认行，但它依赖的
+              // confirmDeleteCourseId 全文件没有任何一处被设成非 0 —— 永远不可能显示。
+              // 死代码已删除；真正可达的删除入口在课程编辑页（见 CourseView 的删除按钮）。
             }
             .width('100%')
             .padding(12)
@@ -1083,27 +1133,38 @@ export struct CourseManager {
           }
 
           ForEach(this.editRules, (r: SessionRule) => {
-            Row() {
-              Text(this.ruleText(r))
-                .fontSize(12)
-                .fontColor('#4A5568')
-                .layoutWeight(1)
-              Text('改')
-                .fontSize(12)
-                .fontColor('#2E6BE6')
-                .padding({ left: 10, right: 10 })
-                .onClick((): void => this.openRule(r))
-              Text('删')
-                .fontSize(12)
-                .fontColor('#D64545')
-                .onClick((): void => this.deleteRule(r))
+            Column() {
+              Row() {
+                Text(this.ruleText(r))
+                  .fontSize(12)
+                  .fontColor('#4A5568')
+                  .layoutWeight(1)
+                Text('改')
+                  .fontSize(12)
+                  .fontColor('#2E6BE6')
+                  .padding({ left: 10, right: 10 })
+                  .onClick((): void => this.openRule(r))
+                Text('删')
+                  .fontSize(12)
+                  .fontColor('#D64545')
+                  .onClick((): void => {
+                    this.pendingDeleteKey = this.deleteKey('rule', r.id);
+                  })
+              }
+              .width('100%')
+              .padding(10)
+              .backgroundColor('#FFFFFF')
+              .borderRadius(8)
+
+              // 删时段会让这节课直接从课表消失，且没有撤销 —— 拦一道确认
+              if (this.pendingDeleteKey === this.deleteKey('rule', r.id)) {
+                this.DeleteConfirmRow(`确定删除「${this.ruleText(r)}」？`, this.deleteKey('rule', r.id),
+                  (): void => this.deleteRule(r))
+              }
             }
             .width('100%')
-            .padding(10)
-            .backgroundColor('#FFFFFF')
-            .borderRadius(8)
             .margin({ bottom: 6 })
-          }, (r: SessionRule) => `er-${r.id}`)
+          }, (r: SessionRule) => `er-${r.id}-${this.pendingDeleteKey === this.deleteKey('rule', r.id)}`)
 
           // 生成模板
           Row() {
@@ -1128,27 +1189,38 @@ export struct CourseManager {
           }
 
           ForEach(this.editTemplates, (t: TodoTemplate) => {
-            Row() {
-              Text(this.tplText(t))
-                .fontSize(12)
-                .fontColor('#3C6E47')
-                .layoutWeight(1)
-              Text('改')
-                .fontSize(12)
-                .fontColor('#2E6BE6')
-                .padding({ left: 10, right: 10 })
-                .onClick((): void => this.openTemplate(t))
-              Text('删')
-                .fontSize(12)
-                .fontColor('#D64545')
-                .onClick((): void => this.deleteTemplate(t))
+            Column() {
+              Row() {
+                Text(this.tplText(t))
+                  .fontSize(12)
+                  .fontColor('#3C6E47')
+                  .layoutWeight(1)
+                Text('改')
+                  .fontSize(12)
+                  .fontColor('#2E6BE6')
+                  .padding({ left: 10, right: 10 })
+                  .onClick((): void => this.openTemplate(t))
+                Text('删')
+                  .fontSize(12)
+                  .fontColor('#D64545')
+                  .onClick((): void => {
+                    this.pendingDeleteKey = this.deleteKey('tpl', t.id);
+                  })
+              }
+              .width('100%')
+              .padding(10)
+              .backgroundColor('#FFFFFF')
+              .borderRadius(8)
+
+              // 删模板会让这门课以后不再自动生成待办 —— 拦一道确认
+              if (this.pendingDeleteKey === this.deleteKey('tpl', t.id)) {
+                this.DeleteConfirmRow(`确定删除模板「${this.tplText(t)}」？`, this.deleteKey('tpl', t.id),
+                  (): void => this.deleteTemplate(t))
+              }
             }
             .width('100%')
-            .padding(10)
-            .backgroundColor('#FFFFFF')
-            .borderRadius(8)
             .margin({ bottom: 6 })
-          }, (t: TodoTemplate) => `et-${t.id}`)
+          }, (t: TodoTemplate) => `et-${t.id}-${this.pendingDeleteKey === this.deleteKey('tpl', t.id)}`)
 
           Row() {
             Button('保存课程')
@@ -1157,15 +1229,27 @@ export struct CourseManager {
               .layoutWeight(1)
               .onClick((): void => this.saveCourse())
             if (this.editCourse.id !== 0) {
-              Button('删除')
+              Button('删除课程')
                 .backgroundColor('#FDECEA')
                 .fontColor('#C0392B')
                 .margin({ left: 10 })
-                .onClick((): void => this.deleteCourse(this.editCourse))
+                .onClick((): void => {
+                  this.pendingDeleteKey = this.deleteKey('course', this.editCourse.id);
+                })
             }
           }
           .width('100%')
           .margin({ top: 20 })
+
+          // 删课程会连带删掉它的时段、生成模板和单周覆盖，没有撤销 —— 必须二次确认。
+          // 确认后 doDeleteCourse 会切回课程列表，用户立刻能看见它没了（这正是原来缺的那一步）。
+          if (this.editCourse.id !== 0
+            && this.pendingDeleteKey === this.deleteKey('course', this.editCourse.id)) {
+            this.DeleteConfirmRow(
+              `确定删除「${this.editCourse.shortName.length > 0 ? this.editCourse.shortName : this.editCourse.name}」及其所有时段、模板？`,
+              this.deleteKey('course', this.editCourse.id),
+              (): void => this.deleteCourse(this.editCourse))
+          }
         }
         .width('100%')
         .padding({ left: 16, right: 16, top: 8, bottom: 30 })
@@ -1663,31 +1747,41 @@ export struct CourseManager {
           }
 
           ForEach(this.restWindows, (w: RestWindow) => {
-            Row() {
-              Text(w.label)
-                .fontSize(13)
-                .fontColor('#12161F')
-                .width(72)
-              Text(this.restWeekdayText(w))
-                .fontSize(12)
-                .fontColor('#5A6478')
-                .width(48)
-              Text(`${minToHHmm(w.startMin)} – ${minToHHmm(w.endMin)}`)
-                .fontSize(12)
-                .fontColor('#5A6478')
-                .layoutWeight(1)
-              Text('删')
-                .fontSize(12)
-                .fontColor('#D64545')
-                .padding({ left: 10, right: 10 })
-                .onClick((): void => this.deleteRest(w))
+            Column() {
+              Row() {
+                Text(w.label)
+                  .fontSize(13)
+                  .fontColor('#12161F')
+                  .width(72)
+                Text(this.restWeekdayText(w))
+                  .fontSize(12)
+                  .fontColor('#5A6478')
+                  .width(48)
+                Text(`${minToHHmm(w.startMin)} – ${minToHHmm(w.endMin)}`)
+                  .fontSize(12)
+                  .fontColor('#5A6478')
+                  .layoutWeight(1)
+                Text('删')
+                  .fontSize(12)
+                  .fontColor('#D64545')
+                  .padding({ left: 10, right: 10 })
+                  .onClick((): void => {
+                    this.pendingDeleteKey = this.deleteKey('rest', w.id);
+                  })
+              }
+              .width('100%')
+              .padding(10)
+              .backgroundColor('#FFFFFF')
+              .borderRadius(8)
+
+              if (this.pendingDeleteKey === this.deleteKey('rest', w.id)) {
+                this.DeleteConfirmRow(`确定删除「${w.label} ${this.restWeekdayText(w)}」？`,
+                  this.deleteKey('rest', w.id), (): void => this.deleteRest(w))
+              }
             }
             .width('100%')
-            .padding(10)
-            .backgroundColor('#FFFFFF')
-            .borderRadius(8)
             .margin({ bottom: 6 })
-          }, (w: RestWindow) => `rest-${w.id}`)
+          }, (w: RestWindow) => `rest-${w.id}-${this.pendingDeleteKey === this.deleteKey('rest', w.id)}`)
 
           Text('加一条')
             .fontSize(14)

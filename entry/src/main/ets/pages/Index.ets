@@ -101,6 +101,10 @@ struct Index {
     const sem: Semester = await Seeder.ensureSemester(ctx);
     this.semester = sem;
     await Seeder.ensureRestWindows(ctx);
+    const migrated: number = await Seeder.migrateData(ctx);
+    if (migrated > 0) {
+      hilog.info(DOMAIN, TAG, 'migrated %{public}d todo estimates to 5-min grid', migrated);
+    }
     const has: boolean = await Seeder.hasCourses(ctx, sem.id);
     if (!has) {
       this.statusText = '首次启动：正在写入课表种子数据…';
@@ -119,7 +123,7 @@ struct Index {
     this.statusText = '正在重排提醒…';
     const plan: ReminderPlan = await syncReminders(ctx, sem);
     hilog.info(DOMAIN, TAG, 'reminder plan: %{public}s', JSON.stringify(plan));
-    await this.writeRunReport(ctx, sem, outcome, plan);
+    await this.writeRunReport(ctx, sem, outcome, plan, migrated);
     this.loading = false;
   }
 
@@ -152,7 +156,7 @@ struct Index {
    * （种子写没写进去、补生成几条、提醒发布了几条、有没有超预算）。
    */
   private async writeRunReport(ctx: common.UIAbilityContext, sem: Semester,
-    outcome: GenerationOutcome, plan: ReminderPlan): Promise<void> {
+    outcome: GenerationOutcome, plan: ReminderPlan, migratedCount: number): Promise<void> {
     try {
       const nowD: Date = new Date();
       const stamp: string = `${formatDate(today())} ${minToHHmm(nowD.getHours() * 60 + nowD.getMinutes())}`;
@@ -162,6 +166,9 @@ struct Index {
       lines.push(`当前周: 第 ${this.week} 周`);
       lines.push(`课程 ${this.courses.length} · 时段规则 ${this.rules.length} · 节次 ${this.sectionTimes.length}`);
       lines.push(`本次补生成待办: ${outcome.created} 条（回看 ${outcome.scannedDays} 天）`);
+      if (migratedCount > 0) {
+        lines.push(`数据迁移: ${migratedCount} 条待办时长已对齐到 5 分钟刻度`);
+      }
       lines.push(`通知权限: ${plan.enabled ? '已开' : '未开（提醒不会响）'}`);
       lines.push(`提醒发布: ${plan.published} 条 → 上课 ${plan.classes} / 截止 ${plan.ddl} / 计划块 ${plan.blocks} / 简报 ${plan.briefs}`);
       if (plan.calendarEvents > 0) {

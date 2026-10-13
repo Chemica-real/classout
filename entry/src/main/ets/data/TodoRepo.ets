@@ -1,7 +1,14 @@
 import { relationalStore } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 import { Db } from './Db';
-import { PlanBlock, Todo, TodoTemplate, VirtualLesson } from '../model/Types';
+import { PlanBlock, Todo, TodoCategory, TodoTemplate, VirtualLesson } from '../model/Types';
+import { isExamCategory, migrateEstimate, normalizeEstimate } from '../domain/Validate';
+
+/** 待办时长的迁移项（见 normalizeAllEstimates） */
+interface EstimateFix {
+  id: number;
+  estimateMin: number;
+}
 
 /** 待办 / 模板 / 计划块的读写 */
 export class TodoRepo {
@@ -17,7 +24,7 @@ export class TodoRepo {
       'title_template': t.titleTemplate,
       'ddl_rule': t.ddlRule,
       'ddl_param': t.ddlParam,
-      'estimate_min': t.estimateMin,
+      'estimate_min': normalizeEstimate(t.estimateMin, false),
       'category': t.category,
       'submit_channel': t.submitChannel,
       'note': t.note
@@ -73,7 +80,8 @@ export class TodoRepo {
     await store.executeSql(
       `UPDATE todo_template SET sort_order = ?, enabled = ?, title_template = ?, ddl_rule = ?,
        ddl_param = ?, estimate_min = ?, category = ?, submit_channel = ?, note = ? WHERE id = ?`,
-      [t.sortOrder, t.enabled ? 1 : 0, t.titleTemplate, t.ddlRule, t.ddlParam, t.estimateMin,
+      [t.sortOrder, t.enabled ? 1 : 0, t.titleTemplate, t.ddlRule, t.ddlParam,
+        normalizeEstimate(t.estimateMin, false),
         t.category, t.submitChannel, t.note, t.id]);
   }
 
@@ -92,7 +100,7 @@ export class TodoRepo {
       'category': t.category,
       'priority': t.priority,
       'ddl': t.ddl,
-      'estimate_min': t.estimateMin,
+      'estimate_min': normalizeEstimate(t.estimateMin, isExamCategory(t.category)),
       'status': t.status,
       'source': t.source,
       'generation_key': t.generationKey,
@@ -160,8 +168,38 @@ export class TodoRepo {
       `UPDATE todo SET title = ?, course_id = ?, category = ?, priority = ?, ddl = ?,
        estimate_min = ?, status = ?, note = ?, submit_channel = ?, repeat_rule = ?,
        photos = ?, confirmed_at = ?, done_at = ? WHERE id = ?`,
-      [t.title, t.courseId, t.category, t.priority, t.ddl, t.estimateMin, t.status, t.note,
+      [t.title, t.courseId, t.category, t.priority, t.ddl,
+        normalizeEstimate(t.estimateMin, isExamCategory(t.category)), t.status, t.note,
         t.submitChannel, t.repeatRule, t.photos, t.confirmedAt, t.doneAt, t.id]);
+  }
+
+  /**
+   * 一次性迁移：把旧的非法时长静默搬到合法值（对齐到最近的 5 分钟、夹进 [15,600]）。
+   *
+   * 用户 2026-10-14 拍定「时长必须是 5 的倍数」时，明确选了「旧的不合法值静默搬到最近的 5」。
+   * 考试类待办的 estimate_min 恒为 0，是唯一的豁免（见 Validate.normalizeEstimate）。
+   *
+   * 返回被改动的条数 —— 调用方把它写进启动报告，用户能看见「动过我的数据」这件事，
+   * 而不是某天发现 20 分钟变成 25 分钟却不知道谁干的。
+   */
+  static async normalizeAllEstimates(context: common.Context): Promise<number> {
+    const store: relationalStore.RdbStore = await Db.get(context);
+    const rs = await store.querySql('SELECT id, category, estimate_min FROM todo');
+    const fixes: EstimateFix[] = [];
+    while (rs.goToNextRow()) {
+      const id: number = rs.getLong(rs.getColumnIndex('id'));
+      const category: string = rs.getString(rs.getColumnIndex('category'));
+      const raw: number = rs.getLong(rs.getColumnIndex('estimate_min'));
+      const want: number = migrateEstimate(raw, category === TodoCategory.Exam);
+      if (want !== raw) {
+        fixes.push({ id: id, estimateMin: want });
+      }
+    }
+    rs.close();
+    for (const f of fixes) {
+      await store.executeSql('UPDATE todo SET estimate_min = ? WHERE id = ?', [f.estimateMin, f.id]);
+    }
+    return fixes.length;
   }
 
   static async setTodoStatus(context: common.Context, id: number, status: string,
@@ -332,20 +370,26 @@ export class TodoRepo {
     return await store.insert('plan_block', bucket);
   }
 
-  static async listBlocksOn(context: common.Context, date: string): Promise<PlanBlock[]> {    const store: relationalStore.RdbStore = await Db.get(context);
+  /** 从结果集读一行块（listBlocksOn / listBlocksByTodo / getBlock 共用） */
+  private static readBlock(rs: relationalStore.ResultSet): PlanBlock {
+    return {
+      id: rs.getLong(rs.getColumnIndex('id')),
+      todoId: rs.getLong(rs.getColumnIndex('todo_id')),
+      lessonId: rs.getLong(rs.getColumnIndex('lesson_id')),
+      date: rs.getString(rs.getColumnIndex('date')),
+      startMin: rs.getLong(rs.getColumnIndex('start_min')),
+      endMin: rs.getLong(rs.getColumnIndex('end_min')),
+      done: rs.getLong(rs.getColumnIndex('done')) === 1
+    };
+  }
+
+  static async listBlocksOn(context: common.Context, date: string): Promise<PlanBlock[]> {
+    const store: relationalStore.RdbStore = await Db.get(context);
     const rs = await store.querySql(
       'SELECT * FROM plan_block WHERE date = ? ORDER BY start_min', [date]);
     const list: PlanBlock[] = [];
     while (rs.goToNextRow()) {
-      list.push({
-        id: rs.getLong(rs.getColumnIndex('id')),
-        todoId: rs.getLong(rs.getColumnIndex('todo_id')),
-        lessonId: rs.getLong(rs.getColumnIndex('lesson_id')),
-        date: rs.getString(rs.getColumnIndex('date')),
-        startMin: rs.getLong(rs.getColumnIndex('start_min')),
-        endMin: rs.getLong(rs.getColumnIndex('end_min')),
-        done: rs.getLong(rs.getColumnIndex('done')) === 1
-      });
+      list.push(TodoRepo.readBlock(rs));
     }
     rs.close();
     return list;
@@ -361,15 +405,7 @@ export class TodoRepo {
       'SELECT * FROM plan_block WHERE todo_id = ? ORDER BY date, start_min', [todoId]);
     const list: PlanBlock[] = [];
     while (rs.goToNextRow()) {
-      list.push({
-        id: rs.getLong(rs.getColumnIndex('id')),
-        todoId: rs.getLong(rs.getColumnIndex('todo_id')),
-        lessonId: rs.getLong(rs.getColumnIndex('lesson_id')),
-        date: rs.getString(rs.getColumnIndex('date')),
-        startMin: rs.getLong(rs.getColumnIndex('start_min')),
-        endMin: rs.getLong(rs.getColumnIndex('end_min')),
-        done: rs.getLong(rs.getColumnIndex('done')) === 1
-      });
+      list.push(TodoRepo.readBlock(rs));
     }
     rs.close();
     return list;
@@ -380,6 +416,31 @@ export class TodoRepo {
     await store.executeSql(
       'UPDATE plan_block SET date = ?, start_min = ?, end_min = ?, done = ? WHERE id = ?',
       [b.date, b.startMin, b.endMin, b.done ? 1 : 0, b.id]);
+  }
+
+  static async getBlock(context: common.Context, id: number): Promise<PlanBlock | undefined> {
+    const store: relationalStore.RdbStore = await Db.get(context);
+    const rs = await store.querySql('SELECT * FROM plan_block WHERE id = ?', [id]);
+    let result: PlanBlock | undefined = undefined;
+    if (rs.goToFirstRow()) {
+      result = TodoRepo.readBlock(rs);
+    }
+    rs.close();
+    return result;
+  }
+
+  /**
+   * 直接写入待办时长。
+   *
+   * 专供「块时长回写」用，**刻意绕开 TodoRepo.updateTodo 里的 normalizeEstimate**：
+   * 手动输入受 15–600 的上限约束，而多天拆分的**合计**是推导出来的、不是用户填的，
+   * 把它悄悄夹到 600 会让「这个待办到底要多久」失真。
+   * 合计本身一定落在 5 分钟刻度上（块起止都是 5 的倍数）。
+   */
+  static async setTodoEstimate(context: common.Context, id: number,
+    estimateMin: number): Promise<void> {
+    const store: relationalStore.RdbStore = await Db.get(context);
+    await store.executeSql('UPDATE todo SET estimate_min = ? WHERE id = ?', [estimateMin, id]);
   }
 
   static async deleteBlock(context: common.Context, id: number): Promise<void> {

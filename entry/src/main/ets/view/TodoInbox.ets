@@ -5,6 +5,7 @@ import { Course, COURSE_COLORS, Todo, TodoCategory, TodoSource, TodoStatus } fro
 import { TimetableRepo } from '../data/TimetableRepo';
 import { TodoRepo } from '../data/TodoRepo';
 import { addDays, countdownText, formatDate, parseDate, relativeDayText, today } from '../util/DateUtil';
+import { normalizeEstimate, Validation, validateEstimate } from '../domain/Validate';
 import { ChipButton } from './ChipButton';
 
 const DOMAIN: number = 0x0000;
@@ -13,18 +14,19 @@ const TAG: string = 'ClassOUT';
 /**
  * 预设的预计时长档位。选择器里排在「自定义」输入框前面。
  *
- * ⚠️ 时长本身**不吸附到这些档位** —— 它们是快捷选择，不是约束。
- * 自定义输入可以填任意分钟数（15–600），见 domain/PlanMath.normalizeDuration。
+ * ⚠️ 这些档位是**快捷选择**，不是约束本身。约束在下一条：
+ * 时长至少 15 分钟、必须是 5 分钟的整数倍（用户 2026-10-14 拍定），
+ * 单一实现见 domain/Validate.normalizeEstimate / validateEstimate。
  */
 const PRESET_ESTIMATES: number[] = [15, 30, 60, 90, 120, 180];
 
-/** 自定义时长的合法范围（分钟） */
+/** 自定义时长的合法范围（分钟）。真正的判定走 domain/Validate */
 const CUSTOM_ESTIMATE_MIN: number = 15;
 const CUSTOM_ESTIMATE_MAX: number = 600;
 
 @Component
 export struct TodoInbox {
-  @Prop semesterId: number;
+  @Prop @Watch('onSemesterIdChanged') semesterId: number;
 
   @State pendingList: Todo[] = [];
   @State activeList: Todo[] = [];
@@ -39,6 +41,8 @@ export struct TodoInbox {
   /** 自定义预计时长的输入状态。'' = 没有在用自定义 */
   @State editEstimateCustom: string = '';
   @State editEstimateFocus: boolean = false;
+  /** 自定义时长被归一化时的说明（'' = 输入没问题）。只在失焦/提交后出现，打字中途不打断 */
+  @State editEstimateError: string = '';
   @State editCourseId: number = 0;
   @State editCategory: string = TodoCategory.Other;
   /** 考试专用：考场 / 座位，存在 note 里 */
@@ -66,6 +70,16 @@ export struct TodoInbox {
     });
   }
 
+  /**
+   * ⚠️ 为什么要 @Watch：这个组件在切走标签页时会被销毁，但「管理课程」是盖在上面的浮层
+   * （`Index.showManager`），底下的『待办』标签仍然是挂载着的。在管理课程里新建学期 /
+   * 切换当前学期 / 改课程之后，prop 会变，可没有 @Watch 就没人再去读库，列表和课程胶囊
+   * 便一直停在旧数据 —— 用户看到的又是「要切一下页面才刷新」。
+   */
+  onSemesterIdChanged(): void {
+    this.load();
+  }
+
   private async reload(): Promise<void> {
     const ctx: common.UIAbilityContext = this.context();
     if (this.semesterId === 0) {
@@ -76,6 +90,22 @@ export struct TodoInbox {
     this.pendingList = await TodoRepo.listTodos(ctx, 'status = ?', [TodoStatus.Pending]);
     this.activeList = await TodoRepo.listTodos(ctx, 'status = ?', [TodoStatus.Active]);
     this.loading = false;
+  }
+
+  /**
+   * ForEach 的 key：**必须包含所有会被渲染的字段**。
+   *
+   * ⚠️ 这是一个真 bug 的修复（用户实测「改了待办属性之后不刷新，必须切换页面才刷新」）：
+   * 原来的 key 只有 `a-${t.id}`。`doSave()` 其实**确实**调了 `reload()`（库是立刻更新的），
+   * 但 `reload()` 换掉数组之后 key 没变 → ArkUI 复用旧节点、不重渲 → 界面停在旧值上；
+   * 切标签会销毁重建整个组件，于是"切一下就好了"。
+   * 计划页的块 key 一直带着 startMin/endMin/done，所以那边从来没有这个病。
+   *
+   * 教训同 HANDOFF §6.4：只要列表项的内容会变，key 就必须跟着变。
+   */
+  private todoKey(prefix: string, t: Todo): string {
+    return `${prefix}-${t.id}-${t.title}-${t.ddl}-${t.category}-${t.courseId}`
+      + `-${t.estimateMin}-${t.status}-${t.note}`;
   }
 
   private courseOf(id: number): Course | undefined {
@@ -206,25 +236,32 @@ export struct TodoInbox {
     return this.customEstimateActive() ? `${this.editEstimate} 分钟` : '自定义';
   }
 
-  /** 自定义输入框失焦/提交时校验。非法值保留用户输入但不落库，避免悄悄改成别的数 */
+  /**
+   * 自定义输入框失焦/提交时归一化。
+   *
+   * 规则（用户 2026-10-14 拍定）：至少 15 分钟，且必须是 5 分钟的整数倍。
+   * 非 5 倍数的输入**对齐到最近的 5**（27 → 25、28 → 30），越界夹紧。
+   *
+   * ⚠️ 对齐之后一定把结果写回输入框并给出说明 —— 悄悄改掉用户填的数字是这个项目
+   * 上一版被用户抓到的 bug，宁可啰嗦一句也不能不吭声。
+   */
   private commitCustomEstimate(): void {
     const raw: string = this.editEstimateCustom.trim();
     this.editEstimateFocus = false;
     if (raw.length === 0) {
+      this.editEstimateError = '';
       return;
     }
     const n: number = Number.parseInt(raw, 10);
     if (Number.isNaN(n)) {
+      this.editEstimateError = '时长要填一个数字';
       return;
     }
-    if (n < CUSTOM_ESTIMATE_MIN) {
-      this.editEstimate = CUSTOM_ESTIMATE_MIN;
-    } else if (n > CUSTOM_ESTIMATE_MAX) {
-      this.editEstimate = CUSTOM_ESTIMATE_MAX;
-    } else {
-      this.editEstimate = n;
-    }
-    this.editEstimateCustom = `${this.editEstimate}`;
+    const verdict: Validation = validateEstimate(n, false);
+    const fixed: number = normalizeEstimate(n, false);
+    this.editEstimate = fixed;
+    this.editEstimateCustom = `${fixed}`;
+    this.editEstimateError = verdict.ok ? '' : `已对齐到 ${fixed} 分钟（${verdict.message}）`;
   }
 
   private openNew(): void {
@@ -618,10 +655,12 @@ export struct TodoInbox {
                   this.editEstimateCustom = v;
                   // 边输边生效：否则用户填了值、焦点还在输入框里，
                   // 「自定义」胶囊和别处显示的分钟数都还是旧值，看着像没生效。
-                  // 范围夹紧留给失焦时做（见 commitCustomEstimate），打字中途不打断。
+                  // 只有**已经合法**的值才即时生效：打字打一半（"2" 想打 "25"）
+                  // 不能被当成 2 分钟，也不能在这里报错打断，归一化留给失焦时做。
                   const n: number = Number.parseInt(v, 10);
-                  if (!Number.isNaN(n) && n >= CUSTOM_ESTIMATE_MIN && n <= CUSTOM_ESTIMATE_MAX) {
+                  if (!Number.isNaN(n) && validateEstimate(n, false).ok) {
                     this.editEstimate = n;
+                    this.editEstimateError = '';
                   }
                 })
                 .onSubmit((): void => this.commitCustomEstimate())
@@ -634,9 +673,11 @@ export struct TodoInbox {
             .width('100%')
             .margin({ top: 2, bottom: 6 })
 
-            Text(`可填 ${CUSTOM_ESTIMATE_MIN}–${CUSTOM_ESTIMATE_MAX} 分钟；不用整刻也行，落下时按开始时间对齐`)
+            Text(this.editEstimateError.length > 0
+              ? this.editEstimateError
+              : `${CUSTOM_ESTIMATE_MIN}–${CUSTOM_ESTIMATE_MAX} 分钟，且必须是 5 分钟的整数倍`)
               .fontSize(10)
-              .fontColor('#98A2B3')
+              .fontColor(this.editEstimateError.length > 0 ? '#C0392B' : '#98A2B3')
               .width('100%')
           }
         }
@@ -731,7 +772,7 @@ export struct TodoInbox {
 
                 ForEach(this.pendingList, (t: Todo) => {
                   this.PendingCard(t)
-                }, (t: Todo) => `p-${t.id}`)
+                }, (t: Todo) => this.todoKey('p', t))
               }
 
               if (this.examList().length > 0) {
@@ -754,7 +795,7 @@ export struct TodoInbox {
 
                 ForEach(this.examList(), (t: Todo) => {
                   this.ExamCard(t)
-                }, (t: Todo) => `x-${t.id}`)
+                }, (t: Todo) => this.todoKey('x', t))
               }
 
               Row() {
@@ -782,7 +823,7 @@ export struct TodoInbox {
               }
               ForEach(this.taskList(), (t: Todo) => {
                 this.ActiveRow(t)
-              }, (t: Todo) => `a-${t.id}`)
+              }, (t: Todo) => this.todoKey('a', t))
             }
             .width('100%')
             .padding({ left: 16, right: 16, top: 12, bottom: 20 })

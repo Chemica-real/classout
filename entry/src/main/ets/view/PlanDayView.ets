@@ -2,16 +2,19 @@ import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { storedAbilityContext } from '../util/Ctx';
 import { Course, COURSE_COLORS, CourseSession, PlanBlock, RestWindow, Semester, SessionOverride,
-  SessionRule, SectionTime, Todo, TodoStatus, VirtualLesson } from '../model/Types';
+  SessionRule, SectionTime, Todo, TodoSource, TodoStatus, VirtualLesson } from '../model/Types';
 import { TimetableRepo } from '../data/TimetableRepo';
 import { TodoRepo } from '../data/TodoRepo';
 import { sessionsOnDate } from '../domain/Timetable';
 import { generateForLesson } from '../domain/TodoGenerator';
-import { TimeAxis, DEFAULT_AXIS, MIN_BLOCK_MIN, allBlocksDone,
-  dragOffsetWithScroll, dropRange, edgeScrollDirection, durationToH, findFreeSlot, moveRange, normalizeDuration,
-  resizeRange,
-  selectPoolTodos, sortPoolTodos } from '../domain/PlanMath';
-import { addDays, formatDate, minToHHmm, parseDate, relativeDayText, today, WEEKDAY_CN,
+import { TimeAxis, DEFAULT_AXIS, allBlocksDone,
+  dragOffsetWithScroll, dropRange, edgeScrollDepth, edgeScrollDirection, edgeScrollStep,
+  durationToH, findFreeSlot, moveRange, normalizeDuration,
+  resizeRange, sortBlocksByTime,
+  selectPoolTodos } from '../domain/PlanMath';
+import { BLOCK_MIN_MIN, DURATION_STEP_MIN, pinchDeltaLabel, pinchEnd, resizeEndTo,
+  totalBlockMinutes } from '../domain/Validate';
+import { addDays, formatDate, hhmmToMin, minToHHmm, parseDate, relativeDayText, today, WEEKDAY_CN,
   weekdayOf } from '../util/DateUtil';
 import { ChipButton } from './ChipButton';
 import { hapticLongPress } from '../util/Haptics';
@@ -28,6 +31,25 @@ const LESSON_MIN: number = 90;
  */
 const AXIS: TimeAxis = DEFAULT_AXIS;
 const GRID_H: number = AXIS.height();
+
+/**
+ * 左侧时间轴的宽度：刻度文字 40vp + 6vp 间隙。
+ * 所有「从时间轴右边起画」的元素都用它做 x。
+ */
+const AXIS_W: number = 46;
+
+/**
+ * 课程灰带 / 计划块 / 截止标记的宽度 = 父级满宽 **减去**时间轴。
+ *
+ * ⚠️ 这是一个真 bug 的修复（用户报「计划页面右侧在屏幕外」）：
+ * 这三处原来是 `width('100%')` 配 `position({ x: 46 })`，
+ * 于是右边缘 = 46 + 屏宽，整整溢出时间轴那么宽（46vp ≈ 屏宽的 12.8%），
+ * 块的右侧内边距和内容全被 Scroll 视口裁掉。
+ * 时间轴那条 Divider 本来就用 `layoutWeight(1)` 扣掉了 46vp —— 可见原意就是「内容区 = 100% − 46vp」，
+ * 只是宽度忘了一起扣。
+ */
+const CONTENT_W: string = `calc(100% - ${AXIS_W}vp)`;
+
 
 /**
  * ★ 字号试版开关（临时，只为给用户看 13/14/15vp 三档对比截图，见 PLAN_REDESIGN.md §7）
@@ -123,51 +145,88 @@ export struct PlanDayView {
   @State lessons: VirtualLesson[] = [];
   @State loading: boolean = true;
   @State selectedTodoId: number = 0;
+  /**
+   * 选中的**块**（单击选中，加黑框高亮）。0 = 没选中任何块。
+   *
+   * 交互模型由用户 2026-10-14 逐条定稿（见 HANDOFF）：
+   *   单击块            → 选中；已经是选中的那一块 → 打开编辑窗
+   *   未选中时双击      → 第一下选中、第二下开窗（天然满足「双击打开」）
+   *   单击另一块        → 直接改选那一条
+   *   单击空白          → 取消选中（若托盘里有待选待办，则优先把它放下）
+   *   长按**已选中**的块 → 振动 + 拖拽改时间（必须两步，用户明确要求）
+   *   双指缩放已选中的块 → 改时长（开始时间不动）
+   */
+  @State selectedBlockId: number = 0;
+  /** 编辑窗里正在看的块。用对象引用是因为面板直接渲染它；每次改动后 refreshEditor() 会换成新对象 */
   @State editingBlock: PlanBlock | undefined = undefined;
+  /** 该待办的全部块（含编辑中的这块），编辑窗用它列「其他块」。虚拟课时只有自己一条 */
+  @State editorBlocks: PlanBlock[] = [];
+  /** 编辑窗里的文本草稿：失焦/提交时才落库 */
+  @State editorStartText: string = '';
+  @State editorDurationText: string = '';
+  @State editorError: string = '';
+  /** 编辑窗里「删除待办」的二次确认开关 */
+  @State editorConfirmDeleteTodo: boolean = false;
+  /**
+   * 刚刚长按过（用来吃掉长按之后紧跟的那次 onClick）。
+   *
+   * ⚠️ 真机实测：**长按不移动、直接松手，ArkUI 依然会补一次 onClick**。
+   * 于是"选中 → 长按准备拖 → 松手"会莫名其妙弹出编辑窗。
+   * 按用户定的模型，长按不该等于点击，所以这里显式吞掉那一次。
+   * 在每次触摸按下时清零：长按后真的拖动了（不会产生 onClick）也不会误吞下一次真正的点击。
+   */
+  private longPressHandled: boolean = false;
+  /**
+   * 编辑窗的「代」。用来丢弃**在途的异步刷新**。
+   *
+   * ⚠️ 真机实测踩到的坑：`refreshEditor()` 里有 `await getBlock()`，
+   * 如果在这个 await 还没回来时用户点了窗外把窗关掉，
+   * 回来之后那句 `this.editingBlock = fresh` 会把**已经关掉的窗又打开**，
+   * 表现为"点了窗外没反应/过一会儿自己又弹出来"。
+   * 开窗、关窗都让 epoch +1；异步回来发现 epoch 变了就直接丢弃结果。
+   */
+  private editorEpoch: number = 0;
   @State hint: string = '';
   /** 正在被拖动的块与实时位移（拖拽中只改预览，松手才落库） */
   @State dragBlockId: number = 0;
   @State dragOffsetY: number = 0;
-  @State resizeBlockId: number = 0;
-  @State resizeOffsetY: number = 0;
+  /** 正在双指缩放的块（0 = 没在缩放），以及缩放预览的结束分钟 */
+  @State pinchBlockId: number = 0;
+  @State pinchEndMin: number = 0;
+  /** 按下双指那一刻的结束分钟（缩放基准，不随手指抖动累积） */
+  private pinchBaseEndMin: number = 0;
+  /** 屏幕正中那个深色 ±NN min 提示（'' = 不显示） */
+  @State pinchLabel: string = '';
   /** 从「待安排」拖进网格时携带的待办 id */
   @State dragTodoId: number = 0;
   /** 从「待安排」拖进网格时携带的虚拟课时 id */
   @State dragLessonId: number = 0;
 
-  /**
-   * 已「武装」的块：**长按之后**才允许拖动。
-   *
-   * 为什么要这一步：默认上下滑动切时间轴是这个页面的主要操作，
-   * 如果手指一落在块上就能拖，想滚动的人会不断误拖（用户的明确要求）。
-   * 长按给一次振动 + 描边，告诉用户"现在可以拖了"。
-   * 点一下空白处、或拖完松手，就解除武装。
-   */
-  @State armedMoveId: number = 0;
-  /** 已武装的底边把手（长按把手后允许改时长） */
-  @State armedResizeId: number = 0;
   /** 本次触摸的按下点（**窗口坐标**）。位移按窗口坐标算，长按后网格滚了也不会跳 */
   @State pressStartY: number = 0;
   /** 网格的 Scroller：拖动块靠近上/下边缘时用它自动滚时间轴 */
+  /**
+   * 顶部瞬时提示的自动消失定时器（-1 = 没有在计时）。
+   * 用户要求「把上面蓝色的日志栏去除」——原来那条提示是**常驻**的蓝色横幅，
+   * 而且它在布局流里：一出现/消失，整个时间网格就上下跳 40vp，
+   * 于是"单击选中（顺手清掉提示）→ 再单击"时方块会从手指底下跑掉（真机实测）。
+   * 现在改成不参与布局的深色小胶囊 + 1.8 秒自动消失。
+   */
+  private hintTimer: number = -1;
   private gridScroller: Scroller = new Scroller();
-  /** 边缘自动滚动的重复定时器 id（-1 = 没在滚） */
+  /** 边缘自动滚动的逐帧定时器 id（-1 = 没在滚） */
   private edgeTimer: number = -1;
   /** 当前触摸点（窗口 y）。自动滚动用它判断在不在边缘区 */
   private touchWinY: number = 0;
-  /** 开始移动/改时长那一刻的网格滚动位置。自动滚动产生的偏移量用它算 */
+  /** 开始移动那一刻的网格滚动位置。自动滚动产生的偏移量用它算 */
   private dragStartScroll: number = 0;
-  /** 网格**可视区**上边界（窗口坐标） */
-  /** 武装拖动期间是否锁住 Scroll 自身滚动（锁住后只允许边缘自动滚） */
+  /** 拖动期间是否锁住 Scroll 自身滚动（锁住后只允许边缘自动滚） */
   @State gridScrollLocked: boolean = false;
+  /** 网格**可视区**上边界（窗口坐标） */
   @State gridViewTop: number = 0;
   /** 网格**可视区**下边界（窗口坐标） */
   @State gridViewBottom: number = 0;
-  private pressActive: boolean = false;
-  /**
-   * 最后一次已知的触摸 y（窗口坐标）。
-   * 定时器醒来时用它判断"用户是不是已经移开了" —— 真滚动时前 450ms 早就移出容差了，
-   * 所以这时**不该武装、更不该振动**（实测慢速拖拽会白振一次）。
-   */
+  /** 最后一次已知的触摸 y（窗口坐标） */
   private lastTouchY: number = 0;
   /** 网格在窗口里的顶边（把窗口坐标换算成网格内坐标用） */
   @State gridTop: number = 0;
@@ -329,7 +388,7 @@ export struct PlanDayView {
       done: false
     };
     await TodoRepo.insertBlock(ctx, block);
-    this.hint = `已安排：${this.lessonTitle(l)}`;
+    this.showHint(`已安排：${this.lessonTitle(l)}`);
     await this.reload();
   }
 
@@ -339,11 +398,11 @@ export struct PlanDayView {
     const from: number = isToday ? this.nowMinute() : AXIS.startMin;
     const slot: number = findFreeSlot(AXIS, this.busyRanges(), this.restRanges(weekday), LESSON_MIN, from);
     if (slot < 0) {
-      this.hint = '这天（或剩余时间）排不下了，换一天试试';
+      this.showHint('这天（或剩余时间）排不下了，换一天试试');
       return;
     }
     this.placeLesson(l, slot, normalizeDuration(LESSON_MIN));
-    this.hint = `已排到 ${minToHHmm(slot)}`;
+    this.showHint(`已排到 ${minToHHmm(slot)}`);
   }
 
   /**
@@ -358,6 +417,25 @@ export struct PlanDayView {
 
   private selectedTodo(): Todo | undefined {
     return this.todoOf(this.selectedTodoId);
+  }
+
+  /**
+   * 弹一条瞬时提示（不占布局、自动消失）。
+   * 传空串 = 立刻清掉。
+   */
+  private showHint(text: string): void {
+    if (this.hintTimer !== -1) {
+      clearTimeout(this.hintTimer);
+      this.hintTimer = -1;
+    }
+    this.hint = text;
+    if (text.length === 0) {
+      return;
+    }
+    this.hintTimer = setTimeout((): void => {
+      this.showHint('');
+      this.hintTimer = -1;
+    }, 1800);
   }
 
   private goDay(delta: number): void {
@@ -377,23 +455,58 @@ export struct PlanDayView {
     return `${d.getMonth() + 1} 月 ${d.getDate()} 日 周${WEEKDAY_CN[weekdayOf(d) - 1]}`;
   }
 
-  /** 网格上的空白点击：若已选中待办，就在点击处落一个块；否则解除块的武装状态 */
+  /**
+   * 网格上的空白点击。
+   *
+   * 优先级：① 托盘里有选中的待办 → 在点击处放下它（原有功能，不能丢）；
+   *         ② 有选中的块 → 取消选中（用户明确要求「单击其他地方取消选中」）；
+   *         ③ 都没有 → 给一句提示。
+   */
   private onGridTap(event: ClickEvent): void {
-    if (this.selectedTodoId === 0) {
-      if (this.armedMoveId > 0 || this.armedResizeId > 0) {
-        this.disarm();
-        this.hint = '';
+    if (this.selectedTodoId > 0) {
+      const todo: Todo | undefined = this.selectedTodo();
+      if (todo !== undefined) {
+        // ⚠️ 必须用**窗口坐标**换算，不能用 `event.y`：
+        // `ClickEvent.y` 是相对"接住这次点击的那个节点"的坐标，而网格上还叠着
+        // HourLines 的刻度行、课程灰带、块等子节点 —— 点在刻度行上时 y 只有几十像素，
+        // 于是不管点哪儿都落在 07:30 附近（真机实测复现过）。
+        // 这里改成和 onPoolDrop 完全一致的换算法，两处终于统一。
+        const rawY: number = event.windowY - this.gridTop;
+        const localY: number = rawY > 0 ? rawY : 0;
+        const range: number[] = dropRange(AXIS, localY, todo.estimateMin);
+        this.place(todo, range[0], range[1] - range[0]);
         return;
       }
-      this.hint = '拖下面的待办到网格上放下；或先点选一条待办，再点空白处。';
+    }
+    if (this.selectedBlockId > 0) {
+      this.selectedBlockId = 0;
+      this.showHint('');
       return;
     }
-    const todo: Todo | undefined = this.selectedTodo();
-    if (todo === undefined) {
+    this.showHint('单击块选中它；再点一下打开详情。长按选中的块可以拖时间。');
+  }
+
+  /**
+   * 单击一个块。
+   *
+   * 「未选中时双击打开编辑窗」不需要额外的双击手势 ——
+   * 第一下把块选中，第二下落在**已选中**的块上，于是直接开窗。
+   * 这样单击选中没有延迟，也不会有"点了没反应"的观感。
+   */
+  private onBlockTap(b: PlanBlock): void {
+    // 长按之后被系统补发的那次 onClick：不算点击（用户要求长按 ≠ 点击）
+    if (this.longPressHandled) {
+      this.longPressHandled = false;
       return;
     }
-    const range: number[] = dropRange(AXIS, event.y, todo.estimateMin);
-    this.place(todo, range[0], range[1] - range[0]);
+    if (this.selectedBlockId === b.id) {
+      this.openEditor(b);
+      return;
+    }
+    this.selectedBlockId = b.id;
+    // 选中块时清掉托盘选择，避免"两种选中"打架（否则点空白会去放待办而不是取消选中）
+    this.selectedTodoId = 0;
+    this.showHint('');
   }
 
   /** 从「待安排」拖进网格后放下 */
@@ -434,10 +547,16 @@ export struct PlanDayView {
    * 用户要求：「长按移动块的时候屏幕不应该滚动，除非我把块接近最上/下代表我想滚动时间」。
    */
   private static readonly EDGE_ZONE: number = 60;
-  /** 自动滚动每一步的距离（vp） */
-  private static readonly EDGE_STEP: number = 16;
-  /** 自动滚动的重复间隔（ms） */
-  private static readonly EDGE_INTERVAL: number = 50;
+  /**
+   * 贴到最边缘时每帧滚多少 vp。16ms 一帧 → 约 375vp/s。
+   *
+   * ⚠️ 原来是「每 50ms 硬跳 16vp」：速度恒定、肉眼可见台阶，
+   * 用户实测报「拖到最上最下时不跟手，而且时间轴的跳动不顺滑」。
+   * 现在改成**逐帧推进 + 按进入深度线性加速**（见 PlanMath.edgeScrollStep）。
+   */
+  private static readonly EDGE_MAX_STEP: number = 6;
+  /** 逐帧推进的间隔（ms），约一帧 */
+  private static readonly EDGE_TICK_MS: number = 16;
 
   /**
    * 触摸按下。记录按下时刻与位置。
@@ -452,50 +571,51 @@ export struct PlanDayView {
   private onBlockTouchDown(b: PlanBlock, event: TouchEvent): void {
     this.pressStartY = event.touches.length > 0 ? event.touches[0].windowY : 0;
     this.lastTouchY = this.pressStartY;
-    this.pressActive = true;
+    this.touchWinY = this.pressStartY;
+    // 新手势开始：清掉上一次长按的标记（否则"长按后拖动"会吞掉下一次真正的点击）
+    this.longPressHandled = false;
     // ★ 滚动基准在**按下**时记录，且整个拖动期间**不再改**。
     //   块位移公式里的 touchDeltaY 是以按下点为基准的，
-    //   若基准滚动位置改成"武装那一刻"，两者基准不一致 → 块会漂。
+    //   若基准滚动位置改成"长按那一刻"，两者基准不一致 → 块会漂。
     this.dragStartScroll = this.gridScroller.currentOffset().yOffset;
-    this.disarm();
   }
 
   /**
-   * 武装移动（由 `parallelGesture` 的 LongPressGesture 调用）。
+   * 长按块 = 进入拖拽（由 `parallelGesture` 的 LongPressGesture 调用）。
    *
-   * ★ 为什么最后选了 `parallelGesture` 而不是 onTouch + 自己计时：
-   *   自己计时的方案需要**判断用户是不是在滚动**才能取消长按，
-   *   而实测"父级 Scroll 接管手势后，子组件的 onTouch 收不到后续 Move 事件"，
-   *   于是无法区分"按住不动"和"正在滚动"，慢速滚动会白振一次。
-   *   `parallelGesture` 让长按**和 Scroll 并行识别**，被 Scroll 抢走时系统直接 Cancel 它，
-   *   取消逻辑由框架负责，不依赖我能否收到 Move 事件。
+   * **两步模型**（用户明确要求「必须两步：先单击选中，再长按拖动」）：
+   * 没被选中的块长按不响应 —— 这样"想滚动的人"永远不会因为按久了而误拖色块。
+   *
+   * ★ 为什么用 `parallelGesture` 而不是自己计时：
+   *   自己计时需要判断"用户是不是在滚动"才能取消长按，而实测"父级 Scroll 接管手势后，
+   *   子组件的 onTouch 收不到后续 Move 事件"，无法区分"按住不动"和"正在滚动"，慢速滚动会白振一次。
+   *   `parallelGesture` 让长按**和 Scroll 并行识别**，被 Scroll 抢走时系统直接 Cancel 它。
    */
-  private armMove(b: PlanBlock): void {
-    // 武装即禁用 Scroll 自己滚 —— 这样长按之后拖动块时，时间轴会被钉住，
-    // 只有 updateEdgeScroll() 在边缘处用代码滚。
-    this.gridScrollLocked = true;
-    this.armedMoveId = b.id;
-    this.armedResizeId = 0;
+  private onBlockLongPress(b: PlanBlock): void {
+    if (this.selectedBlockId !== b.id) {
+      return;
+    }
     hapticLongPress();
-    this.hint = '已激活，上下拖动可以改时间；点空白处取消';
-  }
-
-  private armResize(b: PlanBlock): void {
+    this.longPressHandled = true;
+    // 长按后禁用 Scroll 自己滚 —— 移动块时时间轴要钉住，
+    // 只有 updateEdgeScroll() 在边缘处用代码滚（用户要求）。
     this.gridScrollLocked = true;
-    this.armedResizeId = b.id;
-    this.armedMoveId = 0;
-    hapticLongPress();
-    this.hint = '已激活，上下拖动底边可以改时长';
+    this.dragBlockId = b.id;
+    this.dragOffsetY = 0;
+    this.showHint('拖动改时间；拖到屏幕上/下边缘会自动滚动时间轴');
   }
 
   /**
-   * 边缘自动滚动：拖动块/改时长时，触摸点靠近上/下边缘就让时间轴自己滚。
+   * 边缘自动滚动：拖动块时触摸点靠近上/下边缘就让时间轴自己滚。
    *
    * 为什么需要它：移动块时屏幕是钉住的（用户要求），
    * 但如果块要挪到当前视口之外，没有自动滚动就根本挪不过去。
+   *
+   * ⚠️ 方向**每帧重算**。旧实现把方向捕获在定时器闭包里，一旦启动就改不了 ——
+   * 手指从顶部区拖到底部区，时间轴还在往上滚。
    */
   private updateEdgeScroll(): void {
-    if (this.dragBlockId === 0 && this.resizeBlockId === 0) {
+    if (this.dragBlockId === 0) {
       this.stopEdgeScroll();
       return;
     }
@@ -513,26 +633,41 @@ export struct PlanDayView {
     if (this.edgeTimer !== -1) {
       return;   // 已经在滚了
     }
-    this.edgeTimer = setInterval((): void => {
-      const step: number = dir * PlanDayView.EDGE_STEP;
-      this.gridScroller.scrollBy(0, step);
-      // ★ 必须在这里重算 offsetY，而且要和 MOVE 用**同一个公式、同一个基准**。
-      //
-      //   为什么非在这里不可：**手指停住不动时不再产生 Move 事件**，
-      //   而自动滚动还在继续。若不在这里重算，块就不会跟着补偿，
-      //   它会留在网格坐标里、跟着视图一起跑 —— 用户实测：
-      //   「手指停在 173.958 不动，offsetY 却从 -195 一路涨到 -50.79」，
-      //   表现为块向下漂，而且**松手时 endMove 会用这个漂掉的 offsetY 落库**，
-      //   块的时间会跳到约 2.4 小时之前（数据错误，不只是手感）。
-      //
-      //   曾经把它删掉过，理由是"和 MOVE 重复补偿"—— 那是错的：
-      //   这两个地方是**同一个公式的两个执行时机**（手指动 / 手指停），
-      //   不是两次叠加。删掉它反而把"手指停住"这个洞暴露出来。
-      const dy: number = this.lastTouchY - this.pressStartY;
-      const scrolled: number = this.gridScroller.currentOffset().yOffset - this.dragStartScroll;
-      this.dragOffsetY = dragOffsetWithScroll(dy, scrolled);
-      this.updateEdgeScroll();
-    }, PlanDayView.EDGE_INTERVAL);
+    this.edgeTimer = setInterval((): void => this.edgeTick(), PlanDayView.EDGE_TICK_MS);
+  }
+
+  /**
+   * 自动滚动的一帧。
+   *
+   * ★ 必须在这里重算 offsetY，而且要和 MOVE 用**同一个公式、同一个基准**。
+   *
+   *   为什么非在这里不可：**手指停住不动时不再产生 Move 事件**，而自动滚动还在继续。
+   *   若不在这里重算，块就不会跟着补偿，它会留在网格坐标里、跟着视图一起跑 ——
+   *   用户实测：「手指停在 173.958 不动，offsetY 却从 -195 一路涨到 -50.79」，
+   *   表现为块向下漂，而且**松手时 endMove 会用这个漂掉的 offsetY 落库**，
+   *   块的时间会跳到约 2.4 小时之前（数据错误，不只是手感）。
+   *
+   *   曾经把它删掉过，理由是"和 MOVE 重复补偿"—— 那是错的：
+   *   这两个地方是**同一个公式的两个执行时机**（手指动 / 手指停），不是两次叠加。
+   */
+  private edgeTick(): void {
+    if (this.dragBlockId === 0) {
+      this.stopEdgeScroll();
+      return;
+    }
+    const dir: number = edgeScrollDirection(this.touchWinY, this.gridViewTop,
+      this.gridViewBottom, PlanDayView.EDGE_ZONE);
+    if (dir === 0) {
+      this.stopEdgeScroll();
+      return;
+    }
+    const depth: number = edgeScrollDepth(this.touchWinY, this.gridViewTop,
+      this.gridViewBottom, PlanDayView.EDGE_ZONE);
+    const step: number = edgeScrollStep(depth, PlanDayView.EDGE_ZONE, PlanDayView.EDGE_MAX_STEP);
+    this.gridScroller.scrollBy(0, dir * step);
+    const dy: number = this.lastTouchY - this.pressStartY;
+    const scrolled: number = this.gridScroller.currentOffset().yOffset - this.dragStartScroll;
+    this.dragOffsetY = dragOffsetWithScroll(dy, scrolled);
   }
 
   private stopEdgeScroll(): void {
@@ -558,17 +693,14 @@ export struct PlanDayView {
     }
     this.lastTouchY = event.touches[0].windowY;
     this.touchWinY = this.lastTouchY;
-    const dy: number = this.lastTouchY - this.pressStartY;
-
-    // 没被长按武装 → 什么都不做，让 Scroll 正常滚动。
-    // （武装由 parallelGesture 的 LongPressGesture 负责，见 armMove 的注释）
-    if (this.armedMoveId !== b.id) {
+    // 没进入拖拽（没长按过，或长按的不是这块）→ 什么都不做，让 Scroll 正常滚动
+    if (this.dragBlockId !== b.id) {
       return;
     }
-    // 已武装：拦下事件，别让父级 Scroll 跟着滚（用户要求：
+    // 已进入拖拽：拦下事件，别让父级 Scroll 跟着滚（用户要求：
     // 移动块时屏幕不动，只有块接近上/下边缘才滚时间轴）
     event.stopPropagation();
-    this.dragBlockId = b.id;
+    const dy: number = this.lastTouchY - this.pressStartY;
     // 补偿网格滚动：块要钉在手指下，就必须减去"网格自己滚掉的那部分"。
     // 否则网格一滚，块相对网格就跑了（等于块的开始时间被偷偷改掉）。
     const scrolled: number = this.gridScroller.currentOffset().yOffset - this.dragStartScroll;
@@ -576,124 +708,87 @@ export struct PlanDayView {
     this.updateEdgeScroll();
   }
 
-  /** 触摸抬起：位移落库、解除武装 */
+  /**
+   * 触摸抬起：位移落库、解除滚动锁。
+   *
+   * ⚠️ 旧实现在这里**不解锁**，于是"长按之后不拖、直接松手"会让 Scroll 一直处于
+   * `enableScrollInteraction(false)`（时间轴从此滚不动），只能再点一下别处才恢复。
+   */
   private onBlockTouchUp(b: PlanBlock): void {
-    hilog.info(DOMAIN, TAG, 'DRAG up offsetY=%{public}d touched=%{public}s scrolled=%{public}d',
-      this.dragOffsetY, `${this.armedMoveId > 0}`, this.gridScroller.currentOffset().yOffset);
-    this.pressActive = false;
     this.stopEdgeScroll();
+    this.gridScrollLocked = false;
     if (this.dragBlockId === b.id) {
       this.endMove(b);
     }
   }
 
   private onBlockTouchCancel(): void {
-    this.pressActive = false;
     this.stopEdgeScroll();
+    this.gridScrollLocked = false;
     this.dragBlockId = 0;
     this.dragOffsetY = 0;
   }
 
-  /** 底边把手：与块同理，只是走改时长 */
-  private onHandleTouchDown(b: PlanBlock, event: TouchEvent): void {
-    this.pressStartY = event.touches.length > 0 ? event.touches[0].windowY : 0;
-    this.lastTouchY = this.pressStartY;
-    this.pressActive = true;
-    this.dragStartScroll = this.gridScroller.currentOffset().yOffset;
-    this.disarm();
-  }
+  // ---- 双指缩放改时长 ----
 
-  private onHandleTouchMove(b: PlanBlock, event: TouchEvent): void {
-    if (event.touches.length === 0) {
+  /**
+   * 双指缩放开始：只在**选中的那一块**上生效（用户要求「在选中状态下，双指缩放以更改时长」）。
+   * 记录按下那一刻的结束分钟作为基准 —— 用基准而不是"当前值"，手指抖动不会累积误差。
+   */
+  private beginPinch(b: PlanBlock): void {
+    if (this.selectedBlockId !== b.id) {
       return;
     }
-    this.lastTouchY = event.touches[0].windowY;
-    this.touchWinY = this.lastTouchY;
-    const dy: number = this.lastTouchY - this.pressStartY;
+    this.pinchBlockId = b.id;
+    this.pinchBaseEndMin = b.endMin;
+    this.pinchEndMin = b.endMin;
+    this.pinchLabel = pinchDeltaLabel(0);
+  }
 
-    if (this.armedResizeId !== b.id) {
+  private updatePinch(b: PlanBlock, event: GestureEvent): void {
+    if (this.pinchBlockId !== b.id) {
       return;
     }
-    event.stopPropagation();
-    this.resizeBlockId = b.id;
-    const scrolled2: number = this.gridScroller.currentOffset().yOffset - this.dragStartScroll;
-    this.resizeOffsetY = dragOffsetWithScroll(dy, scrolled2);
-    this.updateEdgeScroll();
+    // 开始时间**不动**，只把结束时间往下拉长 / 往上压短；
+    // 5 分钟分度、最短 15 分钟、不越过时间窗末尾都在 pinchEnd 里（纯函数，有断言）
+    const next: number = pinchEnd(b.startMin, this.pinchBaseEndMin, event.scale, AXIS.endMin);
+    this.pinchEndMin = next;
+    this.pinchLabel = pinchDeltaLabel(next - this.pinchBaseEndMin);
   }
 
-  private onHandleTouchUp(b: PlanBlock): void {
-    this.pressActive = false;
-    this.stopEdgeScroll();
-    if (this.resizeBlockId === b.id) {
-      this.endResize(b);
-    }
-  }
-
-  private onHandleTouchCancel(): void {
-    this.pressActive = false;
-    this.stopEdgeScroll();
-    this.resizeBlockId = 0;
-    this.resizeOffsetY = 0;
-  }
-
-  private disarm(): void {
-    this.armedMoveId = 0;
-    this.armedResizeId = 0;
-    this.gridScrollLocked = false;
-  }
-
-  private beginMove(b: PlanBlock): void {
-    // 守卫：没长按过就不给拖，否则想滚动时间轴的人会误拖色块
-    if (this.armedMoveId !== b.id) {
+  /** 松手确定：把预览值落库（并回写待办时长） */
+  private endPinch(b: PlanBlock): void {
+    if (this.pinchBlockId !== b.id) {
       return;
     }
-    this.dragBlockId = b.id;
-    this.dragOffsetY = 0;
-  }
-
-  private updateMove(dy: number): void {
-    this.dragOffsetY = dy;
+    const next: number = this.pinchEndMin;
+    this.pinchBlockId = 0;
+    this.pinchLabel = '';
+    if (next === b.endMin) {
+      return;   // 没变，不产生空改动
+    }
+    b.endMin = next;
+    this.persistBlock(b);
+    this.showHint(`时长改为 ${b.endMin - b.startMin} 分钟`);
   }
 
   private endMove(b: PlanBlock): void {
     if (this.dragBlockId === 0) {
-      return;   // 没真正开始拖（没武装），别落库
+      return;   // 没真正开始拖，别落库
     }
-    const range: number[] = moveRange(AXIS, b.startMin, b.endMin, this.dragOffsetY);
+    const offset: number = this.dragOffsetY;
     this.dragBlockId = 0;
     this.dragOffsetY = 0;
-    this.disarm();
+    this.gridScrollLocked = false;
+    if (offset === 0) {
+      return;   // 长按了但没动 → 不产生空改动
+    }
+    // moveRange 把开始时间吸附到 15 分钟刻度（用户要求「以开始时间为准吸附」）
+    const range: number[] = moveRange(AXIS, b.startMin, b.endMin, offset);
     b.startMin = range[0];
     b.endMin = range[1];
     this.persistBlock(b);
-    this.hint = `挪到 ${minToHHmm(b.startMin)}-${minToHHmm(b.endMin)}`;
-  }
-
-  private beginResize(b: PlanBlock): void {
-    // 守卫：必须先长按底边把手
-    if (this.armedResizeId !== b.id) {
-      return;
-    }
-    this.resizeBlockId = b.id;
-    this.resizeOffsetY = 0;
-  }
-
-  private updateResize(dy: number): void {
-    this.resizeOffsetY = dy;
-  }
-
-  private endResize(b: PlanBlock): void {
-    if (this.resizeBlockId === 0) {
-      return;   // 没真正开始拖（没武装），别落库
-    }
-    const range: number[] = resizeRange(AXIS, b.startMin, b.endMin, this.resizeOffsetY);
-    this.resizeBlockId = 0;
-    this.resizeOffsetY = 0;
-    this.disarm();
-    b.startMin = range[0];
-    b.endMin = range[1];
-    this.persistBlock(b);
-    this.hint = `时长改为 ${b.endMin - b.startMin} 分钟`;
+    this.showHint(`挪到 ${minToHHmm(b.startMin)}-${minToHHmm(b.endMin)}`);
   }
 
   private persistBlock(b: PlanBlock): void {
@@ -705,6 +800,251 @@ export struct PlanDayView {
   private async doPersist(b: PlanBlock): Promise<void> {
     const ctx: common.UIAbilityContext = this.context();
     await TodoRepo.updateBlock(ctx, b);
+    await this.syncTodoDuration(b.todoId);
+    await this.reload();
+    await this.refreshEditor();
+  }
+
+  /**
+   * 把「该待办所有块的时长合计」回写到 todo.estimate_min。
+   *
+   * ⚠️ 这是用户报的 bug：「在计划界面更改待办时长，并没有更改待办界面对应的待办的时长，
+   * 只是在计划图里拉长了」。根因是计划页**从来不写 todo.estimate_min** ——
+   * 它只改 plan_block，而块根本没有时长列（时长 = end_min − start_min）。
+   *
+   * 口径（用户 2026-10-14 选定）：合计 = 该待办**全部**块的时长之和，
+   * 这样「拆成多块分散在不同天」的语义不会被弄丢。
+   * 一个块都没有时合计为 -1 → **不回写**，否则删光块会把待办变成「预计 0 分钟」。
+   */
+  private async syncTodoDuration(todoId: number): Promise<void> {
+    if (todoId <= 0) {
+      return;
+    }
+    const ctx: common.UIAbilityContext = this.context();
+    const all: PlanBlock[] = await TodoRepo.listBlocksByTodo(ctx, todoId);
+    const total: number = totalBlockMinutes(all, todoId);
+    if (total < 0) {
+      return;
+    }
+    await TodoRepo.setTodoEstimate(ctx, todoId, total);
+  }
+
+  // ---- 块的编辑窗 ----
+
+  /**
+   * 打开块的编辑窗。
+   *
+   * 用 `this.editingBlock` 存对象、并在每次改动后 `refreshEditor()` 换成新对象：
+   * `reload()` 会整体替换 `this.blocks`，旧引用就和列表脱钩了
+   *（原来就是这个坑 —— 面板里的 ± 按钮能继续用只是因为它们只读 `b.id`）。
+   */
+  private openEditor(b: PlanBlock): void {
+    this.editorEpoch++;
+    this.editingBlock = b;
+    this.editorError = '';
+    this.editorConfirmDeleteTodo = false;
+    this.editorStartText = minToHHmm(b.startMin);
+    this.editorDurationText = `${b.endMin - b.startMin}`;
+    this.refreshEditor().catch((e: Object): void => {
+      hilog.error(DOMAIN, TAG, 'refresh editor failed: %{public}s', JSON.stringify(e));
+    });
+  }
+
+  private closeEditor(): void {
+    this.editorEpoch++;
+    this.editingBlock = undefined;
+    this.editorBlocks = [];
+    this.editorError = '';
+    this.editorConfirmDeleteTodo = false;
+  }
+
+  /** 重新读编辑中的块与它所属待办的全部块；块已经不在库里就自动关窗 */
+  private async refreshEditor(): Promise<void> {
+    const epoch: number = this.editorEpoch;
+    const cur: PlanBlock | undefined = this.editingBlock;
+    if (cur === undefined) {
+      return;
+    }
+    const ctx: common.UIAbilityContext = this.context();
+    const fresh: PlanBlock | undefined = await TodoRepo.getBlock(ctx, cur.id);
+    // 期间窗被关掉或换到了别的块 → 丢弃这次结果，否则会把关掉的窗重新打开
+    if (epoch !== this.editorEpoch) {
+      return;
+    }
+    if (fresh === undefined) {
+      this.closeEditor();
+      return;
+    }
+    this.editingBlock = fresh;
+    if (fresh.todoId > 0) {
+      this.editorBlocks = sortBlocksByTime(await TodoRepo.listBlocksByTodo(ctx, fresh.todoId));
+    } else {
+      this.editorBlocks = [fresh];
+    }
+    this.editorStartText = minToHHmm(fresh.startMin);
+    this.editorDurationText = `${fresh.endMin - fresh.startMin}`;
+  }
+
+  /** 「这个待办还在别的哪天排了块」——不含正在看的这一块 */
+  private editorOtherBlocks(): PlanBlock[] {
+    const cur: PlanBlock | undefined = this.editingBlock;
+    if (cur === undefined) {
+      return [];
+    }
+    const out: PlanBlock[] = [];
+    for (const b of this.editorBlocks) {
+      if (b.id !== cur.id) {
+        out.push(b);
+      }
+    }
+    return out;
+  }
+
+  /** 编辑窗里的「课程属性」行（用户要求计划页把课程显示出来）；没有就返回 '' */
+  private editorCourseText(b: PlanBlock): string {
+    const cid: number = this.blockCourseId(b);
+    if (cid <= 0) {
+      return '';
+    }
+    const c: Course | undefined = this.courseOf(cid);
+    if (c === undefined) {
+      return '';
+    }
+    if (b.lessonId > 0 && c.location.length > 0) {
+      return `${c.name} · ${c.location}`;
+    }
+    return c.name;
+  }
+
+  /** 开始时间输入：HH:MM，时长保持不变 */
+  private commitEditorStart(): void {
+    const b: PlanBlock | undefined = this.editingBlock;
+    if (b === undefined) {
+      return;
+    }
+    const min: number = hhmmToMin(this.editorStartText.trim());
+    if (Number.isNaN(min)) {
+      this.editorError = '开始时间要写成 HH:MM，比如 14:30';
+      return;
+    }
+    if (min % DURATION_STEP_MIN !== 0) {
+      this.editorError = `开始时间要落在 ${DURATION_STEP_MIN} 分钟刻度上，比如 14:30`;
+      return;
+    }
+    if (min < AXIS.startMin || min > AXIS.endMin) {
+      this.editorError = `开始时间要在 ${minToHHmm(AXIS.startMin)}–${minToHHmm(AXIS.endMin)} 之间`;
+      return;
+    }
+    const dur: number = b.endMin - b.startMin;
+    if (min + dur > AXIS.endMin) {
+      this.editorError = '这个开始时间放不下当前时长（会超出 24:00）';
+      return;
+    }
+    this.editorError = '';
+    b.startMin = min;
+    b.endMin = min + dur;
+    this.persistBlock(b);
+  }
+
+  /** 时长输入：开始时间不动，只改结束时间（5 分钟分度、最短 15 分钟） */
+  private commitEditorDuration(): void {
+    const b: PlanBlock | undefined = this.editingBlock;
+    if (b === undefined) {
+      return;
+    }
+    const n: number = Number.parseInt(this.editorDurationText.trim(), 10);
+    if (Number.isNaN(n)) {
+      this.editorError = '时长要填一个数字';
+      return;
+    }
+    if (n < BLOCK_MIN_MIN) {
+      this.editorError = `一块至少 ${BLOCK_MIN_MIN} 分钟`;
+      return;
+    }
+    if (n % DURATION_STEP_MIN !== 0) {
+      this.editorError = `时长要是 ${DURATION_STEP_MIN} 分钟的整数倍`;
+      return;
+    }
+    if (b.startMin + n > AXIS.endMin) {
+      this.editorError = '这么长会超过 24:00，先把开始时间挪早一点';
+      return;
+    }
+    this.editorError = '';
+    b.endMin = b.startMin + n;
+    this.persistBlock(b);
+  }
+
+  /** 「日期 ‹ ›」：整块挪到前一天/后一天。跨天挪块不靠拖拽，靠这个（用户选的方案） */
+  private shiftBlockDate(b: PlanBlock, delta: number): void {
+    b.date = formatDate(addDays(parseDate(b.date), delta));
+    this.persistBlock(b);
+    this.showHint(`改到 ${b.date}`);
+  }
+
+  private adjustEditorStart(b: PlanBlock, delta: number): void {
+    const min: number = b.startMin + delta;
+    const dur: number = b.endMin - b.startMin;
+    if (min < AXIS.startMin || min + dur > AXIS.endMin) {
+      this.editorError = '再挪就出时间窗了';
+      return;
+    }
+    this.editorError = '';
+    b.startMin = min;
+    b.endMin = min + dur;
+    this.persistBlock(b);
+  }
+
+  private adjustEditorDuration(b: PlanBlock, delta: number): void {
+    const end: number = resizeEndTo(b.startMin, b.endMin + delta, AXIS.endMin);
+    if (end === b.endMin) {
+      this.editorError = '改不动了（最短 15 分钟，且不能超过 24:00）';
+      return;
+    }
+    this.editorError = '';
+    b.endMin = end;
+    this.persistBlock(b);
+  }
+
+  /** 改截止时间（只对待办块有效） */
+  private setEditorDdl(ddl: string): void {
+    const b: PlanBlock | undefined = this.editingBlock;
+    if (b === undefined || b.todoId === 0) {
+      return;
+    }
+    this.doSetDdl(b.todoId, ddl).catch((e: Object): void => {
+      hilog.error(DOMAIN, TAG, 'set ddl failed: %{public}s', JSON.stringify(e));
+    });
+  }
+
+  private async doSetDdl(todoId: number, ddl: string): Promise<void> {
+    const ctx: common.UIAbilityContext = this.context();
+    const t: Todo | undefined = await TodoRepo.getTodo(ctx, todoId);
+    if (t === undefined) {
+      return;
+    }
+    t.ddl = ddl;
+    await TodoRepo.updateTodo(ctx, t);
+    this.showHint(ddl.length > 0 ? `截止时间改为 ${ddl}` : '已取消截止时间');
+    await this.reload();
+  }
+
+  /** 编辑窗里的「删除待办」：连它的所有块一起删；自动生成的还要进黑名单 */
+  private removeTodoFromEditor(b: PlanBlock): void {
+    this.doRemoveTodo(b).catch((e: Object): void => {
+      hilog.error(DOMAIN, TAG, 'remove todo failed: %{public}s', JSON.stringify(e));
+    });
+  }
+
+  private async doRemoveTodo(b: PlanBlock): Promise<void> {
+    const ctx: common.UIAbilityContext = this.context();
+    const t: Todo | undefined = await TodoRepo.getTodo(ctx, b.todoId);
+    if (t !== undefined && t.source === TodoSource.Template && t.generationKey.length > 0) {
+      await TodoRepo.blacklist(ctx, t.generationKey, Date.now());
+    }
+    await TodoRepo.deleteTodo(ctx, b.todoId);
+    this.closeEditor();
+    this.selectedBlockId = 0;
+    this.showHint(t === undefined ? '已删除待办' : `已删除待办「${t.title}」`);
     await this.reload();
   }
 
@@ -744,11 +1084,11 @@ export struct PlanDayView {
     const slot: number = findFreeSlot(AXIS, this.busyRanges(), this.restRanges(weekday),
       t.estimateMin, from);
     if (slot < 0) {
-      this.hint = '这天（或剩余时间）排不下了，换一天试试';
+      this.showHint('这天（或剩余时间）排不下了，换一天试试');
       return;
     }
     this.place(t, slot, normalizeDuration(t.estimateMin));
-    this.hint = `已排到 ${minToHHmm(slot)}`;
+    this.showHint(`已排到 ${minToHHmm(slot)}`);
   }
 
   private place(todo: Todo, startMin: number, duration: number): void {
@@ -769,32 +1109,12 @@ export struct PlanDayView {
       done: false
     };
     await TodoRepo.insertBlock(ctx, block);
-    this.hint = `已安排：${todo.title}`;
-    await this.reload();
-  }
-
-  private adjustBlock(block: PlanBlock, deltaStart: number, deltaEnd: number): void {
-    this.doAdjust(block, deltaStart, deltaEnd).catch((e: Object): void => {
-      hilog.error(DOMAIN, TAG, 'adjust block failed: %{public}s', JSON.stringify(e));
-    });
-  }
-
-  private async doAdjust(block: PlanBlock, deltaStart: number, deltaEnd: number): Promise<void> {
-    const ctx: common.UIAbilityContext = this.context();
-    let s: number = block.startMin + deltaStart;
-    let e: number = block.endMin + deltaEnd;
-    if (s < AXIS.startMin) {
-      s = AXIS.startMin;
-    }
-    if (e > AXIS.endMin) {
-      e = AXIS.endMin;
-    }
-    if (e - s < MIN_BLOCK_MIN) {
-      return;
-    }
-    block.startMin = s;
-    block.endMin = e;
-    await TodoRepo.updateBlock(ctx, block);
+    // 排了新块 → 待办的总时长跟着变（用户要求：计划页的改动必须落到待办本身）
+    await this.syncTodoDuration(todo.id);
+    // 放下之后清掉托盘选中：它这时已经从托盘里消失了（selectPoolTodos 过滤掉了当天已排的），
+    // 再留着选中态会让顶部一直显示"已选中"，下一次点空白还会莫名其妙再排一块。
+    this.selectedTodoId = 0;
+    this.showHint(`已安排：${todo.title}（${minToHHmm(startMin)}-${minToHHmm(startMin + duration)}）`);
     await this.reload();
   }
 
@@ -820,7 +1140,7 @@ export struct PlanDayView {
           const created: number = await generateForLesson(ctx, sem, l, block.date,
             block.startMin, block.endMin);
           if (created > 0) {
-            this.hint = `「${this.lessonTitle(l)}」完成，已生成 ${created} 条待办，去『待办』确认`;
+            this.showHint(`「${this.lessonTitle(l)}」完成，已生成 ${created} 条待办，去『待办』确认`);
           }
         }
       }
@@ -846,8 +1166,11 @@ export struct PlanDayView {
 
   private async doRemove(block: PlanBlock): Promise<void> {
     const ctx: common.UIAbilityContext = this.context();
+    const todoId: number = block.todoId;
     await TodoRepo.deleteBlock(ctx, block.id);
-    this.editingBlock = undefined;
+    this.closeEditor();
+    // 少了一块 → 待办总时长跟着缩（一个块都不剩时 syncTodoDuration 不会动它）
+    await this.syncTodoDuration(todoId);
     await this.reload();
   }
 
@@ -878,19 +1201,60 @@ export struct PlanDayView {
    * 渲染分支必须用这个判断，否则「撑高」会让判据自己变来变去。
    */
   private blockTimedH(b: PlanBlock): number {
-    return durationToH(b.endMin - b.startMin) - 2;
+    return durationToH(this.blockEndMin(b) - b.startMin) - 2;
+  }
+
+  /** 块在屏幕上显示的结束分钟：双指缩放时用预览值，其余用真实值 */
+  private blockEndMin(b: PlanBlock): number {
+    return this.pinchBlockId === b.id ? this.pinchEndMin : b.endMin;
   }
 
   private blockH(b: PlanBlock): number {
-    const timed: number = durationToH(b.endMin - b.startMin) - 2;
-    if (this.resizeBlockId === b.id) {
-      const preview: number = timed + this.resizeOffsetY;
-      return preview < MIN_VISIBLE_H ? MIN_VISIBLE_H : preview;
-    }
+    const raw: number = durationToH(this.blockEndMin(b) - b.startMin) - 2;
+    // 再小也要留 MIN_VISIBLE_H：块小到点不到就没法再点开编辑窗了
+    const timed: number = raw < MIN_VISIBLE_H ? MIN_VISIBLE_H : raw;
     if (timed < compactThreshold()) {
       return Math.max(timed, compactMinH());
     }
     return timed;
+  }
+
+  private blockById(id: number): PlanBlock | undefined {
+    for (const b of this.blocks) {
+      if (b.id === id) {
+        return b;
+      }
+    }
+    return undefined;
+  }
+
+  private isSelected(b: PlanBlock): boolean {
+    return this.selectedBlockId === b.id;
+  }
+
+  private isDragging(b: PlanBlock): boolean {
+    return this.dragBlockId === b.id;
+  }
+
+  /** 课程的简称（没有简称就用全名）；计划页显示「这块属于哪门课」用 */
+  private courseShort(courseId: number): string {
+    const c: Course | undefined = this.courseOf(courseId);
+    if (c === undefined) {
+      return '课程';
+    }
+    return c.shortName.length > 0 ? c.shortName : c.name;
+  }
+
+  /** 拖动中的块留在原位的"空位"的 y */
+  private ghostY(): number {
+    const b: PlanBlock | undefined = this.blockById(this.dragBlockId);
+    return b === undefined ? -999 : AXIS.minuteToY(b.startMin);
+  }
+
+  /** 拖动中的块留在原位的"空位"的高度 */
+  private ghostH(): number {
+    const b: PlanBlock | undefined = this.blockById(this.dragBlockId);
+    return b === undefined ? 0 : durationToH(b.endMin - b.startMin) - 2;
   }
 
   // ---------------- UI ----------------
@@ -943,12 +1307,45 @@ export struct PlanDayView {
           .textOverflow({ overflow: TextOverflow.Ellipsis })
       }
     }
-    .width('100%')
+    .width(CONTENT_W)
     .height(this.hOf(s.startMin, s.endMin) - 2)
     .padding({ left: 6, right: 6, top: 2 })
     .backgroundColor('#E8ECF3')
     .borderRadius(6)
-    .position({ x: 46, y: this.yOf(s.startMin) })
+    .position({ x: AXIS_W, y: this.yOf(s.startMin) })
+  }
+
+  /**
+   * 常规块的副行：时间 · 课程简称。
+   * 用户要求「如果某待办有对应的课程属性，在待安排框和计划表格里都要显示」。
+   */
+  private blockSubText(b: PlanBlock): string {
+    const t: string = `${minToHHmm(b.startMin)}-${minToHHmm(this.blockEndMin(b))}`;
+    const cid: number = this.blockCourseId(b);
+    if (cid <= 0) {
+      return t;
+    }
+    return `${t} · ${this.courseShort(cid)}`;
+  }
+
+  /** 紧凑块的标题：有课程属性时前缀课程简称（15 分钟的块放不下第二行） */
+  private blockCompactTitle(b: PlanBlock): string {
+    const cid: number = this.blockCourseId(b);
+    if (cid <= 0) {
+      return this.blockTitle(b);
+    }
+    return `${this.courseShort(cid)}·${this.blockTitle(b)}`;
+  }
+
+  /** 拖拽中留在原位的虚线空位 */
+  @Builder
+  DragGhost() {
+    Column()
+      .width(CONTENT_W)
+      .height(this.ghostH())
+      .borderRadius(6)
+      .border({ width: 2, color: '#B0B8C4', style: BorderStyle.Dashed })
+      .position({ x: AXIS_W, y: this.ghostY() })
   }
 
   @Builder
@@ -969,9 +1366,11 @@ export struct PlanDayView {
               .fontColor('#12161F')
               .maxLines(2)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
-            Text(`${minToHHmm(b.startMin)}-${minToHHmm(b.endMin)}`)
+            Text(this.blockSubText(b))
               .fontSize(LAYOUT.sub)
               .fontColor('#3C4657')
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
           }
           .layoutWeight(1)
           .alignItems(HorizontalAlign.Start)
@@ -980,22 +1379,29 @@ export struct PlanDayView {
         .height('100%')
         .padding({ left: 8, right: 6, top: 3 })
         .backgroundColor(this.colorOf(this.blockCourseId(b)))
-        .opacity(b.done ? 0.5 : 0.95)
+        // 拖拽中半透明（用户要的"从原来在的地方被抽出来跟着手指"的观感）
+        .opacity(this.isDragging(b) ? 0.72 : (b.done ? 0.5 : 0.95))
         .borderRadius(6)
+        // 选中即黑框高亮（用户要的"选中状态加黑框"）
         .border({
-          width: this.dragBlockId === b.id || this.resizeBlockId === b.id ? 2 : 0,
+          width: this.isSelected(b) || this.isDragging(b) ? 2 : 0,
           color: '#12161F'
         })
-        .onClick((): void => {
-          this.disarm();
-          this.editingBlock = b;
-        })
+        .onClick((): void => this.onBlockTap(b))
+        // 双指缩放改时长。挂在**内层内容**上而不是外层 Stack：
+        // 外层已经用 parallelGesture 挂了长按，同一个节点再挂一个手势有可能把前一个顶掉。
+        .gesture(
+          PinchGesture({ fingers: 2 })
+            .onActionStart((): void => this.beginPinch(b))
+            .onActionUpdate((event: GestureEvent): void => this.updatePinch(b, event))
+            .onActionEnd((): void => this.endPinch(b))
+        )
       } else {
         // ---- 紧凑排版：单行「标题 + 时间」，字更小 ----
         // 15 分钟的块只有 13vp 高，两行放不下。这里不画完成圆圈
         //（点开面板也能标记完成），把空间留给标题和时间。
         Row() {
-          Text(this.blockTitle(b))
+          Text(this.blockCompactTitle(b))
             .fontSize(LAYOUT.compact)
             .fontWeight(FontWeight.Medium)
             .fontColor('#12161F')
@@ -1013,67 +1419,37 @@ export struct PlanDayView {
         .height('100%')
         .padding({ left: 7, right: 5 })
         .backgroundColor(this.colorOf(this.blockCourseId(b)))
-        .opacity(b.done ? 0.5 : 0.95)
+        .opacity(this.isDragging(b) ? 0.72 : (b.done ? 0.5 : 0.95))
         .borderRadius(6)
         .border({
-          width: this.dragBlockId === b.id || this.resizeBlockId === b.id ? 2 : 0,
+          width: this.isSelected(b) || this.isDragging(b) ? 2 : 0,
           color: '#12161F'
         })
-        .onClick((): void => {
-          this.disarm();
-          this.editingBlock = b;
-        })
+        .onClick((): void => this.onBlockTap(b))
+        .gesture(
+          PinchGesture({ fingers: 2 })
+            .onActionStart((): void => this.beginPinch(b))
+            .onActionUpdate((event: GestureEvent): void => this.updatePinch(b, event))
+            .onActionEnd((): void => this.endPinch(b))
+        )
       }
 
-      // 底边把手：按住上下拖 = 改时长。
-      // ★ 只有块够高才画它：13vp 的块再塞 12vp 的把手，会把正文挤出去。
-      //   紧凑块的改时长走点开面板（面板里有 -15/+15 分钟那些按钮）。
-      if (this.blockTimedH(b) >= compactThreshold()) {
-        Row() {
-          Text('⋯')
-            .fontSize(LAYOUT.chip)
-            .fontColor('#12161F')
-        }
-        .width('100%')
-        .height(12)
-        .justifyContent(FlexAlign.Center)
-        .backgroundColor('#00000018')
-        .borderRadius({ bottomLeft: 6, bottomRight: 6 })
-        // 用 onTouch 而不是手势：挂 PanGesture 会和父级 Scroll 抢手势，
-        // 抢到手后没武装又什么都不做 → 从把手/块上起手就滚不动（用户实测报过）。
-        .parallelGesture(
-          LongPressGesture({ repeat: false, duration: 400, fingers: 1 })
-            .onAction((): void => this.armResize(b))
-        )
-        .onTouch((event: TouchEvent): void => {
-          if (event.type === TouchType.Down) {
-            this.onHandleTouchDown(b, event);
-          } else if (event.type === TouchType.Move) {
-            this.onHandleTouchMove(b, event);
-          } else if (event.type === TouchType.Up) {
-            this.onHandleTouchUp(b);
-          } else {
-            this.onHandleTouchCancel();
-          }
-        })
-      }
+      // 底边「⋯」把手已经按用户要求删除（改时长交给双指缩放和编辑窗里的数值输入）。
+      // 顺带消掉了把手与块手势互抢导致的"一次长按振两下、同时进入移动和改时长"的 bug。
     }
-    .width('100%')
+    .width(CONTENT_W)
     .height(this.blockH(b))
-    .position({ x: 46, y: this.blockY(b) })
-    .zIndex(this.dragBlockId === b.id || this.resizeBlockId === b.id ? 10 : 1)
-    // 同上：用 onTouch，**不注册任何手势**，所以完全不和父级 Scroll 竞争。
-    // 手指落在块上立刻上划 → 位移超容差 → 判定为滑动 → Scroll 正常滚动。
-    // 按住不动 400ms → 就地武装 → 之后上下拖才是移动这个块。
-    // 长按武装：用 `parallelGesture` 而不是 `gesture`。
-    // 关键区别：它**不参与父级 Scroll 的手势竞争** ——
-    // 用户想滚动时 Scroll 照常接管（长按被系统 Cancel，不会白振），
-    // 用户按住不动时它触发并把块武装成"可拖动"。
+    .position({ x: AXIS_W, y: this.blockY(b) })
+    .zIndex(this.isDragging(b) ? 10 : (this.isSelected(b) ? 5 : 1))
+    // 长按：**只有已选中的块**才进入拖拽（用户明确要求的两步模型）。
+    // 没选中的块长按不响应 —— 这样"想滚动时间轴"的人永远不会误拖色块。
+    // ★ 用 `parallelGesture` 而不是 `gesture`：它不参与父级 Scroll 的手势竞争 ——
+    //   用户想滚动时 Scroll 照常接管（长按被系统 Cancel，不会白振）。
     .parallelGesture(
       LongPressGesture({ repeat: false, duration: 400, fingers: 1 })
-        .onAction((): void => this.armMove(b))
+        .onAction((): void => this.onBlockLongPress(b))
     )
-    // onTouch 只负责"已武装之后的位移"。它不注册手势，所以不抢占 Scroll。
+    // onTouch 只负责"进入拖拽之后的位移"。它不注册手势，所以不抢占 Scroll。
     .onTouch((event: TouchEvent): void => {
       if (event.type === TouchType.Down) {
         this.onBlockTouchDown(b, event);
@@ -1096,11 +1472,11 @@ export struct PlanDayView {
             .fontSize(LAYOUT.tray)
             .fontColor('#C0392B')
         }
-        .width('100%')
+        .width(CONTENT_W)
         .padding({ left: 6, top: 1, bottom: 1 })
         .backgroundColor('#FDECEA')
         .borderRadius(4)
-        .position({ x: 46, y: this.yOf(this.ddlMinute(t)) })
+        .position({ x: AXIS_W, y: this.yOf(this.ddlMinute(t)) })
       }, (t: Todo) => `ddl-${t.id}`)
     }
     .width('100%')
@@ -1167,6 +1543,18 @@ export struct PlanDayView {
                     .fontColor('#12161F')
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  // 课程属性：用户要求「待安排框里也要显示」
+                  if (t.courseId > 0) {
+                    Text(this.courseShort(t.courseId))
+                      .fontSize(LAYOUT.cardSub)
+                      .fontColor('#3C4657')
+                      .backgroundColor(this.colorOf(t.courseId))
+                      .borderRadius(4)
+                      .padding({ left: 4, right: 4, top: 1, bottom: 1 })
+                      .margin({ top: 2 })
+                      .maxLines(1)
+                      .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  }
                   Text(`预计 ${t.estimateMin} 分钟`)
                     .fontSize(LAYOUT.cardSub)
                     .fontColor('#7A8598')
@@ -1177,11 +1565,11 @@ export struct PlanDayView {
                 .draggable(true)
                 .onDragStart((event: DragEvent, extraParams: string): void => {
                   this.dragTodoId = t.id;
-                  this.hint = '拖到网格上松手放下';
+                  this.showHint('拖到网格上松手放下');
                 })
                 .onClick((): void => {
                   this.selectedTodoId = this.selectedTodoId === t.id ? 0 : t.id;
-                  this.hint = this.selectedTodoId > 0 ? '现在点网格空白处放下它' : '';
+                  this.showHint(this.selectedTodoId > 0 ? '现在点网格空白处放下它' : '');
                 })
 
                 Text('⚡ 找空档')
@@ -1232,7 +1620,7 @@ export struct PlanDayView {
                 .draggable(true)
                 .onDragStart((event: DragEvent, extraParams: string): void => {
                   this.dragLessonId = l.id;
-                  this.hint = '拖到网格上松手放下这一讲';
+                  this.showHint('拖到网格上松手放下这一讲');
                 })
 
                 Text('⚡ 找空档')
@@ -1262,27 +1650,64 @@ export struct PlanDayView {
   @Builder
   BlockEditor(b: PlanBlock) {
     Column() {
+      // ⚠️ 编辑窗内容长（课程/日期/开始/时长/截止/其他块/三个按钮），
+      // 在真机上实测会超出屏幕，底部的「完成」被裁到 TabBar 底下点不到。
+      // 所以套一层 Scroll 并限制最大高度：内容短时仍然居中，长时可滚。
+      Scroll() {
       Column() {
         Text(this.blockTitle(b))
           .fontSize(LAYOUT.chip)
           .fontWeight(FontWeight.Medium)
           .fontColor('#12161F')
-        Text(`${this.date} ${minToHHmm(b.startMin)} - ${minToHHmm(b.endMin)}（${b.endMin - b.startMin} 分钟）`)
+        // 课程属性（只读）：用户要求计划页把待办的课程显示出来
+        if (this.editorCourseText(b).length > 0) {
+          Text(this.editorCourseText(b))
+            .fontSize(LAYOUT.tray)
+            .fontColor('#3C4657')
+            .backgroundColor(this.colorOf(this.blockCourseId(b)))
+            .borderRadius(5)
+            .padding({ left: 6, right: 6, top: 2, bottom: 2 })
+            .margin({ top: 6 })
+        }
+        Text(`${b.date} ${minToHHmm(b.startMin)} - ${minToHHmm(b.endMin)}（${b.endMin - b.startMin} 分钟）`)
           .fontSize(LAYOUT.tray)
           .fontColor('#7A8598')
           .margin({ top: 6 })
 
-        Text('调整开始时间')
+        // 日期 ‹ ›：跨天挪块走这里，不靠拖拽（用户选的方案）
+        Row() {
+          Text('日期')
+            .fontSize(LAYOUT.tray)
+            .fontColor('#8A94A6')
+            .layoutWeight(1)
+          Text('‹')
+            .fontSize(20)
+            .fontColor('#2E6BE6')
+            .padding({ left: 12, right: 12 })
+            .onClick((): void => this.shiftBlockDate(b, -1))
+          Text(b.date)
+            .fontSize(LAYOUT.tray)
+            .fontColor('#12161F')
+          Text('›')
+            .fontSize(20)
+            .fontColor('#2E6BE6')
+            .padding({ left: 12, right: 12 })
+            .onClick((): void => this.shiftBlockDate(b, 1))
+        }
+        .width('100%')
+        .margin({ top: 10 })
+
+        Text('开始时间（HH:MM）')
           .fontSize(LAYOUT.tray)
           .fontColor('#8A94A6')
-          .margin({ top: 14, bottom: 6 })
+          .margin({ top: 12, bottom: 6 })
         Flex({ wrap: FlexWrap.Wrap }) {
           ChipButton({
             text: '-30 分',
             selected: false,
             fontSize: LAYOUT.title,
             onTap: (): void => {
-            this.doAdjustLocal(b, -30, -30);
+            this.adjustEditorStart(b, -30);
           }
           })
           ChipButton({
@@ -1290,7 +1715,7 @@ export struct PlanDayView {
             selected: false,
             fontSize: LAYOUT.title,
             onTap: (): void => {
-            this.doAdjustLocal(b, -15, -15);
+            this.adjustEditorStart(b, -15);
           }
           })
           ChipButton({
@@ -1298,7 +1723,7 @@ export struct PlanDayView {
             selected: false,
             fontSize: LAYOUT.title,
             onTap: (): void => {
-            this.doAdjustLocal(b, 15, 15);
+            this.adjustEditorStart(b, 15);
           }
           })
           ChipButton({
@@ -1306,13 +1731,21 @@ export struct PlanDayView {
             selected: false,
             fontSize: LAYOUT.title,
             onTap: (): void => {
-            this.doAdjustLocal(b, 30, 30);
+            this.adjustEditorStart(b, 30);
           }
           })
         }
         .width('100%')
 
-        Text('调整时长')
+        TextInput({ text: this.editorStartText, placeholder: '14:30' })
+          .onChange((v: string): void => {
+            this.editorStartText = v;
+          })
+          .onSubmit((): void => this.commitEditorStart())
+          .onBlur((): void => this.commitEditorStart())
+          .margin({ top: 6 })
+
+        Text('时长（分钟）')
           .fontSize(LAYOUT.tray)
           .fontColor('#8A94A6')
           .margin({ top: 8, bottom: 6 })
@@ -1322,7 +1755,7 @@ export struct PlanDayView {
             selected: false,
             fontSize: LAYOUT.title,
             onTap: (): void => {
-            this.doAdjustLocal(b, 0, -15);
+            this.adjustEditorDuration(b, -15);
           }
           })
           ChipButton({
@@ -1330,7 +1763,7 @@ export struct PlanDayView {
             selected: false,
             fontSize: LAYOUT.title,
             onTap: (): void => {
-            this.doAdjustLocal(b, 0, 15);
+            this.adjustEditorDuration(b, 15);
           }
           })
           ChipButton({
@@ -1338,11 +1771,81 @@ export struct PlanDayView {
             selected: false,
             fontSize: LAYOUT.title,
             onTap: (): void => {
-            this.doAdjustLocal(b, 0, 30);
+            this.adjustEditorDuration(b, 30);
           }
           })
         }
         .width('100%')
+
+        TextInput({ text: this.editorDurationText, placeholder: '60' })
+          .type(InputType.Number)
+          .onChange((v: string): void => {
+            this.editorDurationText = v;
+          })
+          .onSubmit((): void => this.commitEditorDuration())
+          .onBlur((): void => this.commitEditorDuration())
+          .margin({ top: 6 })
+
+        if (this.editorError.length > 0) {
+          Text(this.editorError)
+            .fontSize(LAYOUT.cardSub)
+            .fontColor('#C0392B')
+            .width('100%')
+            .margin({ top: 6 })
+        }
+
+        if (b.todoId > 0) {
+          Text('截止时间')
+            .fontSize(LAYOUT.tray)
+            .fontColor('#8A94A6')
+            .margin({ top: 12, bottom: 6 })
+          Flex({ wrap: FlexWrap.Wrap }) {
+            ChipButton({
+              text: '今天 23:59',
+              selected: false,
+              fontSize: LAYOUT.title,
+              onTap: (): void => this.setEditorDdl(`${formatDate(today())} 23:59`)
+            })
+            ChipButton({
+              text: '明天 23:59',
+              selected: false,
+              fontSize: LAYOUT.title,
+              onTap: (): void => this.setEditorDdl(`${formatDate(addDays(today(), 1))} 23:59`)
+            })
+            ChipButton({
+              text: '3 天后',
+              selected: false,
+              fontSize: LAYOUT.title,
+              onTap: (): void => this.setEditorDdl(`${formatDate(addDays(today(), 3))} 23:59`)
+            })
+            ChipButton({
+              text: '无截止',
+              selected: false,
+              fontSize: LAYOUT.title,
+              onTap: (): void => this.setEditorDdl('')
+            })
+          }
+          .width('100%')
+
+          Text(this.editorDdlText(b))
+            .fontSize(LAYOUT.cardSub)
+            .fontColor('#7A8598')
+            .margin({ top: 4 })
+
+          if (this.editorOtherBlocks().length > 0) {
+            Text('这个待办还排在别的时段')
+              .fontSize(LAYOUT.tray)
+              .fontColor('#8A94A6')
+              .margin({ top: 12, bottom: 6 })
+            ForEach(this.editorOtherBlocks(), (o: PlanBlock) => {
+              Text(`${o.date} ${minToHHmm(o.startMin)}-${minToHHmm(o.endMin)}${o.done ? ' · 已完成' : ''}`)
+                .fontSize(LAYOUT.cardSub)
+                .fontColor('#4A5568')
+                .width('100%')
+                .padding({ top: 2, bottom: 2 })
+            }, (o: PlanBlock) => `eo-${o.id}-${o.done}`)
+          }
+        }
 
         Row() {
           Button(b.done ? '取消完成' : '标记完成')
@@ -1350,7 +1853,7 @@ export struct PlanDayView {
             .fontColor(b.done ? '#4A5568' : '#FFFFFF')
             .layoutWeight(1)
             .onClick((): void => {
-              this.editingBlock = undefined;
+              this.closeEditor();
               this.toggleBlockDone(b);
             })
           Button('移除此块')
@@ -1363,19 +1866,59 @@ export struct PlanDayView {
         .width('100%')
         .margin({ top: 18 })
 
+        // 删除整个待办（连它的所有块一起删）—— 不可撤销，所以二次确认。
+        // 自动生成（模板）的待办还要进黑名单，否则下次下课又会生成回来。
+        if (b.todoId > 0) {
+          if (this.editorConfirmDeleteTodo) {
+            Row() {
+              Text('确定删除整个待办？它在别的日期的块也会一起没。')
+                .fontSize(LAYOUT.cardSub)
+                .fontColor('#C0392B')
+                .layoutWeight(1)
+              Text('取消')
+                .fontSize(LAYOUT.tray)
+                .fontColor('#5A6478')
+                .padding({ left: 10, right: 10 })
+                .onClick((): void => {
+                  this.editorConfirmDeleteTodo = false;
+                })
+              Text('删除待办')
+                .fontSize(LAYOUT.tray)
+                .fontColor('#FFFFFF')
+                .backgroundColor('#D64545')
+                .borderRadius(8)
+                .padding({ left: 10, right: 10, top: 4, bottom: 4 })
+                .onClick((): void => this.removeTodoFromEditor(b))
+            }
+            .width('100%')
+            .margin({ top: 12 })
+          } else {
+            Button('删除这个待办')
+              .backgroundColor('#FFF4F4')
+              .fontColor('#C0392B')
+              .width('100%')
+              .margin({ top: 10 })
+              .onClick((): void => {
+                this.editorConfirmDeleteTodo = true;
+              })
+          }
+        }
+
         Button('完成')
           .backgroundColor('#EEF1F6')
           .fontColor('#4A5568')
           .width('100%')
           .margin({ top: 10 })
-          .onClick((): void => {
-            this.editingBlock = undefined;
-          })
+          .onClick((): void => this.closeEditor())
       }
       .width('100%')
       .padding(18)
       .backgroundColor('#FFFFFF')
       .borderRadius(14)
+      }
+      .constraintSize({ maxHeight: '88%' })
+      .scrollBar(BarState.Off)
+      .align(Alignment.TopStart)
     }
     .width('100%')
     .height('100%')
@@ -1383,9 +1926,13 @@ export struct PlanDayView {
     .justifyContent(FlexAlign.Center)
   }
 
-  private doAdjustLocal(b: PlanBlock, deltaStart: number, deltaEnd: number): void {
-    this.adjustBlock(b, deltaStart, deltaEnd);
-    this.editingBlock = b;
+  /** 编辑窗里的截止时间显示 */
+  private editorDdlText(b: PlanBlock): string {
+    const t: Todo | undefined = this.todoOf(b.todoId);
+    if (t === undefined || t.ddl.length === 0) {
+      return '当前：无截止';
+    }
+    return `当前：${t.ddl}`;
   }
 
   build() {
@@ -1423,15 +1970,6 @@ export struct PlanDayView {
         .padding({ left: 8, right: 12, top: 10, bottom: 8 })
         .backgroundColor('#FFFFFF')
 
-        if (this.hint.length > 0) {
-          Text(this.hint)
-            .fontSize(LAYOUT.cardSub)
-            .fontColor('#2E6BE6')
-            .width('100%')
-            .padding({ left: 16, right: 16, top: 6, bottom: 6 })
-            .backgroundColor('#EAF1FF')
-        }
-
         // 时间网格
         Scroll(this.gridScroller) {
           Stack({ alignContent: Alignment.TopStart }) {
@@ -1439,6 +1977,10 @@ export struct PlanDayView {
             ForEach(this.sessions, (s: CourseSession) => {
               this.ClassBlock(s)
             }, (s: CourseSession) => `cls-${s.course.id}-${s.startSection}`)
+            // 被拖走的块留在原位的虚线空位：让用户看清"这一块是从哪儿抽出来的"
+            if (this.dragBlockId > 0) {
+              this.DragGhost()
+            }
             ForEach(this.blocks, (b: PlanBlock) => {
               this.PlanBlockView(b)
             }, (b: PlanBlock) => `blk-${b.id}-${b.startMin}-${b.endMin}-${b.done}`)
@@ -1479,14 +2021,48 @@ export struct PlanDayView {
       .width('100%')
       .height('100%')
 
+      // 瞬时提示：悬浮在网格上方的深色小胶囊，**完全不参与布局**，
+      // 所以它出现/消失不会让时间网格上下跳动（这正是原来那条蓝色横幅的隐藏 bug）。
+      if (this.hint.length > 0) {
+        Column() {
+          Text(this.hint)
+            .fontSize(LAYOUT.cardSub)
+            .fontColor('#FFFFFF')
+            .maxLines(2)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+        }
+        .padding({ left: 14, right: 14, top: 7, bottom: 7 })
+        .backgroundColor('rgba(12,18,28,0.86)')
+        .borderRadius(16)
+        .margin({ left: 24, right: 24 })
+        // 只显示、绝不吞触摸事件，否则会挡住下面的滑动与点击
+        .hitTestBehavior(HitTestMode.None)
+        .position({ x: 24, y: 62 })
+      }
+
+      // 双指缩放时屏幕正中的深色 ±NN min 提示。
+      // hitTestBehavior(None) 很关键：它只是显示，绝不能把手指的触摸事件吃掉，
+      // 否则提示一出现缩放就断了。
+      if (this.pinchLabel.length > 0) {
+        Column() {
+          Text(this.pinchLabel)
+            .fontSize(30)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#FFFFFF')
+        }
+        .padding({ left: 24, right: 24, top: 14, bottom: 14 })
+        .backgroundColor('rgba(12,18,28,0.88)')
+        .borderRadius(16)
+        .hitTestBehavior(HitTestMode.None)
+      }
+
+      // 编辑窗遮罩：点窗外的深色区域 = 不保存直接退出（用户要求的行为）
       if (this.editingBlock !== undefined) {
         Column()
           .width('100%')
           .height('100%')
           .backgroundColor('rgba(12,18,28,0.45)')
-          .onClick((): void => {
-            this.editingBlock = undefined;
-          })
+          .onClick((): void => this.closeEditor())
         this.BlockEditor(this.editingBlock)
       }
     }

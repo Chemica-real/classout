@@ -14,9 +14,10 @@ import { maskAll, maskFromText, maskToText, maskHas } from './WeekMask';
 import { countdownText, minToHHmm, parseDate } from './DateUtil';
 import { computeDdl, renderTitle } from './TodoGenerator';
 import { TimeAxis, DEFAULT_WINDOW, WINDOW_MAX_END, allBlocksDone, dragOffsetWithScroll,
-  dropRange, edgeScrollDirection, findFreeSlot, moveRange, normalizeDuration, normalizeWindow,
+  dropRange, edgeScrollDepth, edgeScrollDirection, edgeScrollStep, findFreeSlot, moveRange,
+  normalizeDuration, normalizeWindow,
   overlaps, resizeRange,
-  selectPoolTodos, snap, sortPoolTodos, windowForContent } from './PlanMath';
+  selectPoolTodos, snap, sortBlocksByTime, sortPoolTodos, windowForContent } from './PlanMath';
 
 /**
  * 断言用的固定时间轴：06:00–24:00。
@@ -30,6 +31,9 @@ const DAY_END_MIN: number = AX.endMin;
 import { buildBriefing } from './Briefing';
 import { BackupBundle, backupSummary, countBackup, emptyBundle, parseBackup,
   serializeBackup } from './Backup';
+import { findRuleConflicts, isStepMultiple, migrateEstimate, normalizeEstimate, pinchDeltaLabel,
+  pinchEnd, resizeEndTo, spanOfRule, totalBlockMinutes, validateEstimate, validateRestWindow,
+  validateSectionTime, validateSectionTimes, validateSessionRule } from './Validate';
 
 let pass = 0;
 let fail = 0;
@@ -652,52 +656,70 @@ check('没长按过 → 不给拖', `${canBeginMove(0, 7)}`, 'false');
 check('长按了另一个块 → 也不给拖', `${canBeginMove(3, 7)}`, 'false');
 check('长按了这个块 → 给拖', `${canBeginMove(7, 7)}`, 'true');
 
-// ---------- 拖动位移的滚动补偿（回归自"块比屏幕走得快"）----------
+// ---------- 拖动位移的滚动补偿 ----------
 // 场景：用户长按块后拖动，同时网格因边缘自动滚动而滚动。
-// 块要钉在手指下，块相对网格的位移必须是「手指位移 - 网格滚动量」。
+//
+// 推导（块是网格内容里的绝对定位元素）：
+//   块在窗口里的位置 = (视口顶边 − 滚动量) + (原 y + dragOffsetY)
+//   要钉在手指下（= 按下点 + 手指位移），于是
+//       dragOffsetY = 手指位移 ＋ 滚动量
+//
+// ★★ 这里曾经写成「手指位移 − 滚动量」，符号是反的，正是用户最后报的
+//    「拖到屏幕上下边缘时待办不再跟手跑」。
+//    旧断言没抓到，是因为它们把同一套错误模型又写了一遍
+//    （"块在窗口中的位置 = 位移 ＋ 滚动量"）——
+//    **把实现重述一遍的断言，发现不了建模错误。**
+//    所以下面除了数值，还专门断言"补偿方向"和"少补/多补都会漂"。
 console.log('【拖动位移：滚动补偿】');
+
+// 块在窗口中的位置（相对按下点）= 位移 − 滚动量（内容被滚走多少，屏幕上就少多少）
+function blockInWindow(touchDelta: number, scroll: number): number {
+  return dragOffsetWithScroll(touchDelta, scroll) - scroll;
+}
 
 check('网格没滚 → 位移就等于手指位移',
   `${dragOffsetWithScroll(100, 0)}`, '100');
-check('网格向下滚 50、手指不动 → 块要向上挪 50 才留在原位',
-  `${dragOffsetWithScroll(0, 50)}`, '-50');
-check('网格向上滚 50、手指不动 → 块向下挪 50',
-  `${dragOffsetWithScroll(0, -50)}`, '50');
-// ★ 这条是那个 bug 的回归断言：
-//   自动滚动每滚 N，块只应补偿 N 一次。补偿两次就会变成 -2N，块比屏幕多走 N。
-check('补偿只做一次（做两次会变成 -2N，块就比屏幕快了）',
-  `${dragOffsetWithScroll(0, 50)}`, '-50');
-check('手指下移 200、同时网格下滚 50 → 净位移 150',
-  `${dragOffsetWithScroll(200, 50)}`, '150');
-check('手指上移 200、同时网格上滚 50 → 净位移 -150',
-  `${dragOffsetWithScroll(-200, -50)}`, '-150');
-// ★ 用户实测报的那个 bug：手指停住、网格还在自动滚。
-//   旧实现只在 Move 里重算位移，而手指停住就没有 Move 事件 →
-//   位移停留在旧值、块跟着网格漂走，松手时还把这个漂掉的值落库（时间跳到 2.4h 之前）。
-//   这里逐帧模拟"手指不动 + 网格每帧滚 16"，验证块在窗口中的位置全程不变。
+check('网格向下滚 50、手指不动 → 块要往下推 50 才能留在原位（补的是 +，不是 −）',
+  `${dragOffsetWithScroll(0, 50)}`, '50');
+check('网格向上滚 50、手指不动 → 块往上收 50',
+  `${dragOffsetWithScroll(0, -50)}`, '-50');
+check('手指下移 200、同时网格下滚 50 → 位移 250',
+  `${dragOffsetWithScroll(200, 50)}`, '250');
+check('手指上移 200、同时网格上滚 50 → 位移 -250',
+  `${dragOffsetWithScroll(-200, -50)}`, '-250');
+
+// ★ 用户实测报的 bug：手指停住、网格还在自动滚。
+//   逐帧模拟"手指不动 + 网格每帧滚 16"（方向取上、下两种），
+//   验证块在窗口中的位置全程不变、且始终等于手指位移。
 {
+  let upPinned: boolean = true;
+  let downPinned: boolean = true;
   const touchDelta: number = -194.791667;   // 手指按住不动（日志里的真实值）
-  const scrollBase: number = 320;
-  let allPinned: boolean = true;
-  for (let s2 = scrollBase; s2 >= 176; s2 -= 16) {
-    const offset: number = dragOffsetWithScroll(touchDelta, s2 - scrollBase);
-    const blockInWindow: number = offset + (s2 - scrollBase);
-    if (blockInWindow !== touchDelta) {
-      allPinned = false;
+  for (let s2 = 320; s2 >= 176; s2 -= 16) {      // 网格往上滚（露出更早的时间）
+    if (Math.abs(blockInWindow(touchDelta, s2 - 320) - touchDelta) > 1e-9) {
+      upPinned = false;
     }
   }
-  check('手指停住、网格从 320 滚到 176（每帧 16）→ 块全程钉在手指处',
-    `${allPinned}`, 'true');
-  check('   └ 滚到 176 时算出的位移（应把滚动量补回来）',
-    `${dragOffsetWithScroll(touchDelta, 176 - scrollBase)}`, `${touchDelta + (scrollBase - 176)}`);
+  for (let s2 = 0; s2 <= 144; s2 += 16) {        // 网格往下滚（露出更晚的时间）
+    if (Math.abs(blockInWindow(touchDelta, s2) - touchDelta) > 1e-9) {
+      downPinned = false;
+    }
+  }
+  check('手指停住、网格往上滚 144（每帧 16）→ 块全程钉在手指处', `${upPinned}`, 'true');
+  check('手指停住、网格往下滚 144（每帧 16）→ 块全程钉在手指处', `${downPinned}`, 'true');
 }
 
-// 不变式：无论网格怎么滚，"块在窗口中的位置"必须只由手指决定
+// 不变式：无论网格怎么滚，"块在窗口中的位置"必须只由手指决定。
 for (const scroll of [0, 30, -30, 90, -90]) {
   const touch: number = 120;
-  const blockInWindow: number = dragOffsetWithScroll(touch, scroll) + scroll;
-  check(`网格滚 ${scroll} 时，块在窗口中的位置仍等于手指位移 ${touch}`,
-    `${blockInWindow}`, `${touch}`);
+  check(`网格滚 ${scroll} → 块在窗口中的位置仍等于手指位移 ${touch}`,
+    `${blockInWindow(touch, scroll)}`, `${touch}`);
+  // ★ 这一条专门钉"符号写反"这个 bug：把减法写回加法的实现，
+  //   在同样的滚动量下块会漂 2×滚动量。方向对不上就报错。
+  const wrongOffset: number = dragOffsetWithScroll(touch, -scroll);   // 模拟符号反了的实现
+  const drift: number = (wrongOffset - scroll) - (blockInWindow(touch, scroll));
+  check(`  └ 网格滚 ${scroll}：符号写反会漂 2 倍滚动量（漂移量绝对值）`,
+    `${Math.abs(drift)}`, `${2 * Math.abs(scroll)}`);
 }
 
 // ---------- 边缘自动滚动的触发判定 ----------
@@ -721,6 +743,216 @@ check('视口比两个触发区还矮时取更近的一边（靠上→上滚）'
   `${edgeScrollDirection(405, 400, 500, ZONE)}`, '-1');
 check('视口比两个触发区还矮时取更近的一边（靠下→下滚）',
   `${edgeScrollDirection(495, 400, 500, ZONE)}`, '1');
+
+// ---------- 边缘自动滚动：深度与逐帧步长 ----------
+// 视口 400..1400，触发区 60。深度 0 = 刚跨进触发边界，60 = 贴到/越过屏幕边。
+console.log('【边缘自动滚动：深度与逐帧步长】');
+
+check('深度：中间区域 → 0', `${edgeScrollDepth(900, VT, VB, ZONE)}`, '0');
+check('深度：刚进顶部区（距上边 59）→ 1', `${edgeScrollDepth(459, VT, VB, ZONE)}`, '1');
+check('深度：顶部区半深（距上边 30）→ 30', `${edgeScrollDepth(430, VT, VB, ZONE)}`, '30');
+check('深度：正好在上边缘 → 60', `${edgeScrollDepth(400, VT, VB, ZONE)}`, '60');
+check('深度：越过上边缘 → 夹在 60', `${edgeScrollDepth(300, VT, VB, ZONE)}`, '60');
+check('深度：刚进底部区（距下边 59）→ 1', `${edgeScrollDepth(1341, VT, VB, ZONE)}`, '1');
+check('深度：底部区半深（距下边 30）→ 30', `${edgeScrollDepth(1370, VT, VB, ZONE)}`, '30');
+check('深度：正好在下边缘 → 60', `${edgeScrollDepth(1400, VT, VB, ZONE)}`, '60');
+check('深度：越过下边缘 → 夹在 60', `${edgeScrollDepth(1500, VT, VB, ZONE)}`, '60');
+check('深度：视口高度为 0 → 0', `${edgeScrollDepth(900, 400, 400, ZONE)}`, '0');
+
+check('步长：深度 0 也至少走 1vp（否则"定时器在跑但画面不动"）',
+  `${edgeScrollStep(0, ZONE, 6)}`, '1');
+check('步长：刚进区（深度 1）→ 1vp，几乎不动', `${edgeScrollStep(1, ZONE, 6)}`, '1');
+check('步长：深度 10 → 1vp', `${edgeScrollStep(10, ZONE, 6)}`, '1');
+check('步长：深度 20 → 2vp', `${edgeScrollStep(20, ZONE, 6)}`, '2');
+check('步长：深度 30 → 3vp（线性加速的中點）', `${edgeScrollStep(30, ZONE, 6)}`, '3');
+check('步长：深度 60（贴边）→ 上限 6vp', `${edgeScrollStep(60, ZONE, 6)}`, '6');
+check('步长：深度超过触发区 → 仍夹在上限', `${edgeScrollStep(200, ZONE, 6)}`, '6');
+check('步长：触发区为 0 → 不滚', `${edgeScrollStep(30, 0, 6)}`, '0');
+check('步长：上限为 0 → 不滚', `${edgeScrollStep(30, ZONE, 0)}`, '0');
+check('步长：速度随深度单调不减（10 → 20 → 40 → 60）',
+  `${edgeScrollStep(10, ZONE, 6)}-${edgeScrollStep(20, ZONE, 6)}-${edgeScrollStep(40, ZONE, 6)}-${edgeScrollStep(60, ZONE, 6)}`,
+  '1-2-4-6');
+
+// ---------- 块的时间排序（编辑窗「其他块一览」用） ----------
+console.log('【块的时间排序】');
+
+const sbC: PlanBlock = { id: 3, todoId: 7, lessonId: 0, date: '2026-10-15',
+  startMin: 540, endMin: 600, done: false };
+const sbA: PlanBlock = { id: 1, todoId: 7, lessonId: 0, date: '2026-10-14',
+  startMin: 600, endMin: 660, done: false };
+const sbB: PlanBlock = { id: 2, todoId: 7, lessonId: 0, date: '2026-10-14',
+  startMin: 480, endMin: 540, done: false };
+check('排序：先按日期、再按开始时间',
+  `${sortBlocksByTime([sbC, sbA, sbB]).map((b: PlanBlock) => b.id).join(',')}`, '2,1,3');
+check('排序：不改原数组', `${[sbC, sbA, sbB].map((b: PlanBlock) => b.id).join(',')}`, '3,1,2');
+check('排序：同日期同开始时间按 id 稳定',
+  `${sortBlocksByTime([
+    { id: 9, todoId: 7, lessonId: 0, date: '2026-10-14', startMin: 600, endMin: 660, done: false },
+    { id: 4, todoId: 7, lessonId: 0, date: '2026-10-14', startMin: 600, endMin: 660, done: false }
+  ]).map((b: PlanBlock) => b.id).join(',')}`, '4,9');
+
+// ---------- 数据合法性：待办时长（15 分钟起、5 分钟分度） ----------
+// 规则由用户 2026-10-14 拍定：时长至少 15 分钟，且必须是 5 的倍数；
+// 旧数据里的非法值（20 以下的、非 5 倍数的）静默搬到这里定义的目标值。
+console.log('【数据合法性：待办时长】');
+
+check('5 的倍数判定：20', `${isStepMultiple(20, 5)}`, 'true');
+check('5 的倍数判定：23', `${isStepMultiple(23, 5)}`, 'false');
+check('0 是任何正数的倍数', `${isStepMultiple(0, 5)}`, 'true');
+check('step <= 0 一律不成立', `${isStepMultiple(20, 0)}`, 'false');
+
+check('归一化：20 本来就合法，原样保留', `${normalizeEstimate(20, false)}`, '20');
+check('归一化：23 → 25', `${normalizeEstimate(23, false)}`, '25');
+check('归一化：22 → 20', `${normalizeEstimate(22, false)}`, '20');
+check('归一化：18 → 20', `${normalizeEstimate(18, false)}`, '20');
+check('归一化：17 → 15', `${normalizeEstimate(17, false)}`, '15');
+check('归一化：12 → 夹到下限 15', `${normalizeEstimate(12, false)}`, '15');
+check('归一化：7 → 夹到下限 15', `${normalizeEstimate(7, false)}`, '15');
+check('归一化：0 → 视为没填，取默认 60', `${normalizeEstimate(0, false)}`, '60');
+check('归一化：NaN → 取默认 60', `${normalizeEstimate(Number.NaN, false)}`, '60');
+check('归一化：603 → 夹到上限 600', `${normalizeEstimate(603, false)}`, '600');
+check('归一化：598 → 600', `${normalizeEstimate(598, false)}`, '600');
+check('归一化：597 → 595', `${normalizeEstimate(597, false)}`, '595');
+check('归一化：15 是下限，保留', `${normalizeEstimate(15, false)}`, '15');
+check('归一化：600 是上限，保留', `${normalizeEstimate(600, false)}`, '600');
+check('归一化：考试类恒为 0（0 是唯一豁免）', `${normalizeEstimate(90, true)}`, '0');
+check('归一化：考试类 + NaN 也是 0', `${normalizeEstimate(Number.NaN, true)}`, '0');
+
+check('校验：15 合法', `${validateEstimate(15, false).ok}`, 'true');
+check('校验：600 合法', `${validateEstimate(600, false).ok}`, 'true');
+check('校验：20 合法（是 5 的倍数）', `${validateEstimate(20, false).ok}`, 'true');
+check('校验：14 不合法（低于下限）', `${validateEstimate(14, false).ok}`, 'false');
+check('校验：23 不合法（不是 5 的倍数）', `${validateEstimate(23, false).ok}`, 'false');
+check('校验：601 不合法（超过上限）', `${validateEstimate(601, false).ok}`, 'false');
+check('校验：0 不合法（非考试类）', `${validateEstimate(0, false).ok}`, 'false');
+check('校验提示：低于下限', `${validateEstimate(14, false).message}`, '时长至少 15 分钟');
+check('校验提示：超过上限', `${validateEstimate(601, false).message}`, '时长最多 600 分钟');
+check('校验提示：分度不对', `${validateEstimate(23, false).message}`, '时长必须是 5 分钟的整数倍');
+check('校验：考试类永远合法（0 分钟）', `${validateEstimate(0, true).ok}`, 'true');
+
+// 迁移与手动输入必须分开：600 是手动输入的上限，
+// 但「多天拆分合计」是推导值，超过 600 是合法的，启动迁移不能把它夹掉。
+check('迁移：不设 600 上限（5 天 × 2.5h = 750 原样保留）', `${migrateEstimate(750, false)}`, '750');
+check('迁移：超过上限也只对齐到 5 分钟', `${migrateEstimate(603, false)}`, '605');
+check('迁移：23 → 25', `${migrateEstimate(23, false)}`, '25');
+check('迁移：7 → 15', `${migrateEstimate(7, false)}`, '15');
+check('迁移：0 → 60', `${migrateEstimate(0, false)}`, '60');
+check('迁移：考试类恒为 0', `${migrateEstimate(750, true)}`, '0');
+check('对比：手动输入仍然夹到 600', `${normalizeEstimate(750, false)}`, '600');
+
+// ---------- 数据合法性：块时长与双指缩放 ----------
+// 时间窗 07:00–24:00（420..1440）。
+console.log('【数据合法性：块时长与双指缩放】');
+
+check('结束时间对齐到 5 分钟：15:03 → 15:05', `${resizeEndTo(780, 903, 1440)}`, '905');
+check('结束时间对齐到 5 分钟：15:02 → 15:00', `${resizeEndTo(780, 902, 1440)}`, '900');
+check('结束时间至少比开始晚 15 分钟', `${resizeEndTo(780, 785, 1440)}`, '795');
+check('结束时间不超过窗口末尾', `${resizeEndTo(780, 2000, 1440)}`, '1440');
+check('起点离末尾不足 15 分钟时窗口上限优先', `${resizeEndTo(1430, 1500, 1440)}`, '1440');
+
+check('双指放大 1.5 倍：12:00–13:00 → 13:30', `${pinchEnd(720, 780, 1.5, 1440)}`, '810');
+check('双指缩小到 0.5 倍：12:00–13:00 → 12:30', `${pinchEnd(720, 780, 0.5, 1440)}`, '750');
+check('缩得再小也不低于 15 分钟', `${pinchEnd(720, 780, 0.01, 1440)}`, '735');
+check('放得再大也不超过窗口末尾', `${pinchEnd(720, 780, 100, 1440)}`, '1440');
+check('倍率非法（0）时退回基准', `${pinchEnd(720, 780, 0, 1440)}`, '780');
+check('倍率非法（NaN）时退回基准', `${pinchEnd(720, 780, Number.NaN, 1440)}`, '780');
+check('缩放结果永远落在 5 分钟分度上（1.3 倍：60 → 78 → 80）',
+  `${pinchEnd(720, 780, 1.3, 1440)}`, '800');
+
+check('缩放提示：变长', `${pinchDeltaLabel(15)}`, '+15 min');
+check('缩放提示：变短', `${pinchDeltaLabel(-10)}`, '-10 min');
+check('缩放提示：没变', `${pinchDeltaLabel(0)}`, '±0 min');
+
+const pbA: PlanBlock = { id: 1, todoId: 7, lessonId: 0, date: '2026-10-14',
+  startMin: 600, endMin: 660, done: false };
+const pbB: PlanBlock = { id: 2, todoId: 7, lessonId: 0, date: '2026-10-15',
+  startMin: 600, endMin: 630, done: false };
+const pbC: PlanBlock = { id: 3, todoId: 9, lessonId: 0, date: '2026-10-15',
+  startMin: 600, endMin: 630, done: false };
+check('回写用合计：跨天拆成 60 + 30 → 90', `${totalBlockMinutes([pbA, pbB, pbC], 7)}`, '90');
+check('回写用合计：只算该待办自己的块', `${totalBlockMinutes([pbA, pbB, pbC], 9)}`, '30');
+check('回写用合计：一个块都没有 → -1（调用方据此不回写）',
+  `${totalBlockMinutes([pbC], 7)}`, '-1');
+
+// ---------- 数据合法性：作息、时段规则、休息时段 ----------
+console.log('【数据合法性：作息与时段规则】');
+
+check('节次：北大第 1 节合法', `${validateSectionTime(PKU_SECTION_TIMES[0]).ok}`, 'true');
+check('节次：结束等于开始 → 不合法',
+  `${validateSectionTime({ section: 1, startMin: 600, endMin: 600, flexible: false }).ok}`, 'false');
+check('节次：结束早于开始 → 不合法',
+  `${validateSectionTime({ section: 1, startMin: 600, endMin: 500, flexible: false }).ok}`, 'false');
+check('节次：越过 24:00 → 不合法',
+  `${validateSectionTime({ section: 1, startMin: 600, endMin: 1500, flexible: false }).ok}`, 'false');
+check('节次：编号 0 → 不合法',
+  `${validateSectionTime({ section: 0, startMin: 600, endMin: 660, flexible: false }).ok}`, 'false');
+check('节次表：北大 12 节合法', `${validateSectionTimes(PKU_SECTION_TIMES).ok}`, 'true');
+check('节次表：空表不合法', `${validateSectionTimes([]).ok}`, 'false');
+check('节次表：编号重复不合法',
+  `${validateSectionTimes([
+    { section: 1, startMin: 600, endMin: 660, flexible: false },
+    { section: 1, startMin: 700, endMin: 760, flexible: false }
+  ]).ok}`, 'false');
+
+const okRule: SessionRule = { id: 1, courseId: 1, weekday: 2, startSection: 1, endSection: 2,
+  weeksMask: '1111111111111111', location: '', isQuiz: false };
+check('时段规则：合法', `${validateSessionRule(okRule, PKU_SECTION_TIMES).ok}`, 'true');
+check('时段规则：起止时间由首末节次推出（第 1–2 节 = 08:00–09:50）',
+  `${spanOfRule(okRule, PKU_SECTION_TIMES).join('-')}`, '480-590');
+check('时段规则：开始晚于结束 → 不合法',
+  `${validateSessionRule({ ...okRule, startSection: 3, endSection: 2 }, PKU_SECTION_TIMES).ok}`,
+  'false');
+check('时段规则：星期 0 → 不合法',
+  `${validateSessionRule({ ...okRule, weekday: 0 }, PKU_SECTION_TIMES).ok}`, 'false');
+check('时段规则：星期 8 → 不合法',
+  `${validateSessionRule({ ...okRule, weekday: 8 }, PKU_SECTION_TIMES).ok}`, 'false');
+check('时段规则：引用了作息表里没有的第 13 节 → 不合法',
+  `${validateSessionRule({ ...okRule, endSection: 13 }, PKU_SECTION_TIMES).ok}`, 'false');
+check('时段规则提示：节次不存在（钉住具体是哪一条校验拦下的）',
+  `${validateSessionRule({ ...okRule, endSection: 13 }, PKU_SECTION_TIMES).message}`,
+  '作息表里没有第 13 节');
+check('时段规则：周次全是 0 → 不合法',
+  `${validateSessionRule({ ...okRule, weeksMask: '0000000000000000' }, PKU_SECTION_TIMES).ok}`,
+  'false');
+check('时段规则：周次是空串 → 不合法',
+  `${validateSessionRule({ ...okRule, weeksMask: '' }, PKU_SECTION_TIMES).ok}`, 'false');
+check('时段规则提示：开始晚于结束',
+  `${validateSessionRule({ ...okRule, startSection: 3, endSection: 2 }, PKU_SECTION_TIMES).message}`,
+  '开始节次不能晚于结束节次');
+
+const cfA: SessionRule = { id: 11, courseId: 1, weekday: 2, startSection: 1, endSection: 2,
+  weeksMask: '1000000000000000', location: '', isQuiz: false };
+const cfB: SessionRule = { id: 12, courseId: 2, weekday: 2, startSection: 2, endSection: 3,
+  weeksMask: '1000000000000000', location: '', isQuiz: false };
+const cfC: SessionRule = { id: 13, courseId: 3, weekday: 3, startSection: 1, endSection: 2,
+  weeksMask: '1000000000000000', location: '', isQuiz: false };
+const cfD: SessionRule = { id: 14, courseId: 4, weekday: 2, startSection: 1, endSection: 2,
+  weeksMask: '0100000000000000', location: '', isQuiz: false };
+check('冲突：同天同周次且时间重叠 → 报 1 处', `${findRuleConflicts([cfA, cfB], PKU_SECTION_TIMES).length}`, '1');
+check('冲突：区间取交集（第 2 节 09:00–09:50）',
+  `${findRuleConflicts([cfA, cfB], PKU_SECTION_TIMES)[0].overlapStart}-${findRuleConflicts([cfA, cfB], PKU_SECTION_TIMES)[0].overlapEnd}`,
+  '540-590');
+check('冲突：不同星期 → 不算冲突', `${findRuleConflicts([cfA, cfC], PKU_SECTION_TIMES).length}`, '0');
+check('冲突：周次不重叠 → 不算冲突', `${findRuleConflicts([cfA, cfD], PKU_SECTION_TIMES).length}`, '0');
+check('冲突：自己和自己不比', `${findRuleConflicts([cfA], PKU_SECTION_TIMES).length}`, '0');
+
+check('休息时段：12:00–13:00 合法',
+  `${validateRestWindow({ id: 0, weekday: 0, startMin: 720, endMin: 780, label: '午休' }).ok}`,
+  'true');
+check('休息时段：默认四条全合法',
+  `${DEFAULT_REST_WINDOWS.filter((w: RestWindow) => !validateRestWindow(w).ok).length}`, '0');
+check('休息时段：起止相同 → 不合法',
+  `${validateRestWindow({ id: 0, weekday: 0, startMin: 720, endMin: 720, label: '' }).ok}`,
+  'false');
+check('休息时段：结束早于开始 → 不合法',
+  `${validateRestWindow({ id: 0, weekday: 0, startMin: 780, endMin: 720, label: '' }).ok}`,
+  'false');
+check('休息时段：weekday 8 → 不合法',
+  `${validateRestWindow({ id: 0, weekday: 8, startMin: 720, endMin: 780, label: '' }).ok}`,
+  'false');
+check('休息时段提示：结束必须晚于开始',
+  `${validateRestWindow({ id: 0, weekday: 0, startMin: 780, endMin: 720, label: '' }).message}`,
+  '结束时间必须晚于开始时间');
 
 // ---------- 汇总 ----------
 console.log('');
