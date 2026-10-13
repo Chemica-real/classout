@@ -1,17 +1,16 @@
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { storedAbilityContext } from '../util/Ctx';
-import { Course, COURSE_COLORS, PKU_SECTION_TIMES, RestWindow, SectionTime, Semester,
+import { Course, COURSE_COLORS, PKU_SECTION_TIMES, SectionTime, Semester,
   SessionRule, TodoTemplate, VirtualLesson } from '../model/Types';
 import { TimetableRepo } from '../data/TimetableRepo';
 import { TodoRepo } from '../data/TodoRepo';
 import { Seeder } from '../data/Seeder';
 import { BackupRepo } from '../data/BackupRepo';
 import { BackupBundle, backupSummary, parseBackup } from '../domain/Backup';
-import { ReminderSettings, loadReminderSettings, saveReminderSettings } from '../domain/ReminderScheduler';
 import { maskAll, maskFromText, maskToText } from '../model/WeekMask';
 import { WEEKDAY_CN, hhmmToMin, minToHHmm } from '../util/DateUtil';
-import { validateRestWindow, validateSectionTimes, validateSessionRule, Validation } from '../domain/Validate';
+import { validateSectionTimes, validateSessionRule, Validation } from '../domain/Validate';
 import { ChipButton } from './ChipButton';
 
 const DOMAIN: number = 0x0000;
@@ -84,16 +83,10 @@ export struct CourseManager {
   @State rules: SessionRule[] = [];
   @State templates: TodoTemplate[] = [];
   @State editSections: SectionTime[] = [];
-  @State restWindows: RestWindow[] = [];
-  @State newRestLabel: string = '';
-  @State newRestStart: string = '12:00';
-  @State newRestEnd: string = '13:00';
-  @State newRestWeekday: number = 0;
   /** 当前编辑课程的课时数（虚拟课程用） */
   @State editLessonCount: number = 0;
   /** 本学期所有虚拟课程的课时 */
   @State allLessons: VirtualLesson[] = [];
-  @State remSettings: ReminderSettings = { briefEnabled: true, briefMin: 450, classLeadMin: 15 };
   @State diagText: string = '';
   @State backupNote: string = '';
   @State confirmRestore: boolean = false;
@@ -167,9 +160,7 @@ export struct CourseManager {
     this.templates = await TodoRepo.listTemplates(ctx, sid);
     this.semesters = await TimetableRepo.listSemesters(ctx);
     this.editSections = await TimetableRepo.listSectionTimes(ctx, sid);
-    this.restWindows = await TimetableRepo.listRestWindows(ctx);
     this.allLessons = await TodoRepo.listLessonsOfVirtualCourses(ctx, sid);
-    this.remSettings = await loadReminderSettings(ctx);
     this.loading = false;
   }
 
@@ -477,73 +468,6 @@ export struct CourseManager {
     return cur !== undefined && cur.id === s.id;
   }
 
-  // ---------------- 提醒设置 ----------------
-
-  private saveReminderSettings(): void {
-    this.doSaveReminderSettings().catch((e: Object): void => {
-      hilog.error(DOMAIN, TAG, 'save reminder settings failed: %{public}s', JSON.stringify(e));
-    });
-  }
-
-  private async doSaveReminderSettings(): Promise<void> {
-    const ctx: common.UIAbilityContext = this.context();
-    await saveReminderSettings(ctx, this.remSettings);
-    this.toast = '提醒设置已保存，下次启动 App 时生效';
-    this.mode = 'list';
-    await this.reload();
-  }
-
-  // ---------------- 休息时段 ----------------
-
-  private addRest(): void {
-    this.doAddRest().catch((e: Object): void => {
-      hilog.error(DOMAIN, TAG, 'add rest window failed: %{public}s', JSON.stringify(e));
-    });
-  }
-
-  private async doAddRest(): Promise<void> {
-    const ctx: common.UIAbilityContext = this.context();
-    if (this.newRestStart.length !== 5 || this.newRestEnd.length !== 5) {
-      this.toast = '时间格式应为 HH:mm，比如 12:00';
-      return;
-    }
-    const label: string = this.newRestLabel.trim().length > 0 ? this.newRestLabel.trim() : '休息';
-    const draft: RestWindow = {
-      id: 0,
-      weekday: this.newRestWeekday,
-      startMin: hhmmToMin(this.newRestStart),
-      endMin: hhmmToMin(this.newRestEnd),
-      label: label
-    };
-    const verdict: Validation = validateRestWindow(draft);
-    if (!verdict.ok) {
-      this.toast = verdict.message;
-      return;
-    }
-    await TimetableRepo.insertRestWindow(ctx, draft);
-    this.newRestLabel = '';
-    this.toast = '已添加不可排时段';
-    await this.reload();
-  }
-
-  private deleteRest(w: RestWindow): void {
-    this.doDeleteRest(w).catch((e: Object): void => {
-      hilog.error(DOMAIN, TAG, 'delete rest window failed: %{public}s', JSON.stringify(e));
-    });
-  }
-
-  private async doDeleteRest(w: RestWindow): Promise<void> {
-    const ctx: common.UIAbilityContext = this.context();
-    await TimetableRepo.deleteRestWindow(ctx, w.id);
-    this.pendingDeleteKey = '';
-    this.toast = '已删除该不可排时段';
-    await this.reload();
-  }
-
-  private restWeekdayText(w: RestWindow): string {
-    return w.weekday === 0 ? '每天' : `周${WEEKDAY_CN[w.weekday - 1]}`;
-  }
-
   // ---------------- 节次时间 ----------------
 
   /** 在末尾加一节（默认比上一节晚 70 分钟开始） */
@@ -797,46 +721,6 @@ export struct CourseManager {
           .margin({ bottom: 8 })
           .onClick((): void => {
             this.mode = 'sections';
-          })
-
-          Row() {
-            Text('休息时段（不可排）')
-              .fontSize(15)
-              .fontWeight(FontWeight.Medium)
-              .fontColor('#12161F')
-            Blank()
-            Text(`${this.restWindows.length} 条`)
-              .fontSize(12)
-              .fontColor('#8A94A6')
-          }
-          .width('100%')
-          .padding(12)
-          .backgroundColor('#FFFFFF')
-          .borderRadius(10)
-          .margin({ bottom: 8 })
-          .onClick((): void => {
-            this.mode = 'rest';
-          })
-
-          Row() {
-            Text('提醒设置')
-              .fontSize(15)
-              .fontWeight(FontWeight.Medium)
-              .fontColor('#12161F')
-            Blank()
-            Text(this.remSettings.briefEnabled
-              ? `简报 ${minToHHmm(this.remSettings.briefMin)} · 提前 ${this.remSettings.classLeadMin} 分钟`
-              : '简报已关')
-              .fontSize(12)
-              .fontColor('#8A94A6')
-          }
-          .width('100%')
-          .padding(12)
-          .backgroundColor('#FFFFFF')
-          .borderRadius(10)
-          .margin({ bottom: 8 })
-          .onClick((): void => {
-            this.mode = 'reminder';
           })
 
           Row() {
@@ -1626,236 +1510,6 @@ export struct CourseManager {
   }
 
   @Builder
-  ReminderView() {
-    Column() {
-      this.TopBar('提醒设置', '‹ 返回', (): void => {
-        this.mode = 'list';
-      })
-
-      Scroll() {
-        Column() {
-          Text('提醒走鸿蒙的「代理提醒」，App 没打开也会响。每次启动 App 时会把未来一段时间的提醒重排一遍（上限 64 条）。')
-            .fontSize(11)
-            .fontColor('#8A94A6')
-            .width('100%')
-            .margin({ bottom: 12 })
-
-          Row() {
-            Column() {
-              Text('每日简报')
-                .fontSize(14)
-                .fontColor('#12161F')
-              Text('每天一条：今天几节课 + 今天截止什么')
-                .fontSize(11)
-                .fontColor('#8A94A6')
-                .margin({ top: 2 })
-            }
-            .layoutWeight(1)
-            .alignItems(HorizontalAlign.Start)
-            Toggle({ type: ToggleType.Switch, isOn: this.remSettings.briefEnabled })
-              .onChange((on: boolean): void => {
-                this.remSettings.briefEnabled = on;
-              })
-          }
-          .width('100%')
-
-          if (this.remSettings.briefEnabled) {
-            Text('简报时间')
-              .fontSize(12)
-              .fontColor('#8A94A6')
-              .width('100%')
-              .margin({ top: 14, bottom: 6 })
-            Flex({ wrap: FlexWrap.Wrap }) {
-              ForEach([390, 420, 450, 480, 540, 720], (m: number) => {
-                ChipButton({
-                  text: minToHHmm(m),
-                  selected: this.remSettings.briefMin === m,
-                  onTap: (): void => {
-                  this.remSettings.briefMin = m;
-                }
-                })
-              }, (m: number) => `bt-${m}`)
-            }
-            .width('100%')
-          }
-
-          Text('上课提前多久提醒')
-            .fontSize(12)
-            .fontColor('#8A94A6')
-            .width('100%')
-            .margin({ top: 14, bottom: 6 })
-          Flex({ wrap: FlexWrap.Wrap }) {
-            ForEach([5, 10, 15, 20, 30, 45], (m: number) => {
-              ChipButton({
-                text: `${m} 分钟`,
-                selected: this.remSettings.classLeadMin === m,
-                onTap: (): void => {
-                this.remSettings.classLeadMin = m;
-              }
-              })
-            }, (m: number) => `cl-${m}`)
-          }
-          .width('100%')
-
-          Text('另外还会提醒：作业截止前一天 20:00、计划块到点。这几项暂时不支持单独关闭。')
-            .fontSize(11)
-            .fontColor('#98A2B3')
-            .width('100%')
-            .margin({ top: 16 })
-
-          Button('保存提醒设置')
-            .backgroundColor('#2E6BE6')
-            .fontColor('#FFFFFF')
-            .width('100%')
-            .margin({ top: 16 })
-            .onClick((): void => this.saveReminderSettings())
-        }
-        .width('100%')
-        .padding({ left: 16, right: 16, top: 8, bottom: 30 })
-        .alignItems(HorizontalAlign.Start)
-      }
-      .layoutWeight(1)
-      .scrollBar(BarState.Off)
-      .align(Alignment.TopStart)
-    }
-    .width('100%')
-    .height('100%')
-    .backgroundColor('#F5F6F8')
-  }
-
-  @Builder
-  RestView() {
-    Column() {
-      this.TopBar('休息时段（不可排）', '‹ 返回', (): void => {
-        this.mode = 'list';
-      })
-
-      Scroll() {
-        Column() {
-          Text('计划视图的「⚡ 找空档」会跳过这些时段，也不会把自习块排到上课时间里。')
-            .fontSize(11)
-            .fontColor('#8A94A6')
-            .width('100%')
-            .margin({ bottom: 10 })
-
-          if (this.restWindows.length === 0) {
-            Text('还没有设置。点下面加一条，比如午休 12:00–13:00。')
-              .fontSize(12)
-              .fontColor('#98A2B3')
-              .width('100%')
-              .margin({ bottom: 8 })
-          }
-
-          ForEach(this.restWindows, (w: RestWindow) => {
-            Column() {
-              Row() {
-                Text(w.label)
-                  .fontSize(13)
-                  .fontColor('#12161F')
-                  .width(72)
-                Text(this.restWeekdayText(w))
-                  .fontSize(12)
-                  .fontColor('#5A6478')
-                  .width(48)
-                Text(`${minToHHmm(w.startMin)} – ${minToHHmm(w.endMin)}`)
-                  .fontSize(12)
-                  .fontColor('#5A6478')
-                  .layoutWeight(1)
-                Text('删')
-                  .fontSize(12)
-                  .fontColor('#D64545')
-                  .padding({ left: 10, right: 10 })
-                  .onClick((): void => {
-                    this.pendingDeleteKey = this.deleteKey('rest', w.id);
-                  })
-              }
-              .width('100%')
-              .padding(10)
-              .backgroundColor('#FFFFFF')
-              .borderRadius(8)
-
-              if (this.pendingDeleteKey === this.deleteKey('rest', w.id)) {
-                this.DeleteConfirmRow(`确定删除「${w.label} ${this.restWeekdayText(w)}」？`,
-                  this.deleteKey('rest', w.id), (): void => this.deleteRest(w))
-              }
-            }
-            .width('100%')
-            .margin({ bottom: 6 })
-          }, (w: RestWindow) => `rest-${w.id}-${this.pendingDeleteKey === this.deleteKey('rest', w.id)}`)
-
-          Text('加一条')
-            .fontSize(14)
-            .fontWeight(FontWeight.Medium)
-            .fontColor('#12161F')
-            .margin({ top: 18, bottom: 6 })
-
-          this.FieldLabel('名称')
-          TextInput({ text: this.newRestLabel, placeholder: '午休' })
-            .onChange((v: string): void => {
-              this.newRestLabel = v;
-            })
-
-          this.FieldLabel('适用哪天')
-          Flex({ wrap: FlexWrap.Wrap }) {
-            ChipButton({
-              text: '每天',
-              selected: this.newRestWeekday === 0,
-              onTap: (): void => {
-              this.newRestWeekday = 0;
-            }
-            })
-            ForEach([1, 2, 3, 4, 5, 6, 7], (wd: number) => {
-              ChipButton({
-                text: `周${WEEKDAY_CN[wd - 1]}`,
-                selected: this.newRestWeekday === wd,
-                onTap: (): void => {
-                this.newRestWeekday = wd;
-              }
-              })
-            }, (wd: number) => `nrw-${wd}`)
-          }
-          .width('100%')
-
-          this.FieldLabel('开始 / 结束（HH:mm）')
-          Row() {
-            TextInput({ text: this.newRestStart, placeholder: '12:00' })
-              .layoutWeight(1)
-              .onChange((v: string): void => {
-                this.newRestStart = v;
-              })
-            Text('–')
-              .fontSize(14)
-              .fontColor('#8A94A6')
-              .margin({ left: 8, right: 8 })
-            TextInput({ text: this.newRestEnd, placeholder: '13:00' })
-              .layoutWeight(1)
-              .onChange((v: string): void => {
-                this.newRestEnd = v;
-              })
-          }
-          .width('100%')
-
-          Button('添加')
-            .backgroundColor('#2E6BE6')
-            .fontColor('#FFFFFF')
-            .width('100%')
-            .margin({ top: 14 })
-            .onClick((): void => this.addRest())
-        }
-        .width('100%')
-        .padding({ left: 16, right: 16, top: 8, bottom: 30 })
-        .alignItems(HorizontalAlign.Start)
-      }
-      .layoutWeight(1)
-      .scrollBar(BarState.Off)
-      .align(Alignment.TopStart)
-    }
-    .width('100%')
-    .height('100%')
-    .backgroundColor('#F5F6F8')
-  }
-
-  @Builder
   SectionsView() {
     Column() {
       this.TopBar('上课节次时间', '‹ 返回', (): void => {
@@ -2191,10 +1845,6 @@ export struct CourseManager {
         this.SemesterView()
       } else if (this.mode === 'sections') {
         this.SectionsView()
-      } else if (this.mode === 'rest') {
-        this.RestView()
-      } else if (this.mode === 'reminder') {
-        this.ReminderView()
       } else if (this.mode === 'backup') {
         this.BackupView()
       } else {

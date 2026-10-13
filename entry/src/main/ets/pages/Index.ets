@@ -13,6 +13,7 @@ import { formatDate, minToHHmm, today, WEEKDAY_CN, weekdayOf } from '../util/Dat
 import { TodoInbox } from '../view/TodoInbox';
 import { PlanDayView } from '../view/PlanDayView';
 import { CourseManager } from '../view/CourseManager';
+import { SettingsPage } from '../view/SettingsPage';
 import { ChipButton } from '../view/ChipButton';
 
 const DOMAIN: number = 0x0000;
@@ -605,6 +606,8 @@ struct Index {
       this.TabItem(0, '课表')
       this.TabItem(1, '待办')
       this.TabItem(2, '计划')
+      // 用户要求：设置单独一页，放在导航栏最后一条
+      this.TabItem(3, '设置')
     }
     .width('100%')
     .height(54)
@@ -956,7 +959,11 @@ struct Index {
           .height('100%')
           .justifyContent(FlexAlign.Center)
         } else {
-          this.Header()
+          // 设置页不显示课表那套头部（学期名 / 第几周 / ＋补课 / 管理课程 / 今天）——
+          // 那些是课表页的导航控件，摆在设置页上只会干扰
+          if (this.tab !== 3) {
+            this.Header()
+          }
           if (this.tab === 0) {
             this.WeekdayHeader()
             Scroll() {
@@ -973,10 +980,18 @@ struct Index {
             }
             .width('100%')
             .layoutWeight(1)
-          } else {
+          } else if (this.tab === 2) {
             // 同上：PlanDayView 根节点也是 height('100%')
             Column() {
               PlanDayView({ semesterId: this.semester.id })
+            }
+            .width('100%')
+            .layoutWeight(1)
+          } else {
+            // 设置页。⚠️ 原来是 else 兜底给 PlanDayView，加第 4 个标签后必须
+            // 把计划页改成显式 `tab === 2`，否则「设置」会显示成计划页。
+            Column() {
+              SettingsPage({ semesterId: this.semester.id })
             }
             .width('100%')
             .layoutWeight(1)

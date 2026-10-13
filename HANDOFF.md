@@ -10,7 +10,7 @@ ClassOUT 是一款**纯离线鸿蒙原生（ArkTS）「课表 + 待办 + 计划�
 已成功签名并**安装在用户的真机（华为 nova 15）上运行**，启动无崩溃、种子课表渲染正确、
 自动生成待办跑通、提醒已落入系统日历。
 
-当前健康度：**干净构建 `ERROR: 0`、警告 5 条（均为刻意保留）、离线断言 323 项全绿**。
+当前健康度：**干净构建 `ERROR: 0`、警告 6 条（均为刻意保留）、离线断言 332 项全绿**。
 已建 git 仓库（`ChemicaWorkspace/ClassOUT`，本地无远端），工作区干净。
 
 **2026-10-14 还做了计划页「三日视图」**（提交 `27cd7a8`，含横向跨天拖拽），
@@ -62,8 +62,11 @@ git log --oneline                 # 5 个 commit，工作区应干净
 ./build.sh clean && ./build.sh assembleHap
 ```
 
-预期：`ERROR: 0`，警告恰好 5 条（4 条是故意留的 `getContext` 废弃警告，1 条是 `No signingConfig`，
-**都别"顺手修掉"**，见 §6.3）。
+预期：`ERROR: 0`，警告恰好 **6** 条（**5** 条是故意留的 `getContext` 废弃警告 ——
+每个自己取 context 的组件一条：`TodoInbox` / `PlanDayView` / `CourseManager` /
+`SettingsPage` / `Index`；另 1 条是 `No signingConfig`）。**都别"顺手修掉"**，见 §6.3。
+> ⚠️ 加一个会自己取 context 的组件，这个数字就会 +1。改这里之前先确认是"又一个兜底路径"，
+> 而不是真的用了废弃 API 当主路径。
 
 > ⚠️ **签名需要口令**，它**不在仓库里**：在 `signing/local.env`（被 gitignore）。
 > 没有它 `sign-and-install.sh` 会明确报错。模板见 `signing/local.env.example`。
@@ -173,6 +176,7 @@ entry/src/main/ets/
 ├── domain/ReminderScheduler.ets 四类提醒的候选构建 + 代理提醒发布 + 预算控制
 ├── util/Haptics.ets             长按振动反馈（权限 VIBRATE，失败静默）
 ├── view/ChipButton.ets          ★ 可选中的胶囊（@Component + @Prop，见 §6.4）
+├── view/SettingsPage.ets        ★ 设置页（导航栏第 4 条；自带 state + 自己读写库，见 §14）
 ├── view/TodoInbox.ets           待确认收件箱 / 待办 / 考试 / 新建编辑
 ├── view/PlanDayView.ets         计划日视图（长按拖动、边缘自动滚动、找空档、完成联动）
 ├── view/CourseManager.ets       课程/时段/模板/学期/节次/休息时段/提醒设置/备份恢复
@@ -834,3 +838,52 @@ cp /tmp/pm.bak entry/src/main/ets/domain/PlanMath.ets
 | 「待安排」托盘还没做折叠（`PLAN_REDESIGN` §4） | 未做 |
 | 时间窗设置（`PLAN_REGRADE` §2） | 未做；`PlanMath` 里的 `TimeWindow` / `alignWindow` 仍是**没人调用的**死代码 |
 | UI 没有拆成 `@Component` 文件 | 见 `PLAN_REDESIGN` §9 第 1 条的说明（ArkTS 的 ForEach key 语义会把"改属性不刷新"请回来） |
+
+---
+
+## 14. 2026-10-14 设置页独立 + 导航栏第 4 条
+
+提交见 `git log`（「设置页独立」那一条）。
+
+### 14.1 做了什么
+
+- 导航栏从 3 条变 4 条：**课表 / 待办 / 计划 / 设置**。
+  ⚠️ 原来 `Index` 的标签分支是 `if 0 / else if 1 / else`（`else` 兜底给计划页），
+  加第 4 条时**必须**把计划页改成显式的 `else if (this.tab === 2)`，
+  否则「设置」会显示成计划页。
+- 新建 `view/SettingsPage.ets`，把两块**真正的设置**从「管理课程」搬了过来：
+  **提醒设置**、**不可排时段（休息时段）**，并**同时从 CourseManager 里删掉**
+  （`ReminderView` + `RestView` 两个 @Builder 共 ~7.2k 字符、两个入口 tile、
+  两个 `mode` 分支、两段 handler、对应 state 与 `reload()` 里的两行）。
+  同一个设置绝不能有两处入口。
+- 设置页**不显示课表那套头部**（学期名 / 第几周 / ＋补课 / 管理课程 / 今天）——
+  那些是课表页的导航控件。
+
+### 14.2 为什么设置页是"自带 state"的组件
+
+`SettingsPage` 自己 `@State` + 自己读写库，只从 Index 拿一个 `semesterId`。
+这么写是刻意的：本项目已经踩过 ArkTS 的坑 —— `ForEach` / 稳定 key 下的子组件
+**props 不变就不会重新渲染**（HANDOFF §12.4 第 4 条，「待办改属性不刷新」就是它）。
+把 CourseManager 里那些读 `@State` 的 `@Builder` 原样搬进一个靠 `@Prop` 喂数据的
+子组件，等于把这个坑请回来。**自己当数据 owner 的页面没有这个问题。**
+
+### 14.3 还没搬的（下一步）
+
+「管理课程」里现在还剩：**学期**、**上课节次时间**、**备份与恢复**、**重置课表**、课程列表。
+按用户的意思这些都算"设置"，下一轮继续往设置页搬。
+⚠️ 搬 **上课节次时间** 时注意：`CourseManager.doSaveRule()` 校验时段规则要用到作息表，
+所以它 `reload()` 里那份 `editSections` **要保留**（只是不再提供编辑入口）。
+
+### 14.4 真机验证
+
+| 项 | 结果 |
+|---|---|
+| 导航栏 4 条 + 能切到「设置」 | ✅ 截图 |
+| 设置页渲染（提醒卡片 / 不可排时段卡片） | ✅ 截图：简报 07:30、提前 15 分钟、睡觉 00:00–07:00 等三条 |
+| 设置页不再显示课表头部 | ✅ `dumpLayout` 里没有「第 6 周」 |
+| 不可排时段的二次确认 | ✅ 点「删」→ `确定删除「睡觉 每天」？`；点「取消」能撤销 |
+| 切回「课表」标签 | ✅ |
+
+⚠️ **未验证**：「保存提醒设置」按钮（点了之后提示条没在 dump 里抓到，可能是我点的时候
+布局已经因二次确认行而移动了）。这条走的是**从 CourseManager 原样搬过来**的同一份逻辑，
+风险低，但请真机上点一次确认。
