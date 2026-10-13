@@ -36,7 +36,8 @@ import { AXIS_W, compactMinH, compactThreshold, COLS_DAY, COLS_THREE, columnAtX,
   LAYOUT, TAP_OPEN, TAP_SELECT, tapAction } from './PlanLayout';
 import { findRuleConflicts, isStepMultiple, migrateEstimate, normalizeEstimate, pinchDeltaLabel,
   pinchEnd, resizeEndTo, spanOfRule, totalBlockMinutes, validateEstimate, validateRestWindow,
-  validateSectionTime, validateSectionTimes, validateSessionRule } from './Validate';
+  validateSectionTime, validateSectionTimes, validateSessionRule, validateTemplateDdl,
+  validateTemplateTitle } from './Validate';
 
 let pass = 0;
 let fail = 0;
@@ -866,6 +867,40 @@ check('迁移：7 → 15', `${migrateEstimate(7, false)}`, '15');
 check('迁移：0 → 60', `${migrateEstimate(0, false)}`, '60');
 check('迁移：考试类恒为 0', `${migrateEstimate(750, true)}`, '0');
 check('对比：手动输入仍然夹到 600', `${normalizeEstimate(750, false)}`, '600');
+
+// ---------- 数据合法性：生成模板（%变量与截止参数） ----------
+console.log('【数据合法性：生成模板】');
+
+check('模板：%D作业 合法', `${validateTemplateTitle('%D作业').ok}`, 'true');
+check('模板：八个变量全用上合法',
+  `${validateTemplateTitle('%C %c %D %d %W %T %N %R').ok}`, 'true');
+check('模板：空串不合法', `${validateTemplateTitle('   ').ok}`, 'false');
+check('模板：空串提示', `${validateTemplateTitle('   ').message}`, '模板不能为空');
+check('模板：%M 不是支持的变量', `${validateTemplateTitle('%M作业').ok}`, 'false');
+check('模板：%M 的提示会列出它并给出可用清单',
+  `${validateTemplateTitle('%M作业').message}`, '%M 不是支持的变量。可用：%C %c %D %d %W %T %N %R');
+check('模板：未知变量会去重（不是两遍）',
+  `${validateTemplateTitle('%Mx%M').message}`, '%M 不是支持的变量。可用：%C %c %D %d %W %T %N %R');
+check('模板：末尾孤零零一个 % 也算错', `${validateTemplateTitle('作业%').ok}`, 'false');
+check('模板：%% 转义不支持（渲染层没有转义语法）', `${validateTemplateTitle('100%%').ok}`, 'false');
+check('模板：大小写敏感，%c 合法而 %C 也合法（两个都在表里）',
+  `${validateTemplateTitle('%c%C').ok}`, 'true');
+check('模板：%m 小写不是变量', `${validateTemplateTitle('%m').ok}`, 'false');
+check('模板：61 个字符太长',
+  `${validateTemplateTitle('x'.repeat(61)).ok}`, 'false');
+check('模板：60 个字符刚好合法',
+  `${validateTemplateTitle('x'.repeat(60)).ok}`, 'true');
+check('模板：%D 后面跟中文不影响识别', `${validateTemplateTitle('%D作业%c').ok}`, 'true');
+
+check('截止参数：days 需要 1–365', `${validateTemplateDdl('days', '3').ok}`, 'true');
+check('截止参数：days 0 不合法', `${validateTemplateDdl('days', '0').ok}`, 'false');
+check('截止参数：days 366 不合法', `${validateTemplateDdl('days', '366').ok}`, 'false');
+check('截止参数：days 空不合法', `${validateTemplateDdl('days', '').ok}`, 'false');
+check('截止参数：weekday 需要 1–7', `${validateTemplateDdl('weekday', '7').ok}`, 'true');
+check('截止参数：weekday 8 不合法', `${validateTemplateDdl('weekday', '8').ok}`, 'false');
+check('截止参数：next_session 不带参数也合法',
+  `${validateTemplateDdl('next_session', '').ok}`, 'true');
+check('截止参数：none 不带参数也合法', `${validateTemplateDdl('none', '').ok}`, 'true');
 
 // ---------- 数据合法性：块时长与双指缩放 ----------
 // 时间窗 07:00–24:00（420..1440）。

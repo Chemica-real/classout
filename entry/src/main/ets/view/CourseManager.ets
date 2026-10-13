@@ -1,7 +1,7 @@
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { storedAbilityContext } from '../util/Ctx';
-import { Course, COURSE_COLORS, PKU_SECTION_TIMES, SectionTime, Semester,
+import { Course, COURSE_COLORS, CourseSession, PKU_SECTION_TIMES, SectionTime, Semester,
   SessionRule, TodoTemplate, VirtualLesson } from '../model/Types';
 import { TimetableRepo } from '../data/TimetableRepo';
 import { TodoRepo } from '../data/TodoRepo';
@@ -9,8 +9,10 @@ import { Seeder } from '../data/Seeder';
 import { BackupRepo } from '../data/BackupRepo';
 import { BackupBundle, backupSummary, parseBackup } from '../domain/Backup';
 import { maskAll, maskFromText, maskToText } from '../model/WeekMask';
-import { WEEKDAY_CN, hhmmToMin, minToHHmm } from '../util/DateUtil';
-import { validateSectionTimes, validateSessionRule, Validation } from '../domain/Validate';
+import { formatDate, hhmmToMin, minToHHmm, today, WEEKDAY_CN } from '../util/DateUtil';
+import { TEMPLATE_VARS, TemplateCheck, Validation, validateSectionTimes, validateSessionRule,
+  validateTemplateDdl, validateTemplateTitle } from '../domain/Validate';
+import { renderTitle } from '../domain/TodoGenerator';
 import { ChipButton } from './ChipButton';
 
 const DOMAIN: number = 0x0000;
@@ -25,6 +27,13 @@ const DD_LABELS: string[] = [
   '不设截止'
 ];
 const DD_RULES: string[] = ['next_session', 'weekday', 'week_end', 'same_day', 'days', 'none'];
+
+/**
+ * 模板变量按钮上的中文标签，**下标必须和 `Validate.TEMPLATE_VARS` 一一对应**。
+ * （%D 这种记号用户记不住，写清楚"布置日期"才好点。）
+ */
+const TEMPLATE_VAR_LABELS: string[] = ['课程全名', '课程简称', '布置日期', '完整日期',
+  '周次', '起始节次', '第几次', '教室'];
 
 function blankCourse(semesterId: number): Course {
   return {
@@ -102,6 +111,19 @@ export struct CourseManager {
 
   @State tplDialog: boolean = false;
   @State tplDraft: TodoTemplate = blankTemplate();
+  /**
+   * 标题输入框里的光标位置（快捷插入按钮要知道插哪儿）。
+   * -1 = 用户还没碰过输入框 → 插到末尾。
+   */
+  @State tplCaret: number = -1;
+  /**
+   * 标题输入框的控制器。
+   * ⚠️ 不能改用声明式的 `.caretPosition(this.tplCaret)`：首帧必须给一个非负值，
+   * 于是"还没碰过"的 -1 会被写成 0，插入就变成**永远插到开头**
+   *（真机实测：点「课程简称」得到「课丙10.14作业」而不是追加）。
+   * 用控制器在插入后主动挪光标，就不会破坏 -1 这个哨兵值。
+   */
+  private tplInputCtl: TextInputController = new TextInputController();
 
   @State semName: string = '';
   @State semStart: string = '';
@@ -400,8 +422,16 @@ export struct CourseManager {
   private async doSaveTemplate(): Promise<void> {
     const ctx: common.UIAbilityContext = this.context();
     this.tplDraft.courseId = this.editCourse.id;
-    if (this.tplDraft.titleTemplate.trim().length === 0) {
-      this.toast = '模板不能为空';
+    // 输入合法性检验（纯函数 + 离线断言）：空、超长、以及不支持的 %变量
+    const titleCheck: TemplateCheck = validateTemplateTitle(this.tplDraft.titleTemplate);
+    if (!titleCheck.ok) {
+      this.toast = titleCheck.message;
+      return;
+    }
+    // 截止规则的参数也要查：days 要 1–365、weekday 要 1–7
+    const ddlCheck: Validation = validateTemplateDdl(this.tplDraft.ddlRule, this.tplDraft.ddlParam);
+    if (!ddlCheck.ok) {
+      this.toast = ddlCheck.message;
       return;
     }
     if (this.tplDraft.id === 0) {
@@ -413,6 +443,86 @@ export struct CourseManager {
     this.editTemplates = await TodoRepo.listTemplatesByCourse(ctx, this.editCourse.id);
     this.toast = '模板已保存（下次下课时生效）';
     await this.reload();
+  }
+
+  /** 变量按钮上的中文标签 */
+  private templateVarLabel(v: string): string {
+    const i: number = TEMPLATE_VARS.indexOf(v);
+    return i < 0 ? `%${v}` : TEMPLATE_VAR_LABELS[i];
+  }
+
+  /**
+   * 把变量插到**光标处**（用户还没定位过光标就插到末尾），并把光标移到变量之后，
+   * 这样可以连着点几个按钮拼出「%D%c作业」这种。
+   */
+  private insertTemplateVar(v: string): void {
+    const token: string = `%${v}`;
+    const cur: string = this.tplDraft.titleTemplate;
+    const pos: number = this.tplCaret < 0 ? cur.length : Math.min(this.tplCaret, cur.length);
+    this.tplDraft.titleTemplate = cur.substring(0, pos) + token + cur.substring(pos);
+    this.tplCaret = pos + token.length;
+    // 把可见光标也挪到变量之后，方便接着点下一个按钮
+    //（输入框没聚焦时这是空操作，不影响）
+    this.tplInputCtl.caretPosition(this.tplCaret);
+  }
+
+  /** 当前模板的校验结果（预览行与保存前都用它，只有一处判据） */
+  private templateCheck(): TemplateCheck {
+    return validateTemplateTitle(this.tplDraft.titleTemplate);
+  }
+
+  /**
+   * 实时预览：拿**这门课自己的名字** + 一个样例日期渲染一遍。
+   *
+   * 为什么值得做：`%D`/`%W` 这些记号是抽象的，用户真正想知道的是
+   * "下课时生成的那条待办到底叫什么"。
+   */
+  private templatePreviewText(): string {
+    const check: TemplateCheck = this.templateCheck();
+    if (!check.ok) {
+      return check.message;
+    }
+    const name: string = this.editCourse.name.length > 0 ? this.editCourse.name : '课程全名';
+    const short: string = this.editCourse.shortName.length > 0 ? this.editCourse.shortName : name;
+    const sampleCourse: Course = {
+      id: this.editCourse.id,
+      semesterId: this.editCourse.semesterId,
+      name: name,
+      shortName: short,
+      teacher: '',
+      location: this.editCourse.location,
+      colorIndex: this.editCourse.colorIndex,
+      autoTodoEnabled: true,
+      isVirtual: false,
+      note: ''
+    };
+    const sampleRule: SessionRule = {
+      id: 0,
+      courseId: this.editCourse.id,
+      weekday: 1,
+      startSection: 3,
+      endSection: 4,
+      weeksMask: '1',
+      location: '',
+      isQuiz: false
+    };
+    const todayDate: string = formatDate(today());
+    const sample: CourseSession = {
+      course: sampleCourse,
+      rule: sampleRule,
+      date: todayDate,
+      originDate: todayDate,
+      weekday: 1,
+      startSection: 3,
+      endSection: 4,
+      startMin: 600,
+      endMin: 690,
+      location: this.editCourse.location.length > 0 ? this.editCourse.location : '教学楼101',
+      isQuiz: false,
+      fromOverride: false
+    };
+    // week=6 / n=2 只是样例值，让 %W / %N 也有东西可看
+    return `预览：${renderTitle(this.tplDraft.titleTemplate, sample, 6, 2)}`;
   }
 
   private deleteTemplate(t: TodoTemplate): void {
@@ -1730,14 +1840,45 @@ export struct CourseManager {
           .fontColor('#12161F')
 
         this.FieldLabel('标题模板')
-        TextInput({ text: this.tplDraft.titleTemplate, placeholder: '%D作业' })
+        TextInput({ text: this.tplDraft.titleTemplate, placeholder: '%D作业',
+          controller: this.tplInputCtl })
+          // 只记录用户的光标位置；插入后的光标由 insertTemplateVar 用控制器挪
+          .onTextSelectionChange((start: number, end: number): void => {
+            this.tplCaret = start;
+          })
           .onChange((v: string): void => {
             this.tplDraft.titleTemplate = v;
           })
-        Text('%C 全名 · %c 简称 · %D 布置日期(10.13) · %d 完整日期 · %W 周次 · %T 节次 · %N 第几次 · %R 教室')
-          .fontSize(10)
-          .fontColor('#98A2B3')
-          .margin({ top: 4 })
+
+        // 快捷插入：不用记 %C/%D 这些记号，点一下插到光标处
+        Flex({ wrap: FlexWrap.Wrap }) {
+          ForEach(TEMPLATE_VARS, (v: string) => {
+            ChipButton({
+              text: this.templateVarLabel(v),
+              selected: false,
+              fontSize: 11,
+              onTap: (): void => this.insertTemplateVar(v)
+            })
+          }, (v: string) => `tv-${v}`)
+          ChipButton({
+            text: '清空',
+            selected: false,
+            fontSize: 11,
+            onTap: (): void => {
+              this.tplDraft.titleTemplate = '';
+              this.tplCaret = 0;
+            }
+          })
+        }
+        .width('100%')
+        .margin({ top: 6 })
+
+        // 实时预览：光看变量说明猜不出最后长什么样
+        Text(this.templatePreviewText())
+          .fontSize(11)
+          .fontColor(this.templateCheck().ok ? '#3C6E47' : '#C0392B')
+          .width('100%')
+          .margin({ top: 6 })
 
         this.FieldLabel('截止时间规则')
         Flex({ wrap: FlexWrap.Wrap }) {

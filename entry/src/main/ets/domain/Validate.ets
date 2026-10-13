@@ -370,6 +370,96 @@ export function findRuleConflicts(rules: SessionRule[], sections: SectionTime[])
   return out;
 }
 
+// ---------------- 生成模板（自动生成待办） ----------------
+
+/**
+ * 标题模板里支持的变量。**必须和 `domain/TodoGenerator.renderTitle` 的实现一致**
+ *（那边用 8 个手写的 replaceAll，不认正则）。
+ */
+export const TEMPLATE_VARS: string[] = ['C', 'c', 'D', 'd', 'W', 'T', 'N', 'R'];
+
+/** 给用户看的变量清单（配合下面的快捷插入按钮） */
+export const TEMPLATE_VAR_HINT: string = '%C %c %D %d %W %T %N %R';
+
+/** 模板标题长度上限（字符） */
+export const TEMPLATE_MAX_LEN: number = 60;
+
+/** 模板标题的校验结果 */
+export interface TemplateCheck {
+  ok: boolean;
+  message: string;
+  /** 不被支持的 `%X` 记号（已去重），供 UI 高亮 */
+  unknown: string[];
+}
+
+/**
+ * 模板标题合法性：非空、长度、以及**每一个 `%` 记号都必须是支持的变量**。
+ *
+ * 为什么非要查未知变量：渲染用的是手写 replaceAll，不认识的 `%M` 会**原样留在标题里**，
+ * 用户要等下次下课、在待办列表里看到「%M作业」才发现写错了。
+ * 与其事后困惑，不如保存时就拦住 —— 这正是用户要的"输入合法性检验，防止错误"。
+ *
+ * 注意 `%%` 也会被判为不支持：渲染层没有转义语法，与其让用户以为能转义，不如直接说清楚。
+ */
+export function validateTemplateTitle(tpl: string): TemplateCheck {
+  const text: string = tpl.trim();
+  if (text.length === 0) {
+    return { ok: false, message: '模板不能为空', unknown: [] };
+  }
+  if (text.length > TEMPLATE_MAX_LEN) {
+    return {
+      ok: false,
+      message: `模板太长了（最多 ${TEMPLATE_MAX_LEN} 个字符）`,
+      unknown: []
+    };
+  }
+  const unknown: string[] = [];
+  for (let i = 0; i < text.length; i++) {
+    if (text.charAt(i) !== '%') {
+      continue;
+    }
+    const next: string = i + 1 < text.length ? text.charAt(i + 1) : '';
+    if (TEMPLATE_VARS.indexOf(next) < 0) {
+      const token: string = `%${next}`;
+      if (unknown.indexOf(token) < 0) {
+        unknown.push(token);
+      }
+    } else {
+      i++;   // 跳过变量字母，别把它当成下一个 '%' 的候选
+    }
+  }
+  if (unknown.length > 0) {
+    return {
+      ok: false,
+      message: `${unknown.join('、')} 不是支持的变量。可用：${TEMPLATE_VAR_HINT}`,
+      unknown: unknown
+    };
+  }
+  return { ok: true, message: '', unknown: [] };
+}
+
+/**
+ * 生成模板的截止规则参数合法性。
+ * `days` 要 1–365；`weekday` 要 1–7（周一..周日）；其余规则不带参数。
+ */
+export function validateTemplateDdl(rule: string, param: string): Validation {
+  if (rule === 'days') {
+    const n: number = Number.parseInt(param, 10);
+    if (Number.isNaN(n) || n < 1 || n > 365) {
+      return fail('「N 天后」的 N 要在 1–365 之间');
+    }
+    return pass();
+  }
+  if (rule === 'weekday') {
+    const n: number = Number.parseInt(param, 10);
+    if (Number.isNaN(n) || n < 1 || n > 7) {
+      return fail('「指定星期几」要选周一到周日');
+    }
+    return pass();
+  }
+  return pass();
+}
+
 // ---------------- 不可排时段 ----------------
 
 /** 休息时段（不可排）是否合法 */
