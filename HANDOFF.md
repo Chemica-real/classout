@@ -98,9 +98,19 @@ git log --oneline                 # 5 个 commit，工作区应干净
 自检命令：
 
 ```bash
-git grep -l 'CLASS_OUT_KEY_PWD=' ; git ls-files | grep -iE '\.(p12|csr|cer|p7b)$|local\.env$'
-# 两条都应该没有输出
+# 1) 真实口令是否出现在任何入库文件里（把口令原文粘进去搜）
+git grep -F '<你的真实口令>'          # 应无输出
+
+# 2) 私钥/证书/口令文件是否被跟踪
+git ls-files | grep -iE '\.(p12|csr|cer|p7b)$|/local\.env$'   # 应无输出
+
+# 3) .gitignore 是否真的挡住了它们
+git check-ignore -v signing/local.env signing/classout.p12      # 应各自打印命中的规则
 ```
+
+> ⚠️ **别用 `git grep -l 'CLASS_OUT_KEY_PWD='` 当检查** —— 文档里**本来就该**出现
+> 这个变量名（告诉人怎么设），会误报。要搜的是**口令原文**。
+> 我第一版自检就写成了这样，结果虚惊一场。
 
 > 如果想升到 API 26 的 SDK（拿 64 条代理提醒配额，见 §6.1），需要用户去华为开发者页面下载 26.0.0 版 CLI。
 
