@@ -14,6 +14,7 @@ import { TodoInbox } from '../view/TodoInbox';
 import { PlanDayView } from '../view/PlanDayView';
 import { CourseManager } from '../view/CourseManager';
 import { SettingsPage } from '../view/SettingsPage';
+import { backStack } from '../util/BackStack';
 import { ChipButton } from '../view/ChipButton';
 
 const DOMAIN: number = 0x0000;
@@ -75,6 +76,41 @@ struct Index {
 
   private weekSessions: CourseSession[] = [];
   private readonly days: number[] = [1, 2, 3, 4, 5, 6, 7];
+
+  /**
+   * 系统返回：手势导航的左右边缘内滑、或三键导航的返回键，都会走这里。
+   *
+   * 顺序：**先问子组件**（它们最清楚自己开着什么：计划页的编辑窗、待办页的编辑窗、
+   * 管理课程的弹窗与子页），再处理 Index 自己的三个 sheet 与「管理课程」浮层，
+   * 都没有可关的才返回 false，交回系统（回桌面）。
+   *
+   * ⚠️ 这就是"支持鸿蒙手势导航"的实质：没有它，开着编辑窗时边缘内滑会把 App 切走，
+   * 而不是关掉那一层。ArkUI 的 `onBackPress` 只能写在 `@Entry` 上，所以集中在这里，
+   * 子组件通过 `util/BackStack` 注册各自的处理器。
+   */
+  onBackPress(): boolean {
+    if (backStack.handleBack()) {
+      return true;   // 子组件已经处理掉了
+    }
+    if (this.sessionSheet) {
+      this.sessionSheet = false;
+      return true;
+    }
+    if (this.adjustSheet) {
+      this.adjustSheet = false;
+      return true;
+    }
+    if (this.extraSheet) {
+      this.extraSheet = false;
+      return true;
+    }
+    if (this.showManager) {
+      this.showManager = false;
+      this.refresh();
+      return true;
+    }
+    return false;   // 交给系统
+  }
 
   aboutToAppear(): void {
     this.bootstrap();

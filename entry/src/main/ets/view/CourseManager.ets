@@ -14,6 +14,7 @@ import { TEMPLATE_VARS, TemplateCheck, Validation, validateSectionTimes, validat
   validateTemplateDdl, validateTemplateTitle } from '../domain/Validate';
 import { renderTitle } from '../domain/TodoGenerator';
 import { ChipButton } from './ChipButton';
+import { BackHandler, backStack } from '../util/BackStack';
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'ClassOUT';
@@ -147,8 +148,54 @@ export struct CourseManager {
   @State confirmClear: boolean = false;
   @State toast: string = '';
 
+  /** 系统返回的处理器（注册到 util/BackStack） */
+  private backHandler: BackHandler | undefined = undefined;
+
   aboutToAppear(): void {
+    this.backHandler = (): boolean => this.handleBack();
+    backStack.register(this.backHandler);
     this.load();
+  }
+
+  aboutToDisappear(): void {
+    if (this.backHandler !== undefined) {
+      backStack.unregister(this.backHandler);
+      this.backHandler = undefined;
+    }
+  }
+
+  /**
+   * 管理课程的返回顺序（从最上面那层往下）：
+   * 弹窗 → 二次确认 → 子页 → 关闭整个管理器。
+   * 它永远是"最后注册"的（浮层后挂载），所以 Index 一定先问到它。
+   */
+  private handleBack(): boolean {
+    if (this.ruleDialog) {
+      this.ruleDialog = false;
+      return true;
+    }
+    if (this.tplDialog) {
+      this.tplDialog = false;
+      return true;
+    }
+    if (this.confirmClear) {
+      this.confirmClear = false;
+      return true;
+    }
+    if (this.confirmRestore) {
+      this.confirmRestore = false;
+      return true;
+    }
+    if (this.pendingDeleteKey.length > 0) {
+      this.pendingDeleteKey = '';
+      return true;
+    }
+    if (this.mode !== 'list') {
+      this.mode = 'list';
+      return true;
+    }
+    this.close();
+    return true;
   }
 
   private context(): common.UIAbilityContext {

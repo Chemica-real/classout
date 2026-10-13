@@ -7,6 +7,7 @@ import { TodoRepo } from '../data/TodoRepo';
 import { addDays, countdownText, formatDate, parseDate, relativeDayText, today } from '../util/DateUtil';
 import { normalizeEstimate, Validation, validateEstimate } from '../domain/Validate';
 import { ChipButton } from './ChipButton';
+import { BackHandler, backStack } from '../util/BackStack';
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'ClassOUT';
@@ -50,8 +51,33 @@ export struct TodoInbox {
 
   @State pendingDeleteId: number = 0;
 
+  /** 系统返回的处理器（注册到 util/BackStack） */
+  private backHandler: BackHandler | undefined = undefined;
+
   aboutToAppear(): void {
+    this.backHandler = (): boolean => this.handleBack();
+    backStack.register(this.backHandler);
     this.load();
+  }
+
+  aboutToDisappear(): void {
+    if (this.backHandler !== undefined) {
+      backStack.unregister(this.backHandler);
+      this.backHandler = undefined;
+    }
+  }
+
+  /** 待办页的返回顺序：先关编辑窗 → 再收掉待确认的删除 → 都不管 */
+  private handleBack(): boolean {
+    if (this.editorVisible) {
+      this.editorVisible = false;
+      return true;
+    }
+    if (this.pendingDeleteId > 0) {
+      this.pendingDeleteId = 0;
+      return true;
+    }
+    return false;
   }
 
   private context(): common.UIAbilityContext {

@@ -23,6 +23,7 @@ import { addDays, formatDate, hhmmToMin, minToHHmm, parseDate, relativeDayText, 
   weekdayOf } from '../util/DateUtil';
 import { ChipButton } from './ChipButton';
 import { hapticLongPress } from '../util/Haptics';
+import { BackHandler, backStack } from '../util/BackStack';
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'ClassOUT';
@@ -180,12 +181,48 @@ export struct PlanDayView {
   /** 拖拽中的目标列。等于中心列 = 不改天 */
   @State dragColIndex: number = 0;
 
+  /** 系统返回的处理器（注册到 util/BackStack，由 Index.onBackPress 触发） */
+  private backHandler: BackHandler | undefined = undefined;
+
   aboutToAppear(): void {
     this.date = formatDate(today());
     // 先按当前视图把列日期填上，别等 reload 回来（否则首帧网格是空的）
     this.colDates = dayDates(this.date, this.viewCols);
     this.dragColIndex = centerIndex(this.viewCols);
+    // 手势导航/返回键要能"从最上面那层开始关"
+    this.backHandler = (): boolean => this.handleBack();
+    backStack.register(this.backHandler);
     this.load();
+  }
+
+  aboutToDisappear(): void {
+    // 必须注销：本组件会随标签切换销毁，留着就是指向已销毁组件的处理器
+    if (this.backHandler !== undefined) {
+      backStack.unregister(this.backHandler);
+      this.backHandler = undefined;
+    }
+  }
+
+  /**
+   * 计划页的返回顺序：先关编辑窗 → 再取消选中的块 → 再取消托盘的选中 → 都不管。
+   * 都处理不了才返回 false，让更下层（Index 的浮层/系统）接着处理。
+   */
+  private handleBack(): boolean {
+    if (this.editingBlock !== undefined) {
+      this.closeEditor();
+      return true;
+    }
+    if (this.selectedBlockId > 0) {
+      this.selectedBlockId = 0;
+      this.showHint('');
+      return true;
+    }
+    if (this.selectedTodoId > 0) {
+      this.selectedTodoId = 0;
+      this.showHint('');
+      return true;
+    }
+    return false;
   }
 
   // ---- 列几何（纯算术都在 domain/PlanLayout，有离线断言）----
