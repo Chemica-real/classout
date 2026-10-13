@@ -2201,11 +2201,18 @@ export struct CourseManager {
         this.ListView()
       }
 
+      // ⚠️ 这两个遮罩**原来没有 onClick** —— 点窗外的深色区域毫无反应，
+      // 而同一个文件之外的其它弹窗（待办页、计划页、课表页那几个）都是点了就关。
+      // 用户明确要求「点击窗口外的深黑色区域应当起到（不保存）退出的效果」。
+      // 这里只关窗、不落库：草稿还留在 ruleDraft / tplDraft 里，下次打开会被重新覆盖。
       if (this.ruleDialog) {
         Column()
           .width('100%')
           .height('100%')
           .backgroundColor('rgba(12,18,28,0.45)')
+          .onClick((): void => {
+            this.ruleDialog = false;
+          })
         this.RuleDialog()
       }
       if (this.tplDialog) {
@@ -2213,6 +2220,9 @@ export struct CourseManager {
           .width('100%')
           .height('100%')
           .backgroundColor('rgba(12,18,28,0.45)')
+          .onClick((): void => {
+            this.tplDialog = false;
+          })
         this.TemplateDialog()
       }
     }
