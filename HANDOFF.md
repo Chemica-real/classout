@@ -177,6 +177,7 @@ entry/src/main/ets/
 ├── domain/ReminderScheduler.ets 四类提醒的候选构建 + 代理提醒发布 + 预算控制
 ├── util/Haptics.ets             长按振动反馈（权限 VIBRATE，失败静默）
 ├── view/ChipButton.ets          ★ 可选中的胶囊（@Component + @Prop，见 §6.4）
+├── view/Glass.ets               ★ 玻璃态材质常量 + PageBackground（见 §16）
 ├── view/SettingsPage.ets        ★ 设置页（导航栏第 4 条；自带 state + 自己读写库，见 §14）
 ├── view/TodoInbox.ets           待确认收件箱 / 待办 / 考试 / 新建编辑
 ├── view/PlanDayView.ets         计划日视图（长按拖动、边缘自动滚动、找空档、完成联动）
@@ -355,6 +356,9 @@ tools/                            不是 App 的一部分，是给人和 agent �
 - **北大校本部一天 12 节**（第 9、12 节机动），不是 10 节。
 - **鸿蒙不允许后台常驻**（延迟任务最小 2 小时）→「下课立刻生成」实现为
   **下次打开 App 时静默补生成**，时间戳仍记为该节课的下课时刻。
+- **`@Styles` 不能跨文件 export/import**（实测：`Property 'glassXxx' does not exist on
+  type 'ColumnAttribute'`）。全局 `@Styles` 在编译期被当成"该文件里某组件类型的属性"。
+  想要"材质统一"就得**常量集中 + 每个文件各声明一个文件内 @Styles**（见 §16）。
 - **`onBackPress` 只能定义在 `@Entry` 组件上**（本项目只有 `pages/Index.ets`）。
   所以子组件想处理返回，必须通过 `util/BackStack` 注册（见 §15）。
 - **SDK 里的 kit 名字别猜**：振动在 `@kit.SensorServiceKit`（不是 `@kit.SensorsKit`）。
@@ -946,3 +950,83 @@ ArkUI 的 `onBackPress` **只能写在 `@Entry` 组件上**，而"当前最上�
 | 左右滑动切换底部标签 | 与计划页的**横向跨天拖拽**、待安排托盘的横向滚动**直接冲突**，必须先在计划页里把"这一下是横滑切页还是拖块"判定清楚，否则会互相抢手势。**不要顺手加。** |
 | 沉浸式全屏（内容延伸到状态栏/手势条下） | 现在是普通窗口，安全区天然正确；改沉浸式就得自己处理上下 inset，收益小风险大 |
 | 应用内左边缘右滑"关闭浮层" | 系统返回手势已经覆盖这条（§15.2），不必自己实现 |
+
+---
+
+## 16. 2026-10-14 美术：玻璃态 UI
+
+### 16.1 前提：玻璃要有"有结构的东西"可透
+
+原来全 App 是**纯色底 + 白卡片**。在纯色底上 `backgroundBlurStyle` 等于没做
+（糊纯色还是纯色）。所以第一步不是加模糊，而是**先铺底衬**：
+
+`view/Glass.ets` 里的 `PageBackground` —— 一层柔和的三色渐变
+（`#E6EEFF → #F1EDFF → #E4F6F1`，160°），铺在 `Index` 根 `Stack` 的最底层。
+
+> 这层同时是将来「**个性化壁纸**」的落点：把渐变换成图片，所有玻璃面自动跟着变。
+> 换壁纸时**只要改这一个组件**。
+
+**连带要求**：各页面的根容器不能再有不透明底色，否则会把背景层挡住、玻璃白做。
+（Index / TodoInbox / PlanDayView / SettingsPage / CourseManager 的根都已改成
+`Color.Transparent`；CourseManager 的 5 个子页根也一起改了。）
+
+### 16.2 两档材质
+
+| 材质 | 用在哪 | 构成 |
+|---|---|---|
+| `glassPanel()` | 浮层、页头、导航栏、弹窗 | `COMPONENT_THICK` 模糊 + 0.62 白薄纱 + 1px 高光边 |
+| `glassCard()` | 列表卡、托盘卡、入口 tile | `COMPONENT_REGULAR` 模糊 + 0.44 白薄纱 + 1px 高光边 + 柔和投影 |
+
+⚠️ **刻意不给这些东西上玻璃**：时间网格、课程灰带、计划块、输入框。
+网格是"要读准时间"的地方，输入框要看清自己打的字 —— 材质只用在**容器**上，
+内容层保持不透明。这是可读性优先的取舍，不是漏做。
+
+### 16.3 ★ 坑：ArkTS 的 `@Styles` 不能跨文件
+
+想把材质做成 `glassCard()` 供全项目调用，第一版写成：
+
+```ts
+// Glass.ets
+@Styles export function glassCard() { ... }
+```
+编译直接报 **`Property 'glassCard' does not exist on type 'ColumnAttribute'`** ——
+全局 `@Styles` 在编译期被当成"该文件里某组件类型的属性"，**根本不参与 import/export**。
+
+**现在的做法**：常量集中在 `Glass.ets`（`GLASS_CARD_BLUR` / `GLASS_CARD_TINT` /
+`GLASS_CARD_EDGE` / `GLASS_CARD_RADIUS` / `GLASS_CARD_SHADOW`、`GLASS_PANEL_*`），
+**每个 view 文件里各声明一个文件内 `@Styles`** 引用这些常量。
+
+代价：材质配方（那 5 个属性）在 5 个文件里各写了一遍。
+**改配方要 5 个文件一起改**（`Index` / `TodoInbox` / `PlanDayView` / `CourseManager` /
+`SettingsPage`）；只调浓淡改 `Glass.ets` 的常量就够。
+
+### 16.4 ★ 坑：浮层需要"背板"
+
+管理课程原来是**直接盖在课表上**的（没有遮罩）。玻璃化之后，底下的课表
+**透过来还能读** —— 截图里能清楚看到「周一/周二」的字和课程色块穿过 tile，
+看起来像渲染故障，而不是玻璃。
+
+修法：在 `CourseManager` 之前垫一层
+`rgba(238,243,252,0.66)` + `BlurStyle.COMPONENT_ULTRA_THICK` 的毛玻璃背板，
+把底下的内容糊成一片柔和底色。三个 sheet / 两个编辑窗本来就有
+`rgba(12,18,28,0.45)` 遮罩，不受影响。
+
+**通用教训**：玻璃**永远需要一层背板**（遮罩、渐变或壁纸）。
+"玻璃直接盖在可读内容上"只会得到一层脏兮兮的半透明。
+
+### 16.5 真机验证
+
+截图确认五处观感一致、文字可读性没下降：课表页、待办页、计划页（日视图）、
+设置页、管理课程（含背板效果）。
+
+⚠️ **未验证：滚动流畅度**。每个列表卡都挂了模糊，真机上滑动会不会掉帧这里测不了。
+如果觉得卡：把 `GLASS_CARD_BLUR` 改成 `BlurStyle.NONE`（卡片退化成"半透明纯色"，
+仍然有玻璃观感但几乎不耗性能），或者给列表卡去掉 `.backgroundBlurStyle` 只留薄纱。
+
+### 16.6 美术里还没做的
+
+| 项 | 说明 |
+|---|---|
+| 个性化壁纸 | `PageBackground` 就是预留的落点；缺的是"从相册选图"（`photoAccessHelper`，不需要联网） |
+| 更多字体 | SDK 有 `UIContext.Font.registerFont`（`@ohos.font` 的旧 API 在 API 18 已废弃）。中文字体动辄 5–20MB，建议只加**一款等宽数字字体**给时间/统计用 |
+| 鸿蒙"沉浸光感" | ⚠️ **SDK 里没有**：全 SDK 搜 `LightEffect` 零命中，`uiEffect.VisualEffect` 是个空接口。**做不到**，不要在这上面花时间 |
