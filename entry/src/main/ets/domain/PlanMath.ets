@@ -283,6 +283,41 @@ export function findFreeSlot(axis: TimeAxis, busy: number[][], rest: number[][],
 }
 
 /**
+ * 拖动块时是否该自动滚时间轴，以及往哪个方向滚。
+ *
+ * 规则：触摸点进入距可视区上/下边缘 edgeZone 之内就滚，
+ * 往上沿滚（内容跟着上移，露出更早的时间）。两侧同时满足时取更近的那边。
+ *
+ * @param touchWinY      触摸点的窗口 y
+ * @param viewTop        网格可视区上边界（窗口 y）
+ * @param viewBottom     网格可视区下边界（窗口 y）
+ * @param edgeZone       触发区高度（vp）
+ * @returns 负数=向上滚，正数=向下滚，0=不滚
+ */
+export function edgeScrollDirection(touchWinY: number, viewTop: number, viewBottom: number,
+  edgeZone: number): number {
+  const span: number = viewBottom - viewTop;
+  if (span <= 0) {
+    return 0;
+  }
+  const fromTop: number = touchWinY - viewTop;
+  const fromBottom: number = viewBottom - touchWinY;
+  const atTop: boolean = fromTop < edgeZone;
+  const atBottom: boolean = fromBottom < edgeZone;
+  if (atTop && atBottom) {
+    // 视口比两个触发区还矮：取更近的一边，避免两边打架
+    return fromTop <= fromBottom ? -1 : 1;
+  }
+  if (atTop) {
+    return -1;
+  }
+  if (atBottom) {
+    return 1;
+  }
+  return 0;
+}
+
+/**
  * 拖动块时的位移：把"手指移动"换算成"块相对网格的位移"。
  *
  * 块是网格里的绝对定位元素，所以让块**钉在手指下**的条件是：

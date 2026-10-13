@@ -14,7 +14,8 @@ import { maskAll, maskFromText, maskToText, maskHas } from './WeekMask';
 import { countdownText, minToHHmm, parseDate } from './DateUtil';
 import { computeDdl, renderTitle } from './TodoGenerator';
 import { TimeAxis, DEFAULT_WINDOW, WINDOW_MAX_END, allBlocksDone, dragOffsetWithScroll,
-  dropRange, findFreeSlot, moveRange, normalizeDuration, normalizeWindow, overlaps, resizeRange,
+  dropRange, edgeScrollDirection, findFreeSlot, moveRange, normalizeDuration, normalizeWindow,
+  overlaps, resizeRange,
   selectPoolTodos, snap, sortPoolTodos, windowForContent } from './PlanMath';
 
 /**
@@ -677,6 +678,28 @@ for (const scroll of [0, 30, -30, 90, -90]) {
   check(`网格滚 ${scroll} 时，块在窗口中的位置仍等于手指位移 ${touch}`,
     `${blockInWindow}`, `${touch}`);
 }
+
+// ---------- 边缘自动滚动的触发判定 ----------
+// 视口 400..1400（高 1000），触发区 60：
+//   0..60 为顶部区 → 上滚；1340..1400 为底部区 → 下滚；中间不滚
+console.log('【边缘自动滚动：触发判定】');
+
+const VT: number = 400;
+const VB: number = 1400;
+const ZONE: number = 60;
+
+check('触摸点在正中 → 不滚', `${edgeScrollDirection(900, VT, VB, ZONE)}`, '0');
+check('刚进顶部区（距上边 59）→ 向上滚', `${edgeScrollDirection(459, VT, VB, ZONE)}`, '-1');
+check('恰好在顶部区边界外（距上边 60）→ 不滚', `${edgeScrollDirection(460, VT, VB, ZONE)}`, '0');
+check('超过上边界（负值）→ 仍向上滚', `${edgeScrollDirection(300, VT, VB, ZONE)}`, '-1');
+check('刚进底部区（距下边 59）→ 向下滚', `${edgeScrollDirection(1341, VT, VB, ZONE)}`, '1');
+check('恰好在底部区边界外（距下边 60）→ 不滚', `${edgeScrollDirection(1340, VT, VB, ZONE)}`, '0');
+check('超过下边界 → 仍向下滚', `${edgeScrollDirection(1500, VT, VB, ZONE)}`, '1');
+check('视口高度为 0（还没量到）→ 不滚', `${edgeScrollDirection(900, 400, 400, ZONE)}`, '0');
+check('视口比两个触发区还矮时取更近的一边（靠上→上滚）',
+  `${edgeScrollDirection(405, 400, 500, ZONE)}`, '-1');
+check('视口比两个触发区还矮时取更近的一边（靠下→下滚）',
+  `${edgeScrollDirection(495, 400, 500, ZONE)}`, '1');
 
 // ---------- 汇总 ----------
 console.log('');

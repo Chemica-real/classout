@@ -8,7 +8,7 @@ import { TodoRepo } from '../data/TodoRepo';
 import { sessionsOnDate } from '../domain/Timetable';
 import { generateForLesson } from '../domain/TodoGenerator';
 import { TimeAxis, DEFAULT_AXIS, MIN_BLOCK_MIN, allBlocksDone,
-  dragOffsetWithScroll, dropRange, durationToH, findFreeSlot, moveRange, normalizeDuration,
+  dragOffsetWithScroll, dropRange, edgeScrollDirection, durationToH, findFreeSlot, moveRange, normalizeDuration,
   resizeRange,
   selectPoolTodos, sortPoolTodos } from '../domain/PlanMath';
 import { addDays, formatDate, minToHHmm, parseDate, relativeDayText, today, WEEKDAY_CN,
@@ -433,9 +433,9 @@ export struct PlanDayView {
    * 拖动块时，触摸点进入距上/下边缘这么近的范围就自动滚时间轴。
    * 用户要求：「长按移动块的时候屏幕不应该滚动，除非我把块接近最上/下代表我想滚动时间」。
    */
-  private static readonly EDGE_ZONE: number = 90;
+  private static readonly EDGE_ZONE: number = 60;
   /** 自动滚动每一步的距离（vp） */
-  private static readonly EDGE_STEP: number = 12;
+  private static readonly EDGE_STEP: number = 16;
   /** 自动滚动的重复间隔（ms） */
   private static readonly EDGE_INTERVAL: number = 50;
 
@@ -504,11 +504,9 @@ export struct PlanDayView {
       this.stopEdgeScroll();
       return;
     }
-    const fromTop: number = this.touchWinY - this.gridViewTop;
-    const fromBottom: number = this.gridViewBottom - this.touchWinY;
-    const atTop: boolean = fromTop < PlanDayView.EDGE_ZONE;
-    const atBottom: boolean = fromBottom < PlanDayView.EDGE_ZONE;
-    if (!atTop && !atBottom) {
+    const dir: number = edgeScrollDirection(this.touchWinY, this.gridViewTop,
+      this.gridViewBottom, PlanDayView.EDGE_ZONE);
+    if (dir === 0) {
       this.stopEdgeScroll();
       return;
     }
@@ -516,7 +514,7 @@ export struct PlanDayView {
       return;   // 已经在滚了
     }
     this.edgeTimer = setInterval((): void => {
-      const step: number = atTop ? -PlanDayView.EDGE_STEP : PlanDayView.EDGE_STEP;
+      const step: number = dir * PlanDayView.EDGE_STEP;
       this.gridScroller.scrollBy(0, step);
       // ★ 这里**只滚屏幕，不要碰 dragOffsetY**。
       //   块的位移由 Move 里那个公式算（它已经减掉了「网格滚掉的那部分」）。
