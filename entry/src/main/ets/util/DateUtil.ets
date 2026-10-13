@@ -1,0 +1,99 @@
+/** 日期 / 时间小工具（全部按本地时区，日期字符串统一 'YYYY-MM-DD'） */
+
+export const WEEKDAY_CN: string[] = ['一', '二', '三', '四', '五', '六', '日'];
+
+function pad2(n: number): string {
+  return n < 10 ? `0${n}` : `${n}`;
+}
+
+/** 'YYYY-MM-DD' → Date（当天 00:00） */
+export function parseDate(s: string): Date {
+  const y: number = parseInt(s.substring(0, 4), 10);
+  const m: number = parseInt(s.substring(5, 7), 10);
+  const d: number = parseInt(s.substring(8, 10), 10);
+  return new Date(y, m - 1, d);
+}
+
+export function formatDate(d: Date): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+export function today(): Date {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
+export function todayStr(): string {
+  return formatDate(today());
+}
+
+export function addDays(d: Date, n: number): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+}
+
+/** a - b，按「天」计 */
+export function diffDays(a: Date, b: Date): number {
+  const am: number = new Date(a.getFullYear(), a.getMonth(), a.getDate()).getTime();
+  const bm: number = new Date(b.getFullYear(), b.getMonth(), b.getDate()).getTime();
+  return Math.round((am - bm) / 86400000);
+}
+
+/** 分钟数 → 'HH:mm' */
+export function minToHHmm(min: number): string {
+  const h: number = Math.floor(min / 60);
+  const m: number = min % 60;
+  return `${pad2(h)}:${pad2(m)}`;
+}
+
+/** 'HH:mm' → 分钟数 */
+export function hhmmToMin(s: string): number {
+  const h: number = parseInt(s.substring(0, 2), 10);
+  const m: number = parseInt(s.substring(3, 5), 10);
+  return h * 60 + m;
+}
+
+/** 1 = 周一 ... 7 = 周日 */
+export function weekdayOf(d: Date): number {
+  const w: number = d.getDay();
+  return w === 0 ? 7 : w;
+}
+
+/** 相对今天的自然语言，如「今天」「明天」「3 天后」「逾期 2 天」 */
+export function relativeDayText(target: Date): string {
+  const d: number = diffDays(target, today());
+  if (d === 0) {
+    return '今天';
+  }
+  if (d === 1) {
+    return '明天';
+  }
+  if (d === 2) {
+    return '后天';
+  }
+  if (d > 0) {
+    return `${d} 天后`;
+  }
+  return `逾期 ${-d} 天`;
+}
+
+/** 'M.D'，用于 %D 变量 */
+export function monthDayText(d: Date): string {
+  return `${d.getMonth() + 1}.${d.getDate()}`;
+}
+
+/**
+ * 考试倒计时文案。from 显式传进来（而不是内部取 today），这样它是纯函数、能被离线断言覆盖。
+ */
+export function countdownText(target: Date, from: Date): string {
+  const d: number = diffDays(target, from);
+  if (d > 1) {
+    return `还有 ${d} 天`;
+  }
+  if (d === 1) {
+    return '明天';
+  }
+  if (d === 0) {
+    return '就是今天';
+  }
+  return `已结束 ${-d} 天`;
+}

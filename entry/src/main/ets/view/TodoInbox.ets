@@ -1,0 +1,832 @@
+import { common } from '@kit.AbilityKit';
+import { hilog } from '@kit.PerformanceAnalysisKit';
+import { storedAbilityContext } from '../util/Ctx';
+import { Course, COURSE_COLORS, Todo, TodoCategory, TodoSource, TodoStatus } from '../model/Types';
+import { TimetableRepo } from '../data/TimetableRepo';
+import { TodoRepo } from '../data/TodoRepo';
+import { addDays, countdownText, formatDate, parseDate, relativeDayText, today } from '../util/DateUtil';
+import { ChipButton } from './ChipButton';
+
+const DOMAIN: number = 0x0000;
+const TAG: string = 'ClassOUT';
+
+/**
+ * 预设的预计时长档位。选择器里排在「自定义」输入框前面。
+ *
+ * ⚠️ 时长本身**不吸附到这些档位** —— 它们是快捷选择，不是约束。
+ * 自定义输入可以填任意分钟数（15–600），见 domain/PlanMath.normalizeDuration。
+ */
+const PRESET_ESTIMATES: number[] = [15, 30, 60, 90, 120, 180];
+
+/** 自定义时长的合法范围（分钟） */
+const CUSTOM_ESTIMATE_MIN: number = 15;
+const CUSTOM_ESTIMATE_MAX: number = 600;
+
+@Component
+export struct TodoInbox {
+  @Prop semesterId: number;
+
+  @State pendingList: Todo[] = [];
+  @State activeList: Todo[] = [];
+  @State courses: Course[] = [];
+  @State loading: boolean = true;
+
+  @State editorVisible: boolean = false;
+  @State editId: number = 0;
+  @State editTitle: string = '';
+  @State editDdl: string = '';
+  @State editEstimate: number = 60;
+  /** 自定义预计时长的输入状态。'' = 没有在用自定义 */
+  @State editEstimateCustom: string = '';
+  @State editEstimateFocus: boolean = false;
+  @State editCourseId: number = 0;
+  @State editCategory: string = TodoCategory.Other;
+  /** 考试专用：考场 / 座位，存在 note 里 */
+  @State editPlace: string = '';
+
+  @State pendingDeleteId: number = 0;
+
+  aboutToAppear(): void {
+    this.load();
+  }
+
+  private context(): common.UIAbilityContext {
+    // 先用 EntryAbility 存好的那份；只有极端情况才回退到已废弃的 getContext()
+    const stored: common.UIAbilityContext | undefined = storedAbilityContext();
+    if (stored !== undefined) {
+      return stored;
+    }
+    return getContext(this) as common.UIAbilityContext;
+  }
+
+  private load(): void {
+    this.reload().catch((e: Object): void => {
+      hilog.error(DOMAIN, TAG, 'todo load failed: %{public}s', JSON.stringify(e));
+      this.loading = false;
+    });
+  }
+
+  private async reload(): Promise<void> {
+    const ctx: common.UIAbilityContext = this.context();
+    if (this.semesterId === 0) {
+      this.loading = false;
+      return;
+    }
+    this.courses = await TimetableRepo.listCourses(ctx, this.semesterId);
+    this.pendingList = await TodoRepo.listTodos(ctx, 'status = ?', [TodoStatus.Pending]);
+    this.activeList = await TodoRepo.listTodos(ctx, 'status = ?', [TodoStatus.Active]);
+    this.loading = false;
+  }
+
+  private courseOf(id: number): Course | undefined {
+    for (const c of this.courses) {
+      if (c.id === id) {
+        return c;
+      }
+    }
+    return undefined;
+  }
+
+  private courseLabel(id: number): string {
+    const c: Course | undefined = this.courseOf(id);
+    if (c === undefined) {
+      return '';
+    }
+    return c.shortName.length > 0 ? c.shortName : c.name;
+  }
+
+  private courseColor(id: number): string {
+    const c: Course | undefined = this.courseOf(id);
+    if (c === undefined) {
+      return '#9DB2C8';
+    }
+    return COURSE_COLORS[c.colorIndex % COURSE_COLORS.length];
+  }
+
+  // ---- 考试 ----
+
+  private examList(): Todo[] {
+    const out: Todo[] = [];
+    for (const t of this.activeList) {
+      if (t.category === TodoCategory.Exam) {
+        out.push(t);
+      }
+    }
+    return out;
+  }
+
+  private taskList(): Todo[] {
+    const out: Todo[] = [];
+    for (const t of this.activeList) {
+      if (t.category !== TodoCategory.Exam) {
+        out.push(t);
+      }
+    }
+    return out;
+  }
+
+  /** '2026-10-20 09:00' → '10 月 20 日 09:00' */
+  private examWhen(t: Todo): string {
+    if (t.ddl.length < 16) {
+      return '时间待定';
+    }
+    const d: Date = parseDate(t.ddl.substring(0, 10));
+    return `${d.getMonth() + 1} 月 ${d.getDate()} 日 ${t.ddl.substring(11, 16)}`;
+  }
+
+  private countdownOf(t: Todo): string {
+    if (t.ddl.length < 10) {
+      return '';
+    }
+    return countdownText(parseDate(t.ddl.substring(0, 10)), today());
+  }
+
+  /** '2026-10-14 23:59' → '10/14 23:59 · 明天' */
+  private ddlText(ddl: string): string {
+    if (ddl.length === 0) {
+      return '无截止';
+    }
+    const date: Date = parseDate(ddl.substring(0, 10));
+    const time: string = ddl.length >= 16 ? ddl.substring(11, 16) : '';
+    return `${date.getMonth() + 1}/${date.getDate()} ${time} · ${relativeDayText(date)}`;
+  }
+
+  private confirm(t: Todo): void {
+    this.mutate(t.id, TodoStatus.Active);
+  }
+
+  private complete(t: Todo): void {
+    this.mutate(t.id, TodoStatus.Done);
+  }
+
+  private reopen(t: Todo): void {
+    this.mutate(t.id, TodoStatus.Active);
+  }
+
+  private mutate(id: number, status: string): void {
+    this.doMutate(id, status).catch((e: Object): void => {
+      hilog.error(DOMAIN, TAG, 'todo mutate failed: %{public}s', JSON.stringify(e));
+    });
+  }
+
+  private async doMutate(id: number, status: string): Promise<void> {
+    const ctx: common.UIAbilityContext = this.context();
+    const doneAt: number = status === TodoStatus.Done ? Date.now() : 0;
+    await TodoRepo.setTodoStatus(ctx, id, status, doneAt);
+    await this.reload();
+  }
+
+  /** 删掉自动生成的待办 → 记进黑名单，以后不再生成 */
+  private removeConfirmed(t: Todo): void {
+    this.doRemove(t).catch((e: Object): void => {
+      hilog.error(DOMAIN, TAG, 'todo remove failed: %{public}s', JSON.stringify(e));
+    });
+  }
+
+  private async doRemove(t: Todo): Promise<void> {
+    const ctx: common.UIAbilityContext = this.context();
+    if (t.source === TodoSource.Template && t.generationKey.length > 0) {
+      await TodoRepo.blacklist(ctx, t.generationKey, Date.now());
+    }
+    await TodoRepo.deleteTodo(ctx, t.id);
+    this.pendingDeleteId = 0;
+    await this.reload();
+  }
+
+  /**
+   * 「自定义」那个胶囊是否处于选中态：当前时长不在任何预设档位上。
+   * （考试类待办的 estimateMin 是 0，不参与，见编辑面板里的 if）
+   */
+  private customEstimateActive(): boolean {
+    return PRESET_ESTIMATES.indexOf(this.editEstimate) < 0;
+  }
+
+  /** 「自定义」胶囊的文字：选中时直接显示当前分钟数，一眼看到自己填了什么 */
+  private customChipLabel(): string {
+    return this.customEstimateActive() ? `${this.editEstimate} 分钟` : '自定义';
+  }
+
+  /** 自定义输入框失焦/提交时校验。非法值保留用户输入但不落库，避免悄悄改成别的数 */
+  private commitCustomEstimate(): void {
+    const raw: string = this.editEstimateCustom.trim();
+    this.editEstimateFocus = false;
+    if (raw.length === 0) {
+      return;
+    }
+    const n: number = Number.parseInt(raw, 10);
+    if (Number.isNaN(n)) {
+      return;
+    }
+    if (n < CUSTOM_ESTIMATE_MIN) {
+      this.editEstimate = CUSTOM_ESTIMATE_MIN;
+    } else if (n > CUSTOM_ESTIMATE_MAX) {
+      this.editEstimate = CUSTOM_ESTIMATE_MAX;
+    } else {
+      this.editEstimate = n;
+    }
+    this.editEstimateCustom = `${this.editEstimate}`;
+  }
+
+  private openNew(): void {
+    this.editId = 0;
+    this.editTitle = '';
+    this.editDdl = `${formatDate(today())} 23:59`;
+    this.editEstimate = 60;
+    this.editEstimateCustom = '';
+    this.editEstimateFocus = false;
+    this.editCourseId = 0;
+    this.editCategory = TodoCategory.Other;
+    this.editPlace = '';
+    this.editorVisible = true;
+  }
+
+  private openNewExam(): void {
+    this.openNew();
+    this.editCategory = TodoCategory.Exam;
+    this.editEstimate = 0;
+    this.editDdl = `${formatDate(addDays(today(), 7))} 09:00`;
+  }
+
+  private openEdit(t: Todo): void {
+    this.editId = t.id;
+    this.editTitle = t.title;
+    this.editDdl = t.ddl;
+    this.editEstimate = t.estimateMin;
+    // 已有待办的时长若不落在预设档位上，就回填进自定义输入框，别让用户重填
+    const preset: number[] = PRESET_ESTIMATES;
+    this.editEstimateCustom = preset.indexOf(t.estimateMin) >= 0 || t.estimateMin <= 0
+      ? '' : `${t.estimateMin}`;
+    this.editEstimateFocus = false;
+    this.editCourseId = t.courseId;
+    this.editCategory = t.category;
+    this.editPlace = t.category === TodoCategory.Exam ? t.note : '';
+    this.editorVisible = true;
+  }
+
+  private saveEditor(): void {
+    this.doSave().catch((e: Object): void => {
+      hilog.error(DOMAIN, TAG, 'todo save failed: %{public}s', JSON.stringify(e));
+    });
+  }
+
+  private async doSave(): Promise<void> {
+    const ctx: common.UIAbilityContext = this.context();
+    const title: string = this.editTitle.trim().length > 0 ? this.editTitle.trim() : '未命名待办';
+    if (this.editId === 0) {
+      const todo: Todo = {
+        id: 0,
+        title: title,
+        courseId: this.editCourseId,
+        category: this.editCategory,
+        priority: 1,
+        ddl: this.editDdl,
+        estimateMin: this.editCategory === TodoCategory.Exam ? 0 : this.editEstimate,
+        status: TodoStatus.Active,
+        source: TodoSource.Manual,
+        generationKey: '',
+        note: this.editCategory === TodoCategory.Exam ? this.editPlace : '',
+        submitChannel: '',
+        repeatRule: '',
+        photos: '',
+        createdAt: Date.now(),
+        confirmedAt: Date.now(),
+        doneAt: 0
+      };
+      await TodoRepo.insertTodo(ctx, todo);
+    } else {
+      const existing: Todo | undefined = await TodoRepo.getTodo(ctx, this.editId);
+      if (existing !== undefined) {
+        existing.title = title;
+        existing.ddl = this.editDdl;
+        existing.category = this.editCategory;
+        existing.estimateMin = this.editCategory === TodoCategory.Exam ? 0 : this.editEstimate;
+        existing.courseId = this.editCourseId;
+        if (this.editCategory === TodoCategory.Exam) {
+          existing.note = this.editPlace;
+        }
+        await TodoRepo.updateTodo(ctx, existing);
+      }
+    }
+    this.editorVisible = false;
+    await this.reload();
+  }
+
+  // ---------------- UI ----------------
+
+  @Builder
+  SmallButton(text: string, color: string, onTap: () => void) {
+    Text(text)
+      .fontSize(12)
+      .fontColor(color)
+      .padding({ left: 10, right: 10, top: 5, bottom: 5 })
+      .borderRadius(10)
+      .backgroundColor('#F2F4F8')
+      .margin({ left: 6 })
+      .onClick(onTap)
+  }
+
+  @Builder
+  PendingCard(t: Todo) {
+    Column() {
+      Row() {
+        if (t.courseId > 0) {
+          Text(this.courseLabel(t.courseId))
+            .fontSize(11)
+            .fontColor('#1B2430')
+            .backgroundColor(this.courseColor(t.courseId))
+            .borderRadius(4)
+            .padding({ left: 5, right: 5, top: 1, bottom: 1 })
+            .margin({ right: 6 })
+        }
+        Text(t.title)
+          .fontSize(16)
+          .fontWeight(FontWeight.Medium)
+          .fontColor('#12161F')
+          .layoutWeight(1)
+      }
+      .width('100%')
+
+      Row() {
+        Text(this.ddlText(t.ddl))
+          .fontSize(12)
+          .fontColor('#7A8598')
+          .layoutWeight(1)
+        if (this.pendingDeleteId === t.id) {
+          this.SmallButton('确认删除', '#D64545', (): void => this.removeConfirmed(t))
+          this.SmallButton('取消', '#5A6478', (): void => {
+            this.pendingDeleteId = 0;
+          })
+        } else {
+          this.SmallButton('删除', '#D64545', (): void => {
+            this.pendingDeleteId = t.id;
+          })
+          this.SmallButton('编辑', '#5A6478', (): void => this.openEdit(t))
+          this.SmallButton('确认', '#2E6BE6', (): void => this.confirm(t))
+        }
+      }
+      .width('100%')
+      .margin({ top: 8 })
+    }
+    .width('100%')
+    .padding(12)
+    .backgroundColor('#FFFFFF')
+    .borderRadius(10)
+    .border({ width: 1, color: '#E3E8F0' })
+    .margin({ bottom: 8 })
+  }
+
+  @Builder
+  ActiveRow(t: Todo) {
+    Row() {
+      Text('○')
+        .fontSize(18)
+        .fontColor('#C2CBDA')
+        .margin({ right: 10 })
+        .onClick((): void => this.complete(t))
+      Column() {
+        Row() {
+          if (t.courseId > 0) {
+            Text(this.courseLabel(t.courseId))
+              .fontSize(10)
+              .fontColor('#1B2430')
+              .backgroundColor(this.courseColor(t.courseId))
+              .borderRadius(3)
+              .padding({ left: 4, right: 4 })
+              .margin({ right: 6 })
+          }
+          Text(t.title)
+            .fontSize(15)
+            .fontColor('#12161F')
+            .layoutWeight(1)
+            .maxLines(2)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+        }
+        .width('100%')
+        Text(`${this.ddlText(t.ddl)} · 预计 ${t.estimateMin} 分钟`)
+          .fontSize(11)
+          .fontColor('#8A94A6')
+          .margin({ top: 3 })
+      }
+      .layoutWeight(1)
+      .alignItems(HorizontalAlign.Start)
+    }
+    .width('100%')
+    .padding(12)
+    .backgroundColor('#FFFFFF')
+    .borderRadius(10)
+    .margin({ bottom: 8 })
+    .onClick((): void => this.openEdit(t))
+  }
+
+  @Builder
+  ExamCard(t: Todo) {
+    Row() {
+      Column() {
+        Row() {
+          if (t.courseId > 0) {
+            Text(this.courseLabel(t.courseId))
+              .fontSize(10)
+              .fontColor('#1B2430')
+              .backgroundColor(this.courseColor(t.courseId))
+              .borderRadius(3)
+              .padding({ left: 4, right: 4 })
+              .margin({ right: 6 })
+          }
+          Text(t.title)
+            .fontSize(15)
+            .fontWeight(FontWeight.Medium)
+            .fontColor('#12161F')
+            .layoutWeight(1)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+        }
+        .width('100%')
+        Text(`${this.examWhen(t)}${t.note.length > 0 ? ' · ' + t.note : ''}`)
+          .fontSize(11)
+          .fontColor('#8A94A6')
+          .margin({ top: 3 })
+      }
+      .layoutWeight(1)
+      .alignItems(HorizontalAlign.Start)
+
+      Column() {
+        Text(this.countdownOf(t))
+          .fontSize(12)
+          .fontColor('#C0392B')
+        Text('考完了')
+          .fontSize(11)
+          .fontColor('#2E6BE6')
+          .margin({ top: 6 })
+          .onClick((): void => this.complete(t))
+      }
+      .alignItems(HorizontalAlign.End)
+    }
+    .width('100%')
+    .padding(12)
+    .backgroundColor('#FFF8F8')
+    .borderRadius(10)
+    .border({ width: 1, color: '#F5D9D9' })
+    .margin({ bottom: 8 })
+    .onClick((): void => this.openEdit(t))
+  }
+
+  @Builder
+  EditorPanel() {
+    Column() {
+      Column() {
+        Text(this.editId === 0 ? '新建待办' : '编辑待办')
+          .fontSize(18)
+          .fontWeight(FontWeight.Medium)
+          .fontColor('#12161F')
+
+        TextInput({ text: this.editTitle, placeholder: '比如：课乙 P123 第 5-9 题' })
+          .margin({ top: 14 })
+          .onChange((v: string): void => {
+            this.editTitle = v;
+          })
+
+        Text('类型')
+          .fontSize(12)
+          .fontColor('#8A94A6')
+          .width('100%')
+          .margin({ top: 14, bottom: 6 })
+        Flex({ wrap: FlexWrap.Wrap }) {
+          ChipButton({
+            text: '作业',
+            selected: this.editCategory === TodoCategory.Homework,
+            onTap: (): void => {
+            this.editCategory = TodoCategory.Homework;
+          }
+          })
+          ChipButton({
+            text: '自学',
+            selected: this.editCategory === TodoCategory.Self,
+            onTap: (): void => {
+            this.editCategory = TodoCategory.Self;
+          }
+          })
+          ChipButton({
+            text: '考试',
+            selected: this.editCategory === TodoCategory.Exam,
+            onTap: (): void => {
+            this.editCategory = TodoCategory.Exam;
+          }
+          })
+          ChipButton({
+            text: '其他',
+            selected: this.editCategory === TodoCategory.Other,
+            onTap: (): void => {
+            this.editCategory = TodoCategory.Other;
+          }
+          })
+        }
+        .width('100%')
+
+        if (this.editCategory === TodoCategory.Exam) {
+          Text('考场 / 座位')
+            .fontSize(12)
+            .fontColor('#8A94A6')
+            .width('100%')
+            .margin({ top: 6, bottom: 6 })
+          TextInput({ text: this.editPlace, placeholder: '教学楼407 · 12 号座' })
+            .onChange((v: string): void => {
+              this.editPlace = v;
+            })
+        }
+
+        Text(this.editCategory === TodoCategory.Exam ? '考试时间' : '截止')
+          .fontSize(12)
+          .fontColor('#8A94A6')
+          .margin({ top: 14, bottom: 6 })
+          .width('100%')
+        Flex({ wrap: FlexWrap.Wrap }) {
+          ChipButton({
+            text: '今天 23:59',
+            selected: this.editDdl === `${formatDate(today())} 23:59`,
+            onTap: (): void => {
+            this.editDdl = `${formatDate(today())} 23:59`;
+          }
+          })
+          ChipButton({
+            text: '明天 23:59',
+            selected: this.editDdl === `${formatDate(addDays(today(), 1))} 23:59`,
+            onTap: (): void => {
+            this.editDdl = `${formatDate(addDays(today(), 1))} 23:59`;
+          }
+          })
+          ChipButton({
+            text: '本周日 23:59',
+            selected: this.editDdl === `${formatDate(addDays(today(), 7 - (today().getDay() === 0 ? 7 : today().getDay())))} 23:59`,
+            onTap: (): void => {
+            const wd: number = today().getDay() === 0 ? 7 : today().getDay();
+            this.editDdl = `${formatDate(addDays(today(), 7 - wd))} 23:59`;
+          }
+          })
+          ChipButton({
+            text: '3 天后 23:59',
+            selected: this.editDdl === `${formatDate(addDays(today(), 3))} 23:59`,
+            onTap: (): void => {
+            this.editDdl = `${formatDate(addDays(today(), 3))} 23:59`;
+          }
+          })
+          ChipButton({
+            text: '无截止',
+            selected: this.editDdl.length === 0,
+            onTap: (): void => {
+            this.editDdl = '';
+          }
+          })
+        }
+        .width('100%')
+
+        if (this.editCategory !== TodoCategory.Exam) {
+          Text('预计耗时')
+            .fontSize(12)
+            .fontColor('#8A94A6')
+            .margin({ top: 8, bottom: 6 })
+            .width('100%')
+          Flex({ wrap: FlexWrap.Wrap }) {
+            ForEach(PRESET_ESTIMATES, (m: number) => {
+              ChipButton({
+                text: `${m} 分钟`,
+                selected: this.editEstimate === m,
+                onTap: (): void => {
+                this.editEstimate = m;
+                this.editEstimateCustom = '';
+                this.editEstimateFocus = false;
+              }
+              })
+            }, (m: number) => `est-${m}`)
+            // 自定义：选中它才展开输入框，收起时只多占一个胶囊的位置
+            ChipButton({
+              text: this.customChipLabel(),
+              selected: this.customEstimateActive() || this.editEstimateFocus,
+              onTap: (): void => {
+                this.editEstimateFocus = true;
+                this.editEstimateCustom = `${this.editEstimate}`;
+              }
+            })
+          }
+          .width('100%')
+
+          if (this.editEstimateFocus || this.customEstimateActive()) {
+            Row() {
+              TextInput({ text: this.editEstimateCustom, placeholder: '如 25' })
+                .type(InputType.Number)
+                .layoutWeight(1)
+                .onChange((v: string): void => {
+                  this.editEstimateCustom = v;
+                  // 边输边生效：否则用户填了值、焦点还在输入框里，
+                  // 「自定义」胶囊和别处显示的分钟数都还是旧值，看着像没生效。
+                  // 范围夹紧留给失焦时做（见 commitCustomEstimate），打字中途不打断。
+                  const n: number = Number.parseInt(v, 10);
+                  if (!Number.isNaN(n) && n >= CUSTOM_ESTIMATE_MIN && n <= CUSTOM_ESTIMATE_MAX) {
+                    this.editEstimate = n;
+                  }
+                })
+                .onSubmit((): void => this.commitCustomEstimate())
+                .onBlur((): void => this.commitCustomEstimate())
+              Text('分钟')
+                .fontSize(12)
+                .fontColor('#8A94A6')
+                .margin({ left: 8 })
+            }
+            .width('100%')
+            .margin({ top: 2, bottom: 6 })
+
+            Text(`可填 ${CUSTOM_ESTIMATE_MIN}–${CUSTOM_ESTIMATE_MAX} 分钟；不用整刻也行，落下时按开始时间对齐`)
+              .fontSize(10)
+              .fontColor('#98A2B3')
+              .width('100%')
+          }
+        }
+
+        if (this.courses.length > 0) {
+          Text('所属课程')
+            .fontSize(12)
+            .fontColor('#8A94A6')
+            .margin({ top: 8, bottom: 6 })
+          Flex({ wrap: FlexWrap.Wrap }) {
+            ChipButton({
+              text: '无',
+              selected: this.editCourseId === 0,
+              onTap: (): void => {
+              this.editCourseId = 0;
+            }
+            })
+            ForEach(this.courses, (c: Course) => {
+              ChipButton({
+                text: c.shortName.length > 0 ? c.shortName : c.name,
+                selected: this.editCourseId === c.id,
+                onTap: (): void => {
+                  this.editCourseId = c.id;
+                }
+              })
+            }, (c: Course) => `c-${c.id}`)
+          }
+          .width('100%')
+        }
+
+        Row() {
+          Button('取消')
+            .backgroundColor('#EEF1F6')
+            .fontColor('#4A5568')
+            .layoutWeight(1)
+            .onClick((): void => {
+              this.editorVisible = false;
+            })
+          Button('保存')
+            .backgroundColor('#2E6BE6')
+            .fontColor('#FFFFFF')
+            .layoutWeight(1)
+            .margin({ left: 10 })
+            .onClick((): void => this.saveEditor())
+        }
+        .width('100%')
+        .margin({ top: 20 })
+      }
+      .width('100%')
+      .padding(18)
+      .backgroundColor('#FFFFFF')
+      .borderRadius(14)
+    }
+    .width('100%')
+    .height('100%')
+    .padding(16)
+    .justifyContent(FlexAlign.Center)
+  }
+
+  build() {
+    Stack() {
+      Column() {
+        if (this.loading) {
+          Column() {
+            Text('正在载入待办…')
+              .fontSize(13)
+              .fontColor('#8A94A6')
+          }
+          .layoutWeight(1)
+          .width('100%')
+          .justifyContent(FlexAlign.Center)
+        } else {
+          Scroll() {
+            Column() {
+              if (this.pendingList.length > 0) {
+                Row() {
+                  Text('待确认')
+                    .fontSize(15)
+                    .fontWeight(FontWeight.Medium)
+                    .fontColor('#12161F')
+                  Text(`${this.pendingList.length} 条`)
+                    .fontSize(12)
+                    .fontColor('#2E6BE6')
+                    .margin({ left: 6 })
+                  Blank()
+                  Text('下课自动生成，确认后才生效')
+                    .fontSize(11)
+                    .fontColor('#98A2B3')
+                }
+                .width('100%')
+                .margin({ bottom: 8 })
+
+                ForEach(this.pendingList, (t: Todo) => {
+                  this.PendingCard(t)
+                }, (t: Todo) => `p-${t.id}`)
+              }
+
+              if (this.examList().length > 0) {
+                Row() {
+                  Text('即将考试')
+                    .fontSize(15)
+                    .fontWeight(FontWeight.Medium)
+                    .fontColor('#12161F')
+                  Text(`${this.examList().length} 场`)
+                    .fontSize(12)
+                    .fontColor('#C0392B')
+                    .margin({ left: 6 })
+                  Blank()
+                  Text('点一下可改考场')
+                    .fontSize(11)
+                    .fontColor('#98A2B3')
+                }
+                .width('100%')
+                .margin({ top: this.pendingList.length > 0 ? 14 : 0, bottom: 8 })
+
+                ForEach(this.examList(), (t: Todo) => {
+                  this.ExamCard(t)
+                }, (t: Todo) => `x-${t.id}`)
+              }
+
+              Row() {
+                Text('待办')
+                  .fontSize(15)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor('#12161F')
+                Text(`${this.taskList().length} 条`)
+                  .fontSize(12)
+                  .fontColor('#8A94A6')
+                  .margin({ left: 6 })
+              }
+              .width('100%')
+              .margin({
+                top: this.pendingList.length > 0 || this.examList().length > 0 ? 14 : 0,
+                bottom: 8
+              })
+
+              if (this.taskList().length === 0) {
+                Text('暂无待办。下课之后，配了模板的课程会自动生成待办到这里。')
+                  .fontSize(12)
+                  .fontColor('#98A2B3')
+                  .width('100%')
+                  .padding({ top: 10, bottom: 10 })
+              }
+              ForEach(this.taskList(), (t: Todo) => {
+                this.ActiveRow(t)
+              }, (t: Todo) => `a-${t.id}`)
+            }
+            .width('100%')
+            .padding({ left: 16, right: 16, top: 12, bottom: 20 })
+            .alignItems(HorizontalAlign.Start)
+          }
+          .layoutWeight(1)
+          .scrollBar(BarState.Off)
+          .align(Alignment.TopStart)
+
+          Row() {
+            Button('+ 新建待办')
+              .backgroundColor('#2E6BE6')
+              .fontColor('#FFFFFF')
+              .layoutWeight(2)
+              .onClick((): void => this.openNew())
+            Button('+ 考试')
+              .backgroundColor('#FFF4E5')
+              .fontColor('#B26B00')
+              .layoutWeight(1)
+              .margin({ left: 8 })
+              .onClick((): void => this.openNewExam())
+          }
+          .width('100%')
+          .padding({ left: 16, right: 16, top: 8, bottom: 12 })
+          .backgroundColor('#F5F6F8')
+        }
+      }
+      .width('100%')
+      .height('100%')
+
+      if (this.editorVisible) {
+        // 遮罩（点空白关闭）
+        Column()
+          .width('100%')
+          .height('100%')
+          .backgroundColor('rgba(12,18,28,0.45)')
+          .onClick((): void => {
+            this.editorVisible = false;
+          })
+        // 面板是遮罩的「兄弟」而不是子节点：点面板不会冒泡到遮罩上
+        this.EditorPanel()
+      }
+    }
+    .width('100%')
+    .height('100%')
+  }
+}

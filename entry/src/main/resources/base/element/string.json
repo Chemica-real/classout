@@ -1,0 +1,28 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "ClassOUT 主模块"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "ClassOUT"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "ClassOUT"
+    },
+    {
+      "name": "reason_publish_reminder",
+      "value": "用于在上课前与作业截止前提醒你"
+    },
+    {
+      "name": "reason_calendar",
+      "value": "把上课与作业截止的提醒写进系统日历，由日历负责响铃"
+    },
+    {
+      "name": "reason_vibrate",
+      "value": "长按待办或色块时给一次轻微振动反馈，提示已经进入可拖动状态"
+    }
+  ]
+}

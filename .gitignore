@@ -1,0 +1,28 @@
+/node_modules
+/oh_modules
+/local.properties
+/.idea
+**/build
+/.hvigor
+/.cxx
+/.clangd
+/.clang-format
+/.clang-tidy
+**/.test
+/.appanalyzer
+
+# 签名材料：私钥、证书与**口令**绝不入库
+/signing/local.env
+/signing/*.p12
+/signing/*.csr
+/signing/*.cer
+/signing/*.p7b
+
+# 真机联调时抓的运行时日志与截图
+/.logs
+/.logs-preview-*.jpeg
+
+# 领域逻辑验证
+/tools/domain-check/node_modules
+/tools/domain-check/.work
+/tools/domain-check/dist
