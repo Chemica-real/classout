@@ -110,6 +110,14 @@ export struct TodoInbox {
   @State editPlace: string = '';
 
   @State pendingDeleteId: number = 0;
+  /**
+   * 编辑抽屉里的「删除待办」是否已经进入二次确认。
+   *
+   * 为什么要有它：确认过的待办（列表里的「待办」和「即将考试」）**原来根本没有删除入口** ——
+   * 卡片点一下只开编辑窗，而编辑窗里只有取消/保存。用户实测反馈后补上这个按钮，
+   * 并且**必须二次确认**（删了不可恢复，自动生成的那条还会被记进黑名单）。
+   */
+  @State editorConfirmDelete: boolean = false;
 
   /** 系统返回的处理器（注册到 util/BackStack） */
   private backHandler: BackHandler | undefined = undefined;
@@ -134,9 +142,14 @@ export struct TodoInbox {
     this.onModalChange(this.editorVisible);
   }
 
-  /** 待办页的返回顺序：先关编辑窗 → 再收掉待确认的删除 → 都不管 */
+  /** 待办页的返回顺序：先收掉编辑窗里的删除确认 → 再关编辑窗 → 再收掉待确认的删除 */
   private handleBack(): boolean {
     if (this.editorVisible) {
+      // 删除确认是编辑窗里更上面的一层，先收它
+      if (this.editorConfirmDelete) {
+        this.editorConfirmDelete = false;
+        return true;
+      }
       this.editorVisible = false;
       return true;
     }
@@ -351,12 +364,52 @@ export struct TodoInbox {
   }
 
   private async doRemove(t: Todo): Promise<void> {
+    await this.deleteRecord(t);
+    this.pendingDeleteId = 0;
+    await this.reload();
+  }
+
+  /**
+   * 真正落库删一条：自动生成的先记黑名单（以后不再生成），再删记录。
+   * 列表卡片上的删除与编辑抽屉里的删除**共用这一处**，免得两条路各写一遍黑名单逻辑。
+   */
+  private async deleteRecord(t: Todo): Promise<void> {
     const ctx: common.UIAbilityContext = this.context();
     if (t.source === TodoSource.Template && t.generationKey.length > 0) {
       await TodoRepo.blacklist(ctx, t.generationKey, Date.now());
     }
     await TodoRepo.deleteTodo(ctx, t.id);
-    this.pendingDeleteId = 0;
+  }
+
+  /**
+   * 编辑抽屉里的「确认删除」。
+   *
+   * 顺序：先关掉抽屉（连带收起二次确认），再**带动画**把这一条从内存列表里摘掉
+   * （上下两条滑过去，而不是"啪"地跳一下），最后才落库 + reload 校准。
+   * 不播「碎裂掉出」那套碎片动画 —— 它只画在「待确认」卡片上（`PendingCard`），
+   * 而这里删的是确认过的条目，碎片没有宿主。
+   */
+  private deleteFromEditor(): void {
+    const id: number = this.editId;
+    if (id <= 0) {
+      return;
+    }
+    this.editorConfirmDelete = false;
+    this.editorVisible = false;
+    this.getUIContext().animateTo(
+      { duration: dur(DUR_ITEM), curve: curveOrLinear(motionCurve) },
+      (): void => { this.optimisticRemove(id); });
+    this.doDeleteFromEditor(id).catch((e: Object): void => {
+      hilog.error(DOMAIN, TAG, 'todo remove failed: %{public}s', JSON.stringify(e));
+    });
+  }
+
+  private async doDeleteFromEditor(id: number): Promise<void> {
+    const ctx: common.UIAbilityContext = this.context();
+    const t: Todo | undefined = await TodoRepo.getTodo(ctx, id);
+    if (t !== undefined) {
+      await this.deleteRecord(t);
+    }
     await this.reload();
   }
 
@@ -411,6 +464,7 @@ export struct TodoInbox {
     this.editCourseId = 0;
     this.editCategory = TodoCategory.Other;
     this.editPlace = '';
+    this.editorConfirmDelete = false;
     this.editorVisible = true;
   }
 
@@ -434,6 +488,7 @@ export struct TodoInbox {
     this.editCourseId = t.courseId;
     this.editCategory = t.category;
     this.editPlace = t.category === TodoCategory.Exam ? t.note : '';
+    this.editorConfirmDelete = false;
     this.editorVisible = true;
   }
 
@@ -923,6 +978,47 @@ export struct TodoInbox {
         }
         .width('100%')
         .margin({ top: 20 })
+
+        // ---- 删除（只对"已经存在"的待办出现；新建时不显示）----
+        // ★ 用户实测反馈：确认过的待办原来没有任何删除入口（卡片点一下只开这个抽屉，
+        //   而抽屉里只有取消/保存）。这里补上，并且**必须点两下**才真删。
+        if (this.editId > 0) {
+          Divider()
+            .color('rgba(255,255,255,0.12)')
+            .margin({ top: 18, bottom: 14 })
+          if (this.editorConfirmDelete) {
+            Text('确定删除这条待办？删除后不可恢复。')
+              .fontSize(11)
+              .fontColor('#FF8A8A')
+              .width('100%')
+            Row() {
+              Button('取消')
+                .backgroundColor('rgba(255,255,255,0.14)')
+                .fontColor('#C3CDDE')
+                .layoutWeight(1)
+                .onClick((): void => {
+                  this.editorConfirmDelete = false;
+                })
+              Button('确认删除')
+                .backgroundColor('#D64545')
+                .fontColor('#FFFFFF')
+                .layoutWeight(1)
+                .margin({ left: 10 })
+                .onClick((): void => this.deleteFromEditor())
+            }
+            .width('100%')
+            .margin({ top: 8 })
+          } else {
+            Button('删除待办')
+              .backgroundColor('rgba(214,69,69,0.18)')
+              .fontColor('#FF8A8A')
+              .fontSize(13)
+              .width('100%')
+              .onClick((): void => {
+                this.editorConfirmDelete = true;
+              })
+          }
+        }
           }
           .width('100%')
         }

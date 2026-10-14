@@ -13,8 +13,15 @@ ClassOUT 是一款**纯离线鸿蒙原生（ArkTS）「课表 + 待办 + 计划�
 **当前状态：v1.0.0 已发布并推上 Gitee 公开仓库。**
 健康度：干净构建 `ERROR: 0`、警告 6 条（均为刻意保留）、离线断言 **363 项全绿**、
 工作区干净、tag `v1.0.0`（**注意 tag 不指向 HEAD**，见 §22.7）、
-最新代码提交 = `43441a2`（本文件这次更新的提交在它之后，用 `git log -1` 看当前 HEAD）。
+最新代码提交 = 本轮 §23 的提交（用 `git log -1` 看当前 HEAD）。
 远端：`git@gitee.com:the-person-on-the-tree/classout.git`（**公开**，master + tag 都已推齐）。
+
+> ## ✅ 最新一轮：**§23 两个用户报的 bug**
+> ① 已确认的待办**原来没有删除入口**（编辑抽屉只有取消/保存）→ 抽屉底部加「删除待办」+ 二次确认；
+> ② 课表改完课程属性不刷新（`weekSessions` 不是 `@State` + 块的 `ForEach` key 缺字段）、
+> 起/止节次胶囊点了没反馈（又是 `@Builder` 参数固化）→ 抽成 `view/SectionPicker.ets`。
+> **两条都已由用户真机确认修好**；构建环境的 `locale` 坑也记在 §23.5。
+
 
 > ## ✅ 最近完成：**§22 发布准备（v1.0.0）**
 > 清掉界面里的个人/开发残留、**删掉内置课表**（首次安装是空课表）、从零写的中文说明书
@@ -2169,3 +2176,110 @@ git push && git push --tags
 **发布前必须问用户的**：这次是侧载（A）还是上架（B）？图标换了没有？
 有没有把 `signing/` 里的任何私钥/口令带进 git？（`git log --stat -- signing/` 自查）
 
+
+---
+
+## 23. 2026-10-14 两个用户报的 bug（待办删除入口 + 课表刷新 / 节次反馈）
+
+用户原话：
+
+> 「两个问题要修改：1. 待办面无法删除已经确认的待办，在待办面编辑待办的右侧弹窗中加入
+> 这个按钮（要二次确认）；2. 课表界面在更改课程属性之后不会及时更新，而且在课表界面
+> 单击课程时更改起/止节次的按钮不会随点击及时反馈」
+
+**用户已在真机上确认两条都修好。**
+
+### 23.1 已确认的待办没有删除入口
+
+**根因**：待办页只有「待确认」卡片带删除（`PendingCard` 的 删除/编辑/确认 三连），
+确认过的条目（`ActiveRow` / `ExamCard`）点一下只开右侧编辑抽屉，而抽屉里只有 取消/保存
+—— **整条路没有删除入口**。`removeConfirmed()` 早就写好了，但只有待确认卡片调它。
+
+**改法**（`view/TodoInbox.ets`）：
+
+- 抽屉底部新增「删除待办」（危险底 `rgba(214,69,69,0.18)`），**只在 `editId > 0` 时出现**
+  —— 新建待办时不显示。
+- 点它变成「确定删除这条待办？删除后不可恢复。」+ 取消 / 确认删除 两连，
+  就是二次确认（`@State editorConfirmDelete`）。
+- **系统返回**先收掉这个确认、再关编辑窗（`handleBack()` 的新顺序）。
+- 落库前先 `optimisticRemove(id)` **带动画**把这一条从内存列表摘掉（上下两条滑过去，
+  不"啪"地跳一下），最后才落库 + reload 校准。
+- `doRemove` 里那段「先记黑名单再删」抽成 `deleteRecord(t)`，**列表卡片的删除与抽屉的删除
+  共用一处** —— 自动生成的待办在哪条路上删掉，以后都不会再生成。
+- **没复用**「碎裂掉出」那套碎片动画：碎片只挂在 `PendingCard` 上，确认过的条目没有宿主。
+
+### 23.2 课表在改课程属性后不刷新
+
+**两条根因，都要修，缺一个症状还在**：
+
+1. **`Index.weekSessions` 原来是个普通字段**（`private`，不是 `@State`）。课表网格里
+   那些块的 `ForEach` 数据源就是它 —— 不是 `@State`，ArkUI 就不知道网格依赖它，
+   `refresh()` 换掉数组之后网格那一块**不会重新求值**。改成 `@State weekSessions`。
+2. **课时块的 `ForEach` key 只带了 `course.id / date / startSection`**。块是
+   `@Builder SessionBlock(s)` 渲染的，而 **`@Builder` 参数按值传入、首次渲染后固化**
+   （§6.4 / §21.6d 那条老坑）：key 不变 → 复用旧节点、连 builder 都不再执行 →
+   改了颜色/简称/教师回来看还是旧的。新增 `Index.sessionKey(s)`，把**块上会显示、
+   或会影响块的字段全列进去**：课程名/简称/教师/配色、地点、`isQuiz`、`fromOverride`、
+   起止节次，以及**由作息表算出来的位置与高度**（改了「上课节次时间」也要重画）。
+   顺带把时间轴与网格行的 key 也补上 `startMin / endMin / flexible`。
+
+### 23.3 起 / 止节次的胶囊点了不反馈
+
+**根因**：`Index` 里那个 `@Builder SectionPicker(from, to, onPick)` —— **又是 §6.4**：
+参数按值传入、首次渲染后固化。点数字时 `moveStart / moveEnd` **确实变了**
+（所以真按"只挪这一天"用的是新值），但高亮停在打开抽屉那一刻，看着像"点了没反应"。
+
+**改法**：抽成 `view/SectionPicker.ets`（`@Component` + `@Prop from / to`，
+`onPick` 作普通成员），与 `ChipButton` 同一套路；四个调用点（`SessionSheet` 的起/止、
+`ExtraSheet` 的起/止）都改成组件调用，`ForEach` 的 key 带上选中态（同 §21.6d）。
+
+### 23.4 验证
+
+```bash
+./tools/domain-check/run.sh                                    # 363 项全绿（UI 改动没动断言）
+LANG=zh_CN.UTF-8 ./build.sh clean && LANG=zh_CN.UTF-8 ./build.sh assembleHap   # ERROR: 0 / 警告 6 条
+./sign-and-install.sh --install                                # 装机成功
+```
+
+| 项 | 结果 |
+|---|---|
+| 起 / 止节次点数字有高亮反馈 | ✅ 我用 `uitest` 实际点 + 截图核对：点起选第 5 节 → 止自动跟到 5（`moveEnd < sec` 的原有逻辑）；再点止选第 7 节 → 两个选择器各自正确高亮 |
+| 抽屉里能二次确认删除待办 | ✅ **用户真机确认** |
+| 改课程属性后课表立刻更新 | ✅ **用户真机确认** |
+
+> ⚠️ 我这边**没有**亲自走完"真的删掉一条待办"（待办页上是用户的真实数据，
+> 本想去建一条测试待办再删，用户直接上手试了并确认没问题）。删除落库那条路与
+> 待确认卡片的删除**共用 `deleteRecord()`**，不是新写的一套。
+
+### 23.5 ⚠️ 本机构建环境的一个坑（和代码无关，但会让人以为代码坏了）
+
+`./build.sh assembleHap` 可能直接死在：
+
+```
+ERROR: 00302037 Script Error
+Error Message: Failed to load or execute hvigorfile.ts: Cannot read properties of undefined (reading 'indexOf')
+```
+
+**根因**：hvigor 的 `@ohos/hvigor-common/src/util/os-country.js` 在**模块加载期**就调
+`spawnSync("locale")` 判断中英文，而本机 node 通过 `spawnSync` 起 `locale`
+**拿到的是空 stdout**（`spawnSync("locale").stdout === ""`，status 0），
+于是 `.indexOf("zh_CN")` 抛异常 → 连 `hvigorfile.ts` 都加载不了。
+**和 `LANG` 没关系**（`LANG=zh_CN.UTF-8` 也不管用），报错栈里那个 `getErrorUrl`
+只是"报错时又崩了一次"，不是根因。
+
+**绕法**：给 `PATH` 前缀一个 `locale` shim —— 无参数时补打 `LANG=...`，带参数时原样转发
+系统 `locale`（见 `/home/chemica/ChemicaWorkspace/.locale-shim/locale`，**在仓库之外**，
+不影响 ClassOUT 的源码与提交）：
+
+```bash
+export PATH="/home/chemica/ChemicaWorkspace/.locale-shim:$PATH"
+LANG=zh_CN.UTF-8 ./build.sh clean && LANG=zh_CN.UTF-8 ./build.sh assembleHap
+```
+
+### 23.6 这一轮改的文件
+
+| 文件 | 改了什么 |
+|---|---|
+| `view/SectionPicker.ets` | **新增**：`@Component` 版节次选择器（替代 `Index` 里的 `@Builder`） |
+| `pages/Index.ets` | 删掉 `@Builder SectionPicker`，四个调用点改组件；`weekSessions` 改 `@State`；新增 `sessionKey()`；时间轴/网格行/课时块的 key 补全 |
+| `view/TodoInbox.ets` | 编辑抽屉加「删除待办」+ 二次确认；`handleBack` 顺序；`deleteRecord()` 抽取 |

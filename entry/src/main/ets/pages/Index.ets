@@ -25,6 +25,7 @@ import { WallpaperRepo } from '../data/WallpaperRepo';
 import { MOTTO_DEFAULT, loadMotto } from '../data/Prefs';
 
 import { ChipButton } from '../view/ChipButton';
+import { SectionPicker } from '../view/SectionPicker';
 
 // 文件内 @Styles（Glass.ets 顶部说明了为什么不能跨文件 export）
 // 深色版：**模糊用 `backdropBlur`（糊背景），不用 `.blur()`（会糊掉自己的文字）**
@@ -131,7 +132,15 @@ struct Index {
   @State extraStart: number = 1;
   @State extraEnd: number = 2;
 
-  private weekSessions: CourseSession[] = [];
+  /**
+   * 本周的课时（`computeWeekSessions` 的产物）—— 课表网格里那些块就是它。
+   *
+   * ⚠️ **必须是 `@State`**：在「管理课程」里改了课程属性（名字/简称/颜色/教师/时段规则）
+   * 之后，`refresh()` 会把这份数组整个换掉；如果它只是个普通字段，ArkUI 根本不知道
+   * 网格的 ForEach 依赖它，就不会重新求值 —— 用户回到课表看到的还是旧块
+   * （实测反馈：「更改课程属性之后不会及时更新」）。
+   */
+  @State weekSessions: CourseSession[] = [];
   private readonly days: number[] = [1, 2, 3, 4, 5, 6, 7];
 
   // ---------------- 悬浮浮窗（见 view/Float.ets 的文件头注释）----------------
@@ -573,6 +582,23 @@ struct Index {
     return out;
   }
 
+  /**
+   * 课表网格里每个课时块的 `ForEach` key。
+   *
+   * ⚠️ 块是用 `@Builder SessionBlock(s)` 渲染的，而 **`@Builder` 的参数按值传入、
+   * 首次渲染后固化**：key 不变时 ArkUI 直接复用旧节点、连 builder 都不再执行 ——
+   * 于是"在管理课程里改了课程颜色 / 简称 / 教师，回到课表还是旧的"（用户实测反馈）。
+   * 所以**块上会显示、或会影响块的字段统统要进 key**（HANDOFF §21.6d 同一条规矩）：
+   * 课程名/简称/教师/配色、地点、习题课虚线框，以及由作息表算出来的位置与高度
+   *（改了「上课节次时间」也要重画）。
+   */
+  private sessionKey(s: CourseSession): string {
+    return `s-${s.course.id}-${s.date}-${s.originDate}-${s.weekday}`
+      + `-${s.startSection}-${s.endSection}-${this.sectionOffset(s.startSection)}-${this.blockHeight(s)}`
+      + `-${s.location}-${s.isQuiz}-${s.fromOverride}`
+      + `-${s.course.name}-${s.course.shortName}-${s.course.teacher}-${s.course.colorIndex}`;
+  }
+
   private weekRangeText(): string {
     const a: Date = dateOfWeekday(this.semester, this.week, 1);
     const b: Date = dateOfWeekday(this.semester, this.week, 7);
@@ -909,7 +935,7 @@ struct Index {
           .height(this.sectionHeight(st.section))
           .justifyContent(FlexAlign.Start)
           .padding({ top: 2 })
-        }, (st: SectionTime) => `t-${st.section}`)
+        }, (st: SectionTime) => `t-${st.section}-${st.startMin}-${st.endMin}-${st.flexible}`)
       }
       .width(TT_AXIS_W)
 
@@ -922,13 +948,13 @@ struct Index {
                 .width('100%')
                 .height(this.sectionHeight(st.section))
                 .border({ width: { bottom: 1 }, color: 'rgba(255,255,255,0.12)' })
-            }, (st: SectionTime) => `g-${wd}-${st.section}`)
+            }, (st: SectionTime) => `g-${wd}-${st.section}-${st.startMin}-${st.endMin}-${st.flexible}`)
           }
           .width('100%')
 
           ForEach(this.sessionsOfDay(wd), (s: CourseSession) => {
             this.SessionBlock(s)
-          }, (s: CourseSession) => `s-${s.course.id}-${s.date}-${s.startSection}`)
+          }, (s: CourseSession) => this.sessionKey(s))
         }
         .layoutWeight(1)
         .height('100%')
@@ -1006,20 +1032,6 @@ struct Index {
   }
 
   @Builder
-  SectionPicker(from: number, to: number, onPick: (sec: number) => void) {
-    Flex({ wrap: FlexWrap.Wrap }) {
-      ForEach([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], (sec: number) => {
-        ChipButton({
-          text: `${sec}`,
-          selected: sec >= from && sec <= to,
-          onTap: (): void => onPick(sec)
-        })
-      }, (sec: number) => `sp-${from}-${to}-${sec}`)
-    }
-    .width('100%')
-  }
-
-  @Builder
   SessionSheet() {
     Column() {
       Column() {
@@ -1088,14 +1100,22 @@ struct Index {
           .fontColor('#94A0B5')
           .width('100%')
           .margin({ top: 6, bottom: 6 })
-        this.SectionPicker(this.moveStart, this.moveStart, (sec: number): void => {
-          this.moveStart = sec;
-          if (this.moveEnd < sec) {
-            this.moveEnd = sec;
+        SectionPicker({
+          from: this.moveStart,
+          to: this.moveStart,
+          onPick: (sec: number): void => {
+            this.moveStart = sec;
+            if (this.moveEnd < sec) {
+              this.moveEnd = sec;
+            }
           }
         })
-        this.SectionPicker(this.moveEnd, this.moveEnd, (sec: number): void => {
-          this.moveEnd = sec < this.moveStart ? this.moveStart : sec;
+        SectionPicker({
+          from: this.moveEnd,
+          to: this.moveEnd,
+          onPick: (sec: number): void => {
+            this.moveEnd = sec < this.moveStart ? this.moveStart : sec;
+          }
         })
 
         Row() {
@@ -1259,14 +1279,22 @@ struct Index {
           .fontColor('#94A0B5')
           .width('100%')
           .margin({ top: 6, bottom: 6 })
-        this.SectionPicker(this.extraStart, this.extraStart, (sec: number): void => {
-          this.extraStart = sec;
-          if (this.extraEnd < sec) {
-            this.extraEnd = sec;
+        SectionPicker({
+          from: this.extraStart,
+          to: this.extraStart,
+          onPick: (sec: number): void => {
+            this.extraStart = sec;
+            if (this.extraEnd < sec) {
+              this.extraEnd = sec;
+            }
           }
         })
-        this.SectionPicker(this.extraEnd, this.extraEnd, (sec: number): void => {
-          this.extraEnd = sec < this.extraStart ? this.extraStart : sec;
+        SectionPicker({
+          from: this.extraEnd,
+          to: this.extraEnd,
+          onPick: (sec: number): void => {
+            this.extraEnd = sec < this.extraStart ? this.extraStart : sec;
+          }
         })
 
         Row() {
