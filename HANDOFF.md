@@ -169,7 +169,11 @@ git check-ignore -v signing/local.env signing/classout.p12      # 应各自打�
 | 设备序列号 | `<设备序列号>` |
 | 包名 | `com.chemica.classout` |
 | 证书 | 用户实名调试证书，**有效期到 2027-10-13**（证书链：华为根 CA → 开发者关系 CA → 用户）|
-| Profile | 调试型，`device-ids` 里就是上面那个 UDID，`acls.allowed-acls: []`（空的，见 §6）|
+| Profile | 调试型，`device-ids` 里是**两台设备的 UDID**（见 §23.8），`acls.allowed-acls: []`（空的，见 §6）|
+
+**第二台真机**：`ALN-AL10`（HUAWEI），序列号 `<设备序列号>`，
+UDID `<UDID>` ——
+2026-10-14 已加进调试 Profile 并装机成功，过程与坑见 **§23.8**。
 
 **调试签名的应用只在「开发者模式」开着时能跑**；鸿蒙手机没有 `.hap` 安装器，装包只能靠 `hdc`。
 用户已开启开发者模式 + USB 调试。
@@ -2319,3 +2323,53 @@ fatal: 无法读取远程仓库。
 绕法（不必动系统文件）：`GIT_SSH_COMMAND="ssh -F /dev/null"` 让 ssh **忽略系统配置**，
 只走 `~/.ssh/config` 与默认身份文件 —— 仓库用的 `~/.ssh/id_ed25519` 在默认位置，所以能连上。
 以后在这台机器上 push / fetch 都记得带上这句。
+
+### 23.8 第二台真机加进调试 Profile（§22.5 的 A 路线，已跑通）
+
+2026-10-14：用户把另一台手机插上电脑，要在这台上也装 ClassOUT。**这条流程以前只写在
+§22.5 的 A 里、从没真走过**，现在完整走通了一遍，记下来当模板。
+
+**新设备**：`ALN-AL10`（HUAWEI），序列号 `<设备序列号>`，
+UDID `<UDID>`。
+
+**先做了个诊断**（省得瞎猜）：直接拿现有的签名包装，报
+
+```
+code:9568423  Failed to install the HAP because the device is unauthorized,
+              make sure the UDID of your device is configured in the signing profile.
+```
+
+解开 `signing/classoutprofileDebug.p7b` 一看，`device-ids` 里确实只有旧那台的 UDID：
+
+```bash
+strings signing/*.p7b | grep -o '"device-ids":\[[^]]*\]'      # 排除 verify-*.p7b
+```
+
+**用户做的（AGC 网页，agent 做不了）**：
+1. 「证书、App ID 和 Profile」→「设备」→ 添加设备，填新 UDID；
+2. 「Profile」→ 编辑当前调试 Profile → **把新设备勾上**（⚠️ **旧设备的勾不能取消**）→ 下载新 `.p7b`；
+3. 新 `.p7b` 覆盖 `signing/classoutprofileDebug.p7b`。
+
+**agent 做的**：核对新 Profile 的 `device-ids` 是**两台都有** → `./build.sh assembleHap` →
+`./sign-and-install.sh --install` → `install bundle successfully`。
+
+**装机后的核对**（都是实测，不是"应该能行"）：
+
+| 项 | 结果 |
+|---|---|
+| 包信息 | `versionName 1.0.0`，`codePath /data/app/el1/bundle/public/com.chemica.classout` |
+| 启动 | 进程存活、`database ready`、无崩溃 |
+| 界面 | 截图：**「我的学期 · 第 1 周」空课表**（符合 §22.2 的设计），四标签栏与深色渐变底正常；这台是 **1260×2720** 的屏，排版没有溢出 |
+| 提醒 | `reminder plan: … published:0, calendarEvents:7` —— 7 条简报进了系统日历；日志里那 7 条 `publish reminder failed: 1700002` 是**§6.1 的已知现象**（侧载应用代理提醒配额 0 → 自动改走系统日历），**不是 bug** |
+
+**数据**：用户选了**不迁移**（新手机就空着用）。要迁的话：旧手机「管理课程 → 备份与恢复 →
+导出备份」→ `./hdc.sh file recv <filesDir>/classout-backup.json ./`（旧手机要插上）→
+推给新手机同一路径 → App 里「从备份恢复」（会整份覆盖，安全）。
+
+⚠️ **两台手机同时插着时的坑**（这次没踩到，因为当时只插了一台）：`hdc` 需要 `-t <序列号>`
+指定目标，而 **`sign-and-install.sh` 里的 `hdc install` 没带 `-t`** ——
+真出现两台一起插的情况，要么先拔掉一台，要么手工装：
+
+```bash
+./hdc.sh -t <设备序列号> install -r entry/build/default/outputs/default/entry-default-signed.hap
+```
