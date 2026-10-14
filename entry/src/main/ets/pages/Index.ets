@@ -114,6 +114,22 @@ struct Index {
   @State headerBlockH: number = FLOAT_TOP + H_HEADER;
   /** 底部悬浮导航栏量出来的真实高度 */
   @State tabbarH: number = H_TABBAR;
+  /**
+   * 页面内部是否开着全屏浮层（计划页的块属性窗 / 待办页的编辑窗）。
+   *
+   * ★ 为什么要有这个状态：页头 / 待安排货架 / 导航栏是**悬浮浮窗**，画在本文件的
+   * **浮窗层**里；而页面自己的编辑窗画在**页面内部**，层级天生比浮窗层低 ——
+   * 编辑窗的上下两头会被浮窗盖住（用户实测：「大一上所在悬浮窗与最下面的导航栏
+   * 会遮挡计划界面双击某待办展开的属性界面，应该让属性界面在最上方」）。
+   *
+   * ArkUI 没有 portal、`zIndex` 也只对同一父容器的兄弟生效，所以走最省的路：
+   * **编辑窗开着时，把浮窗层改画到内容层之下**（见 build() 里的两处
+   * `this.FloatingBars()`）—— 编辑窗就在最上方了，浮窗被编辑窗那层全屏深色遮罩
+   * 一起压暗（仍然是"模态盖住整屏"的观感，不会突然少两块玻璃）。
+   *
+   * 页面通过 `onModalChange` 回调把它报上来（和 `CourseManager.close` 同一套路）。
+   */
+  @State pageModalOpen: boolean = false;
   /** 内容层上方要让出的高度（设置页没有页头，所以是 0） */
   private topInset(): number {
     return this.tab === 3 ? 0 : this.headerBlockH;
@@ -1049,11 +1065,69 @@ struct Index {
     .justifyContent(FlexAlign.Center)
   }
 
+  /**
+   * 浮窗层（页头 / 待安排货架 / 导航栏）：**不参与内容布局**。
+   *
+   * ⚠️ 它在 `build()` 里被调用两次，位置由 `pageModalOpen` 决定 —— 这是为了
+   * 让页面内部的编辑窗能盖住它（ArkUI 没有 portal，跨层 zIndex 也不生效，
+   * 详见 `pageModalOpen` 的注释）。
+   */
+  @Builder
+  FloatingBars() {
+    // ================= 浮窗层（完全不参与内容布局）=================
+    if (!this.loading) {
+      // 顶部浮窗栈：页头（课表页再加一条周条）。
+      // 设置页不显示课表那套头部 —— 那些是课表页的导航控件，摆在设置页只会干扰；
+      // 它自己的「设置」标题栏在 SettingsPage 内部浮。
+      if (this.tab !== 3) {
+        // ⚠️ 定位壳：根 Stack 默认**居中**排子节点，所以浮窗必须靠一层
+        // "满屏 + 顶到上边"的壳钉住；量高度的是里面那层（它的高度才是浮窗的真实占位）。
+        Column() {
+          Column() {
+            this.Header()
+          }
+          .width('100%')
+          .padding({ left: FLOAT_SIDE, right: FLOAT_SIDE, top: FLOAT_TOP })
+          // 量出这一叠浮窗的总高度，内容层用它留 padding
+          .onAreaChange((oldArea: Area, newArea: Area): void => {
+            const h: Length | undefined = newArea.height;
+            if (typeof h === 'number' && h > 0) {
+              this.headerBlockH = h;
+            }
+          })
+          .hitTestBehavior(HitTestMode.Transparent)
+        }
+        .width('100%')
+        .height('100%')
+        .justifyContent(FlexAlign.Start)
+        .hitTestBehavior(HitTestMode.Transparent)
+      }
+
+      // 底部浮窗：导航栏
+      Column() {
+        this.TabBar()
+      }
+      .width('100%')
+      .height('100%')
+      .padding({ left: FLOAT_SIDE, right: FLOAT_SIDE, bottom: FLOAT_GAP })
+      .justifyContent(FlexAlign.End)
+      .hitTestBehavior(HitTestMode.Transparent)
+    }
+  }
+
   build() {
     Stack() {
       // 玻璃态的"可透物"：铺在所有内容之下。
       // 各页面根容器都不再设不透明底色，否则会把这一层挡掉、玻璃白做。
       PageBackground()
+
+      // ⚠️ 浮窗层画两处，位置由 `pageModalOpen` 决定（见该 state 的注释）：
+      //   - 页面内编辑窗**开着**：画在**内容层之前** → 被编辑窗那层全屏遮罩一起压暗，
+      //     编辑窗始终在最上方（用户要求「属性界面要在最上方」）；
+      //   - **没开**：画在内容层之后（见下面那处）→ 浮在最上面，内容钻到它们下面。
+      if (this.pageModalOpen) {
+        this.FloatingBars()
+      }
 
       // ================= 内容层（铺满整屏）=================
       // 页头 / 导航栏改成**悬浮浮窗**之后，内容层不再被它们挤占：
@@ -1097,7 +1171,10 @@ struct Index {
               TodoInbox({
                 semesterId: this.semester.id,
                 topInset: this.topInset(),
-                bottomInset: this.bottomInset()
+                bottomInset: this.bottomInset(),
+                onModalChange: (open: boolean): void => {
+                  this.pageModalOpen = open;
+                }
               })
             }
             .width('100%')
@@ -1107,7 +1184,10 @@ struct Index {
               PlanDayView({
                 semesterId: this.semester.id,
                 topInset: this.topInset(),
-                bottomInset: this.bottomInset()
+                bottomInset: this.bottomInset(),
+                onModalChange: (open: boolean): void => {
+                  this.pageModalOpen = open;
+                }
               })
             }
             .width('100%')
@@ -1134,44 +1214,8 @@ struct Index {
         .backgroundColor(Color.Transparent)
       }
 
-      // ================= 浮窗层（完全不参与内容布局）=================
-      if (!this.loading) {
-        // 顶部浮窗栈：页头（课表页再加一条周条）。
-        // 设置页不显示课表那套头部 —— 那些是课表页的导航控件，摆在设置页只会干扰；
-        // 它自己的「设置」标题栏在 SettingsPage 内部浮。
-        if (this.tab !== 3) {
-          // ⚠️ 定位壳：根 Stack 默认**居中**排子节点，所以浮窗必须靠一层
-          // "满屏 + 顶到上边"的壳钉住；量高度的是里面那层（它的高度才是浮窗的真实占位）。
-          Column() {
-            Column() {
-              this.Header()
-            }
-            .width('100%')
-            .padding({ left: FLOAT_SIDE, right: FLOAT_SIDE, top: FLOAT_TOP })
-            // 量出这一叠浮窗的总高度，内容层用它留 padding
-            .onAreaChange((oldArea: Area, newArea: Area): void => {
-              const h: Length | undefined = newArea.height;
-              if (typeof h === 'number' && h > 0) {
-                this.headerBlockH = h;
-              }
-            })
-            .hitTestBehavior(HitTestMode.Transparent)
-          }
-          .width('100%')
-          .height('100%')
-          .justifyContent(FlexAlign.Start)
-          .hitTestBehavior(HitTestMode.Transparent)
-        }
-
-        // 底部浮窗：导航栏
-        Column() {
-          this.TabBar()
-        }
-        .width('100%')
-        .height('100%')
-        .padding({ left: FLOAT_SIDE, right: FLOAT_SIDE, bottom: FLOAT_GAP })
-        .justifyContent(FlexAlign.End)
-        .hitTestBehavior(HitTestMode.Transparent)
+      if (!this.pageModalOpen) {
+        this.FloatingBars()
       }
 
       if (this.showManager) {

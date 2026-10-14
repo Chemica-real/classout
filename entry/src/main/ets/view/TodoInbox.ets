@@ -66,13 +66,20 @@ export struct TodoInbox {
   @Prop bottomInset: number = 0;
   /** 底部那条行动按钮浮窗量出来的高度 */
   @State actionsH: number = H_ACTIONS;
+  /** 编辑窗开着时通知 Index（它要把悬浮浮窗层改画到内容层之下，见 Index.pageModalOpen） */
+  onModalChange: (open: boolean) => void = (): void => {};
 
   @State pendingList: Todo[] = [];
   @State activeList: Todo[] = [];
   @State courses: Course[] = [];
   @State loading: boolean = true;
 
-  @State editorVisible: boolean = false;
+  /**
+   * 编辑窗是否开着。
+   * ⚠️ `@Watch` 是必须的：开窗时要通知 Index 把悬浮浮窗层画到内容层之下，
+   * 否则页头/导航栏会盖住编辑窗（用户实测反馈，见 `Index.pageModalOpen`）。
+   */
+  @State @Watch('onEditorChanged') editorVisible: boolean = false;
   @State editId: number = 0;
   @State editTitle: string = '';
   @State editDdl: string = '';
@@ -103,6 +110,13 @@ export struct TodoInbox {
       backStack.unregister(this.backHandler);
       this.backHandler = undefined;
     }
+    // 组件销毁（切标签）时窗也跟着没了，别把"有浮层"的状态留给 Index
+    this.onModalChange(false);
+  }
+
+  /** 编辑窗开/关 → 通知 Index 调整浮窗层的位置（见 Index.pageModalOpen） */
+  private onEditorChanged(): void {
+    this.onModalChange(this.editorVisible);
   }
 
   /** 待办页的返回顺序：先关编辑窗 → 再收掉待确认的删除 → 都不管 */

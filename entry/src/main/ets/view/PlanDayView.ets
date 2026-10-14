@@ -121,6 +121,8 @@ export struct PlanDayView {
   @Prop topInset: number = 0;
   /** 下方悬浮浮窗（导航栏）占掉的高度，由 Index 量好传进来 */
   @Prop bottomInset: number = 0;
+  /** 编辑窗开着时通知 Index（它要把悬浮浮窗层改画到内容层之下，见 Index.pageModalOpen） */
+  onModalChange: (open: boolean) => void = (): void => {};
   /**
    * 本页那叠浮窗（日期栏 [+ 三日列头]）量出来的总高度；**0 = 还没量到**。
    * 没量到时用 `topBarsBlockH()` 按名义高度估一个，免得第一帧内容顶到屏幕上边。
@@ -161,7 +163,14 @@ export struct PlanDayView {
    */
   @State selectedBlockId: number = 0;
   /** 编辑窗里正在看的块。用对象引用是因为面板直接渲染它；每次改动后 refreshEditor() 会换成新对象 */
-  @State editingBlock: PlanBlock | undefined = undefined;
+  /**
+   * 正在编辑的块（undefined = 没开编辑窗）。
+   *
+   * ⚠️ `@Watch` 是必须的：编辑窗一开一关都要通知全局，好让 Index 把**悬浮浮窗层**
+   * 改画到内容层之下，否则页头/导航栏会盖住这个窗（用户实测反馈）。
+   * 用 @Watch 而不是在每个赋值点手动调，是因为这里赋值点多（开窗/关窗/异步刷新四处）。
+   */
+  @State @Watch('onEditorChanged') editingBlock: PlanBlock | undefined = undefined;
   /** 该待办的全部块（含编辑中的这块），编辑窗用它列「其他块」。虚拟课时只有自己一条 */
   @State editorBlocks: PlanBlock[] = [];
   /** 编辑窗里的文本草稿：失焦/提交时才落库 */
@@ -281,6 +290,13 @@ export struct PlanDayView {
       backStack.unregister(this.backHandler);
       this.backHandler = undefined;
     }
+    // 组件销毁（切标签）时窗也跟着没了，别把"有浮层"的状态留给 Index
+    this.onModalChange(false);
+  }
+
+  /** 编辑窗开/关 → 通知 Index 调整浮窗层的位置（见 Index.pageModalOpen） */
+  private onEditorChanged(): void {
+    this.onModalChange(this.editingBlock !== undefined);
   }
 
   /**
