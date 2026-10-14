@@ -904,8 +904,12 @@ struct Index {
     Column() {
       Text(label)
         .fontSize(13)
-        .fontColor(this.tab === index ? '#7FA8FF' : '#94A0B5')
-        .fontWeight(this.tab === index ? FontWeight.Medium : FontWeight.Normal)
+        // 用户要求：「把菜单栏的字体调成加粗的白色，以便看清」。
+        // 导航栏是半透明玻璃，深灰字压在上面确实发虚；改成**加粗 + 白字**。
+        // 选中态靠**不透明度**区分（选中的是纯白，其余 72% 白）——
+        // 两边都还是"加粗的白"，同时一眼看得出在哪个标签上。
+        .fontColor(this.tab === index ? '#FFFFFF' : 'rgba(255,255,255,0.72)')
+        .fontWeight(FontWeight.Bold)
     }
     .layoutWeight(1)
     .height('100%')
