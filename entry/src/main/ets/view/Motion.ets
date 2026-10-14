@@ -72,6 +72,23 @@ export function motionCurve(): ICurve {
   return curves.springMotion(0.34, 0.9);
 }
 
+/**
+ * 就绪过场：整页**向内浓缩**。
+ * 两端速度都为 0（弹簧的自然属性），所以不会"啪"地开始或停住。
+ */
+export function collapseCurve(): ICurve {
+  return curves.springMotion(0.34, 0.92);
+}
+
+/**
+ * 就绪过场：白球**扩张到全屏**。
+ * 阻尼比再低一点 → 收尾有一点点"回弹"，就是用户说的"Q 弹"；
+ * 但起点速度仍是 0，所以和前面那段停顿接得上（速度不突变）。
+ */
+export function expandCurve(): ICurve {
+  return curves.springMotion(0.26, 0.78);
+}
+
 /** 抽屉这种"从屏幕外滑进来"的：响应更快、收尾更紧 */
 export function drawerCurve(): ICurve {
   return curves.springMotion(0.30, 0.86);

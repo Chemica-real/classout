@@ -27,7 +27,8 @@ import { GLASS_BLUR, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_ROW, GLASS_SH
   GLASS_TINT_PANEL, GLASS_TINT_SHEET } from './Glass';
 import { FLOAT_GAP, FLOAT_SIDE, FLOAT_TOP, H_TITLE } from './Float';
 import { persistMotionSetting } from './Motion';
-import { MOTTO_DEFAULT, MOTTO_MAX, cleanMotto, loadMotto, saveMotto } from '../data/Prefs';
+import { MOTTO_DEFAULT, MOTTO_MAX_UNITS, clampMottoUnits, cleanMotto, loadMotto, mottoUnits,
+  saveMotto } from '../data/Prefs';
 
 // 文件内 @Styles（见 Glass.ets 顶部注释：@Styles 不能跨文件 export）
 // 深色版。设置页的卡片按用户拍定算"大面" → 保留模糊（`glassPanelCard`），
@@ -317,22 +318,24 @@ export struct SettingsPage {
   @Builder
   MottoCard() {
     Column() {
-      this.SectionTitle('首页标语', `写在 ClassOUT 下面那一行，最多 ${MOTTO_MAX} 个字；留空就恢复默认。`)
+      this.SectionTitle('首页标语',
+        `写在 ClassOUT 下面那一行。上限按显示宽度算：${MOTTO_MAX_UNITS} 宽度 = 16 个汉字或 32 个英文字母；留空恢复默认。`)
 
       TextInput({ text: this.mottoDraft, placeholder: MOTTO_DEFAULT })
         .fontColor('#F2F5FA')
         .placeholderColor('#8B97AC')
         .caretColor('#7FA8FF')
-        .maxLength(MOTTO_MAX)
+        // ⚠️ 不用 `maxLength`：它按**字符数**卡，16 个汉字同样放得下，
+        // 但"32 个英文字母"会被它误伤。改成按显示宽度实时截断（见 data/Prefs.ets）。
         .onChange((v: string): void => {
-          this.mottoDraft = v;
+          this.mottoDraft = clampMottoUnits(v);
         })
         .onSubmit((): void => this.doSaveMotto())
 
       Row() {
-        Text(`${this.mottoDraft.length}/${MOTTO_MAX}`)
+        Text(`${mottoUnits(this.mottoDraft)}/${MOTTO_MAX_UNITS}`)
           .fontSize(11)
-          .fontColor(this.mottoDraft.length >= MOTTO_MAX ? '#E8B25C' : '#8B97AC')
+          .fontColor(mottoUnits(this.mottoDraft) >= MOTTO_MAX_UNITS ? '#E8B25C' : '#8B97AC')
           .layoutWeight(1)
         Button('恢复默认')
           .backgroundColor('rgba(255,255,255,0.10)')

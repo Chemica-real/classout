@@ -18,8 +18,8 @@ import { backStack } from '../util/BackStack';
 import { GLASS_BLUR, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_SHEET, GLASS_TINT_PANEL,
   GLASS_TINT_SHEET, PageBackground, SCRIM_COLOR } from '../view/Glass';
 import { FLOAT_GAP, FLOAT_SIDE, FLOAT_TOP, H_HEADER, H_TABBAR, H_WEEKROW } from '../view/Float';
-import { BOOT_EXTRA_CAP_MS, BOOT_STEP_MS, TYPE_MS, curveOrLinear, dur, isMotionOn,
-  loadMotionSetting, motionCurve } from '../view/Motion';
+import { BOOT_EXTRA_CAP_MS, BOOT_STEP_MS, TYPE_MS, collapseCurve, curveOrLinear, dur,
+  expandCurve, isMotionOn, loadMotionSetting, motionCurve } from '../view/Motion';
 import { WallpaperRepo } from '../data/WallpaperRepo';
 import { MOTTO_DEFAULT, loadMotto } from '../data/Prefs';
 
@@ -159,6 +159,12 @@ struct Index {
   @State bootIn: boolean = false;
   /** 已经为"放慢启动"额外等掉的时间（受 BOOT_EXTRA_CAP_MS 封顶） */
   private bootExtra: number = 0;
+  /**
+   * 就绪过场的相位：0=没开始 1=就绪停顿 2=向内浓缩 3=小球停顿 4=扩张+渐隐
+   * （时间线见 `playBootExit()`）
+   */
+  @State bootExit: number = 0;
+  private bootTimers: number[] = [];
   @StorageLink('motionOn') @Watch('onMotionChanged') motionOn: boolean = true;
   /** 首页标语（设置页可改，见 data/Prefs.ets）。加载页第一帧就用它 */
   @StorageLink('bootMotto') motto: string = MOTTO_DEFAULT;
@@ -189,6 +195,10 @@ struct Index {
       clearInterval(this.typeTimer);
       this.typeTimer = -1;
     }
+    for (const t of this.bootTimers) {
+      clearTimeout(t);
+    }
+    this.bootTimers = [];
   }
 
   onBackPress(): boolean {
@@ -367,7 +377,54 @@ struct Index {
     // ⚠️ 最后一步（日历提醒）是真·耗时的大头，它本来就看得见；
     // 这里**不再补等待**，别让"本来就慢的那一步"更慢。
     this.bootStep = 4;      // 提醒同步完成 → 就绪
-    this.loading = false;
+    // 不直接切界面，而是播完"浓缩成小球 → 扩张淡出"这段过场（见 playBootExit）
+    this.playBootExit();
+  }
+
+  private bootAfter(ms: number, action: () => void): void {
+    this.bootTimers.push(setTimeout(action, ms));
+  }
+
+  /**
+   * 就绪过场（用户设计原话）：
+   *   「在加载彻底就绪的时候，先停顿一下，然后整个加载界面逐渐往内浓缩成一个小白圆球（1s），
+   *     简单停顿，并即刻扩张至全屏幕，同时逐渐透明消失，显露出应用界面。整个过程优雅 Q 弹、
+   *     流畅丝滑（速度不突变）。」
+   *
+   * 时间线（相位存 `bootExit`）：
+   * ```
+   *   0ms     相位1  就绪停顿（让最后一步的 ✓ 被看清）
+   *   320ms   相位2  animateTo 1000ms：整页缩向中心 + 淡出；白球同时从 0 成形
+   *   1340ms  相位3  小球单独停 180ms
+   *   1520ms  相位4  **此刻才挂载应用界面**（loading=false），
+   *                  并 animateTo 680ms：白球扩张到全屏 + 淡出 → 露出应用
+   *   2240ms  收尾    过场层整个卸掉
+   * ```
+   *
+   * ⚠️ 全程只动 `scale` / `opacity`（不重排）；曲线用两端速度为 0 的弹簧
+   *    （`collapseCurve` / `expandCurve`）—— 这就是"速度不突变"的来源。
+   * ⚠️ **关掉动画时整段跳过**：直接 `loading=false`，不给用户白等两秒。
+   */
+  private playBootExit(): void {
+    if (!this.motionOn) {
+      this.loading = false;
+      return;
+    }
+    this.bootExit = 1;
+    this.bootAfter(320, (): void => {
+      this.getUIContext().animateTo(
+        { duration: dur(1000), curve: curveOrLinear(collapseCurve) },
+        (): void => { this.bootExit = 2; });
+    });
+    this.bootAfter(1340, (): void => { this.bootExit = 3; });
+    this.bootAfter(1520, (): void => {
+      // 应用界面在"球开始扩张"的这一刻才挂载：它是在球后面被露出来的
+      this.loading = false;
+      this.getUIContext().animateTo(
+        { duration: dur(680), curve: curveOrLinear(expandCurve) },
+        (): void => { this.bootExit = 4; });
+    });
+    this.bootAfter(2240, (): void => { this.bootExit = 0; });
   }
 
   private async reloadData(): Promise<void> {
@@ -1276,7 +1333,8 @@ struct Index {
           .fontSize(38)
           .fontWeight(FontWeight.Bold)
           .fontColor('#F2F5FA')
-          .letterSpacing(7)
+          // 用户："ClassOUT 字母之间不要空那么大" → 7 → 2
+          .letterSpacing(2)
           .scale({ x: this.bootIn ? 1 : 0.93, y: this.bootIn ? 1 : 0.93 })
           .opacity(this.bootIn ? 1 : 0)
           .animation({ duration: dur(560), curve: curveOrLinear(motionCurve) })
@@ -1299,6 +1357,9 @@ struct Index {
             .fontSize(11)
             .fontColor('#8B97AC')
             .letterSpacing(3)
+            // 上限是"显示宽度"，最宽那一档（32 个英文字母）刚好贴边，留个省略号兜底
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
             .margin({ top: 14 })
             .opacity(this.bootIn ? 1 : 0)
             .translate({ y: this.bootIn ? 0 : 10 })
@@ -1528,6 +1589,41 @@ struct Index {
 
       if (!this.pageModalOpen) {
         this.FloatingBars()
+      }
+
+      // ---- 就绪过场层（见 playBootExit）----
+      // 它压在应用界面与浮窗**之上**：白球扩张淡出的过程中，应用是被"露出来"的。
+      // `HitTestMode.Block` 让这段时间的手势全部吞掉，免得球还在飞就被点开了什么。
+      if (this.bootExit > 0) {
+        Stack() {
+          // 加载页本体（相位 ≥2 时缩到几乎一个点并淡出）
+          Column() {
+            this.LoadingScreen()
+          }
+          .width('100%')
+          .height('100%')
+          .scale({
+            x: this.bootExit >= 2 ? 0.06 : 1,
+            y: this.bootExit >= 2 ? 0.06 : 1
+          })
+          .opacity(this.bootExit >= 2 ? 0 : 1)
+
+          // 那颗"小白圆球"：相位 2 成形 → 相位 4 扩张到全屏并淡出
+          Column()
+            .width(18)
+            .height(18)
+            .borderRadius(9)
+            .backgroundColor('#FFFFFF')
+            .shadow({ radius: 26, color: 'rgba(255,255,255,0.55)', offsetX: 0, offsetY: 0 })
+            .scale({
+              x: this.bootExit >= 4 ? 70 : (this.bootExit >= 2 ? 1 : 0.01),
+              y: this.bootExit >= 4 ? 70 : (this.bootExit >= 2 ? 1 : 0.01)
+            })
+            .opacity(this.bootExit >= 4 ? 0 : (this.bootExit >= 2 ? 1 : 0))
+        }
+        .width('100%')
+        .height('100%')
+        .hitTestBehavior(HitTestMode.Block)
       }
 
       if (this.showManager) {

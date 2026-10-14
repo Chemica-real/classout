@@ -20,19 +20,70 @@ import { Db } from './Db';
 /** kv 键。⚠️ 组件里 `@StorageLink` 要写字面量 `'bootMotto'` */
 export const MOTTO_KEY: string = 'bootMotto';
 
-/** 字数上限（按字符数算，中英文一样） */
-export const MOTTO_MAX: number = 16;
+/**
+ * 字数上限（**按显示宽度算，不是一个字符一格**）。
+ *
+ * 用户反馈：「个性化语句支持的英文字母数应当更多吧」—— 原来按"字符数"卡 16，
+ * 于是 16 个汉字和 16 个英文字母一样长，而英文字母只有汉字一半宽，明显吃亏。
+ * 现在按**显示宽度**：一个全角（汉字、全角标点）算 2，一个半角（英文/数字/半角符号）算 1。
+ * 所以上限 32 宽度 = 16 个汉字 **或** 32 个英文字母 ✓
+ */
+export const MOTTO_MAX_UNITS: number = 32;
+
+/** 单个字符的显示宽度：全角 2、半角 1 */
+function charUnits(code: number): number {
+  if (code >= 0x1100 && (
+    code <= 0x115F
+      || (code >= 0x2E80 && code <= 0xA4CF)
+      || (code >= 0xAC00 && code <= 0xD7A3)
+      || (code >= 0xF900 && code <= 0xFAFF)
+      || (code >= 0xFE30 && code <= 0xFE4F)
+      || (code >= 0xFF00 && code <= 0xFF60)
+      || (code >= 0xFFE0 && code <= 0xFFE6)
+      || (code >= 0x20000 && code <= 0x3FFFD))) {
+    return 2;
+  }
+  return 1;
+}
+
+/** 一段文字的显示宽度 */
+export function mottoUnits(text: string): number {
+  let w: number = 0;
+  for (let i = 0; i < text.length; i++) {
+    w += charUnits(text.charCodeAt(i));
+  }
+  return w;
+}
+
+/**
+ * 按显示宽度截断（超出上限就砍掉尾巴）。
+ * ⚠️ 输入框的 `maxLength` 只能按"字符数"卡，挡不住"16 个汉字 = 32 宽度"这种，
+ * 所以**输入时就用这个函数实时截断**，而不是只在保存时截。
+ */
+export function clampMottoUnits(text: string): string {
+  let w: number = 0;
+  let out: string = '';
+  for (let i = 0; i < text.length; i++) {
+    const u: number = charUnits(text.charCodeAt(i));
+    if (w + u > MOTTO_MAX_UNITS) {
+      break;
+    }
+    w += u;
+    out += text.charAt(i);
+  }
+  return out;
+}
 
 /** 默认标语 */
 export const MOTTO_DEFAULT: string = '离线课表 · 待办 · 计划';
 
-/** 读换算后的标语（空/超长都会归一） */
+/** 读换算后的标语（空 → 默认；超宽 → 按显示宽度截断） */
 export function cleanMotto(raw: string): string {
   const t: string = raw.trim();
   if (t.length === 0) {
     return MOTTO_DEFAULT;
   }
-  return t.length > MOTTO_MAX ? t.substring(0, MOTTO_MAX) : t;
+  return clampMottoUnits(t);
 }
 
 /** 冷启动读回来 */
