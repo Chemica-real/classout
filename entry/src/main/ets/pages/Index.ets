@@ -18,8 +18,9 @@ import { backStack } from '../util/BackStack';
 import { GLASS_BLUR, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_SHEET, GLASS_TINT_PANEL,
   GLASS_TINT_SHEET, PageBackground, SCRIM_COLOR } from '../view/Glass';
 import { FLOAT_GAP, FLOAT_SIDE, FLOAT_TOP, H_HEADER, H_TABBAR, H_WEEKROW } from '../view/Float';
-import { BOOT_EXTRA_CAP_MS, BOOT_STEP_MS, TYPE_MS, collapseCurve, curveOrLinear, dur,
-  expandCurve, isMotionOn, loadMotionSetting, motionCurve } from '../view/Motion';
+import { BOOT_EXTRA_CAP_MS, BOOT_STEP_MS, DUR_BALL_DWELL, DUR_COLLAPSE, DUR_EXPAND,
+  DUR_SPRAY, TYPE_MS, collapseCurve, curveOrLinear, dur, expandCurve, isMotionOn,
+  loadMotionSetting, motionCurve } from '../view/Motion';
 import { WallpaperRepo } from '../data/WallpaperRepo';
 import { MOTTO_DEFAULT, loadMotto } from '../data/Prefs';
 
@@ -65,6 +66,14 @@ const TT_GRID_PAD: number = 4;
  * 加载页把"正在干什么"逐条标出来 —— 既是科技感，也是真的有用：
  * 冷启动要重排提醒，过去只有一行会变的文案，用户不知道还要等多久。
  */
+/**
+ * 小球停留时向外喷射的白色粒子：12 颗，方向均分一圈、半径长短交替
+ * （全一样长会像个"爆炸"，长短交替才像"喷射"）。
+ * 半径写死成表，省得每帧算三角函数。
+ */
+const SPRAY_N: number = 12;
+const SPRAY_R: number[] = [40, 66, 34, 74, 46, 62, 38, 70, 44, 68, 32, 58];
+
 const BOOT_STEPS: string[] = [
   '初始化本地数据',
   '载入课表与节次',
@@ -164,6 +173,8 @@ struct Index {
    * （时间线见 `playBootExit()`）
    */
   @State bootExit: number = 0;
+  /** 小球喷射：false = 粒子还贴在球心（不可见），true = 已飞出去并淡掉 */
+  @State ballSpray: boolean = false;
   private bootTimers: number[] = [];
   @StorageLink('motionOn') @Watch('onMotionChanged') motionOn: boolean = true;
   /** 首页标语（设置页可改，见 data/Prefs.ets）。加载页第一帧就用它 */
@@ -381,6 +392,33 @@ struct Index {
     this.playBootExit();
   }
 
+  /** 浓缩结束：小球停留 + **即刻**往外喷射粒子 */
+  private onCollapseDone(): void {
+    this.bootExit = 3;
+    this.ballSpray = false;
+    // 先渲染一帧"粒子都贴在球心"，再让它们飞出去（否则会直接跳到终点）
+    this.bootAfter(16, (): void => { this.ballSpray = true; });
+    this.bootAfter(DUR_BALL_DWELL, (): void => {
+      // 停留结束 → 挂载应用界面，并开始扩张；扩张完成再收尾
+      this.loading = false;
+      this.getUIContext().animateTo({
+        duration: dur(DUR_EXPAND),
+        curve: curveOrLinear(expandCurve),
+        onFinish: (): void => { this.bootExit = 0; }
+      }, (): void => { this.bootExit = 4; });
+    });
+  }
+
+  /** 第 i 颗粒子的水平位移（方向均分一圈，半径取自 SPRAY_R） */
+  private sprayDx(i: number): number {
+    return Math.cos((i / SPRAY_N) * 2 * Math.PI) * SPRAY_R[i];
+  }
+
+  /** 第 i 颗粒子的垂直位移 */
+  private sprayDy(i: number): number {
+    return Math.sin((i / SPRAY_N) * 2 * Math.PI) * SPRAY_R[i];
+  }
+
   private bootAfter(ms: number, action: () => void): void {
     this.bootTimers.push(setTimeout(action, ms));
   }
@@ -391,15 +429,18 @@ struct Index {
    *     简单停顿，并即刻扩张至全屏幕，同时逐渐透明消失，显露出应用界面。整个过程优雅 Q 弹、
    *     流畅丝滑（速度不突变）。」
    *
-   * 时间线（相位存 `bootExit`）：
+   * 时间线（相位存 `bootExit`；时长都是常量，见 `view/Motion.ets`）：
    * ```
-   *   0ms     相位1  就绪停顿（让最后一步的 ✓ 被看清）
-   *   320ms   相位2  animateTo 1000ms：整页缩向中心 + 淡出；白球同时从 0 成形
-   *   1340ms  相位3  小球单独停 180ms
-   *   1520ms  相位4  **此刻才挂载应用界面**（loading=false），
-   *                  并 animateTo 680ms：白球扩张到全屏 + 淡出 → 露出应用
-   *   2240ms  收尾    过场层整个卸掉
+   *   相位1  就绪停顿 320ms（让最后一步的 ✓ 被看清）
+   *   相位2  animateTo DUR_COLLAPSE：整页缩向中心 + 淡出；白球同时从 0 成形
+   *   相位3  小球停留 DUR_BALL_DWELL，**喷射即刻开始**（球自身大小不变）
+   *   相位4  **此刻才挂载应用界面**（loading=false），
+   *          并 animateTo DUR_EXPAND：白球扩张到全屏 + 淡出 → 露出应用
+   *   收尾    过场层整个卸掉
    * ```
+   * ⚠️ 相位 3 是挂在浓缩动画的 **`onFinish`** 上的，不是按固定毫秒数估的 ——
+   *    弹簧曲线"看起来缩完了"和"名义时长走完"不是一回事，按固定时间估会留一段空档
+   *    （用户实测："喷射效果没有在浓缩完成之后即刻开始"）。同理，扩张完成也走 `onFinish`。
    *
    * ⚠️ 全程只动 `scale` / `opacity`（不重排）；曲线用两端速度为 0 的弹簧
    *    （`collapseCurve` / `expandCurve`）—— 这就是"速度不突变"的来源。
@@ -411,20 +452,14 @@ struct Index {
       return;
     }
     this.bootExit = 1;
+    // ① 向内浓缩 → 结束后立刻进入相位 3（**靠 onFinish，不靠估时间**）
     this.bootAfter(320, (): void => {
-      this.getUIContext().animateTo(
-        { duration: dur(1000), curve: curveOrLinear(collapseCurve) },
-        (): void => { this.bootExit = 2; });
+      this.getUIContext().animateTo({
+        duration: dur(DUR_COLLAPSE),
+        curve: curveOrLinear(collapseCurve),
+        onFinish: (): void => this.onCollapseDone()
+      }, (): void => { this.bootExit = 2; });
     });
-    this.bootAfter(1340, (): void => { this.bootExit = 3; });
-    this.bootAfter(1520, (): void => {
-      // 应用界面在"球开始扩张"的这一刻才挂载：它是在球后面被露出来的
-      this.loading = false;
-      this.getUIContext().animateTo(
-        { duration: dur(680), curve: curveOrLinear(expandCurve) },
-        (): void => { this.bootExit = 4; });
-    });
-    this.bootAfter(2240, (): void => { this.bootExit = 0; });
   }
 
   private async reloadData(): Promise<void> {
@@ -1615,13 +1650,45 @@ struct Index {
           })
           .opacity(this.bootExit >= 2 ? 0 : 1)
 
+          // 喷射的白色粒子：从相位 3 开始出现，**延续到相位 4**（扩张期间慢慢淡掉）。
+          // 只挂在相位 3 的话，360ms 一到粒子就被卸掉、喷射看不完整（实测抓不稳）。
+          // 它们**不属于**小球节点，所以球的自身大小完全不受影响（用户要求"自身不变"）；
+          // 每颗 `delay` 依次错开 → 连起来是一股"慢速喷射"，而不是一次爆炸。
+          if (this.bootExit >= 3) {
+            ForEach([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], (i: number) => {
+              Column()
+                .width(4 + (i % 3) * 2)
+                .height(4 + (i % 3) * 2)
+                .borderRadius(8)
+                .backgroundColor('#FFFFFF')
+                // 一圈柔光：压在照片壁纸上也能看清，观感也更"科技"
+                .shadow({ radius: 8, color: 'rgba(255,255,255,0.85)', offsetX: 0, offsetY: 0 })
+                .translate({
+                  x: this.ballSpray ? this.sprayDx(i) : 0,
+                  y: this.ballSpray ? this.sprayDy(i) : 0
+                })
+                .scale({
+                  x: this.ballSpray ? 1.35 : 0.4,
+                  y: this.ballSpray ? 1.35 : 0.4
+                })
+                .opacity(this.ballSpray ? 0 : 1)
+                .animation({
+                  duration: dur(DUR_SPRAY),
+                  curve: Curve.EaseOut,
+                  delay: dur(i * 46)
+                })
+                .hitTestBehavior(HitTestMode.None)
+            }, (i: number) => `spray-${i}`)
+          }
+
           // 那颗"小白圆球"：相位 2 成形 → 相位 4 扩张到全屏并淡出
+          // （尺寸是用户要求"改成现在的两倍"：18 → 36）
           Column()
-            .width(18)
-            .height(18)
-            .borderRadius(9)
+            .width(36)
+            .height(36)
+            .borderRadius(18)
             .backgroundColor('#FFFFFF')
-            .shadow({ radius: 26, color: 'rgba(255,255,255,0.55)', offsetX: 0, offsetY: 0 })
+            .shadow({ radius: 40, color: 'rgba(255,255,255,0.55)', offsetX: 0, offsetY: 0 })
             .scale({
               x: this.bootExit >= 4 ? 70 : (this.bootExit >= 2 ? 1 : 0.01),
               y: this.bootExit >= 4 ? 70 : (this.bootExit >= 2 ? 1 : 0.01)

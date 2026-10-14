@@ -46,6 +46,22 @@ export const DUR_SHARD: number = 320;
 export const DUR_HINT: number = 200;
 /** 背景光晕漂移一个来回 */
 export const DUR_ORBIT: number = 22000;
+// ---- 就绪过场（"浓缩成小球 → 停留喷射 → 扩张淡出"）的时长 ----
+// 用户调过两轮，直接摊在这里方便再改：
+//   浓缩 1000 → 2000 → 6000 → **3600**；扩张 680 → 2040 → **1500**
+//   ⚠️ 前三轮改 duration 全都没生效（曲线是弹簧，见 collapseCurve 的注释）；
+//   换成贝塞尔之后按"用户看到的 3 倍"重设：浓缩 3600ms、扩张 1500ms。
+//   停留 180 → 360 → 1360（"存活时间 +1s"）
+/** 整页向内浓缩成小球 */
+export const DUR_COLLAPSE: number = 3600;
+/** 小球在中央停留（粒子喷射发生在这段时间里，且会延续到扩张阶段）
+ *  ← 用户要求"小球存活时间长 1s"：360 → 1360 */
+export const DUR_BALL_DWELL: number = 1360;
+/** 小球扩张到全屏 + 渐隐 */
+export const DUR_EXPAND: number = 1500;
+/** 一次喷射里单颗粒子的飞行时间（粒子之间再用 delay 依次错开） */
+export const DUR_SPRAY: number = 1100;
+
 /** 打字机每个字的间隔 */
 export const TYPE_MS: number = 45;
 
@@ -74,19 +90,26 @@ export function motionCurve(): ICurve {
 
 /**
  * 就绪过场：整页**向内浓缩**。
- * 两端速度都为 0（弹簧的自然属性），所以不会"啪"地开始或停住。
+ *
+ * ⚠️⚠️ **必须用贝塞尔，绝不能用弹簧曲线**（`springMotion` 之类）：
+ * 弹簧曲线**自带时长**，`animateTo({ duration })` 里的 duration 会被它**直接忽略**。
+ * 所以把 duration 从 1000 改到 2000 再改到 6000，观感一点没变 ——
+ * 用户连着两次反馈"浓缩和扩张速度太快了/为什么还是那么快"，根因就在这。
+ * 贝塞尔尊重 duration：两端斜率为 0，所以"速度不突变"这条仍然成立。
  */
 export function collapseCurve(): ICurve {
-  return curves.springMotion(0.34, 0.92);
+  return curves.cubicBezierCurve(0.33, 0.0, 0.20, 1.0);
 }
 
 /**
  * 就绪过场：白球**扩张到全屏**。
- * 阻尼比再低一点 → 收尾有一点点"回弹"，就是用户说的"Q 弹"；
- * 但起点速度仍是 0，所以和前面那段停顿接得上（速度不突变）。
+ *
+ * 同样必须用贝塞尔（理由见 `collapseCurve`）。
+ * 终点控制点取 `y2 = 1.10 > 1` → 收尾有约 10% 的过冲，就是用户要的"Q 弹"；
+ * 起点斜率为 0，所以接得上前面那段静止（速度不突变）。
  */
 export function expandCurve(): ICurve {
-  return curves.springMotion(0.26, 0.78);
+  return curves.cubicBezierCurve(0.22, 0.0, 0.32, 1.10);
 }
 
 /** 抽屉这种"从屏幕外滑进来"的：响应更快、收尾更紧 */
