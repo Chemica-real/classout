@@ -9,7 +9,7 @@ import { sessionsOnDate } from '../domain/Timetable';
 import { generateForLesson } from '../domain/TodoGenerator';
 import { TimeAxis, DEFAULT_AXIS, allBlocksDone,
   dragOffsetWithScroll, dropRange, edgeScrollDepth, edgeScrollDirection, edgeScrollStep,
-  durationToH, findFreeSlot, halveMinutes, hasBlockOnDate, moveRange, normalizeDuration,
+  DdlGroup, ddlGroupsOn, durationToH, findFreeSlot, halveMinutes, hasBlockOnDate, moveRange, normalizeDuration,
   resizeRange, sortBlocksByTime,
   selectPoolTodos } from '../domain/PlanMath';
 import { BLOCK_MIN_MIN, DURATION_STEP_MIN, pinchDeltaLabel, pinchEnd, resizeEndTo,
@@ -116,12 +116,6 @@ const DDL_MARK_ALLOW: number = 36;
  * 不能用这个 calc 串。
  */
 const CONTENT_W: string = `calc(100% - ${AXIS_W}vp)`;
-
-/** 截止标记的分组：同一分钟上的待办合成一条（用户要求"别重叠、点开看全部"） */
-interface DdlGroup {
-  minute: number;
-  todos: Todo[];
-}
 
 @Component
 export struct PlanDayView {
@@ -2073,48 +2067,11 @@ export struct PlanDayView {
   }
 
   /**
-   * 当天的截止事项**按分钟分组**。
-   * 分组只在这里做，渲染与"展开"都读它 —— 两边各算一次迟早会算出不一致的分组。
+   * 当天的截止事项**按分钟分组**。实现搬去了 `domain/PlanMath.ddlGroupsOn`（纯函数、有离线断言）——
+   * 渲染与"展开"都读这一份，两边各算一次迟早会算出不一致的分组。
    */
   private ddlGroups(): DdlGroup[] {
-    const buckets: Map<number, Todo[]> = new Map<number, Todo[]>();
-    for (const t of this.ddlToday()) {
-      const min: number = this.ddlMinute(t);
-      const cur: Todo[] | undefined = buckets.get(min);
-      if (cur === undefined) {
-        buckets.set(min, [t]);
-      } else {
-        cur.push(t);
-      }
-    }
-    const out: DdlGroup[] = [];
-    buckets.forEach((todos: Todo[], minute: number): void => {
-      const sorted: Todo[] = todos.slice();
-      sorted.sort((a: Todo, b: Todo): number => a.id - b.id);
-      out.push({ minute: minute, todos: sorted });
-    });
-    out.sort((a: DdlGroup, b: DdlGroup): number => a.minute - b.minute);
-    return out;
-  }
-
-  private ddlToday(): Todo[] {
-    const out: Todo[] = [];
-    for (const t of this.todos) {
-      if (t.status !== TodoStatus.Done && t.ddl.length >= 16 && t.ddl.substring(0, 10) === this.date) {
-        out.push(t);
-      }
-    }
-    return out;
-  }
-
-  private ddlMinute(t: Todo): number {
-    if (t.ddl.length < 16) {
-      return AXIS.startMin;
-    }
-    const h: number = parseInt(t.ddl.substring(11, 13), 10);
-    const m: number = parseInt(t.ddl.substring(14, 16), 10);
-    const min: number = h * 60 + m;
-    return min < AXIS.startMin ? AXIS.startMin : min;
+    return ddlGroupsOn(this.todos, this.date, AXIS.startMin);
   }
 
   @Builder

@@ -18,7 +18,8 @@ import { TimeAxis, DEFAULT_WINDOW, WINDOW_MAX_END, allBlocksDone, dragOffsetWith
   normalizeDuration, normalizeWindow,
   overlaps, resizeRange,
   hasBlockOnDate, halveMinutes, scheduledDays,
-  selectPoolTodos, snap, sortBlocksByTime, sortPoolTodos, windowForContent } from './PlanMath';
+  DdlGroup, ddlGroupsOn, ddlMinuteOf, selectPoolTodos, snap, sortBlocksByTime, sortPoolTodos,
+  windowForContent } from './PlanMath';
 
 /**
  * 断言用的固定时间轴：06:00–24:00。
@@ -1111,6 +1112,46 @@ check('不合法：只有日期没有时刻',
 check('提示语是人话：跨天那条',
   validateExamRange('2026-10-15 22:00', '2026-10-16 01:00').message,
   '考试的开始和结束要在同一天');
+
+// ---------- ⑤ 截止标记：按分钟分组 ----------
+console.log('【截止标记：同一分钟合成一组，点开看全部】');
+
+function dt(id: number, title: string, ddl: string, status: string): Todo {
+  const t: Todo = td(id, title, status);
+  t.ddl = ddl;
+  return t;
+}
+
+const ddlPool: Todo[] = [
+  dt(1, 'A', '2026-10-15 23:59', 'active'),
+  dt(2, 'B', '2026-10-15 23:59', 'active'),
+  dt(3, 'C', '2026-10-15 12:30', 'active'),
+  dt(4, 'D', '2026-10-16 23:59', 'active'),
+  dt(5, 'E', '2026-10-15 23:59', 'done'),
+  dt(6, 'F', '2026-10-15 02:00', 'active')
+];
+const dg: DdlGroup[] = ddlGroupsOn(ddlPool, '2026-10-15', 7 * 60);
+check('组数：23:59 一组、12:30 一组、02:00 夹到 07:00 一组（另一个日期的不算）',
+  `${dg.length}`, '3');
+check('组按分钟升序：07:00 → 12:30 → 23:59',
+  dg.map((g: DdlGroup): number => g.minute).join(','), '420,750,1439');
+check('23:59 那组有 2 条（done 的那条不算）',
+  `${dg[2].todos.length}`, '2');
+check('组内按 id 升序（顺序稳定，ForEach key 依赖它）',
+  dg[2].todos.map((t: Todo): number => t.id).join(','), '1,2');
+check('同一分钟的两条不会各占一行（这就是原来"重叠"的根因）',
+  `${ddlGroupsOn([dt(9, 'X', '2026-10-15 08:00', 'active'), dt(8, 'Y', '2026-10-15 08:00', 'active')],
+    '2026-10-15', 420).length}`, '1');
+check('只有日期没有时刻 → 不进标记',
+  `${ddlGroupsOn([dt(9, 'X', '2026-10-15', 'active')], '2026-10-15', 420).length}`, '0');
+check('空串 ddl → 不进标记',
+  `${ddlGroupsOn([dt(9, 'X', '', 'active')], '2026-10-15', 420).length}`, '0');
+check('别的日期 → 不进标记（标记只画当前查看日）',
+  `${ddlGroupsOn(ddlPool, '2026-10-14', 420).length}`, '0');
+check('archived 也不算', `${ddlGroupsOn([dt(9, 'X', '2026-10-15 08:00', 'archived')], '2026-10-15', 420).length}`, '0');
+check('ddlMinuteOf：23:59 → 1439', `${ddlMinuteOf('2026-10-15 23:59')}`, '1439');
+check('ddlMinuteOf：00:07 → 7（非 5 倍数也照算）', `${ddlMinuteOf('2026-10-15 00:07')}`, '7');
+check('ddlMinuteOf：没有时刻 → -1', `${ddlMinuteOf('2026-10-15')}`, '-1');
 
 // ---------- 汇总 ----------
 console.log('');

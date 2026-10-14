@@ -523,3 +523,69 @@ export function sortPoolTodos(todos: Todo[]): Todo[] {
   });
   return out;
 }
+
+// ---------------- 截止标记的分组（⑤）----------------
+
+/**
+ * 一天的截止标记按分钟合成的一组。
+ * 用户 2026-10-14：「截止时间的渲染会重合重叠的，可以设置点击以展开所有在此时截止的事项」。
+ */
+export interface DdlGroup {
+  minute: number;
+  todos: Todo[];
+}
+
+/** 'YYYY-MM-DD HH:mm' → 当天的分钟数；没有时刻（或解析不出来）返回 -1 */
+export function ddlMinuteOf(ddl: string): number {
+  if (ddl.length < 16) {
+    return -1;
+  }
+  const h: number = parseInt(ddl.substring(11, 13), 10);
+  const m: number = parseInt(ddl.substring(14, 16), 10);
+  if (Number.isNaN(h) || Number.isNaN(m)) {
+    return -1;
+  }
+  return h * 60 + m;
+}
+
+/**
+ * 某一天的截止事项，**按分钟分组**（组按分钟升序，组内按 id 升序）。
+ *
+ * 规则：
+ * - 只收**未完成**（done / archived 都不算）且 `ddl` 正好落在 `date` 那天的；
+ * - 只收**带时刻**的 ddl（'YYYY-MM-DD' 这种只有日期的会被 `ddlMinuteOf` 判成 -1 丢掉）；
+ * - 早于时间轴起点的（例如 02:00 截止）**夹到轴起点** —— 轴从 07:00 起，
+ *   不夹的话标记会被算到网格上面去（和不可排时段那条"必须裁到时间轴范围"是同一类坑）。
+ *
+ * 抽成纯函数是为了能离线断言：UI 那边只负责画，分组算错没算错一眼看得出来。
+ */
+export function ddlGroupsOn(todos: Todo[], date: string, axisStartMin: number): DdlGroup[] {
+  const buckets: Map<number, Todo[]> = new Map<number, Todo[]>();
+  for (const t of todos) {
+    if (t.status === TodoStatus.Done || t.status === TodoStatus.Archived) {
+      continue;
+    }
+    if (t.ddl.substring(0, 10) !== date) {
+      continue;
+    }
+    const raw: number = ddlMinuteOf(t.ddl);
+    if (raw < 0) {
+      continue;
+    }
+    const min: number = raw < axisStartMin ? axisStartMin : raw;
+    const cur: Todo[] | undefined = buckets.get(min);
+    if (cur === undefined) {
+      buckets.set(min, [t]);
+    } else {
+      cur.push(t);
+    }
+  }
+  const out: DdlGroup[] = [];
+  buckets.forEach((group: Todo[], minute: number): void => {
+    const sorted: Todo[] = group.slice();
+    sorted.sort((a: Todo, b: Todo): number => a.id - b.id);
+    out.push({ minute: minute, todos: sorted });
+  });
+  out.sort((a: DdlGroup, b: DdlGroup): number => a.minute - b.minute);
+  return out;
+}
