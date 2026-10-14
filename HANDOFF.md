@@ -12,8 +12,8 @@ ClassOUT 是一款**纯离线鸿蒙原生（ArkTS）「课表 + 待办 + 计划�
 
 **当前状态：v1.0.0 已发布并推上 Gitee 公开仓库。**
 健康度：干净构建 `ERROR: 0`、警告 6 条（均为刻意保留）、离线断言 **363 项全绿**、
-工作区干净、tag `v1.0.0`（**已强制移到与 HEAD 同一个提交**，见 §22.7 / §23.7）、
-最新代码提交 = 本轮 §23 的提交（用 `git log -1` 看当前 HEAD）。
+工作区干净、tag `v1.0.0` **已强制移到发布那次提交**（原来的错位见 §22.7，处理过程见 §23.7；
+之后只有交接文档的小提交，不影响发布内容）。最新提交用 `git log -1` 看。
 远端：`git@gitee.com:the-person-on-the-tree/classout.git`（**公开**，master + tag 都已推齐）。
 
 > ## ✅ 最新一轮：**§23 两个用户报的 bug**
@@ -2296,8 +2296,14 @@ git tag -f -a v1.0.0 -m "ClassOUT v1.0.0 …"  # 注解 tag，内容里列了这
 git push -f origin v1.0.0
 ```
 
-结果：`refs/heads/master` 与 `refs/tags/v1.0.0^{}` **都是 `bdd1491`（= 当时的 HEAD）**，
-`git status -sb` 干净且与 origin 对齐。
+结果：`refs/tags/v1.0.0^{}` = **`bdd1491`**（就是这次两个 bug 的修复提交，移动它时它正是 HEAD；
+紧接着还有一个**只改本文件**的提交落在它后面 —— 发布内容不含它，**故意不把 tag 再挪一次**）。
+`git status -sb` 干净且与 origin 对齐。想确认 tag 到底指向哪里，别猜，跑：
+
+```bash
+git rev-list -n1 v1.0.0        # tag 解析到的提交
+git log --oneline -1 $(git rev-list -n1 v1.0.0)
+```
 
 ⚠️ **坑：这台机器的 ssh 直接连不上远端**，`git ls-remote origin` 报
 
