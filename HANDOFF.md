@@ -10,8 +10,14 @@ ClassOUT 是一款**纯离线鸿蒙原生（ArkTS）「课表 + 待办 + 计划�
 已成功签名并**安装在用户的真机（华为 nova 15）上运行**，启动无崩溃、种子课表渲染正确、
 自动生成待办跑通、提醒已落入系统日历。
 
-当前健康度：**干净构建 `ERROR: 0`、警告 6 条（均为刻意保留）、离线断言 332 项全绿**。
+当前健康度：**干净构建 `ERROR: 0`、警告 6 条（均为刻意保留）、离线断言 354 项全绿**。
 已建 git 仓库（`ChemicaWorkspace/ClassOUT`，本地无远端），工作区干净。
+
+> ## ⚠️ 当前待办：**§18「重新打造毛玻璃 UI（深色主题）」**
+> 用户已把这件事交给下一个 agent。**动 UI 之前先读 §18** ——
+> 那里有用户已拍定的三条、我在 API 18 SDK 里核实过的两个技术事实、
+> 以及一张**必须照着用的颜色映射表**（全 App 64 个颜色字面量）。
+> §16/§17 是"浅色版毛玻璃 + 自定义背景"的现状与踩坑记录，也请一读。
 
 **2026-10-14 还做了计划页「三日视图」**（提交 `27cd7a8`，含横向跨天拖拽），
 以及为它铺路的 `domain/PlanLayout.ets` 重构（提交 `bd7f2fe`）。详见 §13。
@@ -1087,3 +1093,278 @@ ArkUI 的 `onBackPress` **只能写在 `@Entry` 组件上**，而"当前最上�
 | **薄纱浓度可调** | 照片明暗不可控：现在固定 0.55。定义里那条"不透明度调整"更像"给用户三档（淡/中/浓）"。实现很小（`AppStorage` 存一个数值 + 设置页三个胶囊） |
 | 相册里的多张轮流/裁剪 | 未做 |
 | 纯色/主题色当背景 | 未做（渐变就是最简版） |
+
+---
+
+## 18. 【待办 · 交给下一个 agent】重新打造毛玻璃 UI（深色主题）
+
+### 18.0 一句话
+
+现在是一个**浅色**版毛玻璃（用系统材质 `backgroundBlurStyle(COMPONENT_*)` + 白色薄纱渐变）。
+要整体换成**深色主题 + 显式 `backdropBlur(N)` 的分层毛玻璃**，按用户给的两篇参考文章的做法。
+
+### 18.1 用户已拍定的三条（**不要再问，直接做**）
+
+| # | 决定 | 选项原文 |
+|---|---|---|
+| 1 | **整个 App 改成深色主题**，完全照文章那套（深色渐变底 + 白色低 alpha 玻璃 + 白字） | 用户选的是"整个 App 改成深色主题，完全照文章那套" |
+| 2 | **用 `backdropBlur(N)` 显式半径**（不用 `.blur()`、也不再依赖 `backgroundBlurStyle` 的枚举） | "用 backdropBlur(N) 显式半径（推荐）" |
+| 3 | **模糊只留给"大面"**：页头 / 导航栏 / 浮层 / 弹窗 / 抽屉 / 设置卡片；**列表行与小卡改成半透明纯色（不模糊）**；默认渐变背景**加两个装饰光晕** | "模糊只留给少数'大面'…并加背景光晕（推荐）" |
+
+> 为什么必须同时改深色：文章那套（白色 alpha **0.12** 玻璃 + 白字）**只在深底上成立**。
+> 文章自己写了取值策略：alpha 0.10–0.20 才是"背景清晰可见"的毛玻璃，**0.50 以上就不算毛玻璃**。
+> 现在浅色版的卡片是 0.28–0.52、浮层 0.48–0.74 —— 按文章标准**太厚了**；
+> 但直接在浅底上用 0.12，玻璃会看不见、白字也读不出来。所以"改深色"和"降 alpha"是一件事。
+
+### 18.2 必读技术事实（我已在 **API 18** 的 SDK 里核实，别照抄文章）
+
+1. **`.blur()` 模糊的是"自己的内容"**。SDK 原文：
+   `blur(value, options)` → *"Adds the **content blurring** effect for the current component."*
+2. **`backdropBlur()` 才是"模糊背后"**。SDK 原文：
+   `backdropBlur(value, options)` → *"Adds the **background blur** effect for the current component …
+   the larger the blur radius, the more blurred the **background**."*
+3. ⚠️ **CSDN 那篇写的是 API 24**，它说"blur 会同时模糊透过半透明区域看到的**父容器**背景内容"
+   —— **在 API 18 上不成立**。照抄 `.blur(20)` 到卡片容器上会把**卡片里的文字一起糊掉**。
+   所以：**背景模糊一律用 `backdropBlur(N)`**，结构上按文章把玻璃做成 `Stack` 里的一层 +
+   `.clip(true)` 保住圆角。
+4. ⚠️ **`@Styles` 不能跨文件 export/import**（实测报
+   `Property 'glassCard' does not exist on type 'ColumnAttribute'`）。
+   现做法：**常量集中在 `view/Glass.ets`**，**5 个 view 文件各声明一个文件内 `@Styles`**。
+   **改配方要 5 个文件一起改**：`pages/Index.ets` / `view/TodoInbox.ets` /
+   `view/PlanDayView.ets` / `view/CourseManager.ets` / `view/SettingsPage.ets`。
+
+### 18.3 参考文章的两套做法（摘录）
+
+**CSDN《Column + Blur 层叠布局实战》** —— 核心公式：
+
+```
+毛玻璃效果 = Stack(背景) + Column(半透明底色 + blur + 1px 高光边框)
+```
+- 三要素：`backgroundColor('rgba(255,255,255,0.12)')` + `.blur(20)` +
+  `.border({width:1, color:'rgba(255,255,255,0.25)'})`
+- 再加：`.borderRadius(20)` + `.shadow({radius:20, color:'rgba(0,0,0,0.3)', offsetY:8})`
+- 背景层：深色纵向渐变 + **两个大模糊光晕**（`blur(80)` 粉、`blur(60)` 青，opacity 0.35/0.25）
+- 模糊半径速查：`5–15` 中等（卡片主体）、`16–30` 强（主要面板）、`31–60` 极强（光晕）
+- alpha 速查：`0.10–0.20` 推荐区间、`0.35–0.50` 只剩光影、`0.50+` 已不算毛玻璃
+
+**掘金《毛玻璃效果按钮》** —— 更省的做法，值得学它的**结构**：
+
+```
+Stack() {
+  Rect().fill(White).blur(20).opacity(0.3).borderRadius(25).antiAlias(true)  // 背景层
+  Text('离线下载').fontColor(Color.White)                                    // 文字层（不受模糊影响）
+}.borderRadius(25).clip(true).shadow({radius:5, color:White, offsetY:1})
+```
+- 要点：**模糊只挂在专门做背景的那一层**，文字是它的兄弟节点 → 文字永远清晰；
+- `clip(true)` 把模糊限制在圆角内（不做的话模糊会溢出圆角）；
+- 建议：blur `10–30`、opacity `0.2–0.5`。
+
+> 两篇的**结构**（背景层与内容层分离 + clip + 高光边 + 浮起阴影）直接可用；
+> 只是把 `.blur()` 换成 `backdropBlur()`（见 §18.2）。
+
+### 18.4 建议的新配方（可直接抄进 `view/Glass.ets`）
+
+```ts
+// ---- 毛玻璃配方（唯一可调处）----
+export const GLASS_BLUR: number = 20;                                  // 文章建议 10–30
+export const GLASS_TINT_PANEL: string = 'rgba(255,255,255,0.12)';       // 文章推荐区间 0.10–0.20
+export const GLASS_TINT_SHEET: string = 'rgba(255,255,255,0.14)';
+export const GLASS_TINT_ROW: string = 'rgba(255,255,255,0.08)';         // 列表行：不模糊，只靠透明度透气
+export const GLASS_EDGE_STRONG: string = 'rgba(255,255,255,0.25)';      // 文章：1px 亮边
+export const GLASS_EDGE_SOFT: string = 'rgba(255,255,255,0.14)';
+export const GLASS_RADIUS: number = 20;                                 // 文章：大圆角
+export const GLASS_SHADOW_ROW: ShadowOptions =
+  { radius: 16, color: 'rgba(0,0,0,0.28)', offsetX: 0, offsetY: 6 };
+export const GLASS_SHADOW_SHEET: ShadowOptions =
+  { radius: 26, color: 'rgba(0,0,0,0.42)', offsetX: 0, offsetY: 10 };
+
+// ---- 默认背景：深色渐变 + 光晕 ----
+export const PAGE_GRADIENT_A: string = '#0f0c29';   // 顶部 深蓝黑
+export const PAGE_GRADIENT_B: string = '#302b63';   // 中部 深紫蓝
+export const PAGE_GRADIENT_C: string = '#24243e';   // 底部 深紫
+export const WALLPAPER_VEIL: string = 'rgba(6,8,16,0.48)';   // ⚠️ 深色主题下要"压暗"而不是提亮
+export const SCRIM_COLOR: string = 'rgba(8,10,20,0.42)';     // 全屏浮层背板
+```
+
+`PageBackground` 的 `build()` 结构（照片优先、无则渐变，**渐变下垫两个光晕**）：
+
+```ts
+Stack() {
+  Column().width('100%').height('100%')
+    .linearGradient({ direction: GradientDirection.Bottom,
+      colors: [[PAGE_GRADIENT_A, 0.0], [PAGE_GRADIENT_B, 0.5], [PAGE_GRADIENT_C, 1.0]] })
+  Column().width(280).aspectRatio(1).borderRadius(140)
+    .backgroundColor('#ff6fd8').blur(80).opacity(0.35).position({ top: 60, right: -40 })
+  Column().width(200).aspectRatio(1).borderRadius(100)
+    .backgroundColor('#00d4ff').blur(60).opacity(0.25).position({ bottom: 100, left: -30 })
+  if (this.pixmap !== undefined) { /* Image(pixmap) + WALLPAPER_VEIL 压暗层 */ }
+}
+```
+
+5 个文件里各自的 `@Styles`（**结构必须逐文件替换**，因为不能跨文件）：
+
+```ts
+@Styles
+function glassPanel() {          // 大面 / 页头 / 导航栏 / 浮层：**有模糊**
+  .backdropBlur(GLASS_BLUR)
+  .backgroundColor(GLASS_TINT_PANEL)
+  .border({ width: 1, color: GLASS_EDGE_STRONG })
+}
+
+@Styles
+function glassSheet() {          // 弹窗 / 编辑器：有模糊 + 大圆角 + 浮起阴影
+  .backdropBlur(GLASS_BLUR)
+  .backgroundColor(GLASS_TINT_SHEET)
+  .border({ width: 1, color: GLASS_EDGE_STRONG })
+  .borderRadius(GLASS_RADIUS)
+  .shadow(GLASS_SHADOW_SHEET)
+}
+
+@Styles
+function glassCard() {           // 列表行 / 小卡：**不模糊**（用户选定的性能取舍）
+  .backgroundColor(GLASS_TINT_ROW)
+  .border({ width: 1, color: GLASS_EDGE_SOFT })
+  .borderRadius(GLASS_RADIUS)
+  .shadow(GLASS_SHADOW_ROW)
+}
+```
+> 设置页的卡片按用户要求算"大面"→ 用 `glassPanel` + 圆角 + 阴影（可另加一个 `glassPanelCard`）。
+
+### 18.5 ★ 深色主题的颜色映射表（全 App 64 个颜色字面量）
+
+**做法**：按**属性**分别映射，不能全局一把替换。建议写个脚本按行处理：
+一行里颜色前面的属性名决定用哪张表（`backgroundColor(` → 背景表；`fontColor(` → 文字表；
+`color:` → 边框表；`shadow(` 里的保持深色不改）。
+
+**文字色（`fontColor`）**
+
+| 旧 | 新 | 用途 | 旧值出现次数 |
+|---|---|---|---|
+| `#12161F` | `#F2F5FA` | 主文字 | 46 |
+| `#1B2430` | `#EAF0FA` | 主文字（次级） | 5 |
+| `#3C4657` | `#CBD6E8` | 正文 | 7 |
+| `#4A5568` | `#C3CDDE` | 次级正文 | 19 |
+| `#5A6478` | `#A9B5C9` | 弱文字 | 9 |
+| `#7A8598` | `#9BA7BD` | 弱文字 | 9 |
+| `#8A94A6` | `#94A0B5` | 提示文字 | 49 |
+| `#98A2B3` | `#8B97AC` | 提示文字 | 16 |
+| `#8A98AC` | `#8B97AC` | 提示文字 | 1 |
+| `#B0B8C4` | `#7C8798` | 最弱（刻度） | 2 |
+| `#C2CBDA` | `#DCE4F0` | 浅文字 | 1 |
+| `#2E6BE6` | `#7FA8FF` | 强调蓝**文字**（深底上要提亮） | 34 |
+| `#D64545` | `#FF8080` | 危险文字 | 5 |
+| `#C0392B` | `#FF8A8A` | 危险文字 | 15 |
+| `#3C6E47` | `#7BD69A` | 成功/模板文字 | 4 |
+| `#5B7A5B` | `#8FC9A0` | 成功文字 | 1 |
+| `#B26B00` | `#E8B25C` | 警示文字 | 6 |
+| `#8A5A00` | `#E0A94E` | 警示文字 | 2 |
+| `#9DB2C8` | `#C7D3E4` | 通用浅色 | 2 |
+| `#7C8AA0` | `#8FA0BA` | 无色课程的兜底色 | 1 |
+| `#8A7A55` | `#D8C48A` | 虚拟课时文字 | 1 |
+| `#FFFFFF` | **保持 `#FFFFFF`** | 彩色按钮上的白字 | **23（不要动）** |
+
+**背景色（`backgroundColor`）**
+
+| 旧 | 新 | 用途 |
+|---|---|---|
+| `#EEF1F6` | `rgba(255,255,255,0.14)` | 胶囊/次要按钮底 |
+| `#F2F4F8` | `rgba(255,255,255,0.10)` | 小按钮底 |
+| `#F7F8FA` | `rgba(255,255,255,0.08)` | 行底 |
+| `#F2F6FF` | `rgba(255,255,255,0.10)` | 行底 |
+| `#F5F6F8` | `rgba(255,255,255,0.06)` | 计划页"今天"列高亮 |
+| `#E8ECF3` | `rgba(255,255,255,0.10)` | 计划页课程灰带 |
+| `#FDECEA` | `rgba(214,69,69,0.18)` | 危险浅底 |
+| `#FFF4F4` | `rgba(214,69,69,0.14)` | 危险浅底 |
+| `#FFF8F8` | `rgba(214,69,69,0.12)` | 危险浅底 |
+| `#EAF1FF` | `rgba(46,107,230,0.22)` | 信息浅底 |
+| `#FFF4E5` | `rgba(178,107,0,0.20)` | 警示浅底 |
+| `rgba(255,246,226,0.55)` | `rgba(240,190,90,0.16)` | 虚拟课时托盘卡 |
+| `rgba(46,107,230,0.18)` | `rgba(46,107,230,0.30)` | 托盘选中态 |
+| `rgba(248,250,254,0.30)` | `rgba(10,12,22,0.42)` | 管理课程背板（**要压暗**） |
+| `#2E6BE6` | **保持** `#2E6BE6` | 主按钮底（深底上饱和蓝 + 白字） |
+| `#D64545` | **保持** `#D64545` | 危险按钮底 |
+| `#FFFFFF` | `rgba(255,255,255,0.10)` | 兜底（现在已无纯白背景，防御性） |
+
+**边框 / 分隔线 / 其他（`color:` / `border` / `fill` / 三元表达式里非上两者的）**
+
+| 旧 | 新 | 用途 |
+|---|---|---|
+| `#EDEFF3` | `rgba(255,255,255,0.12)` | 分隔线（时间网格横线、页头下边） |
+| `#E3E8F0` | `rgba(255,255,255,0.14)` | 卡片边 |
+| `#D8DEE9` | `rgba(255,255,255,0.12)` | 边 |
+| `#12161F` | `#F2F5FA` | **计划块选中黑框**（深色主题下要变成亮框） |
+| `#F5D9D9` | `rgba(214,69,69,0.30)` | 危险边 |
+| `#F0DFC0` | `rgba(240,190,90,0.28)` | 虚拟课时卡边 |
+| `rgba(28,45,90,0.18)` / `rgba(28,45,90,0.13)` | `rgba(0,0,0,0.35)` / `rgba(0,0,0,0.30)` | 阴影（保持深色） |
+
+**已经是深色、保持不动**：`rgba(12,18,28,0.45)`（遮罩 ×7）、
+`rgba(12,18,28,0.86)` / `rgba(12,18,28,0.88)`（提示胶囊 / 缩放提示）。
+
+### 18.6 ★ 必须特殊处理的 6 处（漏一个就会出可见 bug）
+
+1. **`#FFFFFF` 有 23 处是文字色**（彩色按钮上的白字）—— 只有作为**背景**的才换；
+   全局替换会把按钮上的字抹掉。
+2. **`COURSE_COLORS`（`model/Types.ets`）必须一起换**：现在是 10 个**浅色粉彩**
+   （`#F6C445` `#7BC96F` `#6BA8F5` `#B08BE8` `#5FD0C6` `#F58F7C` `#E8A0C8` `#9DB2C8`
+   `#D4B96A` `#8FBF5F`），配合**深字**用的。文字色统一翻成浅色之后，
+   **浅色块 + 浅字就看不清了** → 要换成**更深的色调**，例如
+   `['#8A6B1F','#2F7D4F','#2C5FA8','#6B45A8','#1F7A73','#A8452F','#8A3D6B','#4A5B75','#7A6A2F','#4F7A2F']`
+   （用 `#F2F5FA` 白字压上去要能读清；改完**逐块截图确认**）。
+   注意它同时被用于：课表格子、课表页/待办页的课程胶囊、计划页的块与托盘卡。
+3. **照片的可读性薄纱要从"提亮"翻成"压暗"**：`WALLPAPER_VEIL`
+   `rgba(255,255,255,0.55)` → `rgba(6,8,16,0.48)`，否则白字压在亮照片上读不出来。
+4. **"管理课程"的全屏背板同理要压暗**，而且按 §16.4 的结论
+   **要"糊"不要"抹"**：半径要 **大于字形（~30px）** 才读不出字、
+   **小于色块（~180px）** 才留得下形状。现在那层是 `COMPONENT_THICK` + 0.30，
+   换成深色 `SCRIM_COLOR` + `backdropBlur` 后**重新截图确认"若隐若现"**。
+5. **`Glass.ets` 的 `@Styles` 结构变了**（`backgroundBlurStyle` → `backdropBlur`，
+   且 `glassCard` 去掉模糊），**5 个文件都要改**（见 §18.4）。
+6. **验证时别忘三日视图**：`PlanDayView` 的列分隔线、列头灰底、"今天"列高亮、
+   选中块的黑框，这些在深色下都可能变成"看不见"。列分隔线现在用 `#EDEFF3`。
+
+### 18.7 验证清单（必须做完再交付）
+
+```bash
+cd /home/chemica/ChemicaWorkspace/ClassOUT
+./tools/domain-check/run.sh                 # 必须 354 项全绿（UI 改动不该动断言）
+LANG=zh_CN.UTF-8 ./build.sh clean && LANG=zh_CN.UTF-8 ./build.sh assembleHap
+#   期望：ERROR: 0，警告 6 条（5 条 getContext 兜底 + 1 条 No signingConfig），别顺手修掉
+./sign-and-install.sh --install
+```
+
+**逐页截图**（深色改动极易出现"某个角落还是浅色"或"字看不见"）：
+课表页 / 待办页（含编辑窗）/ 计划页**日视图**与**三日视图**（含块编辑窗、托盘）/
+设置页 / 管理课程（列表 + 学期子页 + 时段弹窗 + 模板弹窗）/ 提示胶囊 / 缩放提示。
+
+驱动方式见 §7：`uitest uiInput`。⚠️ 三个已知限制：
+- `click` 的按住时长**不稳定**，会触发长按（§7.1.2）——"快速单击/双击"测不了，只能手测；
+- `keyEvent Back` 稳定可用；
+- `dumpLayout` **看不到系统窗口**（相册选择器只能用截图看）。
+
+**手感项（我无法在这里验证，必须让用户确认）**：
+- 滚动流畅度（列表卡已按用户决定去掉模糊，应该好转）；
+- 「恢复默认渐变」按钮（我加了但没点过）；
+- 计划页拖拽跟手、双指缩放。
+
+### 18.8 不要做的事
+
+- ❌ 不要重新加**整周视图**（用户 2026-10-14 明确"功能鸡肋故删去"）。
+- ❌ 不要做**"沉浸光感"**：SDK 里搜 `LightEffect` **零命中**，
+  `uiEffect.VisualEffect` 是**空接口** —— 做不到。
+- ❌ 不要把**时间网格 / 课程块 / 计划块 / 输入框**也做成半透明：
+  网格是"要读准时间"的地方，输入框要看清自己打的字。材质只用在**容器**上。
+- ❌ 不要再问 §18.1 那三条（已拍定）。
+- ⚠️ 别"顺手"把 5 条 `getContext` 警告修掉（§6.3），也别把警告数从 6 改小。
+
+### 18.9 这次改动涉及的文件（预估）
+
+| 文件 | 要做什么 |
+|---|---|
+| `view/Glass.ets` | 配方常量全换（§18.4）；`PageBackground` 换深色渐变 + 光晕；薄纱改压暗 |
+| `model/Types.ets` | `COURSE_COLORS` 换深色调（§18.6 第 2 条） |
+| `pages/Index.ets` | 文件内 `@Styles` 换结构；背板改深色；页头/周条/标签栏/sheet 的颜色映射 |
+| `view/TodoInbox.ets` | 同上 + 卡片/编辑窗/按钮的文字与底色映射 |
+| `view/PlanDayView.ets` | 同上 + 网格线/列头/今天列/选中框/托盘卡/编辑窗 |
+| `view/CourseManager.ets` | 同上 + 大量卡片、两个弹窗、子页 |
+| `view/SettingsPage.ets` | 同上 + 背景卡片（预览里的进度/玻璃示意） |
+| `view/ChipButton.ets` | 胶囊的选中/未选中配色（`#2E6BE6` / `#EEF1F6` / 文字色） |
