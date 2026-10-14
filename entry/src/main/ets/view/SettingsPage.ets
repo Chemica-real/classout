@@ -380,7 +380,7 @@ export struct SettingsPage {
   @Builder
   MotionCard() {
     Column() {
-      this.SectionTitle('动画', '关掉之后所有动效都退化为直接切换：列表增删、抽屉、托盘、页面切换、打字机与光晕漂移全部停。')
+      this.SectionTitle('动画', '关掉之后所有动效都退化为直接切换：列表增删、抽屉、托盘、打字机与背景光晕漂移全部停。')
 
       Row() {
         Column() {

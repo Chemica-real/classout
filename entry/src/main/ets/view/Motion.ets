@@ -17,7 +17,7 @@ import { Db } from '../data/Db';
  *    尤其**不做"模糊半径"或"宽高"的逐帧动画**：本项目每个列表卡都挂着 `backdropBlur`，
  *    再叠一层每帧重算的模糊会直接把帧率吃掉（滚动流畅度至今没人验证过）。
  * 2. **曲线统一走弹簧**（`curves.springMotion`）。鸿蒙原生手感是"有阻尼的弹簧"，
- *    比 `ease-in-out` 更有质感；一次性扫光那种"匀速划过"的动效才用贝塞尔。
+ *    比 `ease-in-out` 更有质感。
  * 3. **开关关掉 = 动画时长为 0**，而不是"两套代码"。所有地方只写一套动画，
  *    时长从 `dur()` 取；关掉时返回 0，行为退化成"直接切换"。
  *    ⚠️ 别在调用点写 `if (motionOn)` 分支 —— 那样两条路径迟早会长歪。
@@ -44,8 +44,6 @@ export const DUR_ITEM: number = 240;
 export const DUR_SHARD: number = 320;
 /** 提示胶囊的进出 */
 export const DUR_HINT: number = 200;
-/** 浮窗出现时那道一次性高光扫过 */
-export const DUR_SWEEP: number = 900;
 /** 背景光晕漂移一个来回 */
 export const DUR_ORBIT: number = 22000;
 /** 打字机每个字的间隔 */
@@ -77,11 +75,6 @@ export function motionCurve(): ICurve {
 /** 抽屉这种"从屏幕外滑进来"的：响应更快、收尾更紧 */
 export function drawerCurve(): ICurve {
   return curves.springMotion(0.30, 0.86);
-}
-
-/** 一次性扫光：匀速划过，不要弹性 */
-export function sweepCurve(): ICurve {
-  return curves.cubicBezierCurve(0.33, 0.0, 0.20, 1.0);
 }
 
 // ============================ 三、全局开关 ============================

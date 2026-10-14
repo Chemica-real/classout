@@ -18,8 +18,8 @@ import { backStack } from '../util/BackStack';
 import { GLASS_BLUR, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_SHEET, GLASS_TINT_PANEL,
   GLASS_TINT_SHEET, PageBackground, SCRIM_COLOR } from '../view/Glass';
 import { FLOAT_GAP, FLOAT_SIDE, FLOAT_TOP, H_HEADER, H_TABBAR, H_WEEKROW } from '../view/Float';
-import { BOOT_EXTRA_CAP_MS, BOOT_STEP_MS, DUR_SWEEP, TYPE_MS, curveOrLinear, dur, isMotionOn,
-  loadMotionSetting, motionCurve, sweepCurve } from '../view/Motion';
+import { BOOT_EXTRA_CAP_MS, BOOT_STEP_MS, TYPE_MS, curveOrLinear, dur, isMotionOn,
+  loadMotionSetting, motionCurve } from '../view/Motion';
 import { WallpaperRepo } from '../data/WallpaperRepo';
 import { MOTTO_DEFAULT, loadMotto } from '../data/Prefs';
 
@@ -151,25 +151,18 @@ struct Index {
   /** 打字机：已经"打"出来的那部分启动文案 */
   @State typedStatus: string = '';
   /** 启动清单：已经完成的阶段数（== 当前正在做的那个下标） */
-  @State @Watch('onBootStepChanged') bootStep: number = 0;
+  @State bootStep: number = 0;
   /** 加载页的常驻动效（外圈旋转 / 底部进度条）—— 关掉动画时保持静止 */
   @State bootSpin: boolean = false;
   @State bootBar: boolean = false;
   /** 进场：字标/标语/清单面板从"略小略透明"到就位（一次性） */
   @State bootIn: boolean = false;
-  /** 每推进一步，清单面板上扫一道光（让人看得见"这一步刚完成"） */
-  @State bootSweepVisible: boolean = false;
-  @State bootSweep: boolean = false;
   /** 已经为"放慢启动"额外等掉的时间（受 BOOT_EXTRA_CAP_MS 封顶） */
   private bootExtra: number = 0;
   @StorageLink('motionOn') @Watch('onMotionChanged') motionOn: boolean = true;
   /** 首页标语（设置页可改，见 data/Prefs.ets）。加载页第一帧就用它 */
   @StorageLink('bootMotto') motto: string = MOTTO_DEFAULT;
-  /** 页头那道一次性扫光：位移目标 / 是否在播 */
-  @State sweep: boolean = false;
-  @State sweepVisible: boolean = false;
   private typeTimer: number = -1;
-  private sweepTimers: number[] = [];
   /** 内容层上方要让出的高度（设置页没有页头，所以是 0） */
   private topInset(): number {
     return this.tab === 3 ? 0 : this.headerBlockH;
@@ -196,10 +189,6 @@ struct Index {
       clearInterval(this.typeTimer);
       this.typeTimer = -1;
     }
-    for (const t of this.sweepTimers) {
-      clearTimeout(t);
-    }
-    this.sweepTimers = [];
   }
 
   onBackPress(): boolean {
@@ -277,34 +266,6 @@ struct Index {
   }
 
   /**
-   * 页头那道一次性斜扫高光（模仿"沉浸光感"里光掠过玻璃的那一下）。
-   *
-   * **只在事件发生时扫一次**，不是常驻循环 —— 常驻扫光会让屏幕一直在重绘。
-   * 触发时机：切标签、首次加载完成（都是"这一页刚亮起来"的时刻）。
-   */
-  private playSweep(): void {
-    if (!isMotionOn()) {
-      return;
-    }
-    this.sweepVisible = true;
-    this.sweep = false;
-    // 先让"起点"渲染一帧，再动画过去，否则会直接跳到终点
-    this.sweepTimers.push(setTimeout((): void => {
-      // ⚠️ 用 `getUIContext().animateTo`：全局 `animateTo` 在 API 18 已废弃
-      // （会多出一条警告，而本项目刻意把警告数钉在 6 条，见 HANDOFF §6.3）
-      this.getUIContext().animateTo(
-        { duration: dur(DUR_SWEEP), curve: curveOrLinear(sweepCurve) },
-        (): void => {
-          this.sweep = true;
-        });
-    }, 16));
-    this.sweepTimers.push(setTimeout((): void => {
-      this.sweepVisible = false;
-      this.sweep = false;
-    }, dur(DUR_SWEEP) + 60));
-  }
-
-  /**
    * 加载页的常驻动效：外圈缓慢自转 + 底部不定量进度条。
    *
    * 用的是**隐式动画**（`.animation({iterations: -1})`）+ 一个翻转一次的 state：
@@ -348,30 +309,8 @@ struct Index {
     });
   }
 
-  /** 清单推进一步：面板上扫一道光（一次性），让人看得见刚完成了什么 */
-  private playBootSweep(): void {
-    if (!this.motionOn) {
-      return;
-    }
-    this.bootSweepVisible = true;
-    this.bootSweep = false;
-    setTimeout((): void => {
-      this.getUIContext().animateTo(
-        { duration: dur(620), curve: curveOrLinear(sweepCurve) },
-        (): void => { this.bootSweep = true; });
-    }, 16);
-    setTimeout((): void => {
-      this.bootSweepVisible = false;
-      this.bootSweep = false;
-    }, dur(620) + 60);
-  }
-
   private onMotionChanged(): void {
     this.startBootMotion();
-  }
-
-  private onBootStepChanged(): void {
-    this.playBootSweep();
   }
 
   /** 启动文案变了 → 重新打一遍 */
@@ -429,9 +368,6 @@ struct Index {
     // 这里**不再补等待**，别让"本来就慢的那一步"更慢。
     this.bootStep = 4;      // 提醒同步完成 → 就绪
     this.loading = false;
-    // 首屏亮起来时让玻璃"过一道光"（用户要的"模仿沉浸光感"，**只发生这一次**；
-    // 切标签时不做，用户明确说过那样"太丑太鸡肋"）
-    this.playSweep();
   }
 
   private async reloadData(): Promise<void> {
@@ -713,7 +649,6 @@ struct Index {
 
   @Builder
   Header() {
-    Stack() {
     Column() {
       Row() {
         Column() {
@@ -788,24 +723,6 @@ struct Index {
     .width('100%')
     .padding({ left: 16, right: 16, top: 12, bottom: 10 })
     .glassSheet()
-
-    // 一次性扫光：一道倾斜的白色渐变带从左掠到右（不接触摸、不参与布局）
-    if (this.sweepVisible) {
-      Column()
-        .width('55%')
-        .height('300%')
-        .linearGradient({
-          angle: 70,
-          colors: [['rgba(255,255,255,0.0)', 0.0], ['rgba(255,255,255,0.16)', 0.5],
-            ['rgba(255,255,255,0.0)', 1.0]]
-        })
-        .translate({ x: this.sweep ? '300%' : '-300%' })
-        .rotate({ angle: 6 })
-        .hitTestBehavior(HitTestMode.None)
-    }
-    }
-    .width('100%')
-    .clip(true)
   }
 
   /**
@@ -1351,18 +1268,6 @@ struct Index {
         .scale({ x: this.bootSpin ? 1.45 : 0.72, y: this.bootSpin ? 1.45 : 0.72 })
         .opacity(this.bootSpin ? 0 : 0.75)
         .animation({ duration: 2400, curve: Curve.EaseOut, iterations: -1 })
-      // ③ 一条缓慢上下扫过的横向光带（"在扫描"的感觉，只动 translate）
-      Row()
-        .width('100%')
-        .height(2)
-        .linearGradient({
-          angle: 90,
-          colors: [['rgba(127,168,255,0.0)', 0.0], ['rgba(127,168,255,0.35)', 0.5],
-            ['rgba(127,168,255,0.0)', 1.0]]
-        })
-        .position({ x: 0, y: 0 })
-        .translate({ y: this.bootSpin ? 2100 : -40 })
-        .animation({ duration: 4600, curve: Curve.Linear, iterations: -1 })
 
       // ③④⑤ 主体
       Column() {
@@ -1401,8 +1306,6 @@ struct Index {
         }
 
         // ④ 启动清单（放在一块玻璃面板上：压在照片壁纸上也能读清，而且和全 App 的语言一致）
-        //    外层 Stack 用来叠一道"每完成一步扫一次"的光
-        Stack() {
         Column() {
         Column() {
           ForEach(BOOT_STEPS, (name: string, i: number) => {
@@ -1473,24 +1376,6 @@ struct Index {
         .width('100%')
         .padding({ left: 16, right: 16, top: 14, bottom: 16 })
         .glassPanel()
-
-        // 每推进一步扫一道光（一次性，见 playBootSweep）
-        if (this.bootSweepVisible) {
-          Column()
-            .width('40%')
-            .height('300%')
-            .linearGradient({
-              angle: 70,
-              colors: [['rgba(255,255,255,0.0)', 0.0], ['rgba(255,255,255,0.20)', 0.5],
-                ['rgba(255,255,255,0.0)', 1.0]]
-            })
-            .translate({ x: this.bootSweep ? '340%' : '-140%' })
-            .rotate({ angle: 6 })
-            .hitTestBehavior(HitTestMode.None)
-        }
-        }
-        .width('100%')
-        .clip(true)
         .margin({ top: 34 })
         .opacity(this.bootIn ? 1 : 0)
         .translate({ y: this.bootIn ? 0 : 16 })
