@@ -18,8 +18,8 @@ import { backStack } from '../util/BackStack';
 import { GLASS_BLUR, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_SHEET, GLASS_TINT_PANEL,
   GLASS_TINT_SHEET, PageBackground, SCRIM_COLOR } from '../view/Glass';
 import { FLOAT_GAP, FLOAT_SIDE, FLOAT_TOP, H_HEADER, H_TABBAR, H_WEEKROW } from '../view/Float';
-import { DUR_SWEEP, TYPE_MS, curveOrLinear, dur, isMotionOn, loadMotionSetting,
-  sweepCurve } from '../view/Motion';
+import { BOOT_EXTRA_CAP_MS, BOOT_STEP_MS, DUR_SWEEP, TYPE_MS, curveOrLinear, dur, isMotionOn,
+  loadMotionSetting, motionCurve, sweepCurve } from '../view/Motion';
 import { WallpaperRepo } from '../data/WallpaperRepo';
 import { MOTTO_DEFAULT, loadMotto } from '../data/Prefs';
 
@@ -151,10 +151,17 @@ struct Index {
   /** 打字机：已经"打"出来的那部分启动文案 */
   @State typedStatus: string = '';
   /** 启动清单：已经完成的阶段数（== 当前正在做的那个下标） */
-  @State bootStep: number = 0;
+  @State @Watch('onBootStepChanged') bootStep: number = 0;
   /** 加载页的常驻动效（外圈旋转 / 底部进度条）—— 关掉动画时保持静止 */
   @State bootSpin: boolean = false;
   @State bootBar: boolean = false;
+  /** 进场：字标/标语/清单面板从"略小略透明"到就位（一次性） */
+  @State bootIn: boolean = false;
+  /** 每推进一步，清单面板上扫一道光（让人看得见"这一步刚完成"） */
+  @State bootSweepVisible: boolean = false;
+  @State bootSweep: boolean = false;
+  /** 已经为"放慢启动"额外等掉的时间（受 BOOT_EXTRA_CAP_MS 封顶） */
+  private bootExtra: number = 0;
   @StorageLink('motionOn') @Watch('onMotionChanged') motionOn: boolean = true;
   /** 首页标语（设置页可改，见 data/Prefs.ets）。加载页第一帧就用它 */
   @StorageLink('bootMotto') motto: string = MOTTO_DEFAULT;
@@ -306,18 +313,65 @@ struct Index {
    */
   private startBootMotion(): void {
     if (!this.motionOn) {
+      // 关掉动画：直接到"就位"的终态（其它动效的时长都是 dur()=0，等于没有过渡）
+      this.bootIn = true;
       this.bootSpin = false;
       this.bootBar = false;
       return;
     }
+    // 先渲染一帧"未就位"，再翻过去 —— 否则进场动画会直接从终点开始
     setTimeout((): void => {
+      this.bootIn = true;
       this.bootSpin = true;
       this.bootBar = true;
     }, 16);
   }
 
+  /**
+   * 让启动清单的每一步**至少停留 `BOOT_STEP_MS`**（用户要求"人为放慢一点"）。
+   *
+   * ⚠️ 这不是把真活儿变慢：只是真实耗时不足时补一段等待，而且**总量封顶**
+   * （`BOOT_EXTRA_CAP_MS`）。关掉动画时直接返回 —— 那时用户要的就是最快启动。
+   */
+  private async dwellBootStep(startedAt: number): Promise<void> {
+    if (!this.motionOn || this.bootExtra >= BOOT_EXTRA_CAP_MS) {
+      return;
+    }
+    const wait0: number = BOOT_STEP_MS - (Date.now() - startedAt);
+    if (wait0 <= 0) {
+      return;
+    }
+    const wait: number = Math.min(wait0, BOOT_EXTRA_CAP_MS - this.bootExtra);
+    this.bootExtra += wait;
+    await new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, wait);
+    });
+  }
+
+  /** 清单推进一步：面板上扫一道光（一次性），让人看得见刚完成了什么 */
+  private playBootSweep(): void {
+    if (!this.motionOn) {
+      return;
+    }
+    this.bootSweepVisible = true;
+    this.bootSweep = false;
+    setTimeout((): void => {
+      this.getUIContext().animateTo(
+        { duration: dur(620), curve: curveOrLinear(sweepCurve) },
+        (): void => { this.bootSweep = true; });
+    }, 16);
+    setTimeout((): void => {
+      this.bootSweepVisible = false;
+      this.bootSweep = false;
+    }, dur(620) + 60);
+  }
+
   private onMotionChanged(): void {
     this.startBootMotion();
+  }
+
+  private onBootStepChanged(): void {
+    this.playBootSweep();
   }
 
   /** 启动文案变了 → 重新打一遍 */
@@ -335,6 +389,7 @@ struct Index {
     // 动画总开关：AppStorage 是内存态，每次冷启动都要从 kv 读回来
     await loadMotionSetting(ctx);
     this.bootStep = 0;
+    let stepAt: number = Date.now();
     const sem: Semester = await Seeder.ensureSemester(ctx);
     this.semester = sem;
     await Seeder.ensureRestWindows(ctx);
@@ -347,23 +402,31 @@ struct Index {
       this.statusText = '首次启动：正在写入课表种子数据…';
       await Seeder.seedCourses(ctx, sem.id);
     }
+    await this.dwellBootStep(stepAt);   // 让人看清"初始化本地数据"这一步
+    stepAt = Date.now();
     this.bootStep = 1;      // 学期/节次/旧数据都就绪了
     this.statusText = '正在排课…';
     const now: Date = today();
     const w: number = weekOfDate(sem, now);
     this.week = w < 1 ? 1 : (w > sem.totalWeeks ? sem.totalWeeks : w);
     await this.reloadData();
+    await this.dwellBootStep(stepAt);
+    stepAt = Date.now();
     this.bootStep = 2;      // 课表载入完成
     this.statusText = '正在补生成下课待办…';
     const outcome: GenerationOutcome = await generateMissedTodos(ctx, sem);
     if (outcome.created > 0) {
       hilog.info(DOMAIN, TAG, 'backfilled %{public}d todos', outcome.created);
     }
+    await this.dwellBootStep(stepAt);
+    stepAt = Date.now();
     this.bootStep = 3;      // 待办补生成完成
     this.statusText = '正在重排提醒…';
     const plan: ReminderPlan = await syncReminders(ctx, sem);
     hilog.info(DOMAIN, TAG, 'reminder plan: %{public}s', JSON.stringify(plan));
     await this.writeRunReport(ctx, sem, outcome, plan, migrated);
+    // ⚠️ 最后一步（日历提醒）是真·耗时的大头，它本来就看得见；
+    // 这里**不再补等待**，别让"本来就慢的那一步"更慢。
     this.bootStep = 4;      // 提醒同步完成 → 就绪
     this.loading = false;
     // 首屏亮起来时让玻璃"过一道光"（用户要的"模仿沉浸光感"，**只发生这一次**；
@@ -1264,30 +1327,55 @@ struct Index {
           .position({ x: 60 + i * 92, y: 0 })
       }, (i: number) => `bg-v-${i}`)
 
-      // ② 两层圆环，反向自转（虚线那圈转得慢一点，层次感）
+      // ② 圆环：两层反向自转 + 一圈"雷达脉冲"（由内向外扩散并淡出，无限循环）
+      //    转得比第一版快一档（9s/16s → 5.2s/9s），用户要"更有动感"
       Column()
         .width(300)
         .height(300)
         .borderRadius(150)
-        .border({ width: 1, color: 'rgba(127,168,255,0.18)' })
+        .border({ width: 1.5, color: 'rgba(127,168,255,0.30)' })
         .rotate({ angle: this.bootSpin ? 360 : 0 })
+        .animation({ duration: 5200, curve: Curve.Linear, iterations: -1 })
+      Column()
+        .width(360)
+        .height(360)
+        .borderRadius(180)
+        .border({ width: 1, color: 'rgba(255,255,255,0.14)', style: BorderStyle.Dashed })
+        .rotate({ angle: this.bootSpin ? -360 : 0 })
         .animation({ duration: 9000, curve: Curve.Linear, iterations: -1 })
       Column()
-        .width(370)
-        .height(370)
-        .borderRadius(185)
-        .border({ width: 1, color: 'rgba(255,255,255,0.10)', style: BorderStyle.Dashed })
-        .rotate({ angle: this.bootSpin ? -360 : 0 })
-        .animation({ duration: 16000, curve: Curve.Linear, iterations: -1 })
+        .width(300)
+        .height(300)
+        .borderRadius(150)
+        .border({ width: 1, color: 'rgba(176,139,232,0.55)' })
+        .scale({ x: this.bootSpin ? 1.45 : 0.72, y: this.bootSpin ? 1.45 : 0.72 })
+        .opacity(this.bootSpin ? 0 : 0.75)
+        .animation({ duration: 2400, curve: Curve.EaseOut, iterations: -1 })
+      // ③ 一条缓慢上下扫过的横向光带（"在扫描"的感觉，只动 translate）
+      Row()
+        .width('100%')
+        .height(2)
+        .linearGradient({
+          angle: 90,
+          colors: [['rgba(127,168,255,0.0)', 0.0], ['rgba(127,168,255,0.35)', 0.5],
+            ['rgba(127,168,255,0.0)', 1.0]]
+        })
+        .position({ x: 0, y: 0 })
+        .translate({ y: this.bootSpin ? 2100 : -40 })
+        .animation({ duration: 4600, curve: Curve.Linear, iterations: -1 })
 
       // ③④⑤ 主体
       Column() {
-        // ③ 字标
+        // ③ 字标：进场时从 0.93 放大到 1 + 淡入（只动 scale/opacity）
         Text('ClassOUT')
           .fontSize(38)
           .fontWeight(FontWeight.Bold)
           .fontColor('#F2F5FA')
           .letterSpacing(7)
+          .scale({ x: this.bootIn ? 1 : 0.93, y: this.bootIn ? 1 : 0.93 })
+          .opacity(this.bootIn ? 1 : 0)
+          .animation({ duration: dur(560), curve: curveOrLinear(motionCurve) })
+        // 渐变细线：从中间展开（scaleX 0 → 1）
         Row()
           .width(96)
           .height(3)
@@ -1297,6 +1385,8 @@ struct Index {
             colors: [['#7FA8FF', 0.0], ['#B08BE8', 0.5], ['#1F7A73', 1.0]]
           })
           .margin({ top: 14 })
+          .scale({ x: this.bootIn ? 1 : 0, y: 1 })
+          .animation({ duration: dur(620), curve: curveOrLinear(motionCurve), delay: dur(160) })
         // 首页标语：用户可在设置里改（有字数上限，见 data/Prefs.ets）。
         // 空的时候整行不占位 —— 有人就想要一个干净的 logo。
         if (this.motto.length > 0) {
@@ -1305,9 +1395,14 @@ struct Index {
             .fontColor('#8B97AC')
             .letterSpacing(3)
             .margin({ top: 14 })
+            .opacity(this.bootIn ? 1 : 0)
+            .translate({ y: this.bootIn ? 0 : 10 })
+            .animation({ duration: dur(520), curve: curveOrLinear(motionCurve), delay: dur(300) })
         }
 
         // ④ 启动清单（放在一块玻璃面板上：压在照片壁纸上也能读清，而且和全 App 的语言一致）
+        //    外层 Stack 用来叠一道"每完成一步扫一次"的光
+        Stack() {
         Column() {
         Column() {
           ForEach(BOOT_STEPS, (name: string, i: number) => {
@@ -1342,30 +1437,64 @@ struct Index {
           .width('100%')
           .margin({ top: 12 })
 
-        // ⑤ 底部不定量进度条
-        Stack({ alignContent: Alignment.Start }) {
-          Row()
-            .width('100%')
-            .height(2)
-            .backgroundColor('rgba(255,255,255,0.08)')
-          Row()
-            .width(90)
-            .height(2)
-            .borderRadius(1)
-            .linearGradient({
-              angle: 90,
-              colors: [['rgba(127,168,255,0.0)', 0.0], ['#7FA8FF', 0.5], ['rgba(127,168,255,0.0)', 1.0]]
-            })
-            .translate({ x: this.bootBar ? '300%' : '-60%' })
-            .animation({ duration: 1700, curve: Curve.Linear, iterations: -1 })
+        // ⑤ 开机点：**模仿 Ubuntu 的开机显示**（用户点名）。
+        //    5 个点依次亮起 —— 每个点的动画同长、`delay` 依次错开，
+        //    于是"亮点"会从左边跑到右边，一直循环。只动 opacity / scale。
+        //    ⚠️ 原来这里是一条"滑块进度条"，滑块靠 translate 跑，
+        //    没裁干净会从面板**两侧爆出去**（用户实测看到过）。
+        //    换成点阵之后这个问题从根上没有了（`.clip(true)` 仍然留着兜底）。
+        Row() {
+          ForEach([0, 1, 2, 3, 4], (i: number) => {
+            Column()
+              .width(9)
+              .height(9)
+              .borderRadius(5)
+              .backgroundColor('#7FA8FF')
+              // 关掉动画时五个点都保持"半亮"的静止样子，而不是全灭
+              .opacity(this.bootBar ? 1 : (this.motionOn ? 0.18 : 0.55))
+              .scale({
+                x: this.bootBar ? 1.18 : 0.85,
+                y: this.bootBar ? 1.18 : 0.85
+              })
+              .animation({
+                duration: dur(660),
+                curve: Curve.EaseInOut,
+                iterations: -1,
+                playMode: PlayMode.Alternate,
+                delay: dur(i * 140)
+              })
+              .margin({ right: i < 4 ? 12 : 0 })
+          }, (i: number) => `boot-dot-${i}`)
         }
         .width('100%')
-        .margin({ top: 14 })
+        .justifyContent(FlexAlign.Center)
+        .margin({ top: 18 })
         }
         .width('100%')
         .padding({ left: 16, right: 16, top: 14, bottom: 16 })
         .glassPanel()
+
+        // 每推进一步扫一道光（一次性，见 playBootSweep）
+        if (this.bootSweepVisible) {
+          Column()
+            .width('40%')
+            .height('300%')
+            .linearGradient({
+              angle: 70,
+              colors: [['rgba(255,255,255,0.0)', 0.0], ['rgba(255,255,255,0.20)', 0.5],
+                ['rgba(255,255,255,0.0)', 1.0]]
+            })
+            .translate({ x: this.bootSweep ? '340%' : '-140%' })
+            .rotate({ angle: 6 })
+            .hitTestBehavior(HitTestMode.None)
+        }
+        }
+        .width('100%')
+        .clip(true)
         .margin({ top: 34 })
+        .opacity(this.bootIn ? 1 : 0)
+        .translate({ y: this.bootIn ? 0 : 16 })
+        .animation({ duration: dur(560), curve: curveOrLinear(motionCurve), delay: dur(220) })
       }
       .width('78%')
       .justifyContent(FlexAlign.Center)
