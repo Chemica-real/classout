@@ -139,6 +139,7 @@ export class BackupRepo {
         category: rs.getString(rs.getColumnIndex('category')),
         priority: rs.getLong(rs.getColumnIndex('priority')),
         ddl: rs.getString(rs.getColumnIndex('ddl')),
+        endAt: rs.getString(rs.getColumnIndex('end_at')),
         estimateMin: rs.getLong(rs.getColumnIndex('estimate_min')),
         status: rs.getString(rs.getColumnIndex('status')),
         source: rs.getString(rs.getColumnIndex('source')),
@@ -280,10 +281,12 @@ export class BackupRepo {
     }
     for (const t of b.todos as Todo[]) {
       await store.executeSql(
-        `INSERT INTO todo (id, title, course_id, category, priority, ddl, estimate_min, status,
-         source, generation_key, note, submit_channel, repeat_rule, photos, created_at,
-         confirmed_at, done_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [t.id, t.title, t.courseId, t.category, t.priority, t.ddl, t.estimateMin, t.status,
+        `INSERT INTO todo (id, title, course_id, category, priority, ddl, end_at, estimate_min,
+         status, source, generation_key, note, submit_channel, repeat_rule, photos, created_at,
+         confirmed_at, done_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        // ⚠️ `end_at` 要兜底成 ''：**旧备份文件里没有这个字段**，直接塞 undefined 会写库失败
+        [t.id, t.title, t.courseId, t.category, t.priority, t.ddl,
+          t.endAt === undefined ? '' : t.endAt, t.estimateMin, t.status,
           t.source, t.generationKey, t.note, t.submitChannel, t.repeatRule, t.photos,
           t.createdAt, t.confirmedAt, t.doneAt]);
     }

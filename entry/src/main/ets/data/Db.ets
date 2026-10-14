@@ -34,6 +34,8 @@ export class Db {
     }
     // CREATE TABLE IF NOT EXISTS 不会给已有表补列，所以老库要单独补
     await Db.ensureColumn(store, 'plan_block', 'lesson_id', 'lesson_id INTEGER NOT NULL DEFAULT 0');
+    // 考试的结束时刻（v1.1）：老库里没有这一列
+    await Db.ensureColumn(store, 'todo', 'end_at', "end_at TEXT NOT NULL DEFAULT ''");
     Db.store = store;
     hilog.info(DOMAIN, TAG, '%{public}s', 'database ready');
     return store;

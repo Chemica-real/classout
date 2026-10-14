@@ -179,6 +179,12 @@ export interface Todo {
   priority: number;
   /** '' = 无截止时间；否则 'YYYY-MM-DD HH:mm' */
   ddl: string;
+  /**
+   * **考试专用**：考试结束时刻（'YYYY-MM-DD HH:mm'），其它类型恒为 ''。
+   * 开始时刻就存在 `ddl` 里 —— 这样倒计时、提醒、截止标记这一整套都不用改。
+   * 有它才知道考试在计划视图里该占多长一段（见 Validate.examRangeOf）。
+   */
+  endAt: string;
   estimateMin: number;
   status: string;
   source: string;

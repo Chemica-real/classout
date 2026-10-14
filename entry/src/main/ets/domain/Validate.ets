@@ -478,3 +478,53 @@ export function validateRestWindow(w: RestWindow): Validation {
   }
   return pass();
 }
+
+// ---------------- 考试的时间范围 ----------------
+
+/**
+ * 考试的 [开始, 结束] 在计划视图里要落成哪一段。
+ * `date` 取开始那天（跨天的考试不合法，见 validateExamRange）。
+ */
+export interface ExamRange {
+  date: string;
+  startMin: number;
+  endMin: number;
+}
+
+/** 'HH:mm' → 分钟数（解析不出来当 0；合法性由 validateExamRange 负责） */
+function hhmmToMin(s: string): number {
+  const h: number = parseInt(s.substring(0, 2), 10);
+  const m: number = parseInt(s.substring(3, 5), 10);
+  return (Number.isNaN(h) ? 0 : h) * 60 + (Number.isNaN(m) ? 0 : m);
+}
+
+/**
+ * 考试时间范围是否合法（用户 2026-10-14：「考试应该不同于作业等，他有固定的时间范围」）。
+ *
+ * 规则：开始/结束都得填、**必须同一天**、结束要晚于开始。
+ * 「同一天」这条是刻意的：跨天的考试排成一块会横跨两天，而计划块只有 `date + start/end 分钟`，
+ * 表达不了跨天（要表达就得把块拆成两段，那是另一个功能）。真遇到就提示用户分两天记。
+ */
+export function validateExamRange(start: string, end: string): Validation {
+  if (start.length < 16 || end.length < 16) {
+    return fail('考试的开始和结束时间都要选');
+  }
+  if (start.substring(0, 10) !== end.substring(0, 10)) {
+    return fail('考试的开始和结束要在同一天');
+  }
+  const s: number = hhmmToMin(start.substring(11, 16));
+  const e: number = hhmmToMin(end.substring(11, 16));
+  if (e <= s) {
+    return fail('考试的结束时间必须晚于开始时间');
+  }
+  return pass();
+}
+
+/** 由考试的起止时刻算出计划块要排在哪一天、哪一段（调用前先过 validateExamRange） */
+export function examRangeOf(start: string, end: string): ExamRange {
+  return {
+    date: start.substring(0, 10),
+    startMin: hhmmToMin(start.substring(11, 16)),
+    endMin: hhmmToMin(end.substring(11, 16))
+  };
+}

@@ -77,6 +77,7 @@ export const SCHEMA_SQL: string[] = [
      category TEXT NOT NULL DEFAULT 'homework',
      priority INTEGER NOT NULL DEFAULT 1,
      ddl TEXT NOT NULL DEFAULT '',
+     end_at TEXT NOT NULL DEFAULT '',
      estimate_min INTEGER NOT NULL DEFAULT 60,
      status TEXT NOT NULL DEFAULT 'active',
      source TEXT NOT NULL DEFAULT 'manual',

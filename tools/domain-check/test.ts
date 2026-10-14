@@ -35,8 +35,9 @@ import { BackupBundle, backupSummary, countBackup, emptyBundle, parseBackup,
 import { AXIS_W, compactMinH, compactThreshold, COLS_DAY, COLS_THREE, columnAtX, columnHeaderText,
   columnWidth, columnX, contentWidth, centerIndex, dayDates, dropColumnOrFallback, canBeginDrag,
   LAYOUT, TAP_OPEN, TAP_SELECT, tapAction } from './PlanLayout';
-import { findRuleConflicts, isStepMultiple, migrateEstimate, normalizeEstimate, pinchDeltaLabel,
-  pinchEnd, resizeEndTo, spanOfRule, totalBlockMinutes, validateEstimate, validateRestWindow,
+import { ExamRange, examRangeOf, findRuleConflicts, isStepMultiple, migrateEstimate,
+  normalizeEstimate, pinchDeltaLabel, pinchEnd, resizeEndTo, spanOfRule, totalBlockMinutes,
+  validateEstimate, validateExamRange, validateRestWindow,
   validateSectionTime, validateSectionTimes, validateSessionRule, validateTemplateDdl,
   validateTemplateTitle } from './Validate';
 
@@ -360,6 +361,7 @@ function todo(title: string, ddl: string): Todo {
     id: 1,
     title: title,
     courseId: 0,
+    endAt: '',
     category: 'homework',
     priority: 1,
     ddl: ddl,
@@ -477,6 +479,7 @@ function td(id: number, title: string, status: string): Todo {
     id: id,
     title: title,
     courseId: 0,
+    endAt: '',
     category: '',
     priority: 0,
     ddl: '',
@@ -1083,6 +1086,31 @@ check('parseDateTime：空串退回此刻而不是 00:00',
 check('parseDateTime→formatDateTime 往返稳定',
   formatDateTime(parseDateTime(formatDateTime(new Date(2026, 11, 31, 23, 58)))),
   '2026-12-31 23:58');
+
+// ---------- 考试的时间范围（③）----------
+console.log('【考试：起止时间 → 计划块落在哪一段】');
+check('09:00–11:00 → 同一天、120 分钟',
+  ((): string => { const r: ExamRange = examRangeOf('2026-10-15 09:00', '2026-10-15 11:00');
+    return `${r.date},${r.startMin},${r.endMin},${r.endMin - r.startMin}`; })(),
+  '2026-10-15,540,660,120');
+check('含非 5 倍数分钟也照算（考试时间不是 5 分钟刻度上的）',
+  ((): string => { const r: ExamRange = examRangeOf('2026-10-15 09:07', '2026-10-15 11:03');
+    return `${r.startMin},${r.endMin}`; })(),
+  '547,663');
+check('合法：09:00–11:00', String(validateExamRange('2026-10-15 09:00', '2026-10-15 11:00').ok), 'true');
+check('不合法：结束早于开始',
+  String(validateExamRange('2026-10-15 11:00', '2026-10-15 09:00').ok), 'false');
+check('不合法：起止同刻',
+  String(validateExamRange('2026-10-15 09:00', '2026-10-15 09:00').ok), 'false');
+check('不合法：跨天（计划块表达不了跨天，提示用户分两天记）',
+  String(validateExamRange('2026-10-15 22:00', '2026-10-16 01:00').ok), 'false');
+check('不合法：结束没选（空串）',
+  String(validateExamRange('2026-10-15 09:00', '').ok), 'false');
+check('不合法：只有日期没有时刻',
+  String(validateExamRange('2026-10-15', '2026-10-16').ok), 'false');
+check('提示语是人话：跨天那条',
+  validateExamRange('2026-10-15 22:00', '2026-10-16 01:00').message,
+  '考试的开始和结束要在同一天');
 
 // ---------- 汇总 ----------
 console.log('');

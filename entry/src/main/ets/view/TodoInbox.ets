@@ -4,9 +4,11 @@ import { storedAbilityContext } from '../util/Ctx';
 import { Course, COURSE_COLORS, Todo, TodoCategory, TodoSource, TodoStatus } from '../model/Types';
 import { TimetableRepo } from '../data/TimetableRepo';
 import { TodoRepo } from '../data/TodoRepo';
-import { addDays, countdownText, formatDate, minToHHmm, parseDate, relativeDayText, today } from '../util/DateUtil';
+import { addDays, countdownText, formatDate, hhmmToMin, minToHHmm, parseDate, relativeDayText,
+  today } from '../util/DateUtil';
 import { pickDateTime } from '../util/DateTimePicker';
-import { normalizeEstimate, Validation, validateEstimate } from '../domain/Validate';
+import { ExamRange, Validation, examRangeOf, normalizeEstimate, validateEstimate,
+  validateExamRange } from '../domain/Validate';
 import { ChipButton } from './ChipButton';
 import { BackHandler, backStack } from '../util/BackStack';
 import { GLASS_BLUR, GLASS_EDGE_SOFT, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_ROW,
@@ -119,6 +121,10 @@ export struct TodoInbox {
   @State editCategory: string = TodoCategory.Other;
   /** 考试专用：考场 / 座位，存在 note 里 */
   @State editPlace: string = '';
+  /** 考试专用：**结束**时刻（开始时刻存在 editDdl 里）；其它类型恒为 '' */
+  @State editExamEnd: string = '';
+  /** 考试起止不合法时的提示（'' = 没问题） */
+  @State editExamError: string = '';
 
   @State pendingDeleteId: number = 0;
   /**
@@ -303,13 +309,14 @@ export struct TodoInbox {
     return out;
   }
 
-  /** '2026-10-20 09:00' → '10 月 20 日 09:00' */
+  /** '2026-10-20 09:00' (+ 结束) → '10 月 20 日 09:00–11:00' */
   private examWhen(t: Todo): string {
     if (t.ddl.length < 16) {
       return '时间待定';
     }
     const d: Date = parseDate(t.ddl.substring(0, 10));
-    return `${d.getMonth() + 1} 月 ${d.getDate()} 日 ${t.ddl.substring(11, 16)}`;
+    const span: string = t.endAt.length >= 16 ? `–${t.endAt.substring(11, 16)}` : '';
+    return `${d.getMonth() + 1} 月 ${d.getDate()} 日 ${t.ddl.substring(11, 16)}${span}`;
   }
 
   private countdownOf(t: Todo): string {
@@ -560,15 +567,24 @@ export struct TodoInbox {
     this.editCourseId = 0;
     this.editCategory = TodoCategory.Other;
     this.editPlace = '';
+    this.editExamEnd = '';
+    this.editExamError = '';
     this.editorConfirmDelete = false;
     this.editorVisible = true;
   }
 
+  /**
+   * 新建考试：默认"下周同一天 09:00–11:00"。
+   * 考试要的是**一段固定时间**（用户 2026-10-14 提的），所以一开始就把结束时刻填上一个整数，
+   * 用户只需要改自己关心的那一边。
+   */
   private openNewExam(): void {
     this.openNew();
     this.editCategory = TodoCategory.Exam;
-    this.editEstimate = 0;
-    this.editDdl = `${formatDate(addDays(today(), 7))} 09:00`;
+    const day: string = formatDate(addDays(today(), 7));
+    this.editDdl = `${day} 09:00`;
+    this.editExamEnd = `${day} 11:00`;
+    this.editEstimate = 120;
   }
 
   private openEdit(t: Todo): void {
@@ -584,8 +600,65 @@ export struct TodoInbox {
     this.editCourseId = t.courseId;
     this.editCategory = t.category;
     this.editPlace = t.category === TodoCategory.Exam ? t.note : '';
+    // 考试：回填结束时刻。老数据没有 end_at（迁移补的是空串）→ 给个"开始 +2 小时"的默认，
+    // 免得用户一打开就看到"结束时间没选"、还得自己算。
+    this.editExamEnd = t.category === TodoCategory.Exam ? this.endOfExam(t) : '';
+    this.editExamError = '';
     this.editorConfirmDelete = false;
     this.editorVisible = true;
+  }
+
+  /** 考试的结束时刻；老数据（endAt 为空）用"开始 +2 小时"兜底，封顶 23:59 */
+  private endOfExam(t: Todo): string {
+    if (t.endAt.length >= 16) {
+      return t.endAt;
+    }
+    return this.defaultExamEnd(t.ddl);
+  }
+
+  /** 由开始时刻推一个默认结束时刻（+2 小时，封顶 23:59）；开始都没填就返回空串 */
+  private defaultExamEnd(start: string): string {
+    if (start.length < 16) {
+      return '';
+    }
+    const s0: number = hhmmToMin(start.substring(11, 16));
+    const e0: number = s0 + 120 > 1439 ? 1439 : s0 + 120;
+    return `${start.substring(0, 10)} ${minToHHmm(e0)}`;
+  }
+
+  /**
+   * 切换"类型"。
+   * 切到**考试**时顺手把结束时刻补上（把原来那个"截止"当开始用）—— 否则用户切过去
+   * 立刻看到"开始和结束都要选"，像是自己弄坏了什么。
+   */
+  private chooseCategory(c: string): void {
+    this.editCategory = c;
+    if (c === TodoCategory.Exam && this.editExamEnd.length < 16) {
+      this.editExamEnd = this.defaultExamEnd(this.editDdl);
+    }
+    this.editExamError = '';
+  }
+
+  /**
+   * 考试的开始/结束各自滚一次鸿蒙的日期+时间选择器。
+   * 只改开始时顺手把"结束早于开始"的情况拉正（+2 小时），省掉一次来回。
+   */
+  private pickExamTime(isStart: boolean): void {
+    const cur: string = isStart ? this.editDdl : this.editExamEnd;
+    pickDateTime(this.getUIContext(), cur, (v: string): void => {
+      if (isStart) {
+        this.editDdl = v;
+        if (!validateExamRange(this.editDdl, this.editExamEnd).ok) {
+          const d: Date = parseDate(v.substring(0, 10));
+          const start: number = hhmmToMin(v.substring(11, 16));
+          const end: number = start + 120 > 1439 ? 1439 : start + 120;
+          this.editExamEnd = `${formatDate(d)} ${minToHHmm(end)}`;
+        }
+      } else {
+        this.editExamEnd = v;
+      }
+      this.editExamError = '';
+    });
   }
 
   private saveEditor(): void {
@@ -597,6 +670,19 @@ export struct TodoInbox {
   private async doSave(): Promise<void> {
     const ctx: common.UIAbilityContext = this.context();
     const title: string = this.editTitle.trim().length > 0 ? this.editTitle.trim() : '未命名待办';
+    const isExam: boolean = this.editCategory === TodoCategory.Exam;
+    // 考试是"一段固定时间"，起止填不对就别存 —— 否则计划视图里那块没有可靠的长度
+    let examMinutes: number = 0;
+    if (isExam) {
+      const verdict: Validation = validateExamRange(this.editDdl, this.editExamEnd);
+      if (!verdict.ok) {
+        this.editExamError = verdict.message;
+        return;
+      }
+      this.editExamError = '';
+      const r: ExamRange = examRangeOf(this.editDdl, this.editExamEnd);
+      examMinutes = r.endMin - r.startMin;
+    }
     if (this.editId === 0) {
       const todo: Todo = {
         id: 0,
@@ -605,11 +691,12 @@ export struct TodoInbox {
         category: this.editCategory,
         priority: 1,
         ddl: this.editDdl,
-        estimateMin: this.editCategory === TodoCategory.Exam ? 0 : this.editEstimate,
+        endAt: isExam ? this.editExamEnd : '',
+        estimateMin: isExam ? examMinutes : this.editEstimate,
         status: TodoStatus.Active,
         source: TodoSource.Manual,
         generationKey: '',
-        note: this.editCategory === TodoCategory.Exam ? this.editPlace : '',
+        note: isExam ? this.editPlace : '',
         submitChannel: '',
         repeatRule: '',
         photos: '',
@@ -617,19 +704,24 @@ export struct TodoInbox {
         confirmedAt: Date.now(),
         doneAt: 0
       };
-      await TodoRepo.insertTodo(ctx, todo);
+      const id: number = await TodoRepo.insertTodo(ctx, todo);
+      todo.id = id;
+      // 考试：自动在计划视图里排上这一段（重叠也照排，见 TodoRepo.syncExamBlock）
+      await TodoRepo.syncExamBlock(ctx, todo);
     } else {
       const existing: Todo | undefined = await TodoRepo.getTodo(ctx, this.editId);
       if (existing !== undefined) {
         existing.title = title;
         existing.ddl = this.editDdl;
         existing.category = this.editCategory;
-        existing.estimateMin = this.editCategory === TodoCategory.Exam ? 0 : this.editEstimate;
+        existing.endAt = isExam ? this.editExamEnd : '';
+        existing.estimateMin = isExam ? examMinutes : this.editEstimate;
         existing.courseId = this.editCourseId;
-        if (this.editCategory === TodoCategory.Exam) {
+        if (isExam) {
           existing.note = this.editPlace;
         }
         await TodoRepo.updateTodo(ctx, existing);
+        await TodoRepo.syncExamBlock(ctx, existing);
       }
     }
     this.editorVisible = false;
@@ -934,9 +1026,7 @@ export struct TodoInbox {
           ChipButton({
             text: '考试',
             selected: this.editCategory === TodoCategory.Exam,
-            onTap: (): void => {
-            this.editCategory = TodoCategory.Exam;
-          }
+            onTap: (): void => this.chooseCategory(TodoCategory.Exam)
           })
           ChipButton({
             text: '其他',
@@ -963,62 +1053,113 @@ export struct TodoInbox {
             })
         }
 
-        Text(this.editCategory === TodoCategory.Exam ? '考试时间' : '截止')
-          .fontSize(12)
-          .fontColor('#94A0B5')
-          .margin({ top: 14, bottom: 6 })
+        if (this.editCategory === TodoCategory.Exam) {
+          // 考试 = 一段**固定时间**（用户 2026-10-14）：开始 + 结束各滚一次系统选择器。
+          // ⚠️ 这两行**不能抽成带参数的 @Builder**：@Builder 的参数按值传入、首次渲染后固化，
+          //    那样选完时间界面不会跟着变（同 ChipButton.ets 顶部那条老坑）。
+          Text('考试时间')
+            .fontSize(12)
+            .fontColor('#94A0B5')
+            .margin({ top: 14, bottom: 6 })
+            .width('100%')
+          Row() {
+            Text('开始')
+              .fontSize(12)
+              .fontColor('#94A0B5')
+              .width(40)
+            Text(this.editDdl.length >= 16 ? this.editDdl : '未选')
+              .fontSize(13)
+              .fontColor('#F2F5FA')
+              .layoutWeight(1)
+            Button('选择…')
+              .backgroundColor('rgba(255,255,255,0.14)')
+              .fontColor('#7FA8FF')
+              .fontSize(12)
+              .onClick((): void => this.pickExamTime(true))
+          }
           .width('100%')
-        Flex({ wrap: FlexWrap.Wrap }) {
-          ChipButton({
-            text: '今天 23:59',
-            selected: this.editDdl === `${formatDate(today())} 23:59`,
-            onTap: (): void => {
-            this.editDdl = `${formatDate(today())} 23:59`;
+          .padding({ top: 6, bottom: 6 })
+          Row() {
+            Text('结束')
+              .fontSize(12)
+              .fontColor('#94A0B5')
+              .width(40)
+            Text(this.editExamEnd.length >= 16 ? this.editExamEnd : '未选')
+              .fontSize(13)
+              .fontColor('#F2F5FA')
+              .layoutWeight(1)
+            Button('选择…')
+              .backgroundColor('rgba(255,255,255,0.14)')
+              .fontColor('#7FA8FF')
+              .fontSize(12)
+              .onClick((): void => this.pickExamTime(false))
           }
-          })
-          ChipButton({
-            text: '明天 23:59',
-            selected: this.editDdl === `${formatDate(addDays(today(), 1))} 23:59`,
-            onTap: (): void => {
-            this.editDdl = `${formatDate(addDays(today(), 1))} 23:59`;
+          .width('100%')
+          .padding({ top: 6, bottom: 6 })
+          Text(this.editExamError.length > 0
+            ? this.editExamError
+            : '保存后会自动排进计划视图（与已有的块重叠也照排）')
+            .fontSize(10)
+            .fontColor(this.editExamError.length > 0 ? '#FF8A8A' : '#8B97AC')
+            .width('100%')
+        } else {
+          Text('截止')
+            .fontSize(12)
+            .fontColor('#94A0B5')
+            .margin({ top: 14, bottom: 6 })
+            .width('100%')
+          Flex({ wrap: FlexWrap.Wrap }) {
+            ChipButton({
+              text: '今天 23:59',
+              selected: this.editDdl === `${formatDate(today())} 23:59`,
+              onTap: (): void => {
+                this.editDdl = `${formatDate(today())} 23:59`;
+              }
+            })
+            ChipButton({
+              text: '明天 23:59',
+              selected: this.editDdl === `${formatDate(addDays(today(), 1))} 23:59`,
+              onTap: (): void => {
+                this.editDdl = `${formatDate(addDays(today(), 1))} 23:59`;
+              }
+            })
+            ChipButton({
+              text: '本周日 23:59',
+              selected: this.editDdl === `${formatDate(addDays(today(), 7 - (today().getDay() === 0 ? 7 : today().getDay())))} 23:59`,
+              onTap: (): void => {
+                const wd: number = today().getDay() === 0 ? 7 : today().getDay();
+                this.editDdl = `${formatDate(addDays(today(), 7 - wd))} 23:59`;
+              }
+            })
+            ChipButton({
+              text: '3 天后 23:59',
+              selected: this.editDdl === `${formatDate(addDays(today(), 3))} 23:59`,
+              onTap: (): void => {
+                this.editDdl = `${formatDate(addDays(today(), 3))} 23:59`;
+              }
+            })
+            ChipButton({
+              text: '无截止',
+              selected: this.editDdl.length === 0,
+              onTap: (): void => {
+                this.editDdl = '';
+              }
+            })
+            // 自定义：滚鸿蒙自己的日期 + 时间选择器（分钟不受任何限制）
+            ChipButton({
+              text: this.editDdl.length > 0 && !this.ddlIsPreset()
+                ? this.ddlShort(this.editDdl) : '自定义…',
+              selected: this.editDdl.length > 0 && !this.ddlIsPreset(),
+              onTap: (): void => this.pickCustomDdl()
+            })
           }
-          })
-          ChipButton({
-            text: '本周日 23:59',
-            selected: this.editDdl === `${formatDate(addDays(today(), 7 - (today().getDay() === 0 ? 7 : today().getDay())))} 23:59`,
-            onTap: (): void => {
-            const wd: number = today().getDay() === 0 ? 7 : today().getDay();
-            this.editDdl = `${formatDate(addDays(today(), 7 - wd))} 23:59`;
-          }
-          })
-          ChipButton({
-            text: '3 天后 23:59',
-            selected: this.editDdl === `${formatDate(addDays(today(), 3))} 23:59`,
-            onTap: (): void => {
-            this.editDdl = `${formatDate(addDays(today(), 3))} 23:59`;
-          }
-          })
-          ChipButton({
-            text: '无截止',
-            selected: this.editDdl.length === 0,
-            onTap: (): void => {
-            this.editDdl = '';
-          }
-          })
-          // 自定义：滚鸿蒙自己的日期 + 时间选择器（分钟不受任何限制）
-          ChipButton({
-            text: this.editDdl.length > 0 && !this.ddlIsPreset()
-              ? this.ddlShort(this.editDdl) : '自定义…',
-            selected: this.editDdl.length > 0 && !this.ddlIsPreset(),
-            onTap: (): void => this.pickCustomDdl()
-          })
+          .width('100%')
+          Text(this.editDdl.length > 0 ? `截止：${this.ddlText(this.editDdl)}` : '截止：无')
+            .fontSize(11)
+            .fontColor('#8B97AC')
+            .width('100%')
+            .margin({ top: 2 })
         }
-        .width('100%')
-        Text(this.editDdl.length > 0 ? `截止：${this.ddlText(this.editDdl)}` : '截止：无')
-          .fontSize(11)
-          .fontColor('#8B97AC')
-          .width('100%')
-          .margin({ top: 2 })
 
         if (this.editCategory !== TodoCategory.Exam) {
           Text('预计耗时')

@@ -2,7 +2,7 @@ import { relationalStore } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 import { Db } from './Db';
 import { PlanBlock, Todo, TodoCategory, TodoStatus, TodoTemplate, VirtualLesson } from '../model/Types';
-import { isExamCategory, migrateEstimate, normalizeEstimate } from '../domain/Validate';
+import { ExamRange, Validation, examRangeOf, isExamCategory, migrateEstimate, normalizeEstimate, validateExamRange } from '../domain/Validate';
 
 /** 待办时长的迁移项（见 normalizeAllEstimates） */
 interface EstimateFix {
@@ -100,6 +100,7 @@ export class TodoRepo {
       'category': t.category,
       'priority': t.priority,
       'ddl': t.ddl,
+      'end_at': t.endAt,
       'estimate_min': normalizeEstimate(t.estimateMin, isExamCategory(t.category)),
       'status': t.status,
       'source': t.source,
@@ -166,6 +167,7 @@ export class TodoRepo {
       category: rs.getString(rs.getColumnIndex('category')),
       priority: rs.getLong(rs.getColumnIndex('priority')),
       ddl: rs.getString(rs.getColumnIndex('ddl')),
+      endAt: rs.getString(rs.getColumnIndex('end_at')),
       estimateMin: rs.getLong(rs.getColumnIndex('estimate_min')),
       status: rs.getString(rs.getColumnIndex('status')),
       source: rs.getString(rs.getColumnIndex('source')),
@@ -183,10 +185,10 @@ export class TodoRepo {
   static async updateTodo(context: common.Context, t: Todo): Promise<void> {
     const store: relationalStore.RdbStore = await Db.get(context);
     await store.executeSql(
-      `UPDATE todo SET title = ?, course_id = ?, category = ?, priority = ?, ddl = ?,
+      `UPDATE todo SET title = ?, course_id = ?, category = ?, priority = ?, ddl = ?, end_at = ?,
        estimate_min = ?, status = ?, note = ?, submit_channel = ?, repeat_rule = ?,
        photos = ?, confirmed_at = ?, done_at = ? WHERE id = ?`,
-      [t.title, t.courseId, t.category, t.priority, t.ddl,
+      [t.title, t.courseId, t.category, t.priority, t.ddl, t.endAt,
         normalizeEstimate(t.estimateMin, isExamCategory(t.category)), t.status, t.note,
         t.submitChannel, t.repeatRule, t.photos, t.confirmedAt, t.doneAt, t.id]);
   }
@@ -445,6 +447,40 @@ export class TodoRepo {
     }
     rs.close();
     return list;
+  }
+
+  /**
+   * 让「考试」的计划块与它的起止时间一致。
+   *
+   * 用户 2026-10-14：「考试应该不同于作业等，他有固定的时间范围，自动放入计划视图的相应时间段」，
+   * 并且拍定**与已有的块重叠也照排**（考试时间是硬约束，不该去挪别人的计划）。
+   *
+   * 口径：**一场考试只有一个块，由这里全权维护** —— 先删掉它的旧块，再按新范围插一块。
+   * 这样"改了考试时间"不会留下残块；用户把块拖走之后再存一次考试，它会回到时间范围上
+   *（考试时间才是真相，拖动不该改写它）。
+   *
+   * 时间范围不合法时**只删不建**（等用户把时间填对再存），不抛错、不半途留下旧块。
+   */
+  static async syncExamBlock(context: common.Context, t: Todo): Promise<void> {
+    if (!isExamCategory(t.category) || t.id <= 0) {
+      return;
+    }
+    const store: relationalStore.RdbStore = await Db.get(context);
+    await store.executeSql('DELETE FROM plan_block WHERE todo_id = ?', [t.id]);
+    const verdict: Validation = validateExamRange(t.ddl, t.endAt);
+    if (!verdict.ok) {
+      return;
+    }
+    const r: ExamRange = examRangeOf(t.ddl, t.endAt);
+    const bucket: relationalStore.ValuesBucket = {
+      'todo_id': t.id,
+      'lesson_id': 0,
+      'date': r.date,
+      'start_min': r.startMin,
+      'end_min': r.endMin,
+      'done': 0
+    };
+    await store.insert('plan_block', bucket);
   }
 
   static async updateBlock(context: common.Context, b: PlanBlock): Promise<void> {
