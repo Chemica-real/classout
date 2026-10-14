@@ -378,6 +378,30 @@ export struct PlanDayView {
   }
 
   /** 第 i 列的左边缘 x（vp） */
+  /**
+   * 某一天适用的不可排时段（`weekday === 0` 表示每天），并**裁到当前时间轴的范围**里。
+   *
+   * 用户要求：「不可排时段在计划视图中也应该被颜色/纹理淡淡标出（包括单日图与三日图）」。
+   * 裁范围是必须的：默认休息时段里有「睡觉 00:00–07:00」，而时间轴从 07:00 起 ——
+   * 不裁的话 `yOf(0)` 会算出负坐标，在网格顶上画出一条看不见却存在的带子。
+   */
+  private restsOf(dateStr: string): RestWindow[] {
+    const wd: number = weekdayOf(parseDate(dateStr));
+    const out: RestWindow[] = [];
+    for (const w of this.restWindows) {
+      if (w.weekday !== 0 && w.weekday !== wd) {
+        continue;
+      }
+      const from: number = Math.max(w.startMin, AXIS.startMin);
+      const to: number = Math.min(w.endMin, AXIS.endMin);
+      if (to - from < 10) {
+        continue;   // 太窄就不画，免得变成一条噪线
+      }
+      out.push({ id: w.id, weekday: w.weekday, startMin: from, endMin: to, label: w.label });
+    }
+    return out;
+  }
+
   private colXOf(i: number): number {
     if (this.viewCols <= COLS_DAY) {
       return AXIS_W;
@@ -1570,6 +1594,61 @@ export struct PlanDayView {
     return list;
   }
 
+  /**
+   * 不可排时段（"睡觉""午休"这些）在网格上的淡标记：**单日/三日都画**，
+   * 三列各按自己的星期取适用的时段。
+   *
+   * 它是网格 Stack 的**第一层**（最下面）：细网格线、课程灰带、计划块都会压在它上面，
+   * 所以它只是"底色上的纹理"，不会挡住任何可读信息。
+   */
+  @Builder
+  RestBands() {
+    ForEach(this.colDates, (cd: string, ci: number) => {
+      ForEach(this.restsOf(cd), (w: RestWindow) => {
+        Stack({ alignContent: Alignment.TopEnd }) {
+          // 标签只在单日视图且带子够高时出现（三日视图列宽只有 105vp，写了也是省略号）
+          if (this.viewCols <= COLS_DAY && this.hOf(w.startMin, w.endMin) >= 46) {
+            Text(w.label)
+              .fontSize(9)
+              .fontColor('#7C8798')
+              .maxLines(1)
+              .padding({ right: 6, top: 3 })
+          }
+        }
+        .width(this.colWidthOf(ci))
+        .height(this.hOf(w.startMin, w.endMin))
+        .backgroundColor('rgba(127,168,255,0.055)')
+        // 45° 斜纹：透明↔白(0.05) 交替 6 条。
+        // 用**纹理**而不是纯色，是为了和"课程灰带"（`rgba(255,255,255,0.10)` 实心）区分开 ——
+        // 一眼能看出"这块是规则性的不可排，不是某门课"。
+        // ⚠️ 只能内联写：ArkTS 不接受 `Array<[ResourceColor, number]>` 这种返回类型，
+        //    写在 `colors:` 位置上才有上下文类型。
+        .linearGradient({
+          angle: 45,
+          colors: [
+            ['rgba(255,255,255,0.05)', 0.0], ['rgba(255,255,255,0)', 0.083],
+            ['rgba(255,255,255,0)', 0.167], ['rgba(255,255,255,0.05)', 0.167],
+            ['rgba(255,255,255,0.05)', 0.25], ['rgba(255,255,255,0)', 0.25],
+            ['rgba(255,255,255,0)', 0.333], ['rgba(255,255,255,0.05)', 0.333],
+            ['rgba(255,255,255,0.05)', 0.417], ['rgba(255,255,255,0)', 0.417],
+            ['rgba(255,255,255,0)', 0.5], ['rgba(255,255,255,0.05)', 0.5],
+            ['rgba(255,255,255,0.05)', 0.583], ['rgba(255,255,255,0)', 0.583],
+            ['rgba(255,255,255,0)', 0.667], ['rgba(255,255,255,0.05)', 0.667],
+            ['rgba(255,255,255,0.05)', 0.75], ['rgba(255,255,255,0)', 0.75],
+            ['rgba(255,255,255,0)', 0.833], ['rgba(255,255,255,0.05)', 0.833],
+            ['rgba(255,255,255,0.05)', 0.917], ['rgba(255,255,255,0)', 0.917],
+            ['rgba(255,255,255,0)', 1.0]
+          ]
+        })
+        .border({ width: 1, color: 'rgba(255,255,255,0.07)' })
+        .borderRadius(4)
+        .position({ x: this.colXOf(ci), y: this.yOf(w.startMin) })
+        // 纯装饰：绝不吞触摸（否则会挡掉"点空白处放下待办"）
+        .hitTestBehavior(HitTestMode.None)
+      }, (w: RestWindow) => `rb-${cd}-${w.id}-${w.startMin}-${w.endMin}`)
+    }, (cd: string) => `rbc-${cd}`)
+  }
+
   @Builder
   ClassBlock(s: CourseSession, ci: number) {
     Column() {
@@ -2445,6 +2524,8 @@ export struct PlanDayView {
               this.ColHeadRow()
             }
             Stack({ alignContent: Alignment.TopStart }) {
+              // 最下面一层：不可排时段的淡纹理（网格线与课程/块都压在它上面）
+              this.RestBands()
               this.HourLines()
               if (this.viewCols > COLS_DAY) {
                 this.ColumnSeparators()
