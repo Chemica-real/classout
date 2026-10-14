@@ -15,24 +15,33 @@ import { TEMPLATE_VARS, TemplateCheck, Validation, validateSectionTimes, validat
 import { renderTitle } from '../domain/TodoGenerator';
 import { ChipButton } from './ChipButton';
 import { BackHandler, backStack } from '../util/BackStack';
-import { GLASS_CARD_BLUR, GLASS_CARD_EDGE, GLASS_CARD_SHADOW,
-  GLASS_CARD_BOTTOM, GLASS_CARD_TOP, GLASS_PANEL_BLUR, GLASS_PANEL_BOTTOM,
-  GLASS_PANEL_EDGE, GLASS_PANEL_TOP } from './Glass';
+import { GLASS_BLUR, GLASS_EDGE_SOFT, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_ROW,
+  GLASS_SHADOW_SHEET, GLASS_TINT_PANEL, GLASS_TINT_ROW, GLASS_TINT_SHEET } from './Glass';
 
 // 文件内 @Styles（Glass.ets 顶部说明了为什么不能跨文件 export）
+// 深色版：模糊只留给页头与弹窗，课程/模板等列表卡是小卡（不模糊）
 @Styles
 function glassCard() {
-  .backgroundBlurStyle(GLASS_CARD_BLUR)
-  .linearGradient({ angle: 180, colors: [[GLASS_CARD_TOP, 0.0], [GLASS_CARD_BOTTOM, 1.0]] })
-  .border({ width: 1, color: GLASS_CARD_EDGE })
-  .shadow(GLASS_CARD_SHADOW)
+  .backgroundColor(GLASS_TINT_ROW)
+  .border({ width: 1, color: GLASS_EDGE_SOFT })
+  .borderRadius(GLASS_RADIUS)
+  .shadow(GLASS_SHADOW_ROW)
 }
 
 @Styles
 function glassPanel() {
-  .backgroundBlurStyle(GLASS_PANEL_BLUR)
-  .linearGradient({ angle: 180, colors: [[GLASS_PANEL_TOP, 0.0], [GLASS_PANEL_BOTTOM, 1.0]] })
-  .border({ width: 1, color: GLASS_PANEL_EDGE })
+  .backdropBlur(GLASS_BLUR)
+  .backgroundColor(GLASS_TINT_PANEL)
+  .border({ width: 1, color: GLASS_EDGE_STRONG })
+}
+
+@Styles
+function glassSheet() {
+  .backdropBlur(GLASS_BLUR)
+  .backgroundColor(GLASS_TINT_SHEET)
+  .border({ width: 1, color: GLASS_EDGE_STRONG })
+  .borderRadius(GLASS_RADIUS)
+  .shadow(GLASS_SHADOW_SHEET)
 }
 
 const DOMAIN: number = 0x0000;
@@ -779,7 +788,7 @@ export struct CourseManager {
   FieldLabel(text: string) {
     Text(text)
       .fontSize(12)
-      .fontColor('#8A94A6')
+      .fontColor('#94A0B5')
       .width('100%')
       .margin({ top: 12, bottom: 4 })
   }
@@ -796,11 +805,11 @@ export struct CourseManager {
     Row() {
       Text(message)
         .fontSize(11)
-        .fontColor('#C0392B')
+        .fontColor('#FF8A8A')
         .layoutWeight(1)
       Text('取消')
         .fontSize(12)
-        .fontColor('#5A6478')
+        .fontColor('#A9B5C9')
         .padding({ left: 10, right: 10 })
         .onClick((): void => {
           this.pendingDeleteKey = '';
@@ -827,13 +836,13 @@ export struct CourseManager {
     Row() {
       Text(backLabel)
         .fontSize(15)
-        .fontColor('#2E6BE6')
+        .fontColor('#7FA8FF')
         .onClick(onBack)
       Blank()
       Text(title)
         .fontSize(16)
         .fontWeight(FontWeight.Medium)
-        .fontColor('#12161F')
+        .fontColor('#F2F5FA')
       Blank()
       Text('    ')
         .fontSize(15)
@@ -853,7 +862,7 @@ export struct CourseManager {
           if (this.toast.length > 0) {
             Text(this.toast)
               .fontSize(12)
-              .fontColor('#2E6BE6')
+              .fontColor('#7FA8FF')
               .width('100%')
               .padding({ top: 6, bottom: 6 })
           }
@@ -862,13 +871,13 @@ export struct CourseManager {
             Text('学期')
               .fontSize(15)
               .fontWeight(FontWeight.Medium)
-              .fontColor('#12161F')
+              .fontColor('#F2F5FA')
             Blank()
             Text(this.semester === undefined
               ? ''
               : `${this.semester.name} · ${this.semester.startDate} 起 · ${this.semester.totalWeeks} 周`)
               .fontSize(12)
-              .fontColor('#8A94A6')
+              .fontColor('#94A0B5')
           }
           .width('100%')
           .padding(12)
@@ -883,11 +892,11 @@ export struct CourseManager {
             Text('上课节次时间')
               .fontSize(15)
               .fontWeight(FontWeight.Medium)
-              .fontColor('#12161F')
+              .fontColor('#F2F5FA')
             Blank()
             Text(`${this.editSections.length} 节 · 可随意改`)
               .fontSize(12)
-              .fontColor('#8A94A6')
+              .fontColor('#94A0B5')
           }
           .width('100%')
           .padding(12)
@@ -902,11 +911,11 @@ export struct CourseManager {
             Text('备份与恢复')
               .fontSize(15)
               .fontWeight(FontWeight.Medium)
-              .fontColor('#12161F')
+              .fontColor('#F2F5FA')
             Blank()
             Text('导出 JSON / 整份恢复 / 诊断')
               .fontSize(12)
-              .fontColor('#8A94A6')
+              .fontColor('#94A0B5')
           }
           .width('100%')
           .padding(12)
@@ -919,11 +928,11 @@ export struct CourseManager {
             Text(`课程（${this.courses.length}）`)
               .fontSize(15)
               .fontWeight(FontWeight.Medium)
-              .fontColor('#12161F')
+              .fontColor('#F2F5FA')
             Blank()
             Text('+ 新增课程')
               .fontSize(13)
-              .fontColor('#2E6BE6')
+              .fontColor('#7FA8FF')
               .onClick((): void => this.openNewCourse())
           }
           .width('100%')
@@ -932,7 +941,7 @@ export struct CourseManager {
           if (this.courses.length === 0) {
             Text('还没有课程。点右上角新增，或先把截图转录的课表载进来。')
               .fontSize(12)
-              .fontColor('#98A2B3')
+              .fontColor('#8B97AC')
               .width('100%')
               .margin({ bottom: 10 })
           }
@@ -943,13 +952,13 @@ export struct CourseManager {
                 Text(c.shortName.length > 0 ? c.shortName : c.name)
                   .fontSize(14)
                   .fontWeight(FontWeight.Medium)
-                  .fontColor('#12161F')
+                  .fontColor('#F2F5FA')
                   .backgroundColor(COURSE_COLORS[c.colorIndex % COURSE_COLORS.length])
                   .borderRadius(4)
                   .padding({ left: 6, right: 6, top: 2, bottom: 2 })
                 Text(c.name)
                   .fontSize(13)
-                  .fontColor('#4A5568')
+                  .fontColor('#C3CDDE')
                   .margin({ left: 8 })
                   .layoutWeight(1)
                   .maxLines(1)
@@ -957,7 +966,7 @@ export struct CourseManager {
                 if (!c.autoTodoEnabled) {
                   Text('不自动生成')
                     .fontSize(10)
-                    .fontColor('#98A2B3')
+                    .fontColor('#8B97AC')
                 }
               }
               .width('100%')
@@ -965,7 +974,7 @@ export struct CourseManager {
               ForEach(this.rulesOf(c.id), (r: SessionRule) => {
                 Text(this.ruleText(r))
                   .fontSize(11)
-                  .fontColor('#7A8598')
+                  .fontColor('#9BA7BD')
                   .width('100%')
                   .margin({ top: 4 })
               }, (r: SessionRule) => `lr-${r.id}`)
@@ -973,7 +982,7 @@ export struct CourseManager {
               ForEach(this.templatesOf(c.id), (t: TodoTemplate) => {
                 Text(`⚙ ${this.tplText(t)}`)
                   .fontSize(11)
-                  .fontColor('#3C6E47')
+                  .fontColor('#7BD69A')
                   .width('100%')
                   .margin({ top: 4 })
               }, (t: TodoTemplate) => `lt-${t.id}`)
@@ -981,7 +990,7 @@ export struct CourseManager {
               if (c.isVirtual) {
                 Text(`虚拟课程 · ${this.lessonsOf(c.id).length} 讲，已完成 ${this.doneLessonsOf(c.id)}`)
                   .fontSize(11)
-                  .fontColor('#8A5A00')
+                  .fontColor('#E0A94E')
                   .width('100%')
                   .margin({ top: 4 })
               }
@@ -1003,11 +1012,11 @@ export struct CourseManager {
               Row() {
                 Text('确定清空全部课程并从截图转录重载？手改的内容会丢。')
                   .fontSize(11)
-                  .fontColor('#C0392B')
+                  .fontColor('#FF8A8A')
                   .layoutWeight(1)
                 Text('取消')
                   .fontSize(12)
-                  .fontColor('#5A6478')
+                  .fontColor('#A9B5C9')
                   .padding({ left: 8, right: 8 })
                   .onClick((): void => {
                     this.confirmClear = false;
@@ -1025,7 +1034,7 @@ export struct CourseManager {
             } else {
               Text('重置为截图转录的课表')
                 .fontSize(12)
-                .fontColor('#98A2B3')
+                .fontColor('#8B97AC')
                 .width('100%')
                 .padding({ top: 8 })
                 .onClick((): void => {
@@ -1058,24 +1067,36 @@ export struct CourseManager {
         Column() {
           this.FieldLabel('课程名（全称）')
           TextInput({ text: this.editCourse.name, placeholder: '课程甲' })
+            .fontColor('#F2F5FA')
+            .placeholderColor('#8B97AC')
+            .caretColor('#7FA8FF')
             .onChange((v: string): void => {
               this.editCourse.name = v;
             })
 
           this.FieldLabel('简称（显示在课表格子里）')
           TextInput({ text: this.editCourse.shortName, placeholder: '课甲' })
+            .fontColor('#F2F5FA')
+            .placeholderColor('#8B97AC')
+            .caretColor('#7FA8FF')
             .onChange((v: string): void => {
               this.editCourse.shortName = v;
             })
 
           this.FieldLabel('教师')
           TextInput({ text: this.editCourse.teacher, placeholder: '老师甲' })
+            .fontColor('#F2F5FA')
+            .placeholderColor('#8B97AC')
+            .caretColor('#7FA8FF')
             .onChange((v: string): void => {
               this.editCourse.teacher = v;
             })
 
           this.FieldLabel('默认地点')
           TextInput({ text: this.editCourse.location, placeholder: '教学楼407' })
+            .fontColor('#F2F5FA')
+            .placeholderColor('#8B97AC')
+            .caretColor('#7FA8FF')
             .onChange((v: string): void => {
               this.editCourse.location = v;
             })
@@ -1090,7 +1111,7 @@ export struct CourseManager {
                 .borderRadius(15)
                 .border({
                   width: this.editCourse.colorIndex === idx ? 3 : 1,
-                  color: this.editCourse.colorIndex === idx ? '#12161F' : '#D8DEE9'
+                  color: this.editCourse.colorIndex === idx ? '#F2F5FA' : 'rgba(255,255,255,0.12)'
                 })
                 .margin({ right: 8, bottom: 8 })
                 .onClick((): void => {
@@ -1104,10 +1125,10 @@ export struct CourseManager {
             Column() {
               Text('下课后自动生成待办')
                 .fontSize(14)
-                .fontColor('#12161F')
+                .fontColor('#F2F5FA')
               Text('关掉它就只保留手填的事项（比如你不去上的课）')
                 .fontSize(11)
-                .fontColor('#8A94A6')
+                .fontColor('#94A0B5')
                 .margin({ top: 2 })
             }
             .layoutWeight(1)
@@ -1124,10 +1145,10 @@ export struct CourseManager {
             Column() {
               Text('虚拟课程（不定时上课）')
                 .fontSize(14)
-                .fontColor('#12161F')
+                .fontColor('#F2F5FA')
               Text('比如 CS106L：没有固定上课时间，是一串等着被排进计划的课时')
                 .fontSize(11)
-                .fontColor('#8A94A6')
+                .fontColor('#94A0B5')
                 .margin({ top: 2 })
             }
             .layoutWeight(1)
@@ -1146,7 +1167,7 @@ export struct CourseManager {
           if (this.editCourse.isVirtual) {
             Text(`共多少讲（当前 ${this.editLessonCount}）`)
               .fontSize(12)
-              .fontColor('#8A94A6')
+              .fontColor('#94A0B5')
               .width('100%')
               .margin({ top: 8, bottom: 6 })
             Flex({ wrap: FlexWrap.Wrap }) {
@@ -1163,7 +1184,7 @@ export struct CourseManager {
             .width('100%')
             Text('课时排进计划、打勾完成之后，会像真课下课一样按下面的模板生成待办。')
               .fontSize(11)
-              .fontColor('#3C6E47')
+              .fontColor('#7BD69A')
               .width('100%')
           }
 
@@ -1174,11 +1195,11 @@ export struct CourseManager {
               : `上课时段（${this.editRules.length}）`)
               .fontSize(14)
               .fontWeight(FontWeight.Medium)
-              .fontColor('#12161F')
+              .fontColor('#F2F5FA')
             Blank()
             Text('+ 添加时段')
               .fontSize(13)
-              .fontColor('#2E6BE6')
+              .fontColor('#7FA8FF')
               .onClick((): void => this.openRule(undefined))
           }
           .width('100%')
@@ -1187,7 +1208,7 @@ export struct CourseManager {
           if (this.editRules.length === 0) {
             Text('还没有时段。一周上两次就加两条。')
               .fontSize(12)
-              .fontColor('#98A2B3')
+              .fontColor('#8B97AC')
               .margin({ bottom: 6 })
           }
 
@@ -1196,16 +1217,16 @@ export struct CourseManager {
               Row() {
                 Text(this.ruleText(r))
                   .fontSize(12)
-                  .fontColor('#4A5568')
+                  .fontColor('#C3CDDE')
                   .layoutWeight(1)
                 Text('改')
                   .fontSize(12)
-                  .fontColor('#2E6BE6')
+                  .fontColor('#7FA8FF')
                   .padding({ left: 10, right: 10 })
                   .onClick((): void => this.openRule(r))
                 Text('删')
                   .fontSize(12)
-                  .fontColor('#D64545')
+                  .fontColor('#FF8080')
                   .onClick((): void => {
                     this.pendingDeleteKey = this.deleteKey('rule', r.id);
                   })
@@ -1230,11 +1251,11 @@ export struct CourseManager {
             Text(`待办生成模板（${this.editTemplates.length}）`)
               .fontSize(14)
               .fontWeight(FontWeight.Medium)
-              .fontColor('#12161F')
+              .fontColor('#F2F5FA')
             Blank()
             Text('+ 添加模板')
               .fontSize(13)
-              .fontColor('#2E6BE6')
+              .fontColor('#7FA8FF')
               .onClick((): void => this.openTemplate(undefined))
           }
           .width('100%')
@@ -1243,7 +1264,7 @@ export struct CourseManager {
           if (this.editTemplates.length === 0) {
             Text('没有模板 → 这门课下课不会自动生成待办。')
               .fontSize(12)
-              .fontColor('#98A2B3')
+              .fontColor('#8B97AC')
               .margin({ bottom: 6 })
           }
 
@@ -1252,16 +1273,16 @@ export struct CourseManager {
               Row() {
                 Text(this.tplText(t))
                   .fontSize(12)
-                  .fontColor('#3C6E47')
+                  .fontColor('#7BD69A')
                   .layoutWeight(1)
                 Text('改')
                   .fontSize(12)
-                  .fontColor('#2E6BE6')
+                  .fontColor('#7FA8FF')
                   .padding({ left: 10, right: 10 })
                   .onClick((): void => this.openTemplate(t))
                 Text('删')
                   .fontSize(12)
-                  .fontColor('#D64545')
+                  .fontColor('#FF8080')
                   .onClick((): void => {
                     this.pendingDeleteKey = this.deleteKey('tpl', t.id);
                   })
@@ -1289,8 +1310,8 @@ export struct CourseManager {
               .onClick((): void => this.saveCourse())
             if (this.editCourse.id !== 0) {
               Button('删除课程')
-                .backgroundColor('#FDECEA')
-                .fontColor('#C0392B')
+                .backgroundColor('rgba(214,69,69,0.18)')
+                .fontColor('#FF8A8A')
                 .margin({ left: 10 })
                 .onClick((): void => {
                   this.pendingDeleteKey = this.deleteKey('course', this.editCourse.id);
@@ -1335,25 +1356,31 @@ export struct CourseManager {
           if (this.toast.length > 0) {
             Text(this.toast)
               .fontSize(12)
-              .fontColor('#2E6BE6')
+              .fontColor('#7FA8FF')
               .width('100%')
               .margin({ bottom: 6 })
           }
 
           this.FieldLabel('学期名称')
           TextInput({ text: this.semName, placeholder: '大一上' })
+            .fontColor('#F2F5FA')
+            .placeholderColor('#8B97AC')
+            .caretColor('#7FA8FF')
             .onChange((v: string): void => {
               this.semName = v;
             })
 
           this.FieldLabel('第一教学周周一（YYYY-MM-DD）')
           TextInput({ text: this.semStart, placeholder: '2026-09-07' })
+            .fontColor('#F2F5FA')
+            .placeholderColor('#8B97AC')
+            .caretColor('#7FA8FF')
             .onChange((v: string): void => {
               this.semStart = v;
             })
           Text('北大 2026 秋季：9/7 开学，16 个教学周（到 12/27）')
             .fontSize(11)
-            .fontColor('#98A2B3')
+            .fontColor('#8B97AC')
             .margin({ top: 4 })
 
           this.FieldLabel('教学周数')
@@ -1380,7 +1407,7 @@ export struct CourseManager {
           Text('所有学期')
             .fontSize(14)
             .fontWeight(FontWeight.Medium)
-            .fontColor('#12161F')
+            .fontColor('#F2F5FA')
             .margin({ top: 24, bottom: 8 })
 
           ForEach(this.semesters, (s: Semester) => {
@@ -1388,10 +1415,10 @@ export struct CourseManager {
               Column() {
                 Text(s.name)
                   .fontSize(14)
-                  .fontColor('#12161F')
+                  .fontColor('#F2F5FA')
                 Text(`${s.startDate} 起 · ${s.totalWeeks} 周`)
                   .fontSize(11)
-                  .fontColor('#8A94A6')
+                  .fontColor('#94A0B5')
                   .margin({ top: 2 })
               }
               .layoutWeight(1)
@@ -1400,13 +1427,13 @@ export struct CourseManager {
               if (this.isActiveSem(s)) {
                 Text('当前')
                   .fontSize(11)
-                  .fontColor('#2E6BE6')
+                  .fontColor('#7FA8FF')
               } else {
                 Text('复制到当前学期')
                   .fontSize(12)
-                  .fontColor('#2E6BE6')
+                  .fontColor('#7FA8FF')
                   .padding({ left: 8, right: 8, top: 4, bottom: 4 })
-                  .backgroundColor('#EAF1FF')
+                  .backgroundColor('rgba(46,107,230,0.22)')
                   .borderRadius(8)
                   .onClick((): void => this.copyFrom(s.id))
               }
@@ -1421,17 +1448,23 @@ export struct CourseManager {
           Text('新建学期（下学期开学时用）')
             .fontSize(14)
             .fontWeight(FontWeight.Medium)
-            .fontColor('#12161F')
+            .fontColor('#F2F5FA')
             .margin({ top: 24, bottom: 4 })
 
           this.FieldLabel('名称')
           TextInput({ text: this.newSemName, placeholder: '大一下' })
+            .fontColor('#F2F5FA')
+            .placeholderColor('#8B97AC')
+            .caretColor('#7FA8FF')
             .onChange((v: string): void => {
               this.newSemName = v;
             })
 
           this.FieldLabel('第一教学周周一（YYYY-MM-DD）')
           TextInput({ text: this.newSemStart, placeholder: '2027-02-22' })
+            .fontColor('#F2F5FA')
+            .placeholderColor('#8B97AC')
+            .caretColor('#7FA8FF')
             .onChange((v: string): void => {
               this.newSemStart = v;
             })
@@ -1454,10 +1487,10 @@ export struct CourseManager {
             Column() {
               Text('顺便复制当前学期的课表')
                 .fontSize(14)
-                .fontColor('#12161F')
+                .fontColor('#F2F5FA')
               Text('新学期的课大多和上学期一样，复制后改改就行')
                 .fontSize(11)
-                .fontColor('#8A94A6')
+                .fontColor('#94A0B5')
                 .margin({ top: 2 })
             }
             .layoutWeight(1)
@@ -1565,17 +1598,17 @@ export struct CourseManager {
         Column() {
           Text('数据只在这台手机里。导出会把全部内容写成一个 JSON 文件放在应用沙箱，恢复则用它整份覆盖当前数据。')
             .fontSize(11)
-            .fontColor('#8A94A6')
+            .fontColor('#94A0B5')
             .width('100%')
             .margin({ bottom: 12 })
 
           if (this.backupNote.length > 0) {
             Text(this.backupNote)
               .fontSize(12)
-              .fontColor('#2E6BE6')
+              .fontColor('#7FA8FF')
               .width('100%')
               .padding(10)
-              .backgroundColor('#EAF1FF')
+              .backgroundColor('rgba(46,107,230,0.22)')
               .borderRadius(8)
               .margin({ bottom: 12 })
           }
@@ -1588,43 +1621,43 @@ export struct CourseManager {
 
           Text('备份文件路径')
             .fontSize(12)
-            .fontColor('#8A94A6')
+            .fontColor('#94A0B5')
             .width('100%')
             .margin({ top: 14, bottom: 4 })
           Text(this.backupPath)
             .fontSize(11)
-            .fontColor('#4A5568')
+            .fontColor('#C3CDDE')
             .width('100%')
             .padding(8)
-            .backgroundColor('#F2F4F8')
+            .backgroundColor('rgba(255,255,255,0.10)')
             .borderRadius(6)
 
           Text('想把它存到电脑上（或发给我排查问题），在这个项目目录里跑：')
             .fontSize(11)
-            .fontColor('#8A94A6')
+            .fontColor('#94A0B5')
             .width('100%')
             .margin({ top: 10, bottom: 4 })
           Text(`./hdc.sh file recv ${this.backupPath} ./signing/`)
             .fontSize(10)
-            .fontColor('#3C4657')
+            .fontColor('#CBD6E8')
             .width('100%')
             .padding(8)
-            .backgroundColor('#F2F4F8')
+            .backgroundColor('rgba(255,255,255,0.10)')
             .borderRadius(6)
 
           if (this.confirmRestore) {
             Text('确定用备份覆盖当前数据？当前内容会被整份替换，且不可撤销。')
               .fontSize(12)
-              .fontColor('#C0392B')
+              .fontColor('#FF8A8A')
               .width('100%')
               .padding(10)
-              .backgroundColor('#FDECEA')
+              .backgroundColor('rgba(214,69,69,0.18)')
               .borderRadius(8)
               .margin({ top: 16 })
             Row() {
               Button('取消')
-                .backgroundColor('#EEF1F6')
-                .fontColor('#4A5568')
+                .backgroundColor('rgba(255,255,255,0.14)')
+                .fontColor('#C3CDDE')
                 .layoutWeight(1)
                 .onClick((): void => {
                   this.confirmRestore = false;
@@ -1640,8 +1673,8 @@ export struct CourseManager {
             .margin({ top: 10 })
           } else {
             Button('从备份恢复')
-              .backgroundColor('#FFF4E5')
-              .fontColor('#B26B00')
+              .backgroundColor('rgba(178,107,0,0.20)')
+              .fontColor('#E8B25C')
               .width('100%')
               .margin({ top: 16 })
               .onClick((): void => {
@@ -1653,11 +1686,11 @@ export struct CourseManager {
             Text('诊断信息')
               .fontSize(14)
               .fontWeight(FontWeight.Medium)
-              .fontColor('#12161F')
+              .fontColor('#F2F5FA')
             Blank()
             Text('刷新')
               .fontSize(12)
-              .fontColor('#2E6BE6')
+              .fontColor('#7FA8FF')
               .onClick((): void => this.refreshDiagnostics())
           }
           .width('100%')
@@ -1665,7 +1698,7 @@ export struct CourseManager {
 
           Text(this.diagText.length > 0 ? this.diagText : '（读取中…）')
             .fontSize(11)
-            .fontColor('#4A5568')
+            .fontColor('#C3CDDE')
             .width('100%')
             .padding(10)
             .glassCard()
@@ -1695,15 +1728,15 @@ export struct CourseManager {
         Column() {
           Text('改这里会立刻影响课表格子的排布。北大校本部一天 12 节，第 9、12 节是机动节次（默认画得矮一点）。')
             .fontSize(11)
-            .fontColor('#8A94A6')
+            .fontColor('#94A0B5')
             .width('100%')
             .margin({ bottom: 10 })
 
           Row() {
-            Text('节').fontSize(11).fontColor('#8A94A6').width(26)
-            Text('开始').fontSize(11).fontColor('#8A94A6').layoutWeight(1)
-            Text('结束').fontSize(11).fontColor('#8A94A6').layoutWeight(1)
-            Text('机动').fontSize(11).fontColor('#8A94A6').width(48).textAlign(TextAlign.Center)
+            Text('节').fontSize(11).fontColor('#94A0B5').width(26)
+            Text('开始').fontSize(11).fontColor('#94A0B5').layoutWeight(1)
+            Text('结束').fontSize(11).fontColor('#94A0B5').layoutWeight(1)
+            Text('机动').fontSize(11).fontColor('#94A0B5').width(48).textAlign(TextAlign.Center)
             Text('  ').width(24)
           }
           .width('100%')
@@ -1713,9 +1746,12 @@ export struct CourseManager {
             Row() {
               Text(`${st.section}`)
                 .fontSize(13)
-                .fontColor('#4A5568')
+                .fontColor('#C3CDDE')
                 .width(26)
               TextInput({ text: minToHHmm(st.startMin) })
+                .fontColor('#F2F5FA')
+                .placeholderColor('#8B97AC')
+                .caretColor('#7FA8FF')
                 .layoutWeight(1)
                 .fontSize(13)
                 .onChange((v: string): void => {
@@ -1725,6 +1761,9 @@ export struct CourseManager {
                   }
                 })
               TextInput({ text: minToHHmm(st.endMin) })
+                .fontColor('#F2F5FA')
+                .placeholderColor('#8B97AC')
+                .caretColor('#7FA8FF')
                 .layoutWeight(1)
                 .fontSize(13)
                 .margin({ left: 6 })
@@ -1742,7 +1781,7 @@ export struct CourseManager {
                 })
               Text('删')
                 .fontSize(12)
-                .fontColor('#D64545')
+                .fontColor('#FF8080')
                 .width(24)
                 .textAlign(TextAlign.Center)
                 .onClick((): void => this.removeSection(idx))
@@ -1753,13 +1792,13 @@ export struct CourseManager {
 
           Row() {
             Button('+ 加一节')
-              .backgroundColor('#EEF1F6')
-              .fontColor('#2E6BE6')
+              .backgroundColor('rgba(255,255,255,0.14)')
+              .fontColor('#7FA8FF')
               .layoutWeight(1)
               .onClick((): void => this.addSection())
             Button('恢复北大默认 12 节')
-              .backgroundColor('#EEF1F6')
-              .fontColor('#4A5568')
+              .backgroundColor('rgba(255,255,255,0.14)')
+              .fontColor('#C3CDDE')
               .layoutWeight(1)
               .margin({ left: 10 })
               .onClick((): void => {
@@ -1796,7 +1835,7 @@ export struct CourseManager {
         Text(this.ruleDraft.id === 0 ? '添加上课时段' : '编辑上课时段')
           .fontSize(17)
           .fontWeight(FontWeight.Medium)
-          .fontColor('#12161F')
+          .fontColor('#F2F5FA')
 
         this.FieldLabel('星期')
         Flex({ wrap: FlexWrap.Wrap }) {
@@ -1846,6 +1885,9 @@ export struct CourseManager {
 
         this.FieldLabel('周次（支持 1-16 / 1-8,10-16 / 1-16单 / 2-16双）')
         TextInput({ text: this.ruleWeeksText, placeholder: '1-16' })
+          .fontColor('#F2F5FA')
+          .placeholderColor('#8B97AC')
+          .caretColor('#7FA8FF')
           .onChange((v: string): void => {
             this.ruleWeeksText = v;
           })
@@ -1854,7 +1896,7 @@ export struct CourseManager {
           Column() {
             Text('这是习题课')
               .fontSize(14)
-              .fontColor('#12161F')
+              .fontColor('#F2F5FA')
           }
           .layoutWeight(1)
           .alignItems(HorizontalAlign.Start)
@@ -1868,8 +1910,8 @@ export struct CourseManager {
 
         Row() {
           Button('取消')
-            .backgroundColor('#EEF1F6')
-            .fontColor('#4A5568')
+            .backgroundColor('rgba(255,255,255,0.14)')
+            .fontColor('#C3CDDE')
             .layoutWeight(1)
             .onClick((): void => {
               this.ruleDialog = false;
@@ -1886,11 +1928,7 @@ export struct CourseManager {
       }
       .width('100%')
       .padding(18)
-      .backgroundBlurStyle(GLASS_PANEL_BLUR)
-      .linearGradient({ angle: 180, colors: [[GLASS_PANEL_TOP, 0.0], [GLASS_PANEL_BOTTOM, 1.0]] })
-      .border({ width: 1, color: GLASS_PANEL_EDGE })
-      .shadow({ radius: 24, color: 'rgba(28,45,90,0.18)', offsetX: 0, offsetY: 8 })
-      .borderRadius(14)
+      .glassSheet()
     }
     .width('100%')
     .height('100%')
@@ -1905,11 +1943,14 @@ export struct CourseManager {
         Text(this.tplDraft.id === 0 ? '添加生成模板' : '编辑生成模板')
           .fontSize(17)
           .fontWeight(FontWeight.Medium)
-          .fontColor('#12161F')
+          .fontColor('#F2F5FA')
 
         this.FieldLabel('标题模板')
         TextInput({ text: this.tplDraft.titleTemplate, placeholder: '%D作业',
           controller: this.tplInputCtl })
+          .fontColor('#F2F5FA')
+          .placeholderColor('#8B97AC')
+          .caretColor('#7FA8FF')
           // 只记录用户的光标位置；插入后的光标由 insertTemplateVar 用控制器挪
           .onTextSelectionChange((start: number, end: number): void => {
             this.tplCaret = start;
@@ -1944,7 +1985,7 @@ export struct CourseManager {
         // 实时预览：光看变量说明猜不出最后长什么样
         Text(this.templatePreviewText())
           .fontSize(11)
-          .fontColor(this.templateCheck().ok ? '#3C6E47' : '#C0392B')
+          .fontColor(this.templateCheck().ok ? '#7BD69A' : '#FF8A8A')
           .width('100%')
           .margin({ top: 6 })
 
@@ -2010,8 +2051,8 @@ export struct CourseManager {
 
         Row() {
           Button('取消')
-            .backgroundColor('#EEF1F6')
-            .fontColor('#4A5568')
+            .backgroundColor('rgba(255,255,255,0.14)')
+            .fontColor('#C3CDDE')
             .layoutWeight(1)
             .onClick((): void => {
               this.tplDialog = false;
@@ -2028,11 +2069,7 @@ export struct CourseManager {
       }
       .width('100%')
       .padding(18)
-      .backgroundBlurStyle(GLASS_PANEL_BLUR)
-      .linearGradient({ angle: 180, colors: [[GLASS_PANEL_TOP, 0.0], [GLASS_PANEL_BOTTOM, 1.0]] })
-      .border({ width: 1, color: GLASS_PANEL_EDGE })
-      .shadow({ radius: 24, color: 'rgba(28,45,90,0.18)', offsetX: 0, offsetY: 8 })
-      .borderRadius(14)
+      .glassSheet()
     }
     .width('100%')
     .height('100%')
@@ -2046,7 +2083,7 @@ export struct CourseManager {
         Column() {
           Text('正在载入…')
             .fontSize(13)
-            .fontColor('#8A94A6')
+            .fontColor('#94A0B5')
         }
         .width('100%')
         .height('100%')

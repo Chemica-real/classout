@@ -15,27 +15,28 @@ import { PlanDayView } from '../view/PlanDayView';
 import { CourseManager } from '../view/CourseManager';
 import { SettingsPage } from '../view/SettingsPage';
 import { backStack } from '../util/BackStack';
-import { GLASS_PANEL_BLUR, GLASS_PANEL_BOTTOM, GLASS_PANEL_EDGE, GLASS_PANEL_TOP,
-  PageBackground } from '../view/Glass';
+import { GLASS_BLUR, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_SHEET, GLASS_TINT_PANEL,
+  GLASS_TINT_SHEET, PageBackground, SCRIM_COLOR } from '../view/Glass';
 import { WallpaperRepo } from '../data/WallpaperRepo';
 
 import { ChipButton } from '../view/ChipButton';
 
 // 文件内 @Styles（Glass.ets 顶部说明了为什么不能跨文件 export）
+// 深色版：**模糊用 `backdropBlur`（糊背景），不用 `.blur()`（会糊掉自己的文字）**
 @Styles
 function glassPanel() {
-  .backgroundBlurStyle(GLASS_PANEL_BLUR)
-  .linearGradient({ angle: 180, colors: [[GLASS_PANEL_TOP, 0.0], [GLASS_PANEL_BOTTOM, 1.0]] })
-  .border({ width: 1, color: GLASS_PANEL_EDGE })
+  .backdropBlur(GLASS_BLUR)
+  .backgroundColor(GLASS_TINT_PANEL)
+  .border({ width: 1, color: GLASS_EDGE_STRONG })
 }
 
 @Styles
 function glassSheet() {
-  .backgroundBlurStyle(GLASS_PANEL_BLUR)
-  .linearGradient({ angle: 180, colors: [[GLASS_PANEL_TOP, 0.0], [GLASS_PANEL_BOTTOM, 1.0]] })
-  .borderRadius(16)
-  .border({ width: 1, color: GLASS_PANEL_EDGE })
-  .shadow({ radius: 24, color: 'rgba(28,45,90,0.18)', offsetX: 0, offsetY: 8 })
+  .backdropBlur(GLASS_BLUR)
+  .backgroundColor(GLASS_TINT_SHEET)
+  .border({ width: 1, color: GLASS_EDGE_STRONG })
+  .borderRadius(GLASS_RADIUS)
+  .shadow(GLASS_SHADOW_SHEET)
 }
 
 const DOMAIN: number = 0x0000;
@@ -473,10 +474,10 @@ struct Index {
           Text(this.semester.name)
             .fontSize(22)
             .fontWeight(FontWeight.Bold)
-            .fontColor('#12161F')
+            .fontColor('#F2F5FA')
           Text(this.weekRangeText())
             .fontSize(12)
-            .fontColor('#8A94A6')
+            .fontColor('#94A0B5')
             .margin({ top: 2 })
         }
         .alignItems(HorizontalAlign.Start)
@@ -485,16 +486,16 @@ struct Index {
         Row() {
           Text('‹')
             .fontSize(22)
-            .fontColor('#2E6BE6')
+            .fontColor('#7FA8FF')
             .padding({ left: 10, right: 10 })
             .onClick((): void => this.goWeek(-1))
           Text(`第 ${this.week} 周`)
             .fontSize(14)
             .fontWeight(FontWeight.Medium)
-            .fontColor('#12161F')
+            .fontColor('#F2F5FA')
           Text('›')
             .fontSize(22)
-            .fontColor('#2E6BE6')
+            .fontColor('#7FA8FF')
             .padding({ left: 10, right: 10 })
             .onClick((): void => this.goWeek(1))
         }
@@ -504,11 +505,11 @@ struct Index {
       Row() {
         Text('本地生成 · 无需联网')
           .fontSize(11)
-          .fontColor('#5B7A5B')
+          .fontColor('#8FC9A0')
         Blank()
         Text('＋补课')
           .fontSize(12)
-          .fontColor('#2E6BE6')
+          .fontColor('#7FA8FF')
           .padding({ left: 8, right: 10 })
           .onClick((): void => {
             this.extraCourseId = this.courses.length > 0 ? this.courses[0].id : 0;
@@ -517,7 +518,7 @@ struct Index {
         if (this.overrides.length > 0) {
           Text(`本周调整 ${this.overrides.length}`)
             .fontSize(12)
-            .fontColor('#B26B00')
+            .fontColor('#E8B25C')
             .padding({ right: 10 })
             .onClick((): void => {
               this.adjustSheet = true;
@@ -525,14 +526,14 @@ struct Index {
         }
         Text('管理课程')
           .fontSize(12)
-          .fontColor('#2E6BE6')
+          .fontColor('#7FA8FF')
           .padding({ right: 12 })
           .onClick((): void => {
             this.showManager = true;
           })
         Text(this.inSemester() ? '今天' : '回到本周')
           .fontSize(12)
-          .fontColor('#2E6BE6')
+          .fontColor('#7FA8FF')
           .onClick((): void => this.goToday())
       }
       .width('100%')
@@ -552,11 +553,11 @@ struct Index {
         Column() {
           Text(`周${WEEKDAY_CN[wd - 1]}`)
             .fontSize(12)
-            .fontColor(this.isToday(wd) ? '#2E6BE6' : '#5A6478')
+            .fontColor(this.isToday(wd) ? '#7FA8FF' : '#A9B5C9')
             .fontWeight(this.isToday(wd) ? FontWeight.Bold : FontWeight.Normal)
           Text(`${dateOfWeekday(this.semester, this.week, wd).getMonth() + 1}/${dateOfWeekday(this.semester, this.week, wd).getDate()}`)
             .fontSize(10)
-            .fontColor(this.isToday(wd) ? '#2E6BE6' : '#98A2B3')
+            .fontColor(this.isToday(wd) ? '#7FA8FF' : '#8B97AC')
             .margin({ top: 1 })
         }
         .layoutWeight(1)
@@ -574,13 +575,13 @@ struct Index {
         Text(s.course.shortName.length > 0 ? s.course.shortName : s.course.name)
           .fontSize(11)
           .fontWeight(FontWeight.Medium)
-          .fontColor('#1B2430')
+          .fontColor('#EAF0FA')
           .maxLines(3)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
         if (s.location.length > 0) {
           Text(s.location)
             .fontSize(9)
-            .fontColor('#3C4657')
+            .fontColor('#CBD6E8')
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
             .margin({ top: 2 })
@@ -588,7 +589,7 @@ struct Index {
         if (s.course.teacher.length > 0 && this.blockHeight(s) > SECTION_H + 10) {
           Text(s.course.teacher)
             .fontSize(9)
-            .fontColor('#3C4657')
+            .fontColor('#CBD6E8')
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
         }
@@ -620,10 +621,12 @@ struct Index {
           Column() {
             Text(`${st.section}`)
               .fontSize(11)
-              .fontColor('#8A94A6')
+              // ⚠️ 时间轴是"要读准时间"的地方（HANDOFF §18.8），深色下不能走"提示文字"那档灰：
+              // 用户实测"时间轴的时间看不清"，所以这里比 §18.5 的通用映射**再提亮一档**
+              .fontColor('#CBD6E8')
             Text(minToHHmm(st.startMin))
               .fontSize(9)
-              .fontColor('#B0B8C4')
+              .fontColor('#A9B5C9')
           }
           .width('100%')
           .height(this.sectionHeight(st.section))
@@ -641,7 +644,7 @@ struct Index {
               Row()
                 .width('100%')
                 .height(this.sectionHeight(st.section))
-                .border({ width: { bottom: 1 }, color: '#EDEFF3' })
+                .border({ width: { bottom: 1 }, color: 'rgba(255,255,255,0.12)' })
             }, (st: SectionTime) => `g-${wd}-${st.section}`)
           }
           .width('100%')
@@ -652,7 +655,7 @@ struct Index {
         }
         .layoutWeight(1)
         .height('100%')
-        .backgroundColor(this.isToday(wd) ? '#F2F6FF' : Color.Transparent)
+        .backgroundColor(this.isToday(wd) ? 'rgba(255,255,255,0.10)' : Color.Transparent)
       }, (wd: number) => `col-${wd}`)    }
     .width('100%')
     .height(this.gridHeight())
@@ -679,7 +682,7 @@ struct Index {
     Column() {
       Text(label)
         .fontSize(13)
-        .fontColor(this.tab === index ? '#2E6BE6' : '#8A94A6')
+        .fontColor(this.tab === index ? '#7FA8FF' : '#94A0B5')
         .fontWeight(this.tab === index ? FontWeight.Medium : FontWeight.Normal)
     }
     .layoutWeight(1)
@@ -696,10 +699,10 @@ struct Index {
       Text(title)
         .fontSize(18)
         .fontWeight(FontWeight.Medium)
-        .fontColor('#12161F')
+        .fontColor('#F2F5FA')
       Text(hint)
         .fontSize(13)
-        .fontColor('#8A94A6')
+        .fontColor('#94A0B5')
         .margin({ top: 8 })
     }
     .width('100%')
@@ -728,36 +731,39 @@ struct Index {
         Text(this.selCourseName)
           .fontSize(18)
           .fontWeight(FontWeight.Medium)
-          .fontColor('#12161F')
+          .fontColor('#F2F5FA')
         Text(`${this.selDate} 周${WEEKDAY_CN[this.selWeekday - 1]} · 第 ${this.selStart}-${this.selEnd} 节${this.selIsQuiz ? ' · 习题课' : ''}`)
           .fontSize(12)
-          .fontColor('#7A8598')
+          .fontColor('#9BA7BD')
           .margin({ top: 4 })
         Text(this.selLocation.length > 0 ? this.selLocation : '地点待定')
           .fontSize(12)
-          .fontColor('#7A8598')
+          .fontColor('#9BA7BD')
           .margin({ top: 2 })
         if (this.selDate !== this.selOriginDate) {
           Text(`（原定 ${this.selOriginDate}，被调过）`)
             .fontSize(11)
-            .fontColor('#B26B00')
+            .fontColor('#E8B25C')
             .margin({ top: 2 })
         }
 
         Text('换教室（只改这一周）')
           .fontSize(12)
-          .fontColor('#8A94A6')
+          .fontColor('#94A0B5')
           .width('100%')
           .margin({ top: 16, bottom: 6 })
         Row() {
           TextInput({ text: this.roomDraft, placeholder: '教学楼407' })
+            .fontColor('#F2F5FA')
+            .placeholderColor('#8B97AC')
+            .caretColor('#7FA8FF')
             .layoutWeight(1)
             .onChange((v: string): void => {
               this.roomDraft = v;
             })
           Button('换到这儿')
-            .backgroundColor('#EEF1F6')
-            .fontColor('#2E6BE6')
+            .backgroundColor('rgba(255,255,255,0.14)')
+            .fontColor('#7FA8FF')
             .fontSize(13)
             .margin({ left: 8 })
             .onClick((): void => this.applyRoom())
@@ -766,7 +772,7 @@ struct Index {
 
         Text('调到哪一天')
           .fontSize(12)
-          .fontColor('#8A94A6')
+          .fontColor('#94A0B5')
           .width('100%')
           .margin({ top: 14, bottom: 6 })
         Flex({ wrap: FlexWrap.Wrap }) {
@@ -784,7 +790,7 @@ struct Index {
 
         Text('起 / 止节次')
           .fontSize(12)
-          .fontColor('#8A94A6')
+          .fontColor('#94A0B5')
           .width('100%')
           .margin({ top: 6, bottom: 6 })
         this.SectionPicker(this.moveStart, this.moveStart, (sec: number): void => {
@@ -799,14 +805,14 @@ struct Index {
 
         Row() {
           Button('只挪这一天')
-            .backgroundColor('#EAF1FF')
-            .fontColor('#2E6BE6')
+            .backgroundColor('rgba(46,107,230,0.22)')
+            .fontColor('#7FA8FF')
             .fontSize(13)
             .layoutWeight(1)
             .onClick((): void => this.applyMove())
           Button('本周停课')
-            .backgroundColor('#FDECEA')
-            .fontColor('#C0392B')
+            .backgroundColor('rgba(214,69,69,0.18)')
+            .fontColor('#FF8A8A')
             .fontSize(13)
             .layoutWeight(1)
             .margin({ left: 10 })
@@ -817,16 +823,16 @@ struct Index {
 
         if (this.selAdjusted) {
           Button('撤销这节课的调整')
-            .backgroundColor('#FFF4E5')
-            .fontColor('#B26B00')
+            .backgroundColor('rgba(178,107,0,0.20)')
+            .fontColor('#E8B25C')
             .fontSize(13)
             .width('100%')
             .margin({ top: 10 })
             .onClick((): void => this.clearOverridesForSel())
         }
         Button('关闭')
-          .backgroundColor('#EEF1F6')
-          .fontColor('#4A5568')
+          .backgroundColor('rgba(255,255,255,0.14)')
+          .fontColor('#C3CDDE')
           .fontSize(13)
           .width('100%')
           .margin({ top: 10 })
@@ -851,16 +857,16 @@ struct Index {
         Text('本周调整')
           .fontSize(18)
           .fontWeight(FontWeight.Medium)
-          .fontColor('#12161F')
+          .fontColor('#F2F5FA')
         Text(`${this.semester.name} · 第 ${this.week} 周`)
           .fontSize(12)
-          .fontColor('#7A8598')
+          .fontColor('#9BA7BD')
           .margin({ top: 4, bottom: 12 })
 
         if (this.overrides.length === 0) {
           Text('本周没有调整。点课表格子里的课就能停课 / 换教室 / 调课。')
             .fontSize(12)
-            .fontColor('#98A2B3')
+            .fontColor('#8B97AC')
             .width('100%')
         }
 
@@ -868,24 +874,24 @@ struct Index {
           Row() {
             Text(this.overrideText(o))
               .fontSize(12)
-              .fontColor('#4A5568')
+              .fontColor('#C3CDDE')
               .layoutWeight(1)
             Text('撤销')
               .fontSize(12)
-              .fontColor('#D64545')
+              .fontColor('#FF8080')
               .padding({ left: 10, right: 4 })
               .onClick((): void => this.dropOverride(o))
           }
           .width('100%')
           .padding(10)
-          .backgroundColor('#F7F8FA')
+          .backgroundColor('rgba(255,255,255,0.08)')
           .borderRadius(8)
           .margin({ bottom: 6 })
         }, (o: SessionOverride) => `ov-${o.id}`)
 
         Button('关闭')
-          .backgroundColor('#EEF1F6')
-          .fontColor('#4A5568')
+          .backgroundColor('rgba(255,255,255,0.14)')
+          .fontColor('#C3CDDE')
           .fontSize(13)
           .width('100%')
           .margin({ top: 12 })
@@ -910,15 +916,15 @@ struct Index {
         Text('补一节课')
           .fontSize(18)
           .fontWeight(FontWeight.Medium)
-          .fontColor('#12161F')
+          .fontColor('#F2F5FA')
         Text('给某一周临时加一节（调休补课就用这个）')
           .fontSize(11)
-          .fontColor('#7A8598')
+          .fontColor('#9BA7BD')
           .margin({ top: 4 })
 
         Text('哪门课')
           .fontSize(12)
-          .fontColor('#8A94A6')
+          .fontColor('#94A0B5')
           .width('100%')
           .margin({ top: 14, bottom: 6 })
         Flex({ wrap: FlexWrap.Wrap }) {
@@ -936,7 +942,7 @@ struct Index {
 
         Text('哪一天')
           .fontSize(12)
-          .fontColor('#8A94A6')
+          .fontColor('#94A0B5')
           .width('100%')
           .margin({ top: 6, bottom: 6 })
         Flex({ wrap: FlexWrap.Wrap }) {
@@ -954,7 +960,7 @@ struct Index {
 
         Text('起 / 止节次')
           .fontSize(12)
-          .fontColor('#8A94A6')
+          .fontColor('#94A0B5')
           .width('100%')
           .margin({ top: 6, bottom: 6 })
         this.SectionPicker(this.extraStart, this.extraStart, (sec: number): void => {
@@ -969,8 +975,8 @@ struct Index {
 
         Row() {
           Button('取消')
-            .backgroundColor('#EEF1F6')
-            .fontColor('#4A5568')
+            .backgroundColor('rgba(255,255,255,0.14)')
+            .fontColor('#C3CDDE')
             .fontSize(13)
             .layoutWeight(1)
             .onClick((): void => {
@@ -1008,10 +1014,10 @@ struct Index {
             Text('ClassOUT')
               .fontSize(34)
               .fontWeight(FontWeight.Bold)
-              .fontColor('#12161F')
+              .fontColor('#F2F5FA')
             Text(this.statusText)
               .fontSize(13)
-              .fontColor('#8A94A6')
+              .fontColor('#94A0B5')
               .margin({ top: 12 })
           }
           .width('100%')
@@ -1067,13 +1073,14 @@ struct Index {
         // 管理课程原来**直接盖在课表上**（没有遮罩）。玻璃化的正解不是"把背景盖掉"，
         // 而是**把模糊做够**——让底下的课表变成"磨砂玻璃后面的柔和色块"：
         // **既保留背景信息（若隐若现），又不干扰前景**（这就是玻璃态说明里的第 ② 条）。
-        // 所以这里是一层**较透**的薄纱 + **很厚的模糊**：
+        // 深色主题下这层薄纱是**压暗**（`SCRIM_COLOR`）而不是提亮：
+        // 白玻璃在深色 App 里会把底下照得发灰、白字反而读不清。
         // 薄纱太浓就变成"把背景抹掉"（那是错的），太淡则底下的字还能读（看着像渲染故障）。
         Column()
           .width('100%')
           .height('100%')
-          .backgroundColor('rgba(248,250,254,0.30)')
-          .backgroundBlurStyle(BlurStyle.COMPONENT_THICK)
+          .backdropBlur(GLASS_BLUR)
+          .backgroundColor(SCRIM_COLOR)
         CourseManager({
           semesterId: this.semester.id,
           close: (): void => {

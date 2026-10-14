@@ -33,8 +33,8 @@ export struct ChipButton {
   build() {
     Text(this.text)
       .fontSize(this.fontSize)
-      .fontColor(this.selected ? '#FFFFFF' : '#4A5568')
-      .backgroundColor(this.selected ? '#2E6BE6' : '#EEF1F6')
+      .fontColor(this.selected ? '#FFFFFF' : '#C3CDDE')
+      .backgroundColor(this.selected ? '#2E6BE6' : 'rgba(255,255,255,0.14)')
       .borderRadius(12)
       .padding({ left: 10, right: 10, top: 5, bottom: 5 })
       .margin({ right: 6, bottom: 6 })

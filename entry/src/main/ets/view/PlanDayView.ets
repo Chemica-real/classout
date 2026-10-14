@@ -24,33 +24,33 @@ import { addDays, formatDate, hhmmToMin, minToHHmm, parseDate, relativeDayText, 
 import { ChipButton } from './ChipButton';
 import { hapticLongPress } from '../util/Haptics';
 import { BackHandler, backStack } from '../util/BackStack';
-import { GLASS_CARD_BLUR, GLASS_CARD_EDGE, GLASS_CARD_RADIUS, GLASS_CARD_SHADOW,
-  GLASS_CARD_BOTTOM, GLASS_CARD_TOP, GLASS_PANEL_BLUR, GLASS_PANEL_BOTTOM,
-  GLASS_PANEL_EDGE, GLASS_PANEL_TOP } from './Glass';
+import { GLASS_BLUR, GLASS_EDGE_SOFT, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_ROW,
+  GLASS_SHADOW_SHEET, GLASS_TINT_PANEL, GLASS_TINT_ROW, GLASS_TINT_SHEET } from './Glass';
 
 // 文件内 @Styles（Glass.ets 顶部说明了为什么不能跨文件 export）
+// 深色版：模糊只留给页头/托盘/编辑窗这些"大面"，托盘卡用小卡材质（不模糊）
 @Styles
 function glassCard() {
-  .backgroundBlurStyle(GLASS_CARD_BLUR)
-  .linearGradient({ angle: 180, colors: [[GLASS_CARD_TOP, 0.0], [GLASS_CARD_BOTTOM, 1.0]] })
-  .borderRadius(GLASS_CARD_RADIUS)
-  .border({ width: 1, color: GLASS_CARD_EDGE })
-  .shadow(GLASS_CARD_SHADOW)
+  .backgroundColor(GLASS_TINT_ROW)
+  .border({ width: 1, color: GLASS_EDGE_SOFT })
+  .borderRadius(GLASS_RADIUS)
+  .shadow(GLASS_SHADOW_ROW)
 }
 
 @Styles
 function glassPanel() {
-  .backgroundBlurStyle(GLASS_PANEL_BLUR)
-  .linearGradient({ angle: 180, colors: [[GLASS_PANEL_TOP, 0.0], [GLASS_PANEL_BOTTOM, 1.0]] })
-  .border({ width: 1, color: GLASS_PANEL_EDGE })
+  .backdropBlur(GLASS_BLUR)
+  .backgroundColor(GLASS_TINT_PANEL)
+  .border({ width: 1, color: GLASS_EDGE_STRONG })
 }
 
 @Styles
 function glassShell() {
-  .backgroundBlurStyle(GLASS_PANEL_BLUR)
-  .linearGradient({ angle: 180, colors: [[GLASS_PANEL_TOP, 0.0], [GLASS_PANEL_BOTTOM, 1.0]] })
-  .borderRadius(16)
-  .border({ width: 1, color: GLASS_PANEL_EDGE })
+  .backdropBlur(GLASS_BLUR)
+  .backgroundColor(GLASS_TINT_SHEET)
+  .borderRadius(GLASS_RADIUS)
+  .border({ width: 1, color: GLASS_EDGE_STRONG })
+  .shadow(GLASS_SHADOW_SHEET)
 }
 
 const DOMAIN: number = 0x0000;
@@ -414,7 +414,7 @@ export struct PlanDayView {
   private colorOf(courseId: number): string {
     const c: Course | undefined = this.courseOf(courseId);
     if (c === undefined) {
-      return '#7C8AA0';
+      return '#8FA0BA';
     }
     return COURSE_COLORS[c.colorIndex % COURSE_COLORS.length];
   }
@@ -1435,11 +1435,13 @@ export struct PlanDayView {
         Row() {
           Text(minToHHmm(mark))
             .fontSize(LAYOUT.hour)
-            .fontColor('#B0B8C4')
+            // ⚠️ 同上：时间刻度是深色下最不能含糊的东西（用户实测"看不清"），
+            // 用 §18.5 里"次级正文"那档，比原来的"最弱（刻度）"亮两级
+            .fontColor('#CBD6E8')
             .width(40)
             .textAlign(TextAlign.End)
           Divider()
-            .color('#EDEFF3')
+            .color('rgba(255,255,255,0.12)')
             .strokeWidth(1)
             .layoutWeight(1)
             .margin({ left: 6 })
@@ -1465,13 +1467,13 @@ export struct PlanDayView {
     Column() {
       Text(s.course.shortName.length > 0 ? s.course.shortName : s.course.name)
         .fontSize(LAYOUT.title)
-        .fontColor('#5A6478')
+        .fontColor('#A9B5C9')
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
       if (this.hOf(s.startMin, s.endMin) > 40 && s.location.length > 0) {
         Text(s.location)
           .fontSize(LAYOUT.sub)
-          .fontColor('#98A2B3')
+          .fontColor('#8B97AC')
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
       }
@@ -1479,7 +1481,7 @@ export struct PlanDayView {
     .width(this.colWidthOf(ci))
     .height(this.hOf(s.startMin, s.endMin) - 2)
     .padding({ left: 6, right: 6, top: 2 })
-    .backgroundColor('#E8ECF3')
+    .backgroundColor('rgba(255,255,255,0.10)')
     .borderRadius(6)
     .position({ x: this.colXOf(ci), y: this.yOf(s.startMin) })
   }
@@ -1513,7 +1515,7 @@ export struct PlanDayView {
       Column()
         .width(1)
         .height(GRID_H)
-        .backgroundColor('#EDEFF3')
+        .backgroundColor('rgba(255,255,255,0.12)')
         .position({ x: this.colXOf(i), y: 0 })
     }, (i: number) => `csep-${i}`)
   }
@@ -1532,7 +1534,7 @@ export struct PlanDayView {
       .width(this.colWidthOf(this.ghostCol()))
       .height(this.ghostH())
       .borderRadius(6)
-      .border({ width: 2, color: '#B0B8C4', style: BorderStyle.Dashed })
+      .border({ width: 2, color: 'rgba(255,255,255,0.35)', style: BorderStyle.Dashed })
       .position({ x: this.colXOf(this.ghostCol()), y: this.ghostY() })
   }
 
@@ -1549,19 +1551,19 @@ export struct PlanDayView {
         Row() {
           Text(b.done ? '●' : '○')
             .fontSize(LAYOUT.title)
-            .fontColor(b.done ? '#2E6BE6' : '#FFFFFF')
+            .fontColor(b.done ? '#7FA8FF' : '#FFFFFF')
             .margin({ right: 6 })
             .onClick((): void => this.onBlockToggleDone(b))
           Column() {
             Text(this.blockTitle(b))
               .fontSize(LAYOUT.title)
               .fontWeight(FontWeight.Medium)
-              .fontColor('#12161F')
+              .fontColor('#F2F5FA')
               .maxLines(2)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
             Text(this.blockSubText(b))
               .fontSize(LAYOUT.sub)
-              .fontColor('#3C4657')
+              .fontColor('#CBD6E8')
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
           }
@@ -1578,7 +1580,7 @@ export struct PlanDayView {
         // 选中即黑框高亮（用户要的"选中状态加黑框"）
         .border({
           width: this.isSelected(b) || this.isDragging(b) ? 2 : 0,
-          color: '#12161F'
+          color: '#F2F5FA'
         })
         .onClick((): void => this.onBlockTap(b))
         // 双指缩放改时长。挂在**内层内容**上而不是外层 Stack：
@@ -1597,7 +1599,7 @@ export struct PlanDayView {
           Text(this.blockCompactTitle(b))
             .fontSize(LAYOUT.compact)
             .fontWeight(FontWeight.Medium)
-            .fontColor('#12161F')
+            .fontColor('#F2F5FA')
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
             .layoutWeight(1)
@@ -1605,7 +1607,7 @@ export struct PlanDayView {
           // 折行后下半会被块裁掉。结束时间由块高能看出来，点开面板也有完整区间。
           Text(minToHHmm(b.startMin))
             .fontSize(Math.max(9, LAYOUT.compact - 1))
-            .fontColor('#3C4657')
+            .fontColor('#CBD6E8')
             .margin({ left: 6 })
         }
         .width('100%')
@@ -1616,7 +1618,7 @@ export struct PlanDayView {
         .borderRadius(6)
         .border({
           width: this.isSelected(b) || this.isDragging(b) ? 2 : 0,
-          color: '#12161F'
+          color: '#F2F5FA'
         })
         .onClick((): void => this.onBlockTap(b))
         .gesture(
@@ -1663,11 +1665,11 @@ export struct PlanDayView {
         Row() {
           Text(`⚑ ${t.title} 截止`)
             .fontSize(LAYOUT.tray)
-            .fontColor('#C0392B')
+            .fontColor('#FF8A8A')
         }
         .width(CONTENT_W)
         .padding({ left: 6, top: 1, bottom: 1 })
-        .backgroundColor('#FDECEA')
+        .backgroundColor('rgba(214,69,69,0.18)')
         .borderRadius(4)
         .position({ x: AXIS_W, y: this.yOf(this.ddlMinute(t)) })
       }, (t: Todo) => `ddl-${t.id}`)
@@ -1704,16 +1706,16 @@ export struct PlanDayView {
         Text('待安排')
           .fontSize(LAYOUT.tray)
           .fontWeight(FontWeight.Medium)
-          .fontColor('#12161F')
+          .fontColor('#F2F5FA')
         Blank()
         if (this.selectedTodoId > 0) {
           Text('已选中，点网格空白处放下')
             .fontSize(LAYOUT.cardSub)
-            .fontColor('#2E6BE6')
+            .fontColor('#7FA8FF')
         } else {
           Text('拖动 / 点选 / ⚡ 一键找空档')
             .fontSize(LAYOUT.tray)
-            .fontColor('#98A2B3')
+            .fontColor('#8B97AC')
         }
       }
       .width('100%')
@@ -1722,7 +1724,7 @@ export struct PlanDayView {
       if (this.poolTodos().length === 0) {
         Text('没有待安排的事项。先去『待办』里确认几条。')
           .fontSize(LAYOUT.tray)
-          .fontColor('#98A2B3')
+          .fontColor('#8B97AC')
           .margin({ bottom: 6 })
       } else {
         Scroll() {
@@ -1733,14 +1735,14 @@ export struct PlanDayView {
                 Column() {
                   Text(t.title)
                     .fontSize(LAYOUT.tray)
-                    .fontColor('#12161F')
+                    .fontColor('#F2F5FA')
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
                   // 课程属性：用户要求「待安排框里也要显示」
                   if (t.courseId > 0) {
                     Text(this.courseShort(t.courseId))
                       .fontSize(LAYOUT.cardSub)
-                      .fontColor('#3C4657')
+                      .fontColor('#CBD6E8')
                       .backgroundColor(this.colorOf(t.courseId))
                       .borderRadius(4)
                       .padding({ left: 4, right: 4, top: 1, bottom: 1 })
@@ -1750,7 +1752,7 @@ export struct PlanDayView {
                   }
                   Text(`预计 ${t.estimateMin} 分钟`)
                     .fontSize(LAYOUT.cardSub)
-                    .fontColor('#7A8598')
+                    .fontColor('#9BA7BD')
                     .margin({ top: 2 })
                 }
                 .width('100%')
@@ -1767,20 +1769,21 @@ export struct PlanDayView {
 
                 Text('⚡ 找空档')
                   .fontSize(LAYOUT.cardSub)
-                  .fontColor('#2E6BE6')
+                  .fontColor('#7FA8FF')
                   .margin({ top: 6 })
                   .onClick((): void => this.autoPlace(t))
               }
               .width(140)
               .padding(10)
-              // 托盘卡也是玻璃：选中态用半透明蓝，未选中用玻璃薄纱
-              .backgroundBlurStyle(GLASS_CARD_BLUR)
+              // 托盘卡是"小卡" → `.glassCard()` **不含模糊**（用户定的性能取舍）
+              .glassCard()
+              // 选中态用半透明蓝 + 亮蓝描边
+              // （深色底上 #2E6BE6 当描边太暗，要用提亮的那支才看得出"选中"）
               .backgroundColor(this.selectedTodoId === t.id
-                ? 'rgba(46,107,230,0.18)' : GLASS_CARD_TOP)
-              .borderRadius(10)
+                ? 'rgba(46,107,230,0.30)' : GLASS_TINT_ROW)
               .border({
                 width: this.selectedTodoId === t.id ? 1.5 : 1,
-                color: this.selectedTodoId === t.id ? '#2E6BE6' : '#E3E8F0'
+                color: this.selectedTodoId === t.id ? '#7FA8FF' : GLASS_EDGE_SOFT
               })
               .margin({ right: 8 })
             }, (t: Todo) => `pool-${t.id}`)
@@ -1794,7 +1797,7 @@ export struct PlanDayView {
       if (this.poolLessons().length > 0) {
         Text('虚拟课程课时（拖进计划，打勾完成会触发生成待办）')
           .fontSize(LAYOUT.cardSub)
-          .fontColor('#8A5A00')
+          .fontColor('#E0A94E')
           .margin({ top: 12, bottom: 6 })
         Scroll() {
           Row() {
@@ -1803,12 +1806,12 @@ export struct PlanDayView {
                 Column() {
                   Text(this.lessonTitle(l))
                     .fontSize(LAYOUT.tray)
-                    .fontColor('#12161F')
+                    .fontColor('#F2F5FA')
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
                   Text(`${LESSON_MIN} 分钟`)
                     .fontSize(LAYOUT.cardSub)
-                    .fontColor('#8A7A55')
+                    .fontColor('#D8C48A')
                     .margin({ top: 2 })
                 }
                 .width('100%')
@@ -1821,16 +1824,16 @@ export struct PlanDayView {
 
                 Text('⚡ 找空档')
                   .fontSize(LAYOUT.cardSub)
-                  .fontColor('#B26B00')
+                  .fontColor('#E8B25C')
                   .margin({ top: 6 })
                   .onClick((): void => this.autoPlaceLesson(l))
               }
               .width(140)
               .padding(10)
-              .backgroundBlurStyle(GLASS_CARD_BLUR)
-              .backgroundColor('rgba(255,246,226,0.55)')
-              .borderRadius(10)
-              .border({ width: 1, color: '#F0DFC0' })
+              // 虚拟课时托盘卡同样是"小卡"：不模糊，用暖色薄纱与真待办卡区分开
+              .glassCard()
+              .backgroundColor('rgba(240,190,90,0.16)')
+              .border({ width: 1, color: 'rgba(240,190,90,0.28)' })
               .margin({ right: 8 })
             }, (l: VirtualLesson) => `pl-${l.id}`)
           }
@@ -1855,12 +1858,12 @@ export struct PlanDayView {
         Text(this.blockTitle(b))
           .fontSize(LAYOUT.chip)
           .fontWeight(FontWeight.Medium)
-          .fontColor('#12161F')
+          .fontColor('#F2F5FA')
         // 课程属性（只读）：用户要求计划页把待办的课程显示出来
         if (this.editorCourseText(b).length > 0) {
           Text(this.editorCourseText(b))
             .fontSize(LAYOUT.tray)
-            .fontColor('#3C4657')
+            .fontColor('#CBD6E8')
             .backgroundColor(this.colorOf(this.blockCourseId(b)))
             .borderRadius(5)
             .padding({ left: 6, right: 6, top: 2, bottom: 2 })
@@ -1868,26 +1871,26 @@ export struct PlanDayView {
         }
         Text(`${b.date} ${minToHHmm(b.startMin)} - ${minToHHmm(b.endMin)}（${b.endMin - b.startMin} 分钟）`)
           .fontSize(LAYOUT.tray)
-          .fontColor('#7A8598')
+          .fontColor('#9BA7BD')
           .margin({ top: 6 })
 
         // 日期 ‹ ›：跨天挪块走这里，不靠拖拽（用户选的方案）
         Row() {
           Text('日期')
             .fontSize(LAYOUT.tray)
-            .fontColor('#8A94A6')
+            .fontColor('#94A0B5')
             .layoutWeight(1)
           Text('‹')
             .fontSize(20)
-            .fontColor('#2E6BE6')
+            .fontColor('#7FA8FF')
             .padding({ left: 12, right: 12 })
             .onClick((): void => this.shiftBlockDate(b, -1))
           Text(b.date)
             .fontSize(LAYOUT.tray)
-            .fontColor('#12161F')
+            .fontColor('#F2F5FA')
           Text('›')
             .fontSize(20)
-            .fontColor('#2E6BE6')
+            .fontColor('#7FA8FF')
             .padding({ left: 12, right: 12 })
             .onClick((): void => this.shiftBlockDate(b, 1))
         }
@@ -1896,7 +1899,7 @@ export struct PlanDayView {
 
         Text('开始时间（HH:MM）')
           .fontSize(LAYOUT.tray)
-          .fontColor('#8A94A6')
+          .fontColor('#94A0B5')
           .margin({ top: 12, bottom: 6 })
         Flex({ wrap: FlexWrap.Wrap }) {
           ChipButton({
@@ -1935,6 +1938,9 @@ export struct PlanDayView {
         .width('100%')
 
         TextInput({ text: this.editorStartText, placeholder: '14:30' })
+          .fontColor('#F2F5FA')
+          .placeholderColor('#8B97AC')
+          .caretColor('#7FA8FF')
           .onChange((v: string): void => {
             this.editorStartText = v;
           })
@@ -1944,7 +1950,7 @@ export struct PlanDayView {
 
         Text('时长（分钟）')
           .fontSize(LAYOUT.tray)
-          .fontColor('#8A94A6')
+          .fontColor('#94A0B5')
           .margin({ top: 8, bottom: 6 })
         Flex({ wrap: FlexWrap.Wrap }) {
           ChipButton({
@@ -1975,6 +1981,9 @@ export struct PlanDayView {
         .width('100%')
 
         TextInput({ text: this.editorDurationText, placeholder: '60' })
+          .fontColor('#F2F5FA')
+          .placeholderColor('#8B97AC')
+          .caretColor('#7FA8FF')
           .type(InputType.Number)
           .onChange((v: string): void => {
             this.editorDurationText = v;
@@ -1986,7 +1995,7 @@ export struct PlanDayView {
         if (this.editorError.length > 0) {
           Text(this.editorError)
             .fontSize(LAYOUT.cardSub)
-            .fontColor('#C0392B')
+            .fontColor('#FF8A8A')
             .width('100%')
             .margin({ top: 6 })
         }
@@ -1994,7 +2003,7 @@ export struct PlanDayView {
         if (b.todoId > 0) {
           Text('截止时间')
             .fontSize(LAYOUT.tray)
-            .fontColor('#8A94A6')
+            .fontColor('#94A0B5')
             .margin({ top: 12, bottom: 6 })
           Flex({ wrap: FlexWrap.Wrap }) {
             ChipButton({
@@ -2026,18 +2035,18 @@ export struct PlanDayView {
 
           Text(this.editorDdlText(b))
             .fontSize(LAYOUT.cardSub)
-            .fontColor('#7A8598')
+            .fontColor('#9BA7BD')
             .margin({ top: 4 })
 
           if (this.editorOtherBlocks().length > 0) {
             Text('这个待办还排在别的时段')
               .fontSize(LAYOUT.tray)
-              .fontColor('#8A94A6')
+              .fontColor('#94A0B5')
               .margin({ top: 12, bottom: 6 })
             ForEach(this.editorOtherBlocks(), (o: PlanBlock) => {
               Text(`${o.date} ${minToHHmm(o.startMin)}-${minToHHmm(o.endMin)}${o.done ? ' · 已完成' : ''}`)
                 .fontSize(LAYOUT.cardSub)
-                .fontColor('#4A5568')
+                .fontColor('#C3CDDE')
                 .width('100%')
                 .padding({ top: 2, bottom: 2 })
             }, (o: PlanBlock) => `eo-${o.id}-${o.done}`)
@@ -2046,16 +2055,16 @@ export struct PlanDayView {
 
         Row() {
           Button(b.done ? '取消完成' : '标记完成')
-            .backgroundColor(b.done ? '#EEF1F6' : '#2E6BE6')
-            .fontColor(b.done ? '#4A5568' : '#FFFFFF')
+            .backgroundColor(b.done ? 'rgba(255,255,255,0.14)' : '#2E6BE6')
+            .fontColor(b.done ? '#C3CDDE' : '#FFFFFF')
             .layoutWeight(1)
             .onClick((): void => {
               this.closeEditor();
               this.toggleBlockDone(b);
             })
           Button('移除此块')
-            .backgroundColor('#FDECEA')
-            .fontColor('#C0392B')
+            .backgroundColor('rgba(214,69,69,0.18)')
+            .fontColor('#FF8A8A')
             .layoutWeight(1)
             .margin({ left: 10 })
             .onClick((): void => this.removeBlock(b))
@@ -2070,11 +2079,11 @@ export struct PlanDayView {
             Row() {
               Text('确定删除整个待办？它在别的日期的块也会一起没。')
                 .fontSize(LAYOUT.cardSub)
-                .fontColor('#C0392B')
+                .fontColor('#FF8A8A')
                 .layoutWeight(1)
               Text('取消')
                 .fontSize(LAYOUT.tray)
-                .fontColor('#5A6478')
+                .fontColor('#A9B5C9')
                 .padding({ left: 10, right: 10 })
                 .onClick((): void => {
                   this.editorConfirmDeleteTodo = false;
@@ -2091,8 +2100,8 @@ export struct PlanDayView {
             .margin({ top: 12 })
           } else {
             Button('删除这个待办')
-              .backgroundColor('#FFF4F4')
-              .fontColor('#C0392B')
+              .backgroundColor('rgba(214,69,69,0.14)')
+              .fontColor('#FF8A8A')
               .width('100%')
               .margin({ top: 10 })
               .onClick((): void => {
@@ -2102,8 +2111,8 @@ export struct PlanDayView {
         }
 
         Button('完成')
-          .backgroundColor('#EEF1F6')
-          .fontColor('#4A5568')
+          .backgroundColor('rgba(255,255,255,0.14)')
+          .fontColor('#C3CDDE')
           .width('100%')
           .margin({ top: 10 })
           .onClick((): void => this.closeEditor())
@@ -2138,23 +2147,23 @@ export struct PlanDayView {
         Row() {
           Text('‹')
             .fontSize(22)
-            .fontColor('#2E6BE6')
+            .fontColor('#7FA8FF')
             .padding({ left: 8, right: 8 })
             .onClick((): void => this.goDay(-1))
           Column() {
             Text(this.headerText())
               .fontSize(16)
               .fontWeight(FontWeight.Medium)
-              .fontColor('#12161F')
+              .fontColor('#F2F5FA')
             Text(relativeDayText(parseDate(this.date)))
               .fontSize(LAYOUT.cardSub)
-              .fontColor('#8A94A6')
+              .fontColor('#94A0B5')
           }
           .layoutWeight(1)
           .alignItems(HorizontalAlign.Center)
           Text('›')
             .fontSize(22)
-            .fontColor('#2E6BE6')
+            .fontColor('#7FA8FF')
             .padding({ left: 8, right: 8 })
             .onClick((): void => this.goDay(1))
           // 视图切换：日 | 三日。
@@ -2173,7 +2182,7 @@ export struct PlanDayView {
           })
           Text('今天')
             .fontSize(LAYOUT.tray)
-            .fontColor('#2E6BE6')
+            .fontColor('#7FA8FF')
             .margin({ left: 4 })
             .onClick((): void => this.goToday())
         }
@@ -2191,11 +2200,11 @@ export struct PlanDayView {
                   // 三列都可操作，所以侧列不再画成"灰掉不可用"；
                   // 只有"当前查看日"那一列加粗 + 灰底（它是 ‹ › 的基准）
                   .fontWeight(ci === this.centerCol() ? FontWeight.Medium : FontWeight.Normal)
-                  .fontColor(ci === this.centerCol() ? '#12161F' : '#5A6478')
+                  .fontColor(ci === this.centerCol() ? '#F2F5FA' : '#A9B5C9')
                 if (cd === formatDate(today())) {
                   Text('今天')
                     .fontSize(LAYOUT.cardSub)
-                    .fontColor('#2E6BE6')
+                    .fontColor('#7FA8FF')
                 }
               }
               .layoutWeight(1)
@@ -2204,7 +2213,10 @@ export struct PlanDayView {
               // 固定高度：中间那列多一行「今天」，不定高的话三列高度不齐、
               // 网格顶边会看起来是斜的
               .height(34)
-              .backgroundColor(ci === this.centerCol() ? '#F5F6F8' : '#FFFFFF')
+              // ⚠️ 深色下这条和浅色版**方向相反**：浅色版标记"今天"用的是
+              // 「比纯白更灰」（`#F5F6F8` vs `#FFFFFF`），在深色底上"更灰"= 更暗，
+              // 会被读成"禁用"。所以改成**中间列比两侧亮**才是"高亮"。
+              .backgroundColor(ci === this.centerCol() ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.03)')
             }, (cd: string) => `colh-${cd}`)
           }
           .width('100%')

@@ -23,25 +23,26 @@ import { ChipButton } from './ChipButton';
 import { image } from '@kit.ImageKit';
 import { WallpaperRepo } from '../data/WallpaperRepo';
 import { PAGE_GRADIENT_A, PAGE_GRADIENT_B, PAGE_GRADIENT_C, WALLPAPER_VEIL } from './Glass';
-import { GLASS_CARD_BLUR, GLASS_CARD_EDGE, GLASS_CARD_RADIUS, GLASS_CARD_SHADOW,
-  GLASS_CARD_BOTTOM, GLASS_CARD_TOP, GLASS_PANEL_BLUR, GLASS_PANEL_BOTTOM,
-  GLASS_PANEL_EDGE, GLASS_PANEL_TOP } from './Glass';
+import { GLASS_BLUR, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_ROW, GLASS_SHADOW_SHEET,
+  GLASS_TINT_PANEL } from './Glass';
 
 // 文件内 @Styles（见 Glass.ets 顶部注释：@Styles 不能跨文件 export）
+// 深色版。设置页的卡片按用户拍定算"大面" → 保留模糊（`glassPanelCard`），
+// 它不是列表行那种"一屏十几张"的密度，多几次背景模糊不影响滚动。
 @Styles
-function glassCard() {
-  .backgroundBlurStyle(GLASS_CARD_BLUR)
-  .linearGradient({ angle: 180, colors: [[GLASS_CARD_TOP, 0.0], [GLASS_CARD_BOTTOM, 1.0]] })
-  .borderRadius(GLASS_CARD_RADIUS)
-  .border({ width: 1, color: GLASS_CARD_EDGE })
-  .shadow(GLASS_CARD_SHADOW)
+function glassPanelCard() {
+  .backdropBlur(GLASS_BLUR)
+  .backgroundColor(GLASS_TINT_PANEL)
+  .borderRadius(GLASS_RADIUS)
+  .border({ width: 1, color: GLASS_EDGE_STRONG })
+  .shadow(GLASS_SHADOW_ROW)
 }
 
 @Styles
 function glassPanel() {
-  .backgroundBlurStyle(GLASS_PANEL_BLUR)
-  .linearGradient({ angle: 180, colors: [[GLASS_PANEL_TOP, 0.0], [GLASS_PANEL_BOTTOM, 1.0]] })
-  .border({ width: 1, color: GLASS_PANEL_EDGE })
+  .backdropBlur(GLASS_BLUR)
+  .backgroundColor(GLASS_TINT_PANEL)
+  .border({ width: 1, color: GLASS_EDGE_STRONG })
 }
 
 const DOMAIN: number = 0x0000;
@@ -257,11 +258,11 @@ export struct SettingsPage {
       Text(text)
         .fontSize(15)
         .fontWeight(FontWeight.Medium)
-        .fontColor('#12161F')
+        .fontColor('#F2F5FA')
       if (hint.length > 0) {
         Text(hint)
           .fontSize(11)
-          .fontColor('#8A94A6')
+          .fontColor('#94A0B5')
           .margin({ top: 3 })
       }
     }
@@ -274,7 +275,7 @@ export struct SettingsPage {
   FieldLabel(text: string) {
     Text(text)
       .fontSize(12)
-      .fontColor('#8A94A6')
+      .fontColor('#94A0B5')
       .width('100%')
       .margin({ top: 12, bottom: 4 })
   }
@@ -289,10 +290,10 @@ export struct SettingsPage {
         Column() {
           Text('每日简报')
             .fontSize(14)
-            .fontColor('#12161F')
+            .fontColor('#F2F5FA')
           Text('每天一条：今天几节课 + 今天截止什么')
             .fontSize(11)
-            .fontColor('#8A94A6')
+            .fontColor('#94A0B5')
             .margin({ top: 2 })
         }
         .layoutWeight(1)
@@ -343,7 +344,7 @@ export struct SettingsPage {
     }
     .width('100%')
     .padding(16)
-    .glassCard()
+    .glassPanelCard()
     .alignItems(HorizontalAlign.Start)
   }
 
@@ -352,11 +353,11 @@ export struct SettingsPage {
     Row() {
       Text(message)
         .fontSize(11)
-        .fontColor('#C0392B')
+        .fontColor('#FF8A8A')
         .layoutWeight(1)
       Text('取消')
         .fontSize(12)
-        .fontColor('#5A6478')
+        .fontColor('#A9B5C9')
         .padding({ left: 10, right: 10 })
         .onClick((): void => {
           this.pendingDeleteKey = '';
@@ -404,10 +405,10 @@ export struct SettingsPage {
         Column() {
           Text(this.wallpaper.length > 0 ? '自定义照片' : '默认渐变')
             .fontSize(12)
-            .fontColor('#12161F')
+            .fontColor('#F2F5FA')
         }
         .padding({ left: 12, right: 12, top: 6, bottom: 6 })
-        .glassCard()
+        .glassPanelCard()
       }
       .width('100%')
       .height(110)
@@ -422,8 +423,8 @@ export struct SettingsPage {
           .onClick((): void => this.pickWallpaper())
         if (this.wallpaper.length > 0) {
           Button('恢复默认渐变')
-            .backgroundColor('#EEF1F6')
-            .fontColor('#4A5568')
+            .backgroundColor('rgba(255,255,255,0.14)')
+            .fontColor('#C3CDDE')
             .layoutWeight(1)
             .margin({ left: 10 })
             .onClick((): void => this.clearWallpaper())
@@ -434,12 +435,12 @@ export struct SettingsPage {
 
       Text('照片会拷进 App 内部保存，不联网、也不需要相册权限。')
         .fontSize(11)
-        .fontColor('#8A98AC')
+        .fontColor('#8B97AC')
         .margin({ top: 8 })
     }
     .width('100%')
     .padding(16)
-    .glassCard()
+    .glassPanelCard()
     .alignItems(HorizontalAlign.Start)
   }
 
@@ -452,7 +453,7 @@ export struct SettingsPage {
       if (this.restWindows.length === 0) {
         Text('还没有设置。加几条之后，一键找空档就不会把待办排到饭点或深夜。')
           .fontSize(12)
-          .fontColor('#98A2B3')
+          .fontColor('#8B97AC')
           .width('100%')
       }
 
@@ -461,19 +462,19 @@ export struct SettingsPage {
           Row() {
             Text(w.label)
               .fontSize(13)
-              .fontColor('#12161F')
+              .fontColor('#F2F5FA')
               .width(72)
             Text(this.restWeekdayText(w))
               .fontSize(12)
-              .fontColor('#5A6478')
+              .fontColor('#A9B5C9')
               .width(48)
             Text(`${minToHHmm(w.startMin)} – ${minToHHmm(w.endMin)}`)
               .fontSize(12)
-              .fontColor('#5A6478')
+              .fontColor('#A9B5C9')
               .layoutWeight(1)
             Text('删')
               .fontSize(12)
-              .fontColor('#D64545')
+              .fontColor('#FF8080')
               .padding({ left: 10, right: 10 })
               .onClick((): void => {
                 this.pendingDeleteKey = this.deleteKey(w.id);
@@ -481,7 +482,7 @@ export struct SettingsPage {
           }
           .width('100%')
           .padding(10)
-          .backgroundColor('#F7F8FA')
+          .backgroundColor('rgba(255,255,255,0.08)')
           .borderRadius(8)
 
           if (this.pendingDeleteKey === this.deleteKey(w.id)) {
@@ -495,6 +496,9 @@ export struct SettingsPage {
 
       this.FieldLabel('名称')
       TextInput({ text: this.newRestLabel, placeholder: '午休' })
+        .fontColor('#F2F5FA')
+        .placeholderColor('#8B97AC')
+        .caretColor('#7FA8FF')
         .onChange((v: string): void => {
           this.newRestLabel = v;
         })
@@ -522,15 +526,21 @@ export struct SettingsPage {
 
       Row() {
         TextInput({ text: this.newRestStart, placeholder: '12:00' })
+          .fontColor('#F2F5FA')
+          .placeholderColor('#8B97AC')
+          .caretColor('#7FA8FF')
           .layoutWeight(1)
           .onChange((v: string): void => {
             this.newRestStart = v;
           })
         Text('–')
           .fontSize(14)
-          .fontColor('#8A94A6')
+          .fontColor('#94A0B5')
           .margin({ left: 8, right: 8 })
         TextInput({ text: this.newRestEnd, placeholder: '13:00' })
+          .fontColor('#F2F5FA')
+          .placeholderColor('#8B97AC')
+          .caretColor('#7FA8FF')
           .layoutWeight(1)
           .onChange((v: string): void => {
             this.newRestEnd = v;
@@ -548,7 +558,7 @@ export struct SettingsPage {
     }
     .width('100%')
     .padding(16)
-    .glassCard()
+    .glassPanelCard()
     .alignItems(HorizontalAlign.Start)
     .margin({ top: 12 })
   }
@@ -559,7 +569,7 @@ export struct SettingsPage {
         Text('设置')
           .fontSize(17)
           .fontWeight(FontWeight.Medium)
-          .fontColor('#12161F')
+          .fontColor('#F2F5FA')
       }
       .width('100%')
       .padding({ left: 16, right: 16, top: 12, bottom: 12 })
@@ -572,10 +582,10 @@ export struct SettingsPage {
           if (this.toast.length > 0) {
             Text(this.toast)
               .fontSize(12)
-              .fontColor('#1B2430')
+              .fontColor('#EAF0FA')
               .width('100%')
               .padding({ left: 12, right: 12, top: 8, bottom: 8 })
-              .backgroundColor('#EAF1FF')
+              .backgroundColor('rgba(46,107,230,0.22)')
               .borderRadius(8)
               .margin({ bottom: 12 })
           }

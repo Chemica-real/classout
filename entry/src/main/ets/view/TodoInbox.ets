@@ -8,26 +8,26 @@ import { addDays, countdownText, formatDate, parseDate, relativeDayText, today }
 import { normalizeEstimate, Validation, validateEstimate } from '../domain/Validate';
 import { ChipButton } from './ChipButton';
 import { BackHandler, backStack } from '../util/BackStack';
-import { GLASS_CARD_BLUR, GLASS_CARD_EDGE, GLASS_CARD_RADIUS, GLASS_CARD_SHADOW,
-  GLASS_CARD_BOTTOM, GLASS_CARD_TOP, GLASS_PANEL_BLUR, GLASS_PANEL_BOTTOM,
-  GLASS_PANEL_EDGE, GLASS_PANEL_TOP } from './Glass';
+import { GLASS_BLUR, GLASS_EDGE_SOFT, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_ROW,
+  GLASS_SHADOW_SHEET, GLASS_TINT_ROW, GLASS_TINT_SHEET } from './Glass';
 
 // 文件内 @Styles（Glass.ets 顶部说明了为什么不能跨文件 export）
+// 深色版：模糊只留给"大面"（编辑窗），列表卡退化成半透明纯色（性能取舍）
 @Styles
 function glassCard() {
-  .backgroundBlurStyle(GLASS_CARD_BLUR)
-  .linearGradient({ angle: 180, colors: [[GLASS_CARD_TOP, 0.0], [GLASS_CARD_BOTTOM, 1.0]] })
-  .borderRadius(GLASS_CARD_RADIUS)
-  .border({ width: 1, color: GLASS_CARD_EDGE })
-  .shadow(GLASS_CARD_SHADOW)
+  .backgroundColor(GLASS_TINT_ROW)
+  .border({ width: 1, color: GLASS_EDGE_SOFT })
+  .borderRadius(GLASS_RADIUS)
+  .shadow(GLASS_SHADOW_ROW)
 }
 
 @Styles
 function glassShell() {
-  .backgroundBlurStyle(GLASS_PANEL_BLUR)
-  .linearGradient({ angle: 180, colors: [[GLASS_PANEL_TOP, 0.0], [GLASS_PANEL_BOTTOM, 1.0]] })
-  .borderRadius(16)
-  .border({ width: 1, color: GLASS_PANEL_EDGE })
+  .backdropBlur(GLASS_BLUR)
+  .backgroundColor(GLASS_TINT_SHEET)
+  .borderRadius(GLASS_RADIUS)
+  .border({ width: 1, color: GLASS_EDGE_STRONG })
+  .shadow(GLASS_SHADOW_SHEET)
 }
 
 const DOMAIN: number = 0x0000;
@@ -175,7 +175,7 @@ export struct TodoInbox {
   private courseColor(id: number): string {
     const c: Course | undefined = this.courseOf(id);
     if (c === undefined) {
-      return '#9DB2C8';
+      return '#C7D3E4';
     }
     return COURSE_COLORS[c.colorIndex % COURSE_COLORS.length];
   }
@@ -404,7 +404,7 @@ export struct TodoInbox {
       .fontColor(color)
       .padding({ left: 10, right: 10, top: 5, bottom: 5 })
       .borderRadius(10)
-      .backgroundColor('#F2F4F8')
+      .backgroundColor('rgba(255,255,255,0.10)')
       .margin({ left: 6 })
       .onClick(onTap)
   }
@@ -416,7 +416,7 @@ export struct TodoInbox {
         if (t.courseId > 0) {
           Text(this.courseLabel(t.courseId))
             .fontSize(11)
-            .fontColor('#1B2430')
+            .fontColor('#EAF0FA')
             .backgroundColor(this.courseColor(t.courseId))
             .borderRadius(4)
             .padding({ left: 5, right: 5, top: 1, bottom: 1 })
@@ -425,7 +425,7 @@ export struct TodoInbox {
         Text(t.title)
           .fontSize(16)
           .fontWeight(FontWeight.Medium)
-          .fontColor('#12161F')
+          .fontColor('#F2F5FA')
           .layoutWeight(1)
       }
       .width('100%')
@@ -433,19 +433,19 @@ export struct TodoInbox {
       Row() {
         Text(this.ddlText(t.ddl))
           .fontSize(12)
-          .fontColor('#7A8598')
+          .fontColor('#9BA7BD')
           .layoutWeight(1)
         if (this.pendingDeleteId === t.id) {
-          this.SmallButton('确认删除', '#D64545', (): void => this.removeConfirmed(t))
-          this.SmallButton('取消', '#5A6478', (): void => {
+          this.SmallButton('确认删除', '#FF8080', (): void => this.removeConfirmed(t))
+          this.SmallButton('取消', '#A9B5C9', (): void => {
             this.pendingDeleteId = 0;
           })
         } else {
-          this.SmallButton('删除', '#D64545', (): void => {
+          this.SmallButton('删除', '#FF8080', (): void => {
             this.pendingDeleteId = t.id;
           })
-          this.SmallButton('编辑', '#5A6478', (): void => this.openEdit(t))
-          this.SmallButton('确认', '#2E6BE6', (): void => this.confirm(t))
+          this.SmallButton('编辑', '#A9B5C9', (): void => this.openEdit(t))
+          this.SmallButton('确认', '#7FA8FF', (): void => this.confirm(t))
         }
       }
       .width('100%')
@@ -454,7 +454,7 @@ export struct TodoInbox {
     .width('100%')
     .padding(12)
     .glassCard()
-    .border({ width: 1, color: '#E3E8F0' })
+    .border({ width: 1, color: 'rgba(255,255,255,0.14)' })
     .margin({ bottom: 8 })
   }
 
@@ -463,7 +463,7 @@ export struct TodoInbox {
     Row() {
       Text('○')
         .fontSize(18)
-        .fontColor('#C2CBDA')
+        .fontColor('#DCE4F0')
         .margin({ right: 10 })
         .onClick((): void => this.complete(t))
       Column() {
@@ -471,7 +471,7 @@ export struct TodoInbox {
           if (t.courseId > 0) {
             Text(this.courseLabel(t.courseId))
               .fontSize(10)
-              .fontColor('#1B2430')
+              .fontColor('#EAF0FA')
               .backgroundColor(this.courseColor(t.courseId))
               .borderRadius(3)
               .padding({ left: 4, right: 4 })
@@ -479,7 +479,7 @@ export struct TodoInbox {
           }
           Text(t.title)
             .fontSize(15)
-            .fontColor('#12161F')
+            .fontColor('#F2F5FA')
             .layoutWeight(1)
             .maxLines(2)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -487,7 +487,7 @@ export struct TodoInbox {
         .width('100%')
         Text(`${this.ddlText(t.ddl)} · 预计 ${t.estimateMin} 分钟`)
           .fontSize(11)
-          .fontColor('#8A94A6')
+          .fontColor('#94A0B5')
           .margin({ top: 3 })
       }
       .layoutWeight(1)
@@ -508,7 +508,7 @@ export struct TodoInbox {
           if (t.courseId > 0) {
             Text(this.courseLabel(t.courseId))
               .fontSize(10)
-              .fontColor('#1B2430')
+              .fontColor('#EAF0FA')
               .backgroundColor(this.courseColor(t.courseId))
               .borderRadius(3)
               .padding({ left: 4, right: 4 })
@@ -517,7 +517,7 @@ export struct TodoInbox {
           Text(t.title)
             .fontSize(15)
             .fontWeight(FontWeight.Medium)
-            .fontColor('#12161F')
+            .fontColor('#F2F5FA')
             .layoutWeight(1)
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -525,7 +525,7 @@ export struct TodoInbox {
         .width('100%')
         Text(`${this.examWhen(t)}${t.note.length > 0 ? ' · ' + t.note : ''}`)
           .fontSize(11)
-          .fontColor('#8A94A6')
+          .fontColor('#94A0B5')
           .margin({ top: 3 })
       }
       .layoutWeight(1)
@@ -534,10 +534,10 @@ export struct TodoInbox {
       Column() {
         Text(this.countdownOf(t))
           .fontSize(12)
-          .fontColor('#C0392B')
+          .fontColor('#FF8A8A')
         Text('考完了')
           .fontSize(11)
-          .fontColor('#2E6BE6')
+          .fontColor('#7FA8FF')
           .margin({ top: 6 })
           .onClick((): void => this.complete(t))
       }
@@ -545,9 +545,9 @@ export struct TodoInbox {
     }
     .width('100%')
     .padding(12)
-    .backgroundColor('#FFF8F8')
+    .backgroundColor('rgba(214,69,69,0.12)')
     .borderRadius(10)
-    .border({ width: 1, color: '#F5D9D9' })
+    .border({ width: 1, color: 'rgba(214,69,69,0.30)' })
     .margin({ bottom: 8 })
     .onClick((): void => this.openEdit(t))
   }
@@ -559,9 +559,12 @@ export struct TodoInbox {
         Text(this.editId === 0 ? '新建待办' : '编辑待办')
           .fontSize(18)
           .fontWeight(FontWeight.Medium)
-          .fontColor('#12161F')
+          .fontColor('#F2F5FA')
 
         TextInput({ text: this.editTitle, placeholder: '比如：课乙 P123 第 5-9 题' })
+          .fontColor('#F2F5FA')
+          .placeholderColor('#8B97AC')
+          .caretColor('#7FA8FF')
           .margin({ top: 14 })
           .onChange((v: string): void => {
             this.editTitle = v;
@@ -569,7 +572,7 @@ export struct TodoInbox {
 
         Text('类型')
           .fontSize(12)
-          .fontColor('#8A94A6')
+          .fontColor('#94A0B5')
           .width('100%')
           .margin({ top: 14, bottom: 6 })
         Flex({ wrap: FlexWrap.Wrap }) {
@@ -607,10 +610,13 @@ export struct TodoInbox {
         if (this.editCategory === TodoCategory.Exam) {
           Text('考场 / 座位')
             .fontSize(12)
-            .fontColor('#8A94A6')
+            .fontColor('#94A0B5')
             .width('100%')
             .margin({ top: 6, bottom: 6 })
           TextInput({ text: this.editPlace, placeholder: '教学楼407 · 12 号座' })
+            .fontColor('#F2F5FA')
+            .placeholderColor('#8B97AC')
+            .caretColor('#7FA8FF')
             .onChange((v: string): void => {
               this.editPlace = v;
             })
@@ -618,7 +624,7 @@ export struct TodoInbox {
 
         Text(this.editCategory === TodoCategory.Exam ? '考试时间' : '截止')
           .fontSize(12)
-          .fontColor('#8A94A6')
+          .fontColor('#94A0B5')
           .margin({ top: 14, bottom: 6 })
           .width('100%')
         Flex({ wrap: FlexWrap.Wrap }) {
@@ -664,7 +670,7 @@ export struct TodoInbox {
         if (this.editCategory !== TodoCategory.Exam) {
           Text('预计耗时')
             .fontSize(12)
-            .fontColor('#8A94A6')
+            .fontColor('#94A0B5')
             .margin({ top: 8, bottom: 6 })
             .width('100%')
           Flex({ wrap: FlexWrap.Wrap }) {
@@ -694,6 +700,9 @@ export struct TodoInbox {
           if (this.editEstimateFocus || this.customEstimateActive()) {
             Row() {
               TextInput({ text: this.editEstimateCustom, placeholder: '如 25' })
+                .fontColor('#F2F5FA')
+                .placeholderColor('#8B97AC')
+                .caretColor('#7FA8FF')
                 .type(InputType.Number)
                 .layoutWeight(1)
                 .onChange((v: string): void => {
@@ -712,7 +721,7 @@ export struct TodoInbox {
                 .onBlur((): void => this.commitCustomEstimate())
               Text('分钟')
                 .fontSize(12)
-                .fontColor('#8A94A6')
+                .fontColor('#94A0B5')
                 .margin({ left: 8 })
             }
             .width('100%')
@@ -722,7 +731,7 @@ export struct TodoInbox {
               ? this.editEstimateError
               : `${CUSTOM_ESTIMATE_MIN}–${CUSTOM_ESTIMATE_MAX} 分钟，且必须是 5 分钟的整数倍`)
               .fontSize(10)
-              .fontColor(this.editEstimateError.length > 0 ? '#C0392B' : '#98A2B3')
+              .fontColor(this.editEstimateError.length > 0 ? '#FF8A8A' : '#8B97AC')
               .width('100%')
           }
         }
@@ -730,7 +739,7 @@ export struct TodoInbox {
         if (this.courses.length > 0) {
           Text('所属课程')
             .fontSize(12)
-            .fontColor('#8A94A6')
+            .fontColor('#94A0B5')
             .margin({ top: 8, bottom: 6 })
           Flex({ wrap: FlexWrap.Wrap }) {
             ChipButton({
@@ -755,8 +764,8 @@ export struct TodoInbox {
 
         Row() {
           Button('取消')
-            .backgroundColor('#EEF1F6')
-            .fontColor('#4A5568')
+            .backgroundColor('rgba(255,255,255,0.14)')
+            .fontColor('#C3CDDE')
             .layoutWeight(1)
             .onClick((): void => {
               this.editorVisible = false;
@@ -788,7 +797,7 @@ export struct TodoInbox {
           Column() {
             Text('正在载入待办…')
               .fontSize(13)
-              .fontColor('#8A94A6')
+              .fontColor('#94A0B5')
           }
           .layoutWeight(1)
           .width('100%')
@@ -801,15 +810,15 @@ export struct TodoInbox {
                   Text('待确认')
                     .fontSize(15)
                     .fontWeight(FontWeight.Medium)
-                    .fontColor('#12161F')
+                    .fontColor('#F2F5FA')
                   Text(`${this.pendingList.length} 条`)
                     .fontSize(12)
-                    .fontColor('#2E6BE6')
+                    .fontColor('#7FA8FF')
                     .margin({ left: 6 })
                   Blank()
                   Text('下课自动生成，确认后才生效')
                     .fontSize(11)
-                    .fontColor('#98A2B3')
+                    .fontColor('#8B97AC')
                 }
                 .width('100%')
                 .margin({ bottom: 8 })
@@ -824,15 +833,15 @@ export struct TodoInbox {
                   Text('即将考试')
                     .fontSize(15)
                     .fontWeight(FontWeight.Medium)
-                    .fontColor('#12161F')
+                    .fontColor('#F2F5FA')
                   Text(`${this.examList().length} 场`)
                     .fontSize(12)
-                    .fontColor('#C0392B')
+                    .fontColor('#FF8A8A')
                     .margin({ left: 6 })
                   Blank()
                   Text('点一下可改考场')
                     .fontSize(11)
-                    .fontColor('#98A2B3')
+                    .fontColor('#8B97AC')
                 }
                 .width('100%')
                 .margin({ top: this.pendingList.length > 0 ? 14 : 0, bottom: 8 })
@@ -846,10 +855,10 @@ export struct TodoInbox {
                 Text('待办')
                   .fontSize(15)
                   .fontWeight(FontWeight.Medium)
-                  .fontColor('#12161F')
+                  .fontColor('#F2F5FA')
                 Text(`${this.taskList().length} 条`)
                   .fontSize(12)
-                  .fontColor('#8A94A6')
+                  .fontColor('#94A0B5')
                   .margin({ left: 6 })
               }
               .width('100%')
@@ -861,7 +870,7 @@ export struct TodoInbox {
               if (this.taskList().length === 0) {
                 Text('暂无待办。下课之后，配了模板的课程会自动生成待办到这里。')
                   .fontSize(12)
-                  .fontColor('#98A2B3')
+                  .fontColor('#8B97AC')
                   .width('100%')
                   .padding({ top: 10, bottom: 10 })
               }
@@ -884,8 +893,8 @@ export struct TodoInbox {
               .layoutWeight(2)
               .onClick((): void => this.openNew())
             Button('+ 考试')
-              .backgroundColor('#FFF4E5')
-              .fontColor('#B26B00')
+              .backgroundColor('rgba(178,107,0,0.20)')
+              .fontColor('#E8B25C')
               .layoutWeight(1)
               .margin({ left: 8 })
               .onClick((): void => this.openNewExam())
