@@ -586,6 +586,10 @@ export struct TodoInbox {
   @Builder
   EditorPanel() {
     Column() {
+      // ⚠️ 原来这个窗**既没有高度上限、也没有滚动**：内容一长（比如考试类、
+      // 或表单被撑高）就直接被裁掉，和计划页的编辑窗一样的问题。
+      // 现在和计划页对齐：可滚 + 上限 100%（浮窗已不占布局，整屏高度都能用）。
+      Scroll() {
       Column() {
         Text(this.editId === 0 ? '新建待办' : '编辑待办')
           .fontSize(18)
@@ -814,10 +818,14 @@ export struct TodoInbox {
       .width('100%')
       .padding(18)
       .glassShell()
+      }
+      .constraintSize({ maxHeight: '100%' })
+      .scrollBar(BarState.Off)
+      .align(Alignment.TopStart)
     }
     .width('100%')
     .height('100%')
-    .padding(16)
+    .padding({ left: 16, right: 16, top: 12, bottom: 12 })
     .justifyContent(FlexAlign.Center)
   }
 

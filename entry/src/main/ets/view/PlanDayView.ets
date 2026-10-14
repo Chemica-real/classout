@@ -1952,8 +1952,15 @@ export struct PlanDayView {
   BlockEditor(b: PlanBlock) {
     Column() {
       // ⚠️ 编辑窗内容长（课程/日期/开始/时长/截止/其他块/三个按钮），
-      // 在真机上实测会超出屏幕，底部的「完成」被裁到 TabBar 底下点不到。
-      // 所以套一层 Scroll 并限制最大高度：内容短时仍然居中，长时可滚。
+      // 在真机上实测会超出屏幕，底部的「完成」被裁到 TabBar 底下点不到 ——
+      // 所以套一层 Scroll，内容短时仍然居中、长时可滚。
+      //
+      // ⚠️ 这里的 `maxHeight` **不能再卡一个百分比**（原来是 88%）：
+      // 那是"页头 + 导航栏还占着布局流"的时代留下的 —— 现在两条浮窗都被编辑窗的
+      // 遮罩压在下面、不占布局，屏幕整个高度都能用。卡住的话就会出现
+      // 用户报的现象：「上下明明还有空档，编辑窗却没显示完整」（窗口提前封顶 +
+      // 居中，于是上下留白、内容还得滚）。用 `100%` 让窗口**按内容长高**，
+      // 只有当内容真的超过整屏时才滚。
       Scroll() {
       Column() {
         Text(this.blockTitle(b))
@@ -2222,13 +2229,14 @@ export struct PlanDayView {
       .padding(18)
       .glassShell()
       }
-      .constraintSize({ maxHeight: '88%' })
+      .constraintSize({ maxHeight: '100%' })
       .scrollBar(BarState.Off)
       .align(Alignment.TopStart)
     }
     .width('100%')
     .height('100%')
-    .padding(16)
+    // 上下各留 12：窗口贴边时也还看得出"这是浮起来的窗"，而不是整屏换页
+    .padding({ left: 16, right: 16, top: 12, bottom: 12 })
     .justifyContent(FlexAlign.Center)
   }
 
