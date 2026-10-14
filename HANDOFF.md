@@ -12,7 +12,7 @@ ClassOUT 是一款**纯离线鸿蒙原生（ArkTS）「课表 + 待办 + 计划�
 
 **当前状态：v1.0.0 已发布并推上 Gitee 公开仓库。**
 健康度：干净构建 `ERROR: 0`、警告 6 条（均为刻意保留）、离线断言 **363 项全绿**、
-工作区干净、tag `v1.0.0`（**注意 tag 不指向 HEAD**，见 §22.7）、
+工作区干净、tag `v1.0.0`（**已强制移到与 HEAD 同一个提交**，见 §22.7 / §23.7）、
 最新代码提交 = 本轮 §23 的提交（用 `git log -1` 看当前 HEAD）。
 远端：`git@gitee.com:the-person-on-the-tree/classout.git`（**公开**，master + tag 都已推齐）。
 
@@ -2142,11 +2142,11 @@ sheet 仍居中）；待安排收起 + **记忆**上次状态；动画全做（6
 ```
 
 - `LICENSE` = MIT，`Copyright (c) 2026 树上人`（用户选的开源协议）。
-- `AppScope/app.json5` 的 `versionName` 保持 `1.0.0`；tag **`v1.0.0`** 已推到远端
-  （`git ls-remote --tags origin` 可见，指向 `0b08c62`）。**注意**：tag 落在图标那次提交上，
-  它后面还有 `07d8cb0`（LICENSE）、`43441a2`（注释清理）—— 即 **tag 不是 HEAD**。
-  要发布"最终版"时记得 `git tag -f v1.0.0 && git push -f origin v1.0.0`，或干脆打 `v1.0.1`。
-  （我**没有**替你强推 tag —— 那会改写公开仓库的历史，等你点头。）
+- `AppScope/app.json5` 的 `versionName` 保持 `1.0.0`；tag **`v1.0.0`** 已推到远端。
+  ⚠️ **本节写的时候 tag 落在 `0b08c62`（图标那次提交）上，不是 HEAD**；那个问题后来在
+  §23.7 按用户的要求处理了 —— **现在 tag 与 HEAD 是同一个提交**（`git tag -f` + 强推）。
+  以后发版若又出现"tag 落后于 HEAD"，同样两条路：`git tag -f v1.0.0 && git push -f origin v1.0.0`，
+  或干脆打 `v1.0.1`（走后者记得同时升 `versionName`）。
 - 远端：`git@gitee.com:the-person-on-the-tree/classout.git`，**公开仓库**，`master` 已推齐。
 
 ### 22.8 下次发版照着走的检查清单
@@ -2283,3 +2283,33 @@ LANG=zh_CN.UTF-8 ./build.sh clean && LANG=zh_CN.UTF-8 ./build.sh assembleHap
 | `view/SectionPicker.ets` | **新增**：`@Component` 版节次选择器（替代 `Index` 里的 `@Builder`） |
 | `pages/Index.ets` | 删掉 `@Builder SectionPicker`，四个调用点改组件；`weekSessions` 改 `@State`；新增 `sessionKey()`；时间轴/网格行/课时块的 key 补全 |
 | `view/TodoInbox.ets` | 编辑抽屉加「删除待办」+ 二次确认；`handleBack` 顺序；`deleteRecord()` 抽取 |
+
+### 23.7 推送与 tag（顺手记一个 ssh 坑）
+
+用户 2026-10-14 拍板：**把 `v1.0.0` 强制移到最新提交**（代码里 `versionName` 仍是 1.0.0，
+tag 与包保持一致；代价是公开仓库上那个 tag 被改写）。已做：
+
+```bash
+export GIT_SSH_COMMAND="ssh -F /dev/null"     # ← 见下面的坑，少了这句连不上远端
+git push origin master
+git tag -f -a v1.0.0 -m "ClassOUT v1.0.0 …"  # 注解 tag，内容里列了这次补上的三个提交
+git push -f origin v1.0.0
+```
+
+结果：`refs/heads/master` 与 `refs/tags/v1.0.0^{}` **都是 `bdd1491`（= 当时的 HEAD）**，
+`git status -sb` 干净且与 origin 对齐。
+
+⚠️ **坑：这台机器的 ssh 直接连不上远端**，`git ls-remote origin` 报
+
+```
+Bad owner or permissions on /etc/ssh/ssh_config.d/20-systemd-ssh-proxy.conf
+fatal: 无法读取远程仓库。
+```
+
+原因：`/etc/ssh/ssh_config.d/20-systemd-ssh-proxy.conf` 是指向 `/usr/lib/systemd/...` 的
+**符号链接，属主是 `nobody:nogroup`**，ssh 认为配置文件权限不安全就拒绝读取，连带
+`/etc/ssh/ssh_config` 里的 `Include` 一起失败。**和仓库、密钥都没关系**。
+
+绕法（不必动系统文件）：`GIT_SSH_COMMAND="ssh -F /dev/null"` 让 ssh **忽略系统配置**，
+只走 `~/.ssh/config` 与默认身份文件 —— 仓库用的 `~/.ssh/id_ed25519` 在默认位置，所以能连上。
+以后在这台机器上 push / fetch 都记得带上这句。
