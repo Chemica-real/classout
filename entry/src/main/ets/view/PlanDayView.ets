@@ -103,6 +103,15 @@ const GRID_H: number = AXIS.height();
 const DDL_MARK_ALLOW: number = 36;
 
 /**
+ * 「此刻截止的全部事项」那块浮层的宽度（vp）。
+ * 它挂在 `bindPopup` 的浮层上，宽度要显式给 —— 浮层不继承页面的布局宽度。
+ */
+const DDL_PANEL_W: number = 300;
+
+/** 截止浮层的底色（深色、略透）。浮层不继承页面底色，必须自己给（见 DdlMarkers 的注释） */
+const DDL_PANEL_BG: string = 'rgba(12,16,26,0.90)';
+
+/**
  * 课程灰带 / 计划块 / 截止标记的宽度 = 父级满宽 **减去**时间轴。
  *
  * ⚠️ 这是一个真 bug 的修复（用户报「计划页面右侧在屏幕外」）：
@@ -1973,11 +1982,33 @@ export struct PlanDayView {
           // 再点同一条 = 收起（否则用户没有"关掉"的直觉）
           this.ddlOpenMinute = this.ddlOpenMinute === g.minute ? -1 : g.minute;
         })
+        // ★ 展开的截止列表挂到 **ArkUI 的浮层（overlay）**上，而不是画在页面里。
+        //   用户实测反馈：「显示截止的弹窗应当在最上层吧」——
+        //   画在页面内容层的话，页头 / 日期栏 / 待安排货架 / 导航栏（Index 的浮窗层）
+        //   全都压在它上面。项目里另一个办法是 `Index.pageModalOpen` 把浮窗层改画到内容层
+        //   之下，但那是给**带全屏遮罩的编辑窗**用的：截止面板没有遮罩，用那招会让页头
+        //   被网格线和块直接盖住，看着像坏了。浮层是独立一层，天生在所有页面内容之上。
+        .bindPopup(this.ddlOpenMinute === g.minute, {
+          builder: this.DdlExpandPanel(),
+          placement: Placement.Bottom,
+          // ⚠️ 浮层**不会**继承页面的深色底：不给颜色的话 ArkUI 用系统默认材质，
+          //    在这套深色主题里会渲染成一块浅灰白板，白字直接读不出来（真机截到过）。
+          //    所以这里显式给深色底 + 关掉系统模糊材质，圆角也显式给。
+          popupColor: DDL_PANEL_BG,
+          backgroundBlurStyle: BlurStyle.NONE,
+          maskColor: Color.Transparent,
+          enableArrow: false,
+          radius: GLASS_RADIUS,
+          autoCancel: true,
+          width: DDL_PANEL_W,
+          onStateChange: (e: PopupStateChangeParam): void => {
+            // 点面板外面被系统关掉时，把状态也收回来（否则再点同一条会"关不上"）
+            if (!e.isVisible && this.ddlOpenMinute === g.minute) {
+              this.ddlOpenMinute = -1;
+            }
+          }
+        })
       }, (g: DdlGroup) => `ddlg-${g.minute}-${g.todos.length}-${g.todos[0].id}`)
-
-      if (this.ddlOpenMinute >= 0 && this.ddlGroupTodos().length > 0) {
-        this.DdlExpandPanel()
-      }
     }
     .width('100%')
     .height(GRID_H)
@@ -2043,17 +2074,10 @@ export struct PlanDayView {
       .scrollBar(BarState.Off)
       .align(Alignment.TopStart)
     }
-    .width(CONTENT_W)
+    .width('100%')
     .padding(10)
-    .glassSheet()
-    .position({ x: AXIS_W, y: this.ddlPanelY() })
-  }
-
-  /** 展开列表的落点：贴着那条标记往下，但别掉出网格底边 */
-  private ddlPanelY(): number {
-    const want: number = this.yOf(this.ddlOpenMinute) + 22;
-    const cap: number = GRID_H - 230;
-    return want > cap ? cap : want;
+    .border({ width: 1, color: GLASS_EDGE_STRONG })
+    .borderRadius(GLASS_RADIUS)
   }
 
   /** 当前展开的那一分钟上的所有待办（升序按标题，顺序稳定） */
