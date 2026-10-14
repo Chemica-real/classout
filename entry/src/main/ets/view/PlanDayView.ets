@@ -24,8 +24,10 @@ import { addDays, formatDate, hhmmToMin, minToHHmm, parseDate, relativeDayText, 
 import { ChipButton } from './ChipButton';
 import { hapticLongPress } from '../util/Haptics';
 import { BackHandler, backStack } from '../util/BackStack';
-import { GLASS_BLUR, GLASS_EDGE_SOFT, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_ROW,
-  GLASS_SHADOW_SHEET, GLASS_TINT_PANEL, GLASS_TINT_ROW, GLASS_TINT_SHEET } from './Glass';
+import { GLASS_BLUR, GLASS_EDGE_SHELF, GLASS_EDGE_SOFT, GLASS_EDGE_STRONG, GLASS_RADIUS,
+  GLASS_RADIUS_SHELF, GLASS_SHADOW_ROW, GLASS_SHADOW_SHELF, GLASS_SHADOW_SHEET, GLASS_TINT_PANEL,
+  GLASS_TINT_ROW, GLASS_TINT_SHELF, GLASS_TINT_SHEET } from './Glass';
+import { FLOAT_GAP, FLOAT_SIDE, H_COLHEAD, H_DAYBAR } from './Float';
 
 // 文件内 @Styles（Glass.ets 顶部说明了为什么不能跨文件 export）
 // 深色版：模糊只留给页头/托盘/编辑窗这些"大面"，托盘卡用小卡材质（不模糊）
@@ -53,6 +55,29 @@ function glassShell() {
   .shadow(GLASS_SHADOW_SHEET)
 }
 
+/** 浮窗（页头/导航栏/日期栏这类"大面"）：模糊 + 大圆角 + 浮起阴影 */
+@Styles
+function glassSheet() {
+  .backdropBlur(GLASS_BLUR)
+  .backgroundColor(GLASS_TINT_SHEET)
+  .borderRadius(GLASS_RADIUS)
+  .border({ width: 1, color: GLASS_EDGE_STRONG })
+  .shadow(GLASS_SHADOW_SHEET)
+}
+
+/**
+ * 悬浮"货架"（待安排托盘）：和 `glassSheet` **刻意不同** —— 压暗、圆角小一号、
+ * 阴影收敛，读起来像"凹进去的抽屉"，托盘里的卡片压在上面才有层次感。
+ */
+@Styles
+function glassShelf() {
+  .backdropBlur(GLASS_BLUR)
+  .backgroundColor(GLASS_TINT_SHELF)
+  .borderRadius(GLASS_RADIUS_SHELF)
+  .border({ width: 1, color: GLASS_EDGE_SHELF })
+  .shadow(GLASS_SHADOW_SHELF)
+}
+
 const DOMAIN: number = 0x0000;
 const TAG: string = 'ClassOUT';
 
@@ -65,6 +90,14 @@ const LESSON_MIN: number = 90;
  */
 const AXIS: TimeAxis = DEFAULT_AXIS;
 const GRID_H: number = AXIS.height();
+/**
+ * 截止标记（"⚑ … 截止"）的高度余量（vp）。
+ *
+ * 它按 `yOf(23:59)` 定位，**会从网格底边往下挂出自己的一整行**（实测 92px ≈ 31vp）。
+ * 不留这个余量的话，滑到底时它的下半截会被悬浮的待安排货架盖住 ——
+ * 用户实测反馈就是这个："待安排栏把计划视图的最低下挡住了一点点"。
+ */
+const DDL_MARK_ALLOW: number = 36;
 
 /**
  * 课程灰带 / 计划块 / 截止标记的宽度 = 父级满宽 **减去**时间轴。
@@ -84,6 +117,25 @@ const CONTENT_W: string = `calc(100% - ${AXIS_W}vp)`;
 @Component
 export struct PlanDayView {
   @Prop semesterId: number;
+  /** 上方悬浮浮窗（Index 的页头）占掉的高度，由 Index 量好传进来 */
+  @Prop topInset: number = 0;
+  /** 下方悬浮浮窗（导航栏）占掉的高度，由 Index 量好传进来 */
+  @Prop bottomInset: number = 0;
+  /**
+   * 本页那叠浮窗（日期栏 [+ 三日列头]）量出来的总高度；**0 = 还没量到**。
+   * 没量到时用 `topBarsBlockH()` 按名义高度估一个，免得第一帧内容顶到屏幕上边。
+   */
+  @State topBarsH: number = 0;
+  /** 待安排托盘（悬浮货架）量出来的高度：网格底部要给它留 padding */
+  @State trayH: number = 0;
+  /** 本页浮窗叠（含 Index 页头让出的那段）的实际占位高度 */
+  private topBarsBlockH(): number {
+    if (this.topBarsH > 0) {
+      return this.topBarsH;
+    }
+    // 名义高度：Index 页头让出的那段 + 一条缝 + 日期栏
+    return this.topInset + FLOAT_GAP + H_DAYBAR + FLOAT_GAP;
+  }
 
   @State semester: Semester | undefined = undefined;
   @State date: string = '';
@@ -752,6 +804,30 @@ export struct PlanDayView {
   }
 
   /**
+   * 边缘自动滚动的**有效顶边**（窗口坐标）。
+   *
+   * ⚠️ 不能直接用 `gridViewTop`：日期栏/三日列头/页头都改成了**悬浮浮窗**，
+   * 网格视口从屏幕顶就开始了，但**浮窗盖住的那一段是看不见的**。
+   * 若还按视口顶边判断"进入上边缘区"，手指会在浮窗底下就触发自动滚动 ——
+   * 表现为"还没拖到能看见的边界，时间轴就自己往上跑了"。
+   * 所以顶边要往下推整整一叠浮窗的高度。
+   */
+  private edgeTop(): number {
+    return this.gridViewTop + this.topBarsBlockH();
+  }
+
+  /**
+   * 边缘自动滚动的**有效底边**（窗口坐标）。
+   *
+   * 同理：待安排托盘与悬浮导航栏现在都盖在网格视口的下半部分，
+   * 视口底边已经不是"看得见的底边"了，要往上收掉它们的高度。
+   */
+  private edgeBottom(): number {
+    return this.gridViewBottom - this.bottomInset
+      - (this.trayH > 0 ? this.trayH + FLOAT_GAP : 0);
+  }
+
+  /**
    * 边缘自动滚动：拖动块时触摸点靠近上/下边缘就让时间轴自己滚。
    *
    * 为什么需要它：移动块时屏幕是钉住的（用户要求），
@@ -765,13 +841,13 @@ export struct PlanDayView {
       this.stopEdgeScroll();
       return;
     }
-    const span: number = this.gridViewBottom - this.gridViewTop;
+    const span: number = this.edgeBottom() - this.edgeTop();
     if (span <= 0) {
       this.stopEdgeScroll();
       return;
     }
-    const dir: number = edgeScrollDirection(this.touchWinY, this.gridViewTop,
-      this.gridViewBottom, PlanDayView.EDGE_ZONE);
+    const dir: number = edgeScrollDirection(this.touchWinY, this.edgeTop(),
+      this.edgeBottom(), PlanDayView.EDGE_ZONE);
     if (dir === 0) {
       this.stopEdgeScroll();
       return;
@@ -801,14 +877,14 @@ export struct PlanDayView {
       this.stopEdgeScroll();
       return;
     }
-    const dir: number = edgeScrollDirection(this.touchWinY, this.gridViewTop,
-      this.gridViewBottom, PlanDayView.EDGE_ZONE);
+    const dir: number = edgeScrollDirection(this.touchWinY, this.edgeTop(),
+      this.edgeBottom(), PlanDayView.EDGE_ZONE);
     if (dir === 0) {
       this.stopEdgeScroll();
       return;
     }
-    const depth: number = edgeScrollDepth(this.touchWinY, this.gridViewTop,
-      this.gridViewBottom, PlanDayView.EDGE_ZONE);
+    const depth: number = edgeScrollDepth(this.touchWinY, this.edgeTop(),
+      this.edgeBottom(), PlanDayView.EDGE_ZONE);
     const step: number = edgeScrollStep(depth, PlanDayView.EDGE_ZONE, PlanDayView.EDGE_MAX_STEP);
     this.gridScroller.scrollBy(0, dir * step);
     const dy: number = this.lastTouchY - this.pressStartY;
@@ -1845,6 +1921,15 @@ export struct PlanDayView {
     }
     .width('100%')
     .alignItems(HorizontalAlign.Start)
+    .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+    // 悬浮货架：和导航栏刻意用不同材质（见 Glass.ets 的 GLASS_TINT_SHELF）
+    .glassShelf()
+    .onAreaChange((oldArea: Area, newArea: Area): void => {
+      const h: Length | undefined = newArea.height;
+      if (typeof h === 'number') {
+        this.trayH = h;
+      }
+    })
   }
 
   @Builder
@@ -2140,128 +2225,163 @@ export struct PlanDayView {
     return `当前：${t.ddl}`;
   }
 
+  /**
+   * 日期栏 —— **悬浮浮窗**（用户点名要做成浮窗的三条之一）。
+   *
+   * 它原来是流程里的一条 `glassPanel`，会把网格挤下去；现在浮在网格之上，
+   * 网格往上滑时会钻到它下面（内容层的 padding 见 `build()`）。
+   */
+  @Builder
+  DayBarFloat() {
+    Row() {
+      Text('‹')
+        .fontSize(22)
+        .fontColor('#7FA8FF')
+        .padding({ left: 8, right: 8 })
+        .onClick((): void => this.goDay(-1))
+      Column() {
+        Text(this.headerText())
+          .fontSize(16)
+          .fontWeight(FontWeight.Medium)
+          .fontColor('#F2F5FA')
+        Text(relativeDayText(parseDate(this.date)))
+          .fontSize(LAYOUT.cardSub)
+          .fontColor('#94A0B5')
+      }
+      .layoutWeight(1)
+      .alignItems(HorizontalAlign.Center)
+      Text('›')
+        .fontSize(22)
+        .fontColor('#7FA8FF')
+        .padding({ left: 8, right: 8 })
+        .onClick((): void => this.goDay(1))
+      // 视图切换：日 | 三日。
+      // ⚠️ 用户明确删掉了整周列表视图（"功能鸡肋"），不要再加第三档。
+      ChipButton({
+        text: '日',
+        selected: this.viewCols <= COLS_DAY,
+        fontSize: LAYOUT.cardSub,
+        onTap: (): void => this.setViewCols(COLS_DAY)
+      })
+      ChipButton({
+        text: '三日',
+        selected: this.viewCols === COLS_THREE,
+        fontSize: LAYOUT.cardSub,
+        onTap: (): void => this.setViewCols(COLS_THREE)
+      })
+      Text('今天')
+        .fontSize(LAYOUT.tray)
+        .fontColor('#7FA8FF')
+        .margin({ left: 4 })
+        .onClick((): void => this.goToday())
+    }
+    .width('100%')
+    .padding({ left: 8, right: 12, top: 10, bottom: 8 })
+    .glassSheet()
+  }
+
+  /**
+   * 三日视图的列头（每列显示自己的日期）。
+   *
+   * ⚠️ **它不做成悬浮浮窗**（用户 2026-10-14 明确："三日图界面最上面的三个日期不要做成悬浮窗了，
+   * 会出去"）：它必须和网格的三列严格对齐，而悬浮面板左右留边 + 外层 padding 再缩一次，
+   * 列宽就对不上了（实测列头比网格右偏 7 / 31 / 31 px）。
+   * 现在它回到**滚动内容里**，作为表格自己的表头，用和网格同源的几何
+   * （`AXIS_W` 空位 + `layoutWeight(1)` 均分），上下滚时跟着表格一起走。
+   */
+  @Builder
+  ColHeadRow() {
+    Row() {
+      Column()
+        .width(AXIS_W)
+      ForEach(this.colDates, (cd: string, ci: number) => {
+        Column() {
+          Text(columnHeaderText(cd))
+            .fontSize(LAYOUT.tray)
+            // 三列都可操作，所以侧列不再画成"灰掉不可用"；
+            // 只有"当前查看日"那一列加粗 + 灰底（它是 ‹ › 的基准）
+            .fontWeight(ci === this.centerCol() ? FontWeight.Medium : FontWeight.Normal)
+            .fontColor(ci === this.centerCol() ? '#F2F5FA' : '#A9B5C9')
+          if (cd === formatDate(today())) {
+            Text('今天')
+              .fontSize(LAYOUT.cardSub)
+              .fontColor('#7FA8FF')
+          }
+        }
+        .layoutWeight(1)
+        .alignItems(HorizontalAlign.Center)
+        .justifyContent(FlexAlign.Center)
+        // 固定高度：中间那列多一行「今天」，不定高的话三列高度不齐、
+        // 网格顶边会看起来是斜的
+        .height(H_COLHEAD)
+        // ⚠️ 深色下这条和浅色版**方向相反**：浅色版标记"今天"用的是
+        // 「比纯白更灰」（`#F5F6F8` vs `#FFFFFF`），在深色底上"更灰"= 更暗，
+        // 会被读成"禁用"。所以改成**中间列比两侧亮**才是"高亮"。
+        .backgroundColor(ci === this.centerCol() ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.03)')
+      }, (cd: string) => `colh-${cd}`)
+    }
+    .width('100%')
+    .glassPanel()
+  }
+
   build() {
     Stack() {
       Column() {
-        // 日期栏
-        Row() {
-          Text('‹')
-            .fontSize(22)
-            .fontColor('#7FA8FF')
-            .padding({ left: 8, right: 8 })
-            .onClick((): void => this.goDay(-1))
-          Column() {
-            Text(this.headerText())
-              .fontSize(16)
-              .fontWeight(FontWeight.Medium)
-              .fontColor('#F2F5FA')
-            Text(relativeDayText(parseDate(this.date)))
-              .fontSize(LAYOUT.cardSub)
-              .fontColor('#94A0B5')
-          }
-          .layoutWeight(1)
-          .alignItems(HorizontalAlign.Center)
-          Text('›')
-            .fontSize(22)
-            .fontColor('#7FA8FF')
-            .padding({ left: 8, right: 8 })
-            .onClick((): void => this.goDay(1))
-          // 视图切换：日 | 三日。
-          // ⚠️ 用户明确删掉了整周列表视图（"功能鸡肋"），不要再加第三档。
-          ChipButton({
-            text: '日',
-            selected: this.viewCols <= COLS_DAY,
-            fontSize: LAYOUT.cardSub,
-            onTap: (): void => this.setViewCols(COLS_DAY)
-          })
-          ChipButton({
-            text: '三日',
-            selected: this.viewCols === COLS_THREE,
-            fontSize: LAYOUT.cardSub,
-            onTap: (): void => this.setViewCols(COLS_THREE)
-          })
-          Text('今天')
-            .fontSize(LAYOUT.tray)
-            .fontColor('#7FA8FF')
-            .margin({ left: 4 })
-            .onClick((): void => this.goToday())
-        }
-        .width('100%')
-        .padding({ left: 8, right: 12, top: 10, bottom: 8 })
-        .glassPanel()
-
-        // 三日视图的列头：每列显示自己的日期，中间那列高亮（侧列只读，所以不做点击）
-        if (this.viewCols > COLS_DAY) {
-          Row() {
-            ForEach(this.colDates, (cd: string, ci: number) => {
-              Column() {
-                Text(columnHeaderText(cd))
-                  .fontSize(LAYOUT.tray)
-                  // 三列都可操作，所以侧列不再画成"灰掉不可用"；
-                  // 只有"当前查看日"那一列加粗 + 灰底（它是 ‹ › 的基准）
-                  .fontWeight(ci === this.centerCol() ? FontWeight.Medium : FontWeight.Normal)
-                  .fontColor(ci === this.centerCol() ? '#F2F5FA' : '#A9B5C9')
-                if (cd === formatDate(today())) {
-                  Text('今天')
-                    .fontSize(LAYOUT.cardSub)
-                    .fontColor('#7FA8FF')
-                }
-              }
-              .layoutWeight(1)
-              .alignItems(HorizontalAlign.Center)
-              .justifyContent(FlexAlign.Center)
-              // 固定高度：中间那列多一行「今天」，不定高的话三列高度不齐、
-              // 网格顶边会看起来是斜的
-              .height(34)
-              // ⚠️ 深色下这条和浅色版**方向相反**：浅色版标记"今天"用的是
-              // 「比纯白更灰」（`#F5F6F8` vs `#FFFFFF`），在深色底上"更灰"= 更暗，
-              // 会被读成"禁用"。所以改成**中间列比两侧亮**才是"高亮"。
-              .backgroundColor(ci === this.centerCol() ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.03)')
-            }, (cd: string) => `colh-${cd}`)
-          }
-          .width('100%')
-          .padding({ left: AXIS_W })
-          .glassPanel()
-        }
-
         // 时间网格
         Scroll(this.gridScroller) {
-          Stack({ alignContent: Alignment.TopStart }) {
-            this.HourLines()
+          Column() {
+            // 表格自己的表头行：跟着网格一起滚（不是浮窗）
             if (this.viewCols > COLS_DAY) {
-              this.ColumnSeparators()
+              this.ColHeadRow()
             }
-            // 每一列各自画自己的课程灰带与块。
-            // 单日视图 viewCols=1，这段退化成和以前完全一样的一列。
-            ForEach(this.colDates, (cd: string, ci: number) => {
-              ForEach(this.sessionsOfCol(ci), (s: CourseSession) => {
-                this.ClassBlock(s, ci)
-              }, (s: CourseSession) => `cls-${ci}-${s.course.id}-${s.startSection}`)
-            }, (cd: string) => `colcls-${cd}`)
-            // 被拖走的块留在原位的虚线空位：让用户看清"这一块是从哪儿抽出来的"
-            if (this.dragBlockId > 0) {
-              this.DragGhost()
+            Stack({ alignContent: Alignment.TopStart }) {
+              this.HourLines()
+              if (this.viewCols > COLS_DAY) {
+                this.ColumnSeparators()
+              }
+              // 每一列各自画自己的课程灰带与块。
+              // 单日视图 viewCols=1，这段退化成和以前完全一样的一列。
+              ForEach(this.colDates, (cd: string, ci: number) => {
+                ForEach(this.sessionsOfCol(ci), (s: CourseSession) => {
+                  this.ClassBlock(s, ci)
+                }, (s: CourseSession) => `cls-${ci}-${s.course.id}-${s.startSection}`)
+              }, (cd: string) => `colcls-${cd}`)
+              // 被拖走的块留在原位的虚线空位：让用户看清"这一块是从哪儿抽出来的"
+              if (this.dragBlockId > 0) {
+                this.DragGhost()
+              }
+              ForEach(this.colDates, (cd: string, ci: number) => {
+                ForEach(this.blocksOfCol(ci), (b: PlanBlock) => {
+                  this.PlanBlockView(b, ci)
+                }, (b: PlanBlock) => `blk-${ci}-${b.id}-${b.startMin}-${b.endMin}-${b.done}`)
+              }, (cd: string) => `colblk-${cd}`)
+              // 截止标记只画在当前查看日那一列：它是"今天要交什么"的提示，
+              // 侧列本来就是只读展示，铺满三列反而更乱
+              this.DdlMarkers()
             }
-            ForEach(this.colDates, (cd: string, ci: number) => {
-              ForEach(this.blocksOfCol(ci), (b: PlanBlock) => {
-                this.PlanBlockView(b, ci)
-              }, (b: PlanBlock) => `blk-${ci}-${b.id}-${b.startMin}-${b.endMin}-${b.done}`)
-            }, (cd: string) => `colblk-${cd}`)
-            // 截止标记只画在当前查看日那一列：它是"今天要交什么"的提示，
-            // 侧列本来就是只读展示，铺满三列反而更乱
-            this.DdlMarkers()
+            .width('100%')
+            .height(GRID_H)
+            .onAreaChange((oldArea: Area, newArea: Area): void => {
+              const y: Length | undefined = newArea.globalPosition.y;
+              if (typeof y === 'number') {
+                this.gridTop = y;
+              }
+            })
+            .onClick((event: ClickEvent): void => this.onGridTap(event))
+              .onDrop((event: DragEvent, extraParams: string): void => this.onPoolDrop(event))
+            }
           }
           .width('100%')
-          .height(GRID_H)
-          .onAreaChange((oldArea: Area, newArea: Area): void => {
-            const y: Length | undefined = newArea.globalPosition.y;
-            if (typeof y === 'number') {
-              this.gridTop = y;
-            }
+          // ⚠️ 给上面那叠浮窗让位，而且必须加在**滚动内容**上（不是视口上）：
+          // 这样网格往上滑时会钻到日期栏/页头下面，滑到底时最后一行也完全露得出来。
+          // 上下都给浮窗让位：上面是日期栏，下面是"待安排托盘 + 导航栏"。
+          // 加在**滚动内容**上，网格才能滑到它们下面，同时最后一行也滑得出来。
+          .padding({
+            top: this.topBarsBlockH() + FLOAT_GAP,
+            // ⚠️ `+ DDL_MARK_ALLOW`：截止标记会从网格底边往下挂出一行，
+            // 不留余量就会被悬浮货架盖掉下半截（用户实测发现的）
+            bottom: this.bottomInset + FLOAT_GAP + this.trayH + FLOAT_GAP + DDL_MARK_ALLOW
           })
-          .onClick((event: ClickEvent): void => this.onGridTap(event))
-          .onDrop((event: DragEvent, extraParams: string): void => this.onPoolDrop(event))
-        }
         .layoutWeight(1)
         .scrollBar(BarState.Off)
         .align(Alignment.TopStart)
@@ -2290,10 +2410,46 @@ export struct PlanDayView {
           }
         })
 
+      }
+      .width('100%')
+      .height('100%')
+
+      // ================= 浮窗层（不参与内容布局）=================
+      // 日期栏浮在网格之上；网格往上滑时会钻到它下面。
+      Column() {
+        // ⚠️ 定位壳：根 Stack 默认居中排子节点，浮窗必须靠"满屏 + 顶到上边"钉住
+        Column() {
+          this.DayBarFloat()
+        }
+        .width('100%')
+        // ⚠️ `+ FLOAT_GAP`：用户要求"多个玻璃浮窗相连时中间要有空行"，
+        // Index 的页头正好压在 topInset 处，不留缝两条玻璃就贴在一起了
+        .padding({ left: FLOAT_SIDE, right: FLOAT_SIDE, top: this.topInset + FLOAT_GAP })
+        // 量出这叠浮窗的总高度：网格内容的 padding 与"边缘自动滚动"的顶边都用它
+        .onAreaChange((oldArea: Area, newArea: Area): void => {
+          const h: Length | undefined = newArea.height;
+          if (typeof h === 'number' && h > 0) {
+            this.topBarsH = h;
+          }
+        })
+        .hitTestBehavior(HitTestMode.Transparent)
+      }
+      .width('100%')
+      .height('100%')
+      .justifyContent(FlexAlign.Start)
+      .hitTestBehavior(HitTestMode.Transparent)
+
+      // 底部：待安排托盘 —— **悬浮货架**，浮在悬浮导航栏之上。
+      // 它和导航栏刻意用不同材质（压暗 + 小一号圆角 + 收敛阴影），
+      // 这样两层叠在一起时有层次感，而不是两块一样的玻璃（用户要求）。
+      Column() {
         this.TodoPool()
       }
       .width('100%')
       .height('100%')
+      .padding({ left: FLOAT_SIDE, right: FLOAT_SIDE, bottom: this.bottomInset + FLOAT_GAP })
+      .justifyContent(FlexAlign.End)
+      .hitTestBehavior(HitTestMode.Transparent)
 
       // 瞬时提示：悬浮在网格上方的深色小胶囊，**完全不参与布局**，
       // 所以它出现/消失不会让时间网格上下跳动（这正是原来那条蓝色横幅的隐藏 bug）。
@@ -2311,7 +2467,8 @@ export struct PlanDayView {
         .margin({ left: 24, right: 24 })
         // 只显示、绝不吞触摸事件，否则会挡住下面的滑动与点击
         .hitTestBehavior(HitTestMode.None)
-        .position({ x: 24, y: 62 })
+        // 提示要落在那叠浮窗**下面**：它是浮动的，所以这里用浮窗的实际高度定位
+        .position({ x: 24, y: this.topBarsBlockH() + 8 })
       }
 
       // 双指缩放时屏幕正中的深色 ±NN min 提示。

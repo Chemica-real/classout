@@ -10,6 +10,7 @@ import { ChipButton } from './ChipButton';
 import { BackHandler, backStack } from '../util/BackStack';
 import { GLASS_BLUR, GLASS_EDGE_SOFT, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_ROW,
   GLASS_SHADOW_SHEET, GLASS_TINT_ROW, GLASS_TINT_SHEET } from './Glass';
+import { FLOAT_GAP, FLOAT_SIDE, H_ACTIONS } from './Float';
 
 // 文件内 @Styles（Glass.ets 顶部说明了为什么不能跨文件 export）
 // 深色版：模糊只留给"大面"（编辑窗），列表卡退化成半透明纯色（性能取舍）
@@ -23,6 +24,16 @@ function glassCard() {
 
 @Styles
 function glassShell() {
+  .backdropBlur(GLASS_BLUR)
+  .backgroundColor(GLASS_TINT_SHEET)
+  .borderRadius(GLASS_RADIUS)
+  .border({ width: 1, color: GLASS_EDGE_STRONG })
+  .shadow(GLASS_SHADOW_SHEET)
+}
+
+/** 浮窗（页头/导航栏/日期栏这类"大面"）：模糊 + 大圆角 + 浮起阴影 */
+@Styles
+function glassSheet() {
   .backdropBlur(GLASS_BLUR)
   .backgroundColor(GLASS_TINT_SHEET)
   .borderRadius(GLASS_RADIUS)
@@ -49,6 +60,12 @@ const CUSTOM_ESTIMATE_MAX: number = 600;
 @Component
 export struct TodoInbox {
   @Prop @Watch('onSemesterIdChanged') semesterId: number;
+  /** 上方悬浮浮窗（页头）占掉的高度，由 Index 量好传进来 */
+  @Prop topInset: number = 0;
+  /** 下方悬浮浮窗（导航栏）占掉的高度，由 Index 量好传进来 */
+  @Prop bottomInset: number = 0;
+  /** 底部那条行动按钮浮窗量出来的高度 */
+  @State actionsH: number = H_ACTIONS;
 
   @State pendingList: Todo[] = [];
   @State activeList: Todo[] = [];
@@ -879,13 +896,26 @@ export struct TodoInbox {
               }, (t: Todo) => this.todoKey('a', t))
             }
             .width('100%')
-            .padding({ left: 16, right: 16, top: 12, bottom: 20 })
+            // 上下都给悬浮浮窗让位：上面是页头，下面是「行动按钮 + 导航栏」两条。
+            // ⚠️ padding 加在**滚动内容**上而不是视口上，列表才能滑到浮窗下面
+            // （见 view/Float.ets 的文件头注释）。
+            .padding({
+              left: 16, right: 16, top: 12 + this.topInset + FLOAT_GAP,
+              bottom: 20 + this.bottomInset + this.actionsH + FLOAT_GAP
+            })
             .alignItems(HorizontalAlign.Start)
           }
           .layoutWeight(1)
           .scrollBar(BarState.Off)
           .align(Alignment.TopStart)
+        }
+      }
+      .width('100%')
+      .height('100%')
 
+      // 底部浮窗：行动按钮（浮在悬浮导航栏之上）
+      if (!this.loading) {
+        Column() {
           Row() {
             Button('+ 新建待办')
               .backgroundColor('#2E6BE6')
@@ -900,13 +930,22 @@ export struct TodoInbox {
               .onClick((): void => this.openNewExam())
           }
           .width('100%')
-          .padding({ left: 16, right: 16, top: 8, bottom: 12 })
-          // 底色交给 PageBackground
-          .backgroundColor(Color.Transparent)
+          .padding({ left: 14, right: 14, top: 8, bottom: 8 })
+          .glassSheet()
+          .onAreaChange((oldArea: Area, newArea: Area): void => {
+            const h: Length | undefined = newArea.height;
+            if (typeof h === 'number' && h > 0) {
+              this.actionsH = h;
+            }
+          })
         }
+        .width('100%')
+        .height('100%')
+        // 让出悬浮导航栏 + 再留一条缝：两个浮窗之间要看得见内容
+        .padding({ left: FLOAT_SIDE, right: FLOAT_SIDE, bottom: this.bottomInset + FLOAT_GAP })
+        .justifyContent(FlexAlign.End)
+        .hitTestBehavior(HitTestMode.Transparent)
       }
-      .width('100%')
-      .height('100%')
 
       if (this.editorVisible) {
         // 遮罩（点空白关闭）

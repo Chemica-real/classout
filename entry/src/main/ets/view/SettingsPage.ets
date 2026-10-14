@@ -24,7 +24,8 @@ import { image } from '@kit.ImageKit';
 import { WallpaperRepo } from '../data/WallpaperRepo';
 import { PAGE_GRADIENT_A, PAGE_GRADIENT_B, PAGE_GRADIENT_C, WALLPAPER_VEIL } from './Glass';
 import { GLASS_BLUR, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_ROW, GLASS_SHADOW_SHEET,
-  GLASS_TINT_PANEL } from './Glass';
+  GLASS_TINT_PANEL, GLASS_TINT_SHEET } from './Glass';
+import { FLOAT_GAP, FLOAT_SIDE, FLOAT_TOP, H_TITLE } from './Float';
 
 // 文件内 @Styles（见 Glass.ets 顶部注释：@Styles 不能跨文件 export）
 // 深色版。设置页的卡片按用户拍定算"大面" → 保留模糊（`glassPanelCard`），
@@ -45,6 +46,16 @@ function glassPanel() {
   .border({ width: 1, color: GLASS_EDGE_STRONG })
 }
 
+/** 浮窗（页头/导航栏/日期栏这类"大面"）：模糊 + 大圆角 + 浮起阴影 */
+@Styles
+function glassSheet() {
+  .backdropBlur(GLASS_BLUR)
+  .backgroundColor(GLASS_TINT_SHEET)
+  .borderRadius(GLASS_RADIUS)
+  .border({ width: 1, color: GLASS_EDGE_STRONG })
+  .shadow(GLASS_SHADOW_SHEET)
+}
+
 const DOMAIN: number = 0x0000;
 const TAG: string = 'ClassOUT';
 
@@ -56,6 +67,12 @@ const LEAD_CHOICES: number[] = [5, 10, 15, 20, 30, 45];
 @Component
 export struct SettingsPage {
   @Prop semesterId: number;
+  /** 上方悬浮浮窗占掉的高度（设置页没有课表那套页头，Index 传 0） */
+  @Prop topInset: number = 0;
+  /** 下方悬浮浮窗（导航栏）占掉的高度，由 Index 量好传进来 */
+  @Prop bottomInset: number = 0;
+  /** 本页标题栏浮窗量出来的高度 */
+  @State titleH: number = H_TITLE;
 
   @State remSettings: ReminderSettings = { briefEnabled: true, briefMin: 450, classLeadMin: 15 };
   @State restWindows: RestWindow[] = [];
@@ -564,43 +581,71 @@ export struct SettingsPage {
   }
 
   build() {
-    Column() {
-      Row() {
-        Text('设置')
-          .fontSize(17)
-          .fontWeight(FontWeight.Medium)
-          .fontColor('#F2F5FA')
-      }
-      .width('100%')
-      .padding({ left: 16, right: 16, top: 12, bottom: 12 })
-      .glassPanel()
+    Stack() {
+      Column() {
+        Scroll() {
+          Column() {
+            // 提示条：不占布局地贴在顶部会跳，所以这里就放在流的开头，
+            // 但只有内容出现时才会有高度（用 if 而不是留空位）
+            if (this.toast.length > 0) {
+              Text(this.toast)
+                .fontSize(12)
+                .fontColor('#EAF0FA')
+                .width('100%')
+                .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+                .backgroundColor('rgba(46,107,230,0.22)')
+                .borderRadius(8)
+                .margin({ bottom: 12 })
+            }
 
-      Scroll() {
-        Column() {
-          // 提示条：不占布局地贴在顶部会跳，所以这里就放在流的开头，
-          // 但只有内容出现时才会有高度（用 if 而不是留空位）
-          if (this.toast.length > 0) {
-            Text(this.toast)
-              .fontSize(12)
-              .fontColor('#EAF0FA')
-              .width('100%')
-              .padding({ left: 12, right: 12, top: 8, bottom: 8 })
-              .backgroundColor('rgba(46,107,230,0.22)')
-              .borderRadius(8)
-              .margin({ bottom: 12 })
+            this.WallpaperCard()
+            this.ReminderCard()
+            this.RestCard()
           }
-
-          this.WallpaperCard()
-          this.ReminderCard()
-          this.RestCard()
+          .width('100%')
+          // 上下都给悬浮浮窗让位；padding 加在**滚动内容**上，卡片才能滑到浮窗下面
+          .padding({
+            left: 16, right: 16, top: 12 + this.topInset + this.titleH + FLOAT_GAP,
+            bottom: 30 + this.bottomInset
+          })
+          .alignItems(HorizontalAlign.Start)
         }
-        .width('100%')
-        .padding({ left: 16, right: 16, top: 12, bottom: 30 })
-        .alignItems(HorizontalAlign.Start)
-      }
       .layoutWeight(1)
       .scrollBar(BarState.Off)
       .align(Alignment.TopStart)
+      }
+      .width('100%')
+      .height('100%')
+
+      // ================= 浮窗层（不参与内容布局）=================
+      // 设置页没有课表那套页头，只有它自己的「设置」标题栏浮在最上面
+      Column() {
+        // ⚠️ 定位壳：根 Stack 默认居中排子节点，浮窗必须靠"满屏 + 顶到上边"钉住
+        Column() {
+          Row() {
+            Text('设置')
+              .fontSize(17)
+              .fontWeight(FontWeight.Medium)
+              .fontColor('#F2F5FA')
+          }
+          .width('100%')
+          .padding({ left: 16, right: 16, top: 12, bottom: 12 })
+          .glassSheet()
+          .onAreaChange((oldArea: Area, newArea: Area): void => {
+            const h: Length | undefined = newArea.height;
+            if (typeof h === 'number' && h > 0) {
+              this.titleH = h;
+            }
+          })
+        }
+        .width('100%')
+        .padding({ left: FLOAT_SIDE, right: FLOAT_SIDE, top: this.topInset + FLOAT_TOP })
+        .hitTestBehavior(HitTestMode.Transparent)
+      }
+      .width('100%')
+      .height('100%')
+      .justifyContent(FlexAlign.Start)
+      .hitTestBehavior(HitTestMode.Transparent)
     }
     .width('100%')
     .height('100%')

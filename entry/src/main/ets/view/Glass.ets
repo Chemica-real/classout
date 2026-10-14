@@ -74,6 +74,26 @@ export const GLASS_SHADOW_SHEET: ShadowOptions = {
   radius: 26, color: 'rgba(0,0,0,0.42)', offsetX: 0, offsetY: 10
 };
 
+/**
+ * ## 悬浮"货架"（计划页的待安排托盘）
+ *
+ * 用户要求"待安排窗格也做成悬浮的，但要稍微有所不同以产生层次感"。
+ * 层次靠**三层不透明度**拉开（和文章里"卡片薄、浮层厚"同一个思路）：
+ *   - 内容/网格：完全透明，贴在背景上（最下层）
+ *   - **货架**：**压暗**的半透明 + 小一号的圆角 + 收敛的阴影 → 像"凹进去的抽屉"，
+ *     托盘里的卡片（0.10 白）压在上面才浮得起来
+ *   - 底部导航栏：最亮的薄纱 + 大圆角 + 最大阴影 → 永远是最上面那层"系统 chrome"
+ *
+ * 三个值刻意与 `GLASS_TINT_ROW` / `GLASS_RADIUS` / `GLASS_SHADOW_SHEET` 都不一样，
+ * 就是为了"一眼看出这是两层不同的东西"。
+ */
+export const GLASS_TINT_SHELF: string = 'rgba(10,14,26,0.42)';
+export const GLASS_EDGE_SHELF: string = 'rgba(255,255,255,0.18)';
+export const GLASS_RADIUS_SHELF: number = 16;
+export const GLASS_SHADOW_SHELF: ShadowOptions = {
+  radius: 12, color: 'rgba(0,0,0,0.30)', offsetX: 0, offsetY: 4
+};
+
 // ============================ 二、默认背景（深色渐变 + 光晕）============================
 
 /**

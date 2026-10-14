@@ -17,6 +17,7 @@ import { SettingsPage } from '../view/SettingsPage';
 import { backStack } from '../util/BackStack';
 import { GLASS_BLUR, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_SHEET, GLASS_TINT_PANEL,
   GLASS_TINT_SHEET, PageBackground, SCRIM_COLOR } from '../view/Glass';
+import { FLOAT_GAP, FLOAT_SIDE, FLOAT_TOP, H_HEADER, H_TABBAR, H_WEEKROW } from '../view/Float';
 import { WallpaperRepo } from '../data/WallpaperRepo';
 
 import { ChipButton } from '../view/ChipButton';
@@ -46,6 +47,15 @@ const TAG: string = 'ClassOUT';
 const SECTION_H: number = 52;
 /** 机动节次（第 9、12 节）的行高 */
 const FLEX_SECTION_H: number = 36;
+/**
+ * 课表网格的时间轴宽度、以及网格左右内边距（vp）。
+ *
+ * ⚠️ 抽成常量是因为**悬浮周条要和网格的 7 列严格对齐**：周条走的是
+ * 「满宽内容层 + 左右留边的玻璃背景层」，内容层必须用**和网格一模一样**的
+ * 这两个数 + 同样的列宽算法，否则越往右边偏得越多。
+ */
+const TT_AXIS_W: number = 38;
+const TT_GRID_PAD: number = 4;
 
 const EMPTY_SEMESTER: Semester = {
   id: 0,
@@ -98,6 +108,21 @@ struct Index {
 
   private weekSessions: CourseSession[] = [];
   private readonly days: number[] = [1, 2, 3, 4, 5, 6, 7];
+
+  // ---------------- 悬浮浮窗（见 view/Float.ets 的文件头注释）----------------
+  /** 顶部浮窗栈（页头）量出来的真实高度；默认值只够撑第一帧 */
+  @State headerBlockH: number = FLOAT_TOP + H_HEADER;
+  /** 底部悬浮导航栏量出来的真实高度 */
+  @State tabbarH: number = H_TABBAR;
+  /** 内容层上方要让出的高度（设置页没有页头，所以是 0） */
+  private topInset(): number {
+    return this.tab === 3 ? 0 : this.headerBlockH;
+  }
+
+  /** 内容层下方要让出的高度（悬浮导航栏 + 间距） */
+  private bottomInset(): number {
+    return this.tabbarH + FLOAT_GAP;
+  }
 
   /**
    * 系统返回：手势导航的左右边缘内滑、或三键导航的返回键，都会走这里。
@@ -541,14 +566,23 @@ struct Index {
     }
     .width('100%')
     .padding({ left: 16, right: 16, top: 12, bottom: 10 })
-    .glassPanel()
+    .glassSheet()
   }
 
+  /**
+   * 课表的周条（周一…周日 + 日期）。
+   *
+   * ⚠️ **它不做成悬浮浮窗**（用户 2026-10-14 明确："周一到周日不要做成悬浮窗了，会出去"）：
+   * 它必须和网格的 7 列严格对齐，而悬浮面板要左右留边、还会被外层 padding 再缩一次，
+   * 列宽对不上就会越往右偏得越多。现在它回到**滚动内容里**，作为表格自己的表头，
+   * 和网格用同一套几何（同一个 `Row` 结构、同样的 `TT_AXIS_W` / `TT_GRID_PAD`），
+   * 上下滚时跟着表格一起走 —— 这也是用户选的方案 B。
+   */
   @Builder
-  WeekdayHeader() {
+  WeekHeaderRow() {
     Row() {
       Column()
-        .width(38)
+        .width(TT_AXIS_W)
       ForEach(this.days, (wd: number) => {
         Column() {
           Text(`周${WEEKDAY_CN[wd - 1]}`)
@@ -564,7 +598,7 @@ struct Index {
       }, (wd: number) => `hdr-${wd}`)
     }
     .width('100%')
-    .padding({ left: 4, right: 4, top: 6, bottom: 6 })
+    .padding({ left: TT_GRID_PAD, right: TT_GRID_PAD, top: 6, bottom: 6 })
     .glassPanel()
   }
 
@@ -634,7 +668,7 @@ struct Index {
           .padding({ top: 2 })
         }, (st: SectionTime) => `t-${st.section}`)
       }
-      .width(38)
+      .width(TT_AXIS_W)
 
       // 7 天
       ForEach(this.days, (wd: number) => {
@@ -660,9 +694,15 @@ struct Index {
     .width('100%')
     .height(this.gridHeight())
     .alignItems(VerticalAlign.Top)
-    .padding({ left: 4, right: 4 })
+    .padding({ left: TT_GRID_PAD, right: TT_GRID_PAD })
   }
 
+  /**
+   * 底部导航栏 —— **悬浮浮窗**。
+   *
+   * 导航栏也是"大面"，所以用 `glassSheet`（模糊 + 大圆角 + 浮起阴影）。
+   * 高度在这里量出来给内容层留 padding（见 `view/Float.ets`）。
+   */
   @Builder
   TabBar() {
     Row() {
@@ -673,8 +713,14 @@ struct Index {
       this.TabItem(3, '设置')
     }
     .width('100%')
-    .height(54)
-    .glassPanel()
+    .height(H_TABBAR)
+    .glassSheet()
+    .onAreaChange((oldArea: Area, newArea: Area): void => {
+      const h: Length | undefined = newArea.height;
+      if (typeof h === 'number' && h > 0) {
+        this.tabbarH = h;
+      }
+    })
   }
 
   @Builder
@@ -1008,66 +1054,125 @@ struct Index {
       // 玻璃态的"可透物"：铺在所有内容之下。
       // 各页面根容器都不再设不透明底色，否则会把这一层挡掉、玻璃白做。
       PageBackground()
-      Column() {
-        if (this.loading) {
-          Column() {
-            Text('ClassOUT')
-              .fontSize(34)
-              .fontWeight(FontWeight.Bold)
-              .fontColor('#F2F5FA')
-            Text(this.statusText)
-              .fontSize(13)
-              .fontColor('#94A0B5')
-              .margin({ top: 12 })
-          }
-          .width('100%')
-          .height('100%')
-          .justifyContent(FlexAlign.Center)
-        } else {
-          // 设置页不显示课表那套头部（学期名 / 第几周 / ＋补课 / 管理课程 / 今天）——
-          // 那些是课表页的导航控件，摆在设置页上只会干扰
-          if (this.tab !== 3) {
-            this.Header()
-          }
+
+      // ================= 内容层（铺满整屏）=================
+      // 页头 / 导航栏改成**悬浮浮窗**之后，内容层不再被它们挤占：
+      // 它从屏幕顶一直铺到底，靠**自己的上下 padding** 给浮窗让位
+      // （padding 加在滚动内容上，所以往上滑时内容会钻到浮窗下面，见 view/Float.ets）。
+      if (this.loading) {
+        Column() {
+          Text('ClassOUT')
+            .fontSize(34)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#F2F5FA')
+          Text(this.statusText)
+            .fontSize(13)
+            .fontColor('#94A0B5')
+            .margin({ top: 12 })
+        }
+        .width('100%')
+        .height('100%')
+        .justifyContent(FlexAlign.Center)
+      } else {
+        Column() {
           if (this.tab === 0) {
-            this.WeekdayHeader()
             Scroll() {
-              this.Grid()
+              Column() {
+                // 表格自己的表头行：跟着网格一起滚（不是浮窗）
+                this.WeekHeaderRow()
+                this.Grid()
+              }
+              .width('100%')
+              // 上方让出「页头 + 周条」两条浮窗，下方让出悬浮导航栏
+              // ⚠️ `+ FLOAT_GAP`：用户要求「多个玻璃矩形相连时中间要有空行」，
+              // 不留缝的话页头浮窗会和下面那条周条贴在一起
+              .padding({ top: this.topInset() + FLOAT_GAP, bottom: this.bottomInset() })
             }
+            .width('100%')
             .layoutWeight(1)
             .scrollBar(BarState.Off)
             .align(Alignment.TopStart)
           } else if (this.tab === 1) {
-            // 包一层含 layoutWeight 的 Column：TodoInbox 自己的根节点是 height('100%')，
-            // 直接放进本 Column 会占满整屏高度，把下面的 TabBar 顶出屏幕外。
             Column() {
-              TodoInbox({ semesterId: this.semester.id })
+              TodoInbox({
+                semesterId: this.semester.id,
+                topInset: this.topInset(),
+                bottomInset: this.bottomInset()
+              })
             }
             .width('100%')
             .layoutWeight(1)
           } else if (this.tab === 2) {
-            // 同上：PlanDayView 根节点也是 height('100%')
             Column() {
-              PlanDayView({ semesterId: this.semester.id })
+              PlanDayView({
+                semesterId: this.semester.id,
+                topInset: this.topInset(),
+                bottomInset: this.bottomInset()
+              })
             }
             .width('100%')
             .layoutWeight(1)
           } else {
             // 设置页。⚠️ 原来是 else 兜底给 PlanDayView，加第 4 个标签后必须
             // 把计划页改成显式 `tab === 2`，否则「设置」会显示成计划页。
+            // 设置页没有课表那套页头（学期名 / 第几周 / ＋补课 / 管理课程 / 今天），
+            // 它自己的标题栏在页面内部浮，所以这里 topInset 传 0。
             Column() {
-              SettingsPage({ semesterId: this.semester.id })
+              SettingsPage({
+                semesterId: this.semester.id,
+                topInset: this.topInset(),
+                bottomInset: this.bottomInset()
+              })
             }
             .width('100%')
             .layoutWeight(1)
           }
+        }
+        .width('100%')
+        .height('100%')
+        // 底色交给 PageBackground（见 Glass.ets）
+        .backgroundColor(Color.Transparent)
+      }
+
+      // ================= 浮窗层（完全不参与内容布局）=================
+      if (!this.loading) {
+        // 顶部浮窗栈：页头（课表页再加一条周条）。
+        // 设置页不显示课表那套头部 —— 那些是课表页的导航控件，摆在设置页只会干扰；
+        // 它自己的「设置」标题栏在 SettingsPage 内部浮。
+        if (this.tab !== 3) {
+          // ⚠️ 定位壳：根 Stack 默认**居中**排子节点，所以浮窗必须靠一层
+          // "满屏 + 顶到上边"的壳钉住；量高度的是里面那层（它的高度才是浮窗的真实占位）。
+          Column() {
+            Column() {
+              this.Header()
+            }
+            .width('100%')
+            .padding({ left: FLOAT_SIDE, right: FLOAT_SIDE, top: FLOAT_TOP })
+            // 量出这一叠浮窗的总高度，内容层用它留 padding
+            .onAreaChange((oldArea: Area, newArea: Area): void => {
+              const h: Length | undefined = newArea.height;
+              if (typeof h === 'number' && h > 0) {
+                this.headerBlockH = h;
+              }
+            })
+            .hitTestBehavior(HitTestMode.Transparent)
+          }
+          .width('100%')
+          .height('100%')
+          .justifyContent(FlexAlign.Start)
+          .hitTestBehavior(HitTestMode.Transparent)
+        }
+
+        // 底部浮窗：导航栏
+        Column() {
           this.TabBar()
         }
+        .width('100%')
+        .height('100%')
+        .padding({ left: FLOAT_SIDE, right: FLOAT_SIDE, bottom: FLOAT_GAP })
+        .justifyContent(FlexAlign.End)
+        .hitTestBehavior(HitTestMode.Transparent)
       }
-      .width('100%')
-      .height('100%')
-      // 底色交给 PageBackground（见 Glass.ets）
-      .backgroundColor(Color.Transparent)
 
       if (this.showManager) {
         // 管理课程原来**直接盖在课表上**（没有遮罩）。玻璃化的正解不是"把背景盖掉"，
