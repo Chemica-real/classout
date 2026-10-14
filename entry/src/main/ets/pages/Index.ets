@@ -21,6 +21,7 @@ import { FLOAT_GAP, FLOAT_SIDE, FLOAT_TOP, H_HEADER, H_TABBAR, H_WEEKROW } from 
 import { DUR_SWEEP, TYPE_MS, curveOrLinear, dur, isMotionOn, loadMotionSetting,
   sweepCurve } from '../view/Motion';
 import { WallpaperRepo } from '../data/WallpaperRepo';
+import { MOTTO_DEFAULT, loadMotto } from '../data/Prefs';
 
 import { ChipButton } from '../view/ChipButton';
 
@@ -58,6 +59,19 @@ const FLEX_SECTION_H: number = 36;
  */
 const TT_AXIS_W: number = 38;
 const TT_GRID_PAD: number = 4;
+
+/**
+ * 启动清单的阶段名（**和 `init()` 里的真实顺序一一对应**）。
+ * 加载页把"正在干什么"逐条标出来 —— 既是科技感，也是真的有用：
+ * 冷启动要重排提醒，过去只有一行会变的文案，用户不知道还要等多久。
+ */
+const BOOT_STEPS: string[] = [
+  '初始化本地数据',
+  '载入课表与节次',
+  '补生成下课待办',
+  '同步系统日历提醒',
+  '就绪'
+];
 
 const EMPTY_SEMESTER: Semester = {
   id: 0,
@@ -136,6 +150,14 @@ struct Index {
   // ---------------- 动画相关状态（见 view/Motion.ets）----------------
   /** 打字机：已经"打"出来的那部分启动文案 */
   @State typedStatus: string = '';
+  /** 启动清单：已经完成的阶段数（== 当前正在做的那个下标） */
+  @State bootStep: number = 0;
+  /** 加载页的常驻动效（外圈旋转 / 底部进度条）—— 关掉动画时保持静止 */
+  @State bootSpin: boolean = false;
+  @State bootBar: boolean = false;
+  @StorageLink('motionOn') @Watch('onMotionChanged') motionOn: boolean = true;
+  /** 首页标语（设置页可改，见 data/Prefs.ets）。加载页第一帧就用它 */
+  @StorageLink('bootMotto') motto: string = MOTTO_DEFAULT;
   /** 页头那道一次性扫光：位移目标 / 是否在播 */
   @State sweep: boolean = false;
   @State sweepVisible: boolean = false;
@@ -198,6 +220,8 @@ struct Index {
   }
 
   aboutToAppear(): void {
+    // 加载页的常驻动效（关掉动画时不启动，见 startBootMotion）
+    this.startBootMotion();
     this.bootstrap();
   }
 
@@ -273,6 +297,29 @@ struct Index {
     }, dur(DUR_SWEEP) + 60));
   }
 
+  /**
+   * 加载页的常驻动效：外圈缓慢自转 + 底部不定量进度条。
+   *
+   * 用的是**隐式动画**（`.animation({iterations: -1})`）+ 一个翻转一次的 state：
+   * 这样只挂两个节点、只动 rotate/translate，开销可以忽略。
+   * ⚠️ 动画总开关关掉时**不启动**（用户要求"一次性关闭"要覆盖到加载页）。
+   */
+  private startBootMotion(): void {
+    if (!this.motionOn) {
+      this.bootSpin = false;
+      this.bootBar = false;
+      return;
+    }
+    setTimeout((): void => {
+      this.bootSpin = true;
+      this.bootBar = true;
+    }, 16);
+  }
+
+  private onMotionChanged(): void {
+    this.startBootMotion();
+  }
+
   /** 启动文案变了 → 重新打一遍 */
   private onStatusChanged(): void {
     this.typeStatus(this.statusText);
@@ -283,8 +330,11 @@ struct Index {
     // 冷启动恢复自定义背景（没有就用渐变兜底）。AppStorage 是内存态，所以每次启动都要读回来；
     // 设置页选完图会直接写 AppStorage，PageBackground 靠 @StorageLink 立刻跟着换。
     AppStorage.setOrCreate('wallpaper', await WallpaperRepo.load(ctx));
+    // 首页标语：也在第一帧之前读回来（加载页字标下面那行就是它）
+    AppStorage.setOrCreate('bootMotto', await loadMotto(ctx));
     // 动画总开关：AppStorage 是内存态，每次冷启动都要从 kv 读回来
     await loadMotionSetting(ctx);
+    this.bootStep = 0;
     const sem: Semester = await Seeder.ensureSemester(ctx);
     this.semester = sem;
     await Seeder.ensureRestWindows(ctx);
@@ -297,20 +347,24 @@ struct Index {
       this.statusText = '首次启动：正在写入课表种子数据…';
       await Seeder.seedCourses(ctx, sem.id);
     }
+    this.bootStep = 1;      // 学期/节次/旧数据都就绪了
     this.statusText = '正在排课…';
     const now: Date = today();
     const w: number = weekOfDate(sem, now);
     this.week = w < 1 ? 1 : (w > sem.totalWeeks ? sem.totalWeeks : w);
     await this.reloadData();
+    this.bootStep = 2;      // 课表载入完成
     this.statusText = '正在补生成下课待办…';
     const outcome: GenerationOutcome = await generateMissedTodos(ctx, sem);
     if (outcome.created > 0) {
       hilog.info(DOMAIN, TAG, 'backfilled %{public}d todos', outcome.created);
     }
+    this.bootStep = 3;      // 待办补生成完成
     this.statusText = '正在重排提醒…';
     const plan: ReminderPlan = await syncReminders(ctx, sem);
     hilog.info(DOMAIN, TAG, 'reminder plan: %{public}s', JSON.stringify(plan));
     await this.writeRunReport(ctx, sem, outcome, plan, migrated);
+    this.bootStep = 4;      // 提醒同步完成 → 就绪
     this.loading = false;
     // 首屏亮起来时让玻璃"过一道光"（用户要的"模仿沉浸光感"，**只发生这一次**；
     // 切标签时不做，用户明确说过那样"太丑太鸡肋"）
@@ -1174,6 +1228,149 @@ struct Index {
   }
 
   /**
+   * 启动加载页（用户要求："进入时的加载首页再高档大气有科技感一点"）。
+   *
+   * 结构与理由：
+   *   ① 极淡的网格底纹 —— 课表本身就是一张网格，用它当"科技感"的底纹最贴题；
+   *   ② 两层同心圆环（一实一虚）**反向缓慢自转** —— 只动 rotate，两个节点；
+   *   ③ 中央字标：拉开字距的 ClassOUT + 一条渐变细线 + 一行小字；
+   *   ④ **启动清单**：5 条真实阶段（见 `init()`），完成的打勾、当前的用强调蓝，
+   *      比一行"正在…"信息量大得多（冷启动要重排提醒，用户知道还要等多久）；
+   *   ⑤ 底部不定量进度条：一段渐变在轨道上来回滑。
+   *
+   * ⚠️ ③④ 是**信息**，动画关掉也照常显示；①②⑤ 是**装饰**，关掉动画时静止不动
+   * （`bootSpin` / `bootBar` 不会被启动）。
+   */
+  @Builder
+  LoadingScreen() {
+    Stack() {
+      // ① 网格底纹：横 7 竖 5，极淡（0.05），只用来"透气"
+      ForEach([0, 1, 2, 3, 4, 5, 6], (i: number) => {
+        Row()
+          .width('100%')
+          .height(1)
+          .backgroundColor('rgba(255,255,255,0.05)')
+          .position({ x: 0, y: 120 + i * 82 })
+      }, (i: number) => `bg-h-${i}`)
+      ForEach([0, 1, 2, 3, 4], (i: number) => {
+        Column()
+          .width(1)
+          .height('100%')
+          .backgroundColor('rgba(255,255,255,0.04)')
+          .position({ x: 60 + i * 92, y: 0 })
+      }, (i: number) => `bg-v-${i}`)
+
+      // ② 两层圆环，反向自转（虚线那圈转得慢一点，层次感）
+      Column()
+        .width(300)
+        .height(300)
+        .borderRadius(150)
+        .border({ width: 1, color: 'rgba(127,168,255,0.18)' })
+        .rotate({ angle: this.bootSpin ? 360 : 0 })
+        .animation({ duration: 9000, curve: Curve.Linear, iterations: -1 })
+      Column()
+        .width(370)
+        .height(370)
+        .borderRadius(185)
+        .border({ width: 1, color: 'rgba(255,255,255,0.10)', style: BorderStyle.Dashed })
+        .rotate({ angle: this.bootSpin ? -360 : 0 })
+        .animation({ duration: 16000, curve: Curve.Linear, iterations: -1 })
+
+      // ③④⑤ 主体
+      Column() {
+        // ③ 字标
+        Text('ClassOUT')
+          .fontSize(38)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#F2F5FA')
+          .letterSpacing(7)
+        Row()
+          .width(96)
+          .height(3)
+          .borderRadius(2)
+          .linearGradient({
+            angle: 90,
+            colors: [['#7FA8FF', 0.0], ['#B08BE8', 0.5], ['#1F7A73', 1.0]]
+          })
+          .margin({ top: 14 })
+        // 首页标语：用户可在设置里改（有字数上限，见 data/Prefs.ets）。
+        // 空的时候整行不占位 —— 有人就想要一个干净的 logo。
+        if (this.motto.length > 0) {
+          Text(this.motto)
+            .fontSize(11)
+            .fontColor('#8B97AC')
+            .letterSpacing(3)
+            .margin({ top: 14 })
+        }
+
+        // ④ 启动清单（放在一块玻璃面板上：压在照片壁纸上也能读清，而且和全 App 的语言一致）
+        Column() {
+        Column() {
+          ForEach(BOOT_STEPS, (name: string, i: number) => {
+            Row() {
+              Text(i < this.bootStep ? '✓' : (i === this.bootStep ? '▸' : '·'))
+                .fontSize(12)
+                .fontColor(i < this.bootStep ? '#7BD69A'
+                  : (i === this.bootStep ? '#7FA8FF' : '#5A6478'))
+                .width(18)
+              Text(name)
+                .fontSize(12)
+                .fontColor(i < this.bootStep ? '#A9B5C9'
+                  : (i === this.bootStep ? '#F2F5FA' : '#5A6478'))
+              Blank()
+              if (i === this.bootStep) {
+                Text('进行中')
+                  .fontSize(10)
+                  .fontColor('#7FA8FF')
+              }
+            }
+            .width('100%')
+            .padding({ top: 5, bottom: 5 })
+          }, (name: string) => `boot-${name}`)
+        }
+        .width('100%')
+        .alignItems(HorizontalAlign.Start)
+
+        // 打字机那行（"正在重排提醒…"）—— 保留，它是细粒度进度
+        Text(this.typedStatus)
+          .fontSize(11)
+          .fontColor('#8B97AC')
+          .width('100%')
+          .margin({ top: 12 })
+
+        // ⑤ 底部不定量进度条
+        Stack({ alignContent: Alignment.Start }) {
+          Row()
+            .width('100%')
+            .height(2)
+            .backgroundColor('rgba(255,255,255,0.08)')
+          Row()
+            .width(90)
+            .height(2)
+            .borderRadius(1)
+            .linearGradient({
+              angle: 90,
+              colors: [['rgba(127,168,255,0.0)', 0.0], ['#7FA8FF', 0.5], ['rgba(127,168,255,0.0)', 1.0]]
+            })
+            .translate({ x: this.bootBar ? '300%' : '-60%' })
+            .animation({ duration: 1700, curve: Curve.Linear, iterations: -1 })
+        }
+        .width('100%')
+        .margin({ top: 14 })
+        }
+        .width('100%')
+        .padding({ left: 16, right: 16, top: 14, bottom: 16 })
+        .glassPanel()
+        .margin({ top: 34 })
+      }
+      .width('78%')
+      .justifyContent(FlexAlign.Center)
+    }
+    .width('100%')
+    .height('100%')
+  }
+
+  /**
    * 浮窗层（页头 / 待安排货架 / 导航栏）：**不参与内容布局**。
    *
    * ⚠️ 它在 `build()` 里被调用两次，位置由 `pageModalOpen` 决定 —— 这是为了
@@ -1242,19 +1439,7 @@ struct Index {
       // 它从屏幕顶一直铺到底，靠**自己的上下 padding** 给浮窗让位
       // （padding 加在滚动内容上，所以往上滑时内容会钻到浮窗下面，见 view/Float.ets）。
       if (this.loading) {
-        Column() {
-          Text('ClassOUT')
-            .fontSize(34)
-            .fontWeight(FontWeight.Bold)
-            .fontColor('#F2F5FA')
-          Text(this.typedStatus)
-            .fontSize(13)
-            .fontColor('#94A0B5')
-            .margin({ top: 12 })
-        }
-        .width('100%')
-        .height('100%')
-        .justifyContent(FlexAlign.Center)
+        this.LoadingScreen()
       } else {
         Column() {
           if (this.tab === 0) {

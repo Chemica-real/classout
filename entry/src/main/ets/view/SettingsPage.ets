@@ -27,6 +27,7 @@ import { GLASS_BLUR, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_ROW, GLASS_SH
   GLASS_TINT_PANEL, GLASS_TINT_SHEET } from './Glass';
 import { FLOAT_GAP, FLOAT_SIDE, FLOAT_TOP, H_TITLE } from './Float';
 import { persistMotionSetting } from './Motion';
+import { MOTTO_DEFAULT, MOTTO_MAX, cleanMotto, loadMotto, saveMotto } from '../data/Prefs';
 
 // 文件内 @Styles（见 Glass.ets 顶部注释：@Styles 不能跨文件 export）
 // 深色版。设置页的卡片按用户拍定算"大面" → 保留模糊（`glassPanelCard`），
@@ -96,6 +97,8 @@ export struct SettingsPage {
    * ⚠️ `@StorageLink` 的键名必须写字面量 —— 详情见 view/Motion.ets。
    */
   @StorageLink('motionOn') motionOn: boolean = true;
+  /** 首页标语的就地编辑副本（保存前不动 AppStorage，免得打字时就改到加载页） */
+  @State mottoDraft: string = MOTTO_DEFAULT;
 
   aboutToAppear(): void {
     this.refreshPreview();
@@ -301,6 +304,70 @@ export struct SettingsPage {
       .fontColor('#94A0B5')
       .width('100%')
       .margin({ top: 12, bottom: 4 })
+  }
+
+  /**
+   * 首页标语卡片：改 ClassOUT 字标下面那一行（用户要求，带字数限制）。
+   *
+   * 三个细节：
+   *  - `maxLength(MOTTO_MAX)` **和保存时的截断**都做 —— 光靠输入框限制挡不住粘贴；
+   *  - 右下角显示 `n/MOTTO_MAX`，让人知道还能写多少；
+   *  - 留空 = 恢复默认标语（见 data/Prefs.ets 的第 2 条约定）。
+   */
+  @Builder
+  MottoCard() {
+    Column() {
+      this.SectionTitle('首页标语', `写在 ClassOUT 下面那一行，最多 ${MOTTO_MAX} 个字；留空就恢复默认。`)
+
+      TextInput({ text: this.mottoDraft, placeholder: MOTTO_DEFAULT })
+        .fontColor('#F2F5FA')
+        .placeholderColor('#8B97AC')
+        .caretColor('#7FA8FF')
+        .maxLength(MOTTO_MAX)
+        .onChange((v: string): void => {
+          this.mottoDraft = v;
+        })
+        .onSubmit((): void => this.doSaveMotto())
+
+      Row() {
+        Text(`${this.mottoDraft.length}/${MOTTO_MAX}`)
+          .fontSize(11)
+          .fontColor(this.mottoDraft.length >= MOTTO_MAX ? '#E8B25C' : '#8B97AC')
+          .layoutWeight(1)
+        Button('恢复默认')
+          .backgroundColor('rgba(255,255,255,0.10)')
+          .fontColor('#C3CDDE')
+          .fontSize(12)
+          .height(30)
+          .margin({ right: 8 })
+          .onClick((): void => {
+            this.mottoDraft = MOTTO_DEFAULT;
+            this.doSaveMotto();
+          })
+        Button('保存')
+          .backgroundColor('#2E6BE6')
+          .fontColor('#FFFFFF')
+          .fontSize(12)
+          .height(30)
+          .onClick((): void => this.doSaveMotto())
+      }
+      .width('100%')
+      .margin({ top: 10 })
+    }
+    .width('100%')
+    .padding(16)
+    .glassPanelCard()
+    .margin({ bottom: 12 })
+  }
+
+  private doSaveMotto(): void {
+    saveMotto(this.context(), this.mottoDraft).then((t: string): void => {
+      this.mottoDraft = t;
+      this.showToast('首页标语已保存');
+    }).catch((e: Object): void => {
+      hilog.warn(DOMAIN, TAG, 'save motto failed: %{public}s', JSON.stringify(e));
+      this.showToast('保存失败');
+    });
   }
 
   /**
@@ -655,6 +722,7 @@ export struct SettingsPage {
             }
 
             this.WallpaperCard()
+            this.MottoCard()
             this.MotionCard()
             this.ReminderCard()
             this.RestCard()
