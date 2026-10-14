@@ -28,6 +28,11 @@ const TAG: string = 'ClassOUT';
 const KV_KEY: string = 'wallpaper_path';
 /** 沙盒里的文件名前缀 */
 const FILE_PREFIX: string = 'wallpaper_';
+/**
+ * kv 里存"背景的显示位置与缩放"（格式 `'fx,fy,zoom'`，解析/夹紧见 domain/Wallpaper）。
+ * 存**归一化**的焦点而不是像素偏移：换屏幕、转横竖屏都不会让调好的构图跑偏。
+ */
+const KV_FOCUS: string = 'wallpaper_focus';
 
 export class WallpaperRepo {
 
@@ -80,9 +85,26 @@ export class WallpaperRepo {
   }
 
   /** 恢复默认渐变：删掉沙盒文件与记录 */
+  /** 读回背景的位置/缩放（空串 = 没调过，等于居中不缩放） */
+  static async loadFocus(context: common.Context): Promise<string> {
+    try {
+      return await Db.getKv(context, KV_FOCUS);
+    } catch (e) {
+      hilog.warn(DOMAIN, TAG, 'wallpaper focus load failed: %{public}s', JSON.stringify(e));
+      return '';
+    }
+  }
+
+  /** 存背景的位置/缩放 */
+  static async saveFocus(context: common.Context, text: string): Promise<void> {
+    await Db.setKv(context, KV_FOCUS, text);
+  }
+
   static async clear(context: common.Context): Promise<void> {
     const oldPath: string = await WallpaperRepo.load(context);
     await Db.setKv(context, KV_KEY, '');
+    // 位置也一起清掉：否则下次再选一张图，会莫名其妙沿用上一张的构图
+    await Db.setKv(context, KV_FOCUS, '');
     if (oldPath.length > 0) {
       WallpaperRepo.removeFile(oldPath);
     }

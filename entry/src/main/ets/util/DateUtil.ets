@@ -120,3 +120,23 @@ export function countdownText(target: Date, from: Date): string {
   }
   return `已结束 ${-d} 天`;
 }
+
+/**
+ * **最近的周一**。
+ *
+ * 学期开始日必须是周一 —— 周次是从"开始日那一周"数起的（`Timetable.weekOfDate`），
+ * 开始日落在周三会让整张周表平移。用户 2026-10-15 拍定：日期选择器选完之后
+ * **自动吸附到最近的周一**，并把改成了哪天告诉他。
+ *
+ * 周一原样；周二→往回 1 天；周四→往回 3 天（比往后 4 天近）；周五→往后 3 天；周日→往后 1 天。
+ * 前后一样远的情况在整数上不存在（2·wd = 9 无整数解），所以不用定"平局规则"。
+ */
+export function nearestMonday(d: Date): Date {
+  const wd: number = weekdayOf(d);
+  if (wd === 1) {
+    return d;
+  }
+  const back: number = wd - 1;      // 往回退几天到周一
+  const forward: number = 8 - wd;   // 往后几天到周一
+  return addDays(d, back <= forward ? -back : forward);
+}

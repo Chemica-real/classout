@@ -1,5 +1,5 @@
 import { UIContext } from '@kit.ArkUI';
-import { formatDateTime, parseDateTime } from './DateUtil';
+import { formatDate, formatDateTime, parseDate, parseDateTime } from './DateUtil';
 
 /**
  * 用**鸿蒙自己的**日期选择器 + 时间选择器挑一个「日期 + 时刻」。
@@ -42,6 +42,24 @@ export function pickDateTime(ui: UIContext, initial: string,
           onPicked(formatDateTime(picked));
         }
       });
+    }
+  });
+}
+
+/**
+ * 只挑「哪一天」（不要时刻）。学期开始日这类字段用它 ——
+ * 后面再弹一次时间滚轮对它们纯属噪音（用户 2026-10-15：「yyyy-mm-dd 的输入模式太不像人了」）。
+ *
+ * 命中区选正午的理由同 `pickDateTime`（ArkUI 的 DatePickerDialog 对 `selected` 有时区偏移，
+ * 喂带时刻的 Date 会差一天）。
+ */
+export function pickDate(ui: UIContext, initial: string, onPicked: (day: string) => void): void {
+  const base: Date = initial.length >= 10 ? parseDate(initial.substring(0, 10)) : new Date();
+  const seed: Date = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 12, 0);
+  ui.showDatePickerDialog({
+    selected: seed,
+    onDateAccept: (day: Date): void => {
+      onPicked(formatDate(day));
     }
   });
 }

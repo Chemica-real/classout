@@ -9,11 +9,12 @@ import { Seeder } from '../data/Seeder';
 import { BackupRepo } from '../data/BackupRepo';
 import { BackupBundle, backupSummary, parseBackup } from '../domain/Backup';
 import { maskAll, maskFromText, maskToText } from '../model/WeekMask';
-import { formatDate, hhmmToMin, minToHHmm, today, WEEKDAY_CN } from '../util/DateUtil';
+import { formatDate, hhmmToMin, minToHHmm, nearestMonday, parseDate, today, WEEKDAY_CN } from '../util/DateUtil';
 import { TEMPLATE_VARS, TemplateCheck, Validation, validateSectionTimes, validateSessionRule,
   validateTemplateDdl, validateTemplateTitle } from '../domain/Validate';
 import { renderTitle } from '../domain/TodoGenerator';
 import { ChipButton } from './ChipButton';
+import { pickDate } from '../util/DateTimePicker';
 import { BackHandler, backStack } from '../util/BackStack';
 import { GLASS_BLUR, GLASS_EDGE_SOFT, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_ROW,
   GLASS_SHADOW_SHEET, GLASS_TINT_PANEL, GLASS_TINT_ROW, GLASS_TINT_SHEET } from './Glass';
@@ -670,6 +671,27 @@ export struct CourseManager {
 
   // ---------------- 学期 ----------------
 
+  /**
+   * 选学期开始日（用户 2026-10-15：「yyyy-mm-dd 的输入模式太不像人了，鸿蒙难道没有可以选日期的控件吗」）。
+   * 选完**自动吸附到最近的周一**（用户拍定），挪动了就明确告诉他改成了哪天 ——
+   * 静默改用户填的日期是这个项目的老教训。
+   */
+  private pickSemStart(isNew: boolean): void {
+    const cur: string = isNew ? this.newSemStart : this.semStart;
+    pickDate(this.getUIContext(), cur, (day: string): void => {
+      const snapped: Date = nearestMonday(parseDate(day));
+      const text: string = formatDate(snapped);
+      if (isNew) {
+        this.newSemStart = text;
+      } else {
+        this.semStart = text;
+      }
+      this.toast = text === day
+        ? `开始日：${text}（周一）`
+        : `已对齐到最近的周一：${text}（原来选的 ${day} 不是周一）`;
+    });
+  }
+
   private saveSemester(): void {
     this.doSaveSemester().catch((e: Object): void => {
       hilog.error(DOMAIN, TAG, 'save semester failed: %{public}s', JSON.stringify(e));
@@ -684,6 +706,13 @@ export struct CourseManager {
     }
     if (this.semStart.length !== 10 || this.semStart.charAt(4) !== '-') {
       this.toast = '开学日期格式应为 YYYY-MM-DD（第一教学周的周一）';
+      return;
+    }
+    // 兜底（正常路径在选日期那一步已经吸附过了）：开始日必须是周一
+    const snappedStart: string = formatDate(nearestMonday(parseDate(this.semStart)));
+    if (snappedStart !== this.semStart) {
+      this.semStart = snappedStart;
+      this.toast = `开始日已对齐到最近的周一：${snappedStart}`;
       return;
     }
     sem.name = this.semName;
@@ -803,6 +832,12 @@ export struct CourseManager {
     const name: string = this.newSemName.trim().length > 0 ? this.newSemName.trim() : '新学期';
     if (this.newSemStart.length !== 10 || this.newSemStart.charAt(4) !== '-') {
       this.toast = '开学日期格式应为 YYYY-MM-DD（第一教学周的周一）';
+      return;
+    }
+    const snappedNew: string = formatDate(nearestMonday(parseDate(this.newSemStart)));
+    if (snappedNew !== this.newSemStart) {
+      this.newSemStart = snappedNew;
+      this.toast = `开始日已对齐到最近的周一：${snappedNew}`;
       return;
     }
     const previousId: number = this.semester === undefined ? 0 : this.semester.id;
@@ -1438,14 +1473,20 @@ export struct CourseManager {
               this.semName = v;
             })
 
-          this.FieldLabel('第一教学周周一（YYYY-MM-DD）')
-          TextInput({ text: this.semStart, placeholder: '2026-09-01' })
-            .fontColor('#F2F5FA')
-            .placeholderColor('#8B97AC')
-            .caretColor('#7FA8FF')
-            .onChange((v: string): void => {
-              this.semStart = v;
-            })
+          this.FieldLabel('第一教学周周一')
+          Row() {
+            Text(this.semStart.length > 0 ? this.semStart : '未选择')
+              .fontSize(15)
+              .fontColor('#F2F5FA')
+              .layoutWeight(1)
+            Button('选择日期…')
+              .backgroundColor('rgba(255,255,255,0.14)')
+              .fontColor('#7FA8FF')
+              .fontSize(13)
+              .onClick((): void => this.pickSemStart(false))
+          }
+          .width('100%')
+          .padding({ top: 4, bottom: 4 })
           Text('北大 2026 秋季：9/7 开学，16 个教学周（到 12/27）')
             .fontSize(11)
             .fontColor('#8B97AC')
@@ -1529,14 +1570,20 @@ export struct CourseManager {
               this.newSemName = v;
             })
 
-          this.FieldLabel('第一教学周周一（YYYY-MM-DD）')
-          TextInput({ text: this.newSemStart, placeholder: '2027-02-20' })
-            .fontColor('#F2F5FA')
-            .placeholderColor('#8B97AC')
-            .caretColor('#7FA8FF')
-            .onChange((v: string): void => {
-              this.newSemStart = v;
-            })
+          this.FieldLabel('第一教学周周一')
+          Row() {
+            Text(this.newSemStart.length > 0 ? this.newSemStart : '未选择')
+              .fontSize(15)
+              .fontColor('#F2F5FA')
+              .layoutWeight(1)
+            Button('选择日期…')
+              .backgroundColor('rgba(255,255,255,0.14)')
+              .fontColor('#7FA8FF')
+              .fontSize(13)
+              .onClick((): void => this.pickSemStart(true))
+          }
+          .width('100%')
+          .padding({ top: 4, bottom: 4 })
 
           this.FieldLabel('教学周数')
           Flex({ wrap: FlexWrap.Wrap }) {

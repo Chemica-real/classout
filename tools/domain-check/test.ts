@@ -10,6 +10,8 @@ import { SEED_COURSES, SEED_START_DATE, SEED_TOTAL_WEEKS, SeedCourse, SeedTempla
 import { Course, CourseSession, DEFAULT_REST_WINDOWS, OverrideKind, PlanBlock, RestWindow,
   Semester, SectionTime, SessionOverride, SessionRule, Todo, PKU_SECTION_TIMES } from './Types';
 import { computeWeekSessions, weekOfDate } from './Timetable';
+import { WALLPAPER_MAX_ZOOM, WallpaperGeometry, clampFocus, formatWallpaperFocus,
+  parseWallpaperFocus, wallpaperGeometry } from './Wallpaper';
 import { maskAll, maskFromText, maskToText, maskHas } from './WeekMask';
 import { countdownText, formatDateTime, minToHHmm, parseDate, parseDateTime } from './DateUtil';
 import { computeDdl, renderTitle } from './TodoGenerator';
@@ -1152,6 +1154,46 @@ check('archived 也不算', `${ddlGroupsOn([dt(9, 'X', '2026-10-15 08:00', 'arch
 check('ddlMinuteOf：23:59 → 1439', `${ddlMinuteOf('2026-10-15 23:59')}`, '1439');
 check('ddlMinuteOf：00:07 → 7（非 5 倍数也照算）', `${ddlMinuteOf('2026-10-15 00:07')}`, '7');
 check('ddlMinuteOf：没有时刻 → -1', `${ddlMinuteOf('2026-10-15')}`, '-1');
+
+// ---------- 背景图：选区域 / 调位置（用户 2026-10-15）----------
+console.log('【背景几何：cover 铺满 + 归一化位置】');
+
+const g1: WallpaperGeometry = wallpaperGeometry(1000, 1000, 360, 800, 1, 0, 0);
+check('1:1 的照片填竖屏：按高铺满，宽出 800（360 屏）', `${g1.w},${g1.h}`, '800,800');
+check('横向有余量 220、纵向没有（1:1 填竖屏只能左右挪）',
+  `${g1.maxDx},${g1.maxDy}`, '220,0');
+check('fx=0 → 居中不偏', `${g1.dx},${g1.dy}`, '0,0');
+check('fx=1 → 挪到最右（+220）', `${wallpaperGeometry(1000, 1000, 360, 800, 1, 1, 0).dx}`, '220');
+check('fx=-1 → 挪到最左（-220）', `${wallpaperGeometry(1000, 1000, 360, 800, 1, -1, 0).dx}`, '-220');
+check('fx 超界（2）被夹到 1', `${wallpaperGeometry(1000, 1000, 360, 800, 1, 2, 0).dx}`, '220');
+check('zoom=2 → 图变 1600、横向余量 620、纵向开始有余量 400',
+  ((): string => { const g: WallpaperGeometry = wallpaperGeometry(1000, 1000, 360, 800, 2, 0, 0);
+    return `${g.w},${g.maxDx},${g.maxDy}`; })(),
+  '1600,620,400');
+check('zoom 小于 1 被夹到 1（绝不露出底色）',
+  `${wallpaperGeometry(1000, 1000, 360, 800, 0.2, 0, 0).w}`, '800');
+check('zoom 超过上限被夹到 4',
+  `${wallpaperGeometry(1000, 1000, 360, 800, 99, 0, 0).w}`, `${800 * WALLPAPER_MAX_ZOOM}`);
+check('横图填竖屏：按宽铺满', `${wallpaperGeometry(2000, 1000, 360, 800, 1, 0, 0).w}`, '1600');
+check('图片坏掉（0×0）→ 全 0，不抛异常',
+  ((): string => { const g: WallpaperGeometry = wallpaperGeometry(0, 0, 360, 800, 1, 0, 0);
+    return `${g.w},${g.h},${g.maxDx},${g.maxDy}`; })(),
+  '0,0,0,0');
+check('还没量到尺寸（box 0）→ 全 0', `${wallpaperGeometry(1000, 1000, 0, 0, 1, 0, 0).w}`, '0');
+check('几何是纯函数：同样输入两次结果一样',
+  `${JSON.stringify(wallpaperGeometry(1000, 1000, 360, 800, 1.5, 0.3, -0.6))}`,
+  `${JSON.stringify(wallpaperGeometry(1000, 1000, 360, 800, 1.5, 0.3, -0.6))}`);
+
+// 存储格式：归一化（换屏幕/横竖屏都不会让构图跑偏）
+check('focus 往返：0.25,-0.5,2', formatWallpaperFocus(0.25, -0.5, 2), '0.25,-0.5,2');
+check('解析坏数据 → 居中不缩放', parseWallpaperFocus('乱写').join(','), '0,0,1');
+check('解析空串 → 居中不缩放', parseWallpaperFocus('').join(','), '0,0,1');
+check('解析时越界的值被夹紧', parseWallpaperFocus('9,-9,99').join(','), '1,-1,4');
+check('解析后再格式化是幂等的',
+  formatWallpaperFocus(parseWallpaperFocus('0.5,0.5,1.5')[0], parseWallpaperFocus('0.5,0.5,1.5')[1],
+    parseWallpaperFocus('0.5,0.5,1.5')[2]),
+  '0.5,0.5,1.5');
+check('clampFocus：NaN 落到下限', clampFocus(Number.NaN, 0, 1).join(','), '-1,0,1');
 
 // ---------- 汇总 ----------
 console.log('');

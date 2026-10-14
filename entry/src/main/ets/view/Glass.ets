@@ -2,6 +2,7 @@ import { image } from '@kit.ImageKit';
 import { display } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { WallpaperRepo } from '../data/WallpaperRepo';
+import { WallpaperGeometry, parseWallpaperFocus, wallpaperGeometry } from '../domain/Wallpaper';
 import { curves } from '@kit.ArkUI';
 import { DUR_ORBIT, isMotionOn } from './Motion';
 
@@ -161,8 +162,19 @@ export const SCRIM_COLOR: string = 'rgba(8,10,20,0.42)';
 @Component
 export struct PageBackground {
   @StorageLink('wallpaper') @Watch('onWallpaperChanged') wallpaper: string = '';
+  /**
+   * 背景的显示位置/缩放（'fx,fy,zoom'）。设置页的「调整背景」写它，这里 `@StorageLink` 跟着变
+   * —— 用户不用退出去再进来就能看到效果（用户 2026-10-15：「允许选择区域与调整位置」）。
+   */
+  @StorageLink('wallpaperFocus') @Watch('onWallpaperChanged') focusStr: string = '0,0,1';
   /** 解码后的背景图；undefined = 还没解出来/解码失败 → 显示渐变 */
   @State pixmap: image.PixelMap | undefined = undefined;
+  /** 图片本身的像素尺寸（算 cover 与可动范围要用） */
+  @State imgW: number = 0;
+  @State imgH: number = 0;
+  /** 视口（= 整屏）的 vp 尺寸，由 onAreaChange 量出来 */
+  @State boxW: number = 0;
+  @State boxH: number = 0;
   /**
    * 光晕漂移的"另一端"（用户要的"模仿沉浸光感"）。
    * 用一个 `iterations: -1 + Alternate` 的无限动画在两个位置之间来回，
@@ -218,7 +230,18 @@ export struct PageBackground {
     if (this.wallpaper !== p) {
       return;
     }
+    if (pm !== undefined) {
+      const info: image.ImageInfo = pm.getImageInfoSync();
+      this.imgW = info.size.width;
+      this.imgH = info.size.height;
+    }
     this.pixmap = pm;   // 失败时是 undefined，自动退回渐变
+  }
+
+  /** 当前该怎么画（纯函数算，和设置页的预览同一份实现 → 所见即所得） */
+  private geo(): WallpaperGeometry {
+    const f: number[] = parseWallpaperFocus(this.focusStr);
+    return wallpaperGeometry(this.imgW, this.imgH, this.boxW, this.boxH, f[2], f[0], f[1]);
   }
 
   build() {
@@ -257,12 +280,17 @@ export struct PageBackground {
         .opacity(this.orbit ? GLOW_CYAN_OPACITY * 1.25 : GLOW_CYAN_OPACITY)
         .hitTestBehavior(HitTestMode.None)
       if (this.pixmap !== undefined) {
+        // ⚠️ 这里**不能**再用 `objectFit(Cover)`：Cover 会把图裁到节点自己的框里，
+        //    节点之外没有内容，平移节点只会露出底色（不是"看到照片的另一块"）。
+        //    所以按算出来的尺寸（cover + zoom）画一个"比屏幕大"的图，再用 translate 挪，
+        //    外层 clip 住 —— 这才是"选区域/调位置"。
         Image(this.pixmap)
-          .width('100%')
-          .height('100%')
-          .objectFit(ImageFit.Cover)
+          .width(this.geo().w > 0 ? this.geo().w : '100%')
+          .height(this.geo().h > 0 ? this.geo().h : '100%')
+          .objectFit(ImageFit.Fill)
           .interpolation(ImageInterpolation.High)
           .draggable(false)
+          .translate({ x: this.geo().dx, y: this.geo().dy })
         // 可读性薄纱（照片明暗不可控，正文还压在它上面）—— 深色主题下是"压暗"
         Column()
           .width('100%')
@@ -273,5 +301,16 @@ export struct PageBackground {
     }
     .width('100%')
     .height('100%')
+    .clip(true)
+    .onAreaChange((oldArea: Area, newArea: Area): void => {
+      const w: Length | undefined = newArea.width;
+      const h: Length | undefined = newArea.height;
+      if (typeof w === 'number' && w > 0) {
+        this.boxW = w;
+      }
+      if (typeof h === 'number' && h > 0) {
+        this.boxH = h;
+      }
+    })
   }
 }

@@ -21,6 +21,9 @@ import { Validation, validateRestWindow } from '../domain/Validate';
 import { WEEKDAY_CN, hhmmToMin, minToHHmm } from '../util/DateUtil';
 import { ChipButton } from './ChipButton';
 import { image } from '@kit.ImageKit';
+import { display } from '@kit.ArkUI';
+import { WallpaperGeometry, WALLPAPER_MAX_ZOOM, WALLPAPER_MIN_ZOOM, clampFocus,
+  formatWallpaperFocus, parseWallpaperFocus, wallpaperGeometry } from '../domain/Wallpaper';
 import { WallpaperRepo } from '../data/WallpaperRepo';
 import { PAGE_GRADIENT_A, PAGE_GRADIENT_B, PAGE_GRADIENT_C, WALLPAPER_VEIL } from './Glass';
 import { GLASS_BLUR, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_ROW, GLASS_SHADOW_SHEET,
@@ -74,6 +77,11 @@ export struct SettingsPage {
   @Prop topInset: number = 0;
   /** 下方悬浮浮窗（导航栏）占掉的高度，由 Index 量好传进来 */
   @Prop bottomInset: number = 0;
+  /**
+   * 页面内部开着全屏浮层（背景调整界面）时通知 Index，让它把悬浮浮窗层改画到内容层之下
+   * —— 和两个编辑窗同一套路（见 Index.pageModalOpen 的注释）。
+   */
+  onModalChange: (open: boolean) => void = (): void => {};
   /** 本页标题栏浮窗量出来的高度 */
   @State titleH: number = H_TITLE;
 
@@ -91,6 +99,25 @@ export struct SettingsPage {
   @StorageLink('wallpaper') @Watch('onWallpaperChanged') wallpaper: string = '';
   /** 设置页里的背景缩略图 */
   @State wallPreview: image.PixelMap | undefined = undefined;
+  /** 背景的显示位置/缩放：'fx,fy,zoom'（归一化，见 domain/Wallpaper） */
+  @StorageLink('wallpaperFocus') wallFocus: string = '0,0,1';
+  /**
+   * 「调整背景」全屏界面开着吗。
+   * `@Watch` 是必须的：开的时候要通知 Index 把浮窗层挪到内容层之下（同 TodoInbox）
+   */
+  @State @Watch('onAdjustChanged') adjusting: boolean = false;
+  @State adjPixmap: image.PixelMap | undefined = undefined;
+  @State adjImgW: number = 0;
+  @State adjImgH: number = 0;
+  @State adjBoxW: number = 0;
+  @State adjBoxH: number = 0;
+  @State adjFx: number = 0;
+  @State adjFy: number = 0;
+  @State adjZoom: number = 1;
+  /** 拖拽/双指开始时的基准值（手势给的是累计位移） */
+  private dragFx0: number = 0;
+  private dragFy0: number = 0;
+  private pinchZoom0: number = 1;
   /** toast 自动消失的定时器（-1 = 没在计时） */
   private toastTimer: number = -1;
   /**
@@ -130,6 +157,92 @@ export struct SettingsPage {
   }
 
   /** 弹一条会自动消失的提示（不占布局，避免整页上下跳） */
+  aboutToDisappear(): void {
+    // 组件销毁（切标签）时浮层也跟着没了，别把"有浮层"的状态留给 Index
+    this.onModalChange(false);
+  }
+
+  private onAdjustChanged(): void {
+    this.onModalChange(this.adjusting);
+  }
+
+  /** 打开「调整背景」：把当前的位置/缩放读出来当起点，并解一张预览图 */
+  private openAdjust(): void {
+    const p: string = this.wallpaper;
+    if (p.length === 0) {
+      return;
+    }
+    const cur: number[] = parseWallpaperFocus(this.wallFocus);
+    this.adjFx = cur[0];
+    this.adjFy = cur[1];
+    this.adjZoom = cur[2];
+    this.adjusting = true;
+    this.loadAdjustPreview(p).catch((e: Object): void => {
+      hilog.error(DOMAIN, TAG, 'load adjust preview failed: %{public}s', JSON.stringify(e));
+    });
+  }
+
+  private async loadAdjustPreview(p: string): Promise<void> {
+    const d: display.Display = display.getDefaultDisplaySync();
+    const pm: image.PixelMap | undefined = await WallpaperRepo.decode(p, d.width, d.height);
+    if (this.wallpaper !== p) {
+      return;   // 期间又换了图 → 丢弃
+    }
+    if (pm === undefined) {
+      this.adjusting = false;
+      this.showToast('这张背景图读不出来了，请重新选一张');
+      return;
+    }
+    const info: image.ImageInfo = pm.getImageInfoSync();
+    this.adjImgW = info.size.width;
+    this.adjImgH = info.size.height;
+    this.adjPixmap = pm;
+  }
+
+  /** 预览用的几何：和 PageBackground 用同一个纯函数 → 所见即所得 */
+  private adjGeo(): WallpaperGeometry {
+    return wallpaperGeometry(this.adjImgW, this.adjImgH, this.adjBoxW, this.adjBoxH,
+      this.adjZoom, this.adjFx, this.adjFy);
+  }
+
+  /** 拖拽预览：把手指位移换算成归一化焦点（除以该方向的可动余量） */
+  private dragAdjust(dxVp: number, dyVp: number): void {
+    const g: WallpaperGeometry = this.adjGeo();
+    const nx: number = g.maxDx > 0 ? this.dragFx0 + dxVp / g.maxDx : this.dragFx0;
+    const ny: number = g.maxDy > 0 ? this.dragFy0 + dyVp / g.maxDy : this.dragFy0;
+    const v: number[] = clampFocus(nx, ny, this.adjZoom);
+    this.adjFx = v[0];
+    this.adjFy = v[1];
+  }
+
+  private cancelAdjust(): void {
+    this.adjusting = false;
+    this.adjPixmap = undefined;
+  }
+
+  private saveAdjust(): void {
+    const text: string = formatWallpaperFocus(this.adjFx, this.adjFy, this.adjZoom);
+    this.persistFocus(text);
+    this.adjusting = false;
+    this.adjPixmap = undefined;
+    this.showToast('背景位置已保存（所有页面立刻生效）');
+  }
+
+  private resetAdjust(): void {
+    this.adjFx = 0;
+    this.adjFy = 0;
+    this.adjZoom = 1;
+  }
+
+  private persistFocus(text: string): void {
+    const ctx: common.UIAbilityContext = this.context();
+    this.wallFocus = text;
+    AppStorage.setOrCreate('wallpaperFocus', text);
+    WallpaperRepo.saveFocus(ctx, text).catch((e: Object): void => {
+      hilog.error(DOMAIN, TAG, 'save wallpaper focus failed: %{public}s', JSON.stringify(e));
+    });
+  }
+
   private showToast(text: string): void {
     if (this.toastTimer !== -1) {
       clearTimeout(this.toastTimer);
@@ -576,6 +689,25 @@ export struct SettingsPage {
       .width('100%')
       .margin({ top: 12 })
 
+      // 选区域 / 调位置（用户 2026-10-15）。原图不动，只存归一化的位置与缩放。
+      if (this.wallpaper.length > 0) {
+        Row() {
+          Button('调整位置 / 区域')
+            .backgroundColor('rgba(46,107,230,0.22)')
+            .fontColor('#7FA8FF')
+            .layoutWeight(1)
+            .onClick((): void => this.openAdjust())
+          Button('居中')
+            .backgroundColor('rgba(255,255,255,0.14)')
+            .fontColor('#C3CDDE')
+            .layoutWeight(1)
+            .margin({ left: 10 })
+            .onClick((): void => this.persistFocus('0,0,1'))
+        }
+        .width('100%')
+        .margin({ top: 10 })
+      }
+
       Text('照片会拷进 App 内部保存，不联网、也不需要相册权限。')
         .fontSize(11)
         .fontColor('#8B97AC')
@@ -585,6 +717,168 @@ export struct SettingsPage {
     .padding(16)
     .glassPanelCard()
     .alignItems(HorizontalAlign.Start)
+  }
+
+
+  /**
+   * 「调整背景」全屏界面（用户 2026-10-15 拍定：开一个全屏界面，拖动 + 双指缩放 + 滑杆）。
+   *
+   * 几个刻意的选择：
+   *  - 预览层就是**整屏**（说明/按钮浮在它上面），几何用和 PageBackground **同一个纯函数**
+   *    算 → 所见即所得，不会"调的时候挺好看、退出去对不上"。
+   *  - 连可读性薄纱一起预览：不然调完发现实际更暗。
+   *  - 存的是**归一化的焦点**（-1..1）而不是像素：换屏幕/横竖屏都不会跑偏。
+   *  - 原图一个字节都不动，随时能再调或点「居中」回默认。
+   */
+  @Builder
+  AdjustOverlay() {
+    Stack() {
+      // ---- 底层：整屏预览 ----
+      Stack() {
+        Column()
+          .width('100%')
+          .height('100%')
+          .linearGradient({
+            angle: 160,
+            colors: [[PAGE_GRADIENT_A, 0.0], [PAGE_GRADIENT_B, 0.42], [PAGE_GRADIENT_C, 1.0]]
+          })
+        if (this.adjPixmap !== undefined) {
+          Image(this.adjPixmap)
+            .width(this.adjGeo().w > 0 ? this.adjGeo().w : '100%')
+            .height(this.adjGeo().h > 0 ? this.adjGeo().h : '100%')
+            .objectFit(ImageFit.Fill)
+            .draggable(false)
+            .translate({ x: this.adjGeo().dx, y: this.adjGeo().dy })
+        }
+        Column()
+          .width('100%')
+          .height('100%')
+          .backgroundColor(WALLPAPER_VEIL)
+          .hitTestBehavior(HitTestMode.None)
+      }
+      .width('100%')
+      .height('100%')
+      .clip(true)
+      .onAreaChange((oldArea: Area, newArea: Area): void => {
+        const w: Length | undefined = newArea.width;
+        const h: Length | undefined = newArea.height;
+        if (typeof w === 'number' && w > 0) {
+          this.adjBoxW = w;
+        }
+        if (typeof h === 'number' && h > 0) {
+          this.adjBoxH = h;
+        }
+      })
+      // 单指拖动 = 选区域；双指捏合 = 缩放（滑杆是给捏合不灵的时候兜底的）
+      .gesture(
+        GestureGroup(GestureMode.Parallel,
+          PanGesture({ fingers: 1 })
+            .onActionStart((): void => {
+              this.dragFx0 = this.adjFx;
+              this.dragFy0 = this.adjFy;
+            })
+            .onActionUpdate((e: GestureEvent): void => {
+              // ⚠️ 全局 `px2vp` 在 API 18 已废弃（会让警告数从 6 变 8，§6.3 的规矩）
+              this.dragAdjust(this.getUIContext().px2vp(e.offsetX),
+                this.getUIContext().px2vp(e.offsetY));
+            }),
+          PinchGesture({ fingers: 2 })
+            .onActionStart((): void => {
+              this.pinchZoom0 = this.adjZoom;
+            })
+            .onActionUpdate((e: GestureEvent): void => {
+              const v: number[] = clampFocus(this.adjFx, this.adjFy, this.pinchZoom0 * e.scale);
+              this.adjZoom = v[2];
+            })
+        )
+      )
+
+      // ---- 顶部说明（浮在预览上）。⚠️ 定位壳：根 Stack 默认居中排子节点，
+      //      直接 position 会跑偏（§20.5 第 1 条踩过），所以要一层"满屏 + 顶到上边"的壳。
+      Column() {
+        Column() {
+          Text('调整背景')
+            .fontSize(17)
+            .fontWeight(FontWeight.Medium)
+            .fontColor('#F2F5FA')
+          Text('拖动选择区域；双指或下面的滑杆缩放。原图不会被改动。')
+            .fontSize(11)
+            .fontColor('#C3CDDE')
+            .margin({ top: 4 })
+        }
+        .width('100%')
+        .padding(14)
+        .glassSheet()
+      }
+      .width('100%')
+      .height('100%')
+      .padding({ left: FLOAT_SIDE, right: FLOAT_SIDE, top: FLOAT_TOP })
+      .justifyContent(FlexAlign.Start)
+      .hitTestBehavior(HitTestMode.Transparent)
+
+      // ---- 底部：缩放滑杆 + 三个按钮（同样用定位壳钉住底边）----
+      Column() {
+        Column() {
+        Row() {
+          Text('缩放')
+            .fontSize(12)
+            .fontColor('#C3CDDE')
+            .width(40)
+          Slider({
+            value: this.adjZoom,
+            min: WALLPAPER_MIN_ZOOM,
+            max: WALLPAPER_MAX_ZOOM,
+            step: 0.05
+          })
+            .layoutWeight(1)
+            .onChange((v: number): void => {
+              this.adjZoom = v;
+            })
+          Text(`${this.adjZoom.toFixed(2)}×`)
+            .fontSize(12)
+            .fontColor('#7FA8FF')
+            .width(56)
+            .textAlign(TextAlign.End)
+        }
+        .width('100%')
+
+        Row() {
+          Button('居中')
+            .backgroundColor('rgba(255,255,255,0.14)')
+            .fontColor('#C3CDDE')
+            .fontSize(14)
+            .layoutWeight(1)
+            .onClick((): void => this.resetAdjust())
+          Button('取消')
+            .backgroundColor('rgba(255,255,255,0.14)')
+            .fontColor('#C3CDDE')
+            .fontSize(14)
+            .layoutWeight(1)
+            .margin({ left: 8 })
+            .onClick((): void => this.cancelAdjust())
+          Button('保存')
+            .backgroundColor('#2E6BE6')
+            .fontColor('#FFFFFF')
+            .fontSize(14)
+            .layoutWeight(1)
+            .margin({ left: 8 })
+            .onClick((): void => this.saveAdjust())
+        }
+        .width('100%')
+        .margin({ top: 12 })
+        }
+        .width('100%')
+        .padding(14)
+        .glassSheet()
+      }
+      .width('100%')
+      .height('100%')
+      .padding({ left: FLOAT_SIDE, right: FLOAT_SIDE, bottom: FLOAT_TOP + 8 })
+      .justifyContent(FlexAlign.End)
+      .hitTestBehavior(HitTestMode.Transparent)
+    }
+    .width('100%')
+    .height('100%')
   }
 
   @Builder
@@ -775,6 +1069,12 @@ export struct SettingsPage {
       .height('100%')
       .justifyContent(FlexAlign.Start)
       .hitTestBehavior(HitTestMode.Transparent)
+      // 调整背景的全屏界面：画在页面最上层。
+      // ⚠️ 它仍然在**页面内部**，所以开着的时候要让 Index 把悬浮浮窗层挪到内容层之下
+      //    （`onModalChange` → `Index.pageModalOpen`，和两个编辑窗同一套路，见 §20.8）。
+      if (this.adjusting) {
+        this.AdjustOverlay()
+      }
     }
     .width('100%')
     .height('100%')

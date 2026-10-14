@@ -361,6 +361,8 @@ struct Index {
     // 冷启动恢复自定义背景（没有就用渐变兜底）。AppStorage 是内存态，所以每次启动都要读回来；
     // 设置页选完图会直接写 AppStorage，PageBackground 靠 @StorageLink 立刻跟着换。
     AppStorage.setOrCreate('wallpaper', await WallpaperRepo.load(ctx));
+    // 背景的位置/缩放（'fx,fy,zoom'）也要冷启动读回来 —— AppStorage 是内存态
+    AppStorage.setOrCreate('wallpaperFocus', await WallpaperRepo.loadFocus(ctx));
     // 首页标语：也在第一帧之前读回来（加载页字标下面那行就是它）
     AppStorage.setOrCreate('bootMotto', await loadMotto(ctx));
     // 动画总开关：AppStorage 是内存态，每次冷启动都要从 kv 读回来
@@ -1652,7 +1654,11 @@ struct Index {
               SettingsPage({
                 semesterId: this.semester.id,
                 topInset: this.topInset(),
-                bottomInset: this.bottomInset()
+                bottomInset: this.bottomInset(),
+                // 设置页的「调整背景」是全屏浮层，开着时也要把浮窗层挪到内容层之下
+                onModalChange: (open: boolean): void => {
+                  this.pageModalOpen = open;
+                }
               })
             }
             .width('100%')
