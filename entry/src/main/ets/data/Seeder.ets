@@ -3,11 +3,28 @@ import { Course, DEFAULT_REST_WINDOWS, PKU_SECTION_TIMES, Semester, SessionRule,
   TodoTemplate } from '../model/Types';
 import { TimetableRepo } from './TimetableRepo';
 import { TodoRepo } from './TodoRepo';
-import { maskAll } from '../model/WeekMask';
-import { SeedCourse, SeedRule, SEED_COURSES, SEED_SEMESTER_NAME, SEED_START_DATE,
-  SEED_TOTAL_WEEKS } from './SeedData';
+import { formatDate, today } from '../util/DateUtil';
 
-/** 首次启动的初始化：学期 + 北大作息 + （可选）截图转录的课表 */
+/**
+ * 首次启动的初始化：**学期 + 作息节次**。
+ *
+ * ⚠️ 发布前改过：这里以前还会把作者本人的课表（截图转录的"种子课表"）灌进去 ——
+ * 那既是个人数据，对新用户也毫无意义。现在**App 不内置任何课表**，
+ * 新装用户拿到的是一个空的学期 + 北大 12 节作息，课表靠自己建（见 README 的"从零开始"）。
+ */
+
+/** 默认学期名与长度（新装用户看到的第一个学期，随时可在「管理课程 → 学期」改） */
+const DEFAULT_SEMESTER_NAME: string = '我的学期';
+const DEFAULT_TOTAL_WEEKS: number = 16;
+
+/** 取某天所在那一周的周一（周一=1 … 周日=7） */
+function mondayOf(d: Date): Date {
+  const dow: number = d.getDay() === 0 ? 7 : d.getDay();
+  const out: Date = new Date(d.getTime());
+  out.setDate(out.getDate() - (dow - 1));
+  return out;
+}
+
 export class Seeder {
 
   /** 保证有学期和节次时间；没有就建 + 填北大 12 节 */
@@ -22,35 +39,24 @@ export class Seeder {
       }
       return existing;
     }
-    const id: number = await TimetableRepo.createSemester(context, SEED_SEMESTER_NAME,
-      SEED_START_DATE, SEED_TOTAL_WEEKS);
+    // 默认学期：名字通用，起始日 = **今天所在那一周的周一**（于是新用户一进来就是"第 1 周"，
+    // 而不是看到"第 -37 周"这种尴尬数字），长度 16 周（可在「管理课程 → 学期」里改）。
+    const start: string = formatDate(mondayOf(today()));
+    const id: number = await TimetableRepo.createSemester(context, DEFAULT_SEMESTER_NAME,
+      start, DEFAULT_TOTAL_WEEKS);
     for (const st of PKU_SECTION_TIMES) {
       await TimetableRepo.upsertSectionTime(context, id, st);
     }
     return {
       id: id,
-      name: SEED_SEMESTER_NAME,
-      startDate: SEED_START_DATE,
-      totalWeeks: SEED_TOTAL_WEEKS,
+      name: DEFAULT_SEMESTER_NAME,
+      startDate: start,
+      totalWeeks: DEFAULT_TOTAL_WEEKS,
       firstDayOfWeek: 1,
       showWeekend: true
     };
   }
 
-  static async hasCourses(context: common.Context, semesterId: number): Promise<boolean> {
-    const courses = await TimetableRepo.listCourses(context, semesterId);
-    return courses.length > 0;
-  }
-
-  /**
-   * 一次性数据迁移（幂等，每次启动都跑）。
-   *
-   * 目前只有一项：把旧的待办时长静默搬到合法值（对齐到最近的 5 分钟、夹进 [15,600]，
-   * 考试类的 0 豁免）。写成幂等 + 每次启动都跑，是为了让「从备份恢复进来的旧数据」
-   * 也立刻被纠正，而不是留着不合法值在库里。
-   *
-   * 返回被改动的条数。
-   */
   static async migrateData(context: common.Context): Promise<number> {
     return await TodoRepo.normalizeAllEstimates(context);
   }
@@ -66,60 +72,7 @@ export class Seeder {
     }
   }
 
-  /** 把截图转录的课表写进去（含生成模板） */
-  static async seedCourses(context: common.Context, semesterId: number): Promise<number> {
-    const mask: string = maskAll(SEED_TOTAL_WEEKS);
-    let count = 0;
-    for (const sc of SEED_COURSES) {
-      const course: Course = {
-        id: 0,
-        semesterId: semesterId,
-        name: sc.name,
-        shortName: sc.shortName,
-        teacher: sc.teacher,
-        location: sc.location,
-        colorIndex: sc.colorIndex,
-        autoTodoEnabled: sc.templates.length > 0,
-        isVirtual: false,
-        note: ''
-      };
-      const courseId: number = await TimetableRepo.insertCourse(context, course);
-      for (const r of sc.rules) {
-        const rule: SessionRule = {
-          id: 0,
-          courseId: courseId,
-          weekday: r.weekday,
-          startSection: r.startSection,
-          endSection: r.endSection,
-          weeksMask: mask,
-          location: sc.location,
-          isQuiz: r.isQuiz
-        };
-        await TimetableRepo.insertRule(context, rule);
-      }
-      let order = 0;
-      for (const t of sc.templates) {
-        await TodoRepo.insertTemplate(context, {
-          id: 0,
-          courseId: courseId,
-          sortOrder: order,
-          enabled: true,
-          titleTemplate: t.title,
-          ddlRule: t.ddlRule,
-          ddlParam: t.ddlParam,
-          estimateMin: t.estimateMin,
-          category: 'homework',
-          submitChannel: '',
-          note: ''
-        });
-        order++;
-      }
-      count++;
-    }
-    return count;
-  }
-
-  /** 清空课表（保留学期与作息） */
+  /** 清空一个学期的全部课程（课程 / 时段规则 / 生成模板一起删） */
   static async clearCourses(context: common.Context, semesterId: number): Promise<void> {
     const courses = await TimetableRepo.listCourses(context, semesterId);
     for (const c of courses) {

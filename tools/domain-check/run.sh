@@ -29,7 +29,10 @@ cp "$SRC/domain/Validate.ets"  "$WORK/Validate.ts"
 cp "$SRC/domain/PlanLayout.ets" "$WORK/PlanLayout.ts"
 cp "$SRC/domain/Briefing.ets"  "$WORK/Briefing.ts"
 cp "$SRC/domain/Backup.ets"    "$WORK/Backup.ts"
-cp "$SRC/data/SeedData.ets"    "$WORK/SeedData.ts"
+# ⚠️ SeedData 现在是**测试夹具**（tools/domain-check/SeedData.ts），
+# 不再是 App 的一部分：App 不再内置任何课表（发布前清掉了个人数据）。
+# 夹具里那份真实课表只用来给断言提供"接近真实的输入"，不进 HAP。
+cp "$HERE/SeedData.ts"          "$WORK/SeedData.ts"
 
 # TodoGenerator 只保留纯函数部分（模板渲染 / ddl 计算 / 找下一节课）
 python3 - "$SRC/domain/TodoGenerator.ets" "$WORK/TodoGenerator.ts" <<'PY'

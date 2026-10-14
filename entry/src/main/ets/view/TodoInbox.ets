@@ -703,7 +703,7 @@ export struct TodoInbox {
         Scroll() {
           Column() {
 
-        TextInput({ text: this.editTitle, placeholder: '比如：课乙 P123 第 5-9 题' })
+        TextInput({ text: this.editTitle, placeholder: '例如：数学作业 P12 第 3-5 题' })
           .fontColor('#F2F5FA')
           .placeholderColor('#8B97AC')
           .caretColor('#7FA8FF')
@@ -755,7 +755,7 @@ export struct TodoInbox {
             .fontColor('#94A0B5')
             .width('100%')
             .margin({ top: 6, bottom: 6 })
-          TextInput({ text: this.editPlace, placeholder: '教学楼407 · 12 号座' })
+          TextInput({ text: this.editPlace, placeholder: '教学楼 101 · 12 号座' })
             .fontColor('#F2F5FA')
             .placeholderColor('#8B97AC')
             .caretColor('#7FA8FF')

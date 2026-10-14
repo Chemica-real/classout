@@ -24,7 +24,7 @@ export struct ChipButton {
   @Prop text: string = '';
   /** 是否选中（选中 = 蓝底白字） */
   @Prop selected: boolean = false;
-  /** 字号。默认 12；计划页会传它自己的试版字号 */
+  /** 字号。默认 12；计划页会传它自己的版式字号（见 domain/PlanLayout 的 LAYOUT） */
   @Prop fontSize: number = 12;
 
   /** 点击回调。放在 @Prop 之外：函数不需要参与响应式 */

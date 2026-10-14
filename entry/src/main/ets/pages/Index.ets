@@ -357,11 +357,6 @@ struct Index {
     if (migrated > 0) {
       hilog.info(DOMAIN, TAG, 'migrated %{public}d todo estimates to 5-min grid', migrated);
     }
-    const has: boolean = await Seeder.hasCourses(ctx, sem.id);
-    if (!has) {
-      this.statusText = '首次启动：正在写入课表种子数据…';
-      await Seeder.seedCourses(ctx, sem.id);
-    }
     await this.dwellBootStep(stepAt);   // 让人看清"初始化本地数据"这一步
     stepAt = Date.now();
     this.bootStep = 1;      // 学期/节次/旧数据都就绪了
@@ -488,7 +483,7 @@ struct Index {
    *
    * 为什么值得记：真机出问题时这是最省事的一条信息通道 ——
    * 用户不用连电脑、不用抓日志，打开设置页截图就能看到初始化每一步到底成没成
-   * （种子写没写进去、补生成几条、提醒发布了几条、有没有超预算）。
+   * （初始化成没成、补生成几条、提醒写了几条、有没有超预算）。
    */
   private async writeRunReport(ctx: common.UIAbilityContext, sem: Semester,
     outcome: GenerationOutcome, plan: ReminderPlan, migratedCount: number): Promise<void> {
@@ -507,7 +502,7 @@ struct Index {
       lines.push(`通知权限: ${plan.enabled ? '已开' : '未开（提醒不会响）'}`);
       lines.push(`提醒发布: ${plan.published} 条 → 上课 ${plan.classes} / 截止 ${plan.ddl} / 计划块 ${plan.blocks} / 简报 ${plan.briefs}`);
       if (plan.calendarEvents > 0) {
-        lines.push(`代理提醒不可用 → 已写入系统日历: ${plan.calendarEvents} 个事件`);
+        lines.push(`提醒已写入系统日历：${plan.calendarEvents} 个事件`);
       }
       lines.push(`超预算跳过: ${plan.skippedByBudget} 条`);
       await Db.setKv(ctx, 'last_run_report', lines.join('\n'));
@@ -1053,7 +1048,7 @@ struct Index {
           .width('100%')
           .margin({ top: 16, bottom: 6 })
         Row() {
-          TextInput({ text: this.roomDraft, placeholder: '教学楼407' })
+          TextInput({ text: this.roomDraft, placeholder: '教学楼 101' })
             .fontColor('#F2F5FA')
             .placeholderColor('#8B97AC')
             .caretColor('#7FA8FF')

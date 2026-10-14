@@ -427,7 +427,7 @@ export struct SettingsPage {
   ReminderCard() {
     Column() {
       this.SectionTitle('提醒',
-        '提醒写进系统日历（代理提醒对侧载应用配额为 0）。每次启动 App 会把未来一段时间的提醒重排一遍。')
+        '提醒会写进系统日历、由日历负责响铃；每次启动 App 会把未来一段时间的提醒重排一遍。')
 
       Row() {
         Column() {

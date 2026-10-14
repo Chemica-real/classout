@@ -592,7 +592,7 @@ export struct CourseManager {
       endSection: 4,
       startMin: 600,
       endMin: 690,
-      location: this.editCourse.location.length > 0 ? this.editCourse.location : '教学楼101',
+      location: this.editCourse.location,
       isQuiz: false,
       fromOverride: false
     };
@@ -643,7 +643,7 @@ export struct CourseManager {
   }
 
   private reseed(): void {
-    this.doReseed().catch((e: Object): void => {
+    this.doClearCourses().catch((e: Object): void => {
       hilog.error(DOMAIN, TAG, 'reseed failed: %{public}s', JSON.stringify(e));
     });
   }
@@ -769,16 +769,22 @@ export struct CourseManager {
     await this.reload();
   }
 
-  private async doReseed(): Promise<void> {
+  /**
+   * 清空当前学期的全部课程（课程 / 时段规则 / 生成模板）。
+   *
+   * ⚠️ 以前这里叫"清空课表"，会把作者本人的课表**重新灌回去** ——
+   * 那既泄露了个人数据，对新用户也毫无意义（他们要的是从零开始建自己的课表）。
+   * 现在只清空，不清任何内置数据（App 里已经没有任何内置课表了）。
+   */
+  private async doClearCourses(): Promise<void> {
     const ctx: common.UIAbilityContext = this.context();
     const sem: Semester | undefined = this.semester;
     if (sem === undefined) {
       return;
     }
     await Seeder.clearCourses(ctx, sem.id);
-    await Seeder.seedCourses(ctx, sem.id);
     this.confirmClear = false;
-    this.toast = '已重置为截图转录的课表';
+    this.toast = '已清空本学期的课程';
     await this.reload();
   }
 
@@ -939,7 +945,7 @@ export struct CourseManager {
           .margin({ top: 8, bottom: 8 })
 
           if (this.courses.length === 0) {
-            Text('还没有课程。点右上角新增，或先把截图转录的课表载进来。')
+            Text('还没有课程。点右上角「新增课程」开始建立自己的课表；也可以用「备份与恢复」导入之前导出的备份。')
               .fontSize(12)
               .fontColor('#8B97AC')
               .width('100%')
@@ -1015,7 +1021,7 @@ export struct CourseManager {
           if (this.courses.length > 0) {
             if (this.confirmClear) {
               Row() {
-                Text('确定清空全部课程并从截图转录重载？手改的内容会丢。')
+                Text('确定清空本学期的全部课程？课程、上课时段与生成模板都会删掉，手改的内容会丢。')
                   .fontSize(11)
                   .fontColor('#FF8A8A')
                   .layoutWeight(1)
@@ -1037,7 +1043,7 @@ export struct CourseManager {
               .width('100%')
               .margin({ top: 8 })
             } else {
-              Text('重置为截图转录的课表')
+              Text('清空本学期课程')
                 .fontSize(12)
                 .fontColor('#8B97AC')
                 .width('100%')
@@ -1071,7 +1077,7 @@ export struct CourseManager {
       Scroll() {
         Column() {
           this.FieldLabel('课程名（全称）')
-          TextInput({ text: this.editCourse.name, placeholder: '课程甲' })
+          TextInput({ text: this.editCourse.name, placeholder: '高等数学' })
             .fontColor('#F2F5FA')
             .placeholderColor('#8B97AC')
             .caretColor('#7FA8FF')
@@ -1080,7 +1086,7 @@ export struct CourseManager {
             })
 
           this.FieldLabel('简称（显示在课表格子里）')
-          TextInput({ text: this.editCourse.shortName, placeholder: '课甲' })
+          TextInput({ text: this.editCourse.shortName, placeholder: '高数' })
             .fontColor('#F2F5FA')
             .placeholderColor('#8B97AC')
             .caretColor('#7FA8FF')
@@ -1089,7 +1095,7 @@ export struct CourseManager {
             })
 
           this.FieldLabel('教师')
-          TextInput({ text: this.editCourse.teacher, placeholder: '老师甲' })
+          TextInput({ text: this.editCourse.teacher, placeholder: '王老师' })
             .fontColor('#F2F5FA')
             .placeholderColor('#8B97AC')
             .caretColor('#7FA8FF')
@@ -1098,7 +1104,7 @@ export struct CourseManager {
             })
 
           this.FieldLabel('默认地点')
-          TextInput({ text: this.editCourse.location, placeholder: '教学楼407' })
+          TextInput({ text: this.editCourse.location, placeholder: '教学楼 101' })
             .fontColor('#F2F5FA')
             .placeholderColor('#8B97AC')
             .caretColor('#7FA8FF')
@@ -1371,7 +1377,7 @@ export struct CourseManager {
           }
 
           this.FieldLabel('学期名称')
-          TextInput({ text: this.semName, placeholder: '大一上' })
+          TextInput({ text: this.semName, placeholder: '2026 秋季学期' })
             .fontColor('#F2F5FA')
             .placeholderColor('#8B97AC')
             .caretColor('#7FA8FF')
@@ -1380,7 +1386,7 @@ export struct CourseManager {
             })
 
           this.FieldLabel('第一教学周周一（YYYY-MM-DD）')
-          TextInput({ text: this.semStart, placeholder: '2026-09-07' })
+          TextInput({ text: this.semStart, placeholder: '2026-09-01' })
             .fontColor('#F2F5FA')
             .placeholderColor('#8B97AC')
             .caretColor('#7FA8FF')
@@ -1462,7 +1468,7 @@ export struct CourseManager {
             .margin({ top: 24, bottom: 4 })
 
           this.FieldLabel('名称')
-          TextInput({ text: this.newSemName, placeholder: '大一下' })
+          TextInput({ text: this.newSemName, placeholder: '2027 春季学期' })
             .fontColor('#F2F5FA')
             .placeholderColor('#8B97AC')
             .caretColor('#7FA8FF')
@@ -1471,7 +1477,7 @@ export struct CourseManager {
             })
 
           this.FieldLabel('第一教学周周一（YYYY-MM-DD）')
-          TextInput({ text: this.newSemStart, placeholder: '2027-02-22' })
+          TextInput({ text: this.newSemStart, placeholder: '2027-02-20' })
             .fontColor('#F2F5FA')
             .placeholderColor('#8B97AC')
             .caretColor('#7FA8FF')
