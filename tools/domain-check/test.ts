@@ -17,6 +17,7 @@ import { TimeAxis, DEFAULT_WINDOW, WINDOW_MAX_END, allBlocksDone, dragOffsetWith
   dropRange, edgeScrollDepth, edgeScrollDirection, edgeScrollStep, findFreeSlot, moveRange,
   normalizeDuration, normalizeWindow,
   overlaps, resizeRange,
+  hasBlockOnDate, scheduledDays,
   selectPoolTodos, snap, sortBlocksByTime, sortPoolTodos, windowForContent } from './PlanMath';
 
 /**
@@ -512,6 +513,30 @@ check('块属于别的待办 → 不影响本待办',
   titles(selectPoolTodos([td(5, 'A', 'active')], [blk(1, 99, '2026-10-13', false)])), 'A');
 check('空待办列表 → 空托盘',
   titles(selectPoolTodos([], dayBlocks)), '');
+
+  // ---- 防重复落块 + "已排"角标（用户实测：拖到侧列后托盘里还在 → 又拖一次 → 重复块、
+  //      预计时间越滚越长）----
+  const multiDay: PlanBlock[] = [
+    blk(1, 5, '2026-10-14', false),
+    blk(2, 5, '2026-10-15', false),
+    blk(3, 6, '2026-10-15', false)
+  ];
+  // 同一天已经排过 → 不许再排一块
+  check('10/14 已排过 5 号', String(hasBlockOnDate(multiDay, 5, '2026-10-14')), 'true');
+  check('10/15 也排过', String(hasBlockOnDate(multiDay, 5, '2026-10-15')), 'true');
+  check('10/16 没排过 → 可以排', String(hasBlockOnDate(multiDay, 5, '2026-10-16')), 'false');
+  check('别的待办不算', String(hasBlockOnDate(multiDay, 7, '2026-10-14')), 'false');
+  // 注意：只挡"同一天"。跨天拆块必须仍然允许（HANDOFF §5 的设计约束），
+  // 所以这里显式断言"排过 10/14 不代表不能在 10/16 再排一块"。
+  check('跨天拆块仍允许（只挡同一天）',
+    String(hasBlockOnDate(multiDay, 5, '2026-10-14') && !hasBlockOnDate(multiDay, 5, '2026-10-16')),
+    'true');
+
+  // "已排"角标：升序去重，只看该待办自己的块
+  check('已排两天', scheduledDays(multiDay, 5).join(','), '2026-10-14,2026-10-15');
+  check('已排一天', scheduledDays(multiDay, 6).join(','), '2026-10-15');
+  check('没排过=空', String(scheduledDays(multiDay, 9).length), '0');
+  check('空块集=空', String(scheduledDays([], 5).length), '0');
 
 // 关键：托盘只按「传入的块」过滤。调用方传当天的块，所以换一天待办会重新出现，
 // 「拆成多块分散在不同天」不受影响（TESTING.md 第 15 步）。

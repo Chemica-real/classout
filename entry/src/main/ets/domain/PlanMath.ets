@@ -412,6 +412,47 @@ export function dragOffsetWithScroll(touchDeltaY: number, scrollDeltaY: number):
  * 漏掉"当天已排"这一步会出现「拖进网格后托盘里还在、可以反复拖出重复块」的 bug（用户实测报过）。
  * 判据与虚拟课时托盘保持一致（那边是 poolLessons，按 lessonId 过滤）。
  */
+/**
+ * 这一天该待办**已经排过了**吗。
+ *
+ * 为什么要有它（用户实测）：从「待安排」把待办拖到**侧列那一天**之后，它按设计
+ * **仍然留在托盘里**（托盘的过滤只看"当前查看日"，这样"拆成多块分散在不同天"才可行）。
+ * 但用户会以为"没排上"，于是又拖一次 —— 同一天就多出一块；
+ * 而 `syncTodoDuration` 会把该待办**所有**块的时长加起来写回 `estimate_min`，
+ * 于是"预计时间越来越长"（用户报的第二个症状）。
+ *
+ * 所以：**同一天不允许出现第二块**（要加长请点开那块改时长；要分散请排到别的天）。
+ * 注意它只挡"同一天"，跨天拆块仍然允许。
+ */
+export function hasBlockOnDate(blocks: PlanBlock[], todoId: number, date: string): boolean {
+  for (const b of blocks) {
+    if (b.todoId === todoId && b.date === date) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * 该待办**已经排在哪几天**（升序、去重）。
+ * 用于「待安排」卡片上的"已排 10/15"角标 —— 这样即使它按设计还留在托盘里，
+ * 用户也能一眼看出"刚才那一下生效了"，不会重复拖。
+ */
+export function scheduledDays(blocks: PlanBlock[], todoId: number): string[] {
+  const set: Set<string> = new Set<string>();
+  for (const b of blocks) {
+    if (b.todoId === todoId) {
+      set.add(b.date);
+    }
+  }
+  const out: string[] = [];
+  set.forEach((d: string): void => {
+    out.push(d);
+  });
+  out.sort();
+  return out;
+}
+
 export function selectPoolTodos(todos: Todo[], blocks: PlanBlock[]): Todo[] {
   const scheduled: Set<number> = new Set<number>();
   for (const b of blocks) {

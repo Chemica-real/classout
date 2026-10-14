@@ -9,7 +9,8 @@ import { sessionsOnDate } from '../domain/Timetable';
 import { generateForLesson } from '../domain/TodoGenerator';
 import { TimeAxis, DEFAULT_AXIS, allBlocksDone,
   dragOffsetWithScroll, dropRange, edgeScrollDepth, edgeScrollDirection, edgeScrollStep,
-  durationToH, findFreeSlot, moveRange, normalizeDuration,
+  durationToH, findFreeSlot, hasBlockOnDate, moveRange, normalizeDuration,
+  scheduledDays,
   resizeRange, sortBlocksByTime,
   selectPoolTodos } from '../domain/PlanMath';
 import { BLOCK_MIN_MIN, DURATION_STEP_MIN, pinchDeltaLabel, pinchEnd, resizeEndTo,
@@ -135,6 +136,11 @@ export struct PlanDayView {
    * 网格内容的底部 padding 与"边缘自动滚动"的底边都用它。
    */
   @State bottomPaneH: number = 0;
+  /**
+   * 「待安排」卡片上的"已排 …"角标：todoId → "10/15、10/16"。
+   * 只在 reload() 里重建（普通成员即可：它的消费方会因 `this.todos` 变化而重渲）。
+   */
+  private scheduledText: Map<number, string> = new Map<number, string>();
   /**
    * 待安排是展开还是收起。用户要求：「待安排可以常态隐藏，点击小召唤 bar 唤出」，
    * 并且**记住上次的状态**（存 kv，冷启动读回来）。
@@ -402,6 +408,34 @@ export struct PlanDayView {
     return out;
   }
 
+  /** 取某一天**已经加载**的块（当前查看日 / 侧列）—— 防重复落块时用它判断 */
+  private blocksOnDate(dateStr: string): PlanBlock[] {
+    if (dateStr === this.date) {
+      return this.blocks;
+    }
+    if (this.colDates.length === COLS_THREE) {
+      if (dateStr === this.colDates[0]) {
+        return this.leftBlocks;
+      }
+      if (dateStr === this.colDates[2]) {
+        return this.rightBlocks;
+      }
+    }
+    return [];
+  }
+
+  /** 角标文本（没有就返回空串，调用方用 length 判断） */
+  private scheduledBadge(id: number): string {
+    const v: string | undefined = this.scheduledText.get(id);
+    return v === undefined ? '' : v;
+  }
+
+  /** "已排"角标里的日期写法：8/15（短） */
+  private mdText(dateStr: string): string {
+    const d: Date = parseDate(dateStr);
+    return `${d.getMonth() + 1}/${d.getDate()}`;
+  }
+
   private colXOf(i: number): number {
     if (this.viewCols <= COLS_DAY) {
       return AXIS_W;
@@ -499,6 +533,21 @@ export struct PlanDayView {
       this.rightBlocks = [];
     }
     this.todos = await TodoRepo.listTodos(ctx, 'status != ?', [TodoStatus.Archived]);
+    // 托盘里的待办：查一下它**在别的天**排过没有，有就给它挂个"已排 …"角标。
+    // 这样"拖到侧列后它仍留在托盘"就不是 bug 观感了 —— 用户一眼看到刚才那下生效了。
+    const badge: Map<number, string> = new Map<number, string>();
+    for (const t of selectPoolTodos(this.todos, this.blocks)) {
+      const all: PlanBlock[] = await TodoRepo.listBlocksByTodo(ctx, t.id);
+      const days: string[] = scheduledDays(all, t.id);
+      if (days.length > 0) {
+        const parts: string[] = [];
+        for (const d of days) {
+          parts.push(this.mdText(d));
+        }
+        badge.set(t.id, parts.join('、'));
+      }
+    }
+    this.scheduledText = badge;
     this.restWindows = await TimetableRepo.listRestWindows(ctx);
     this.lessons = await TodoRepo.listLessonsOfVirtualCourses(ctx, sem.id);
     this.loading = false;
@@ -772,6 +821,11 @@ export struct PlanDayView {
       if (l === undefined) {
         return;
       }
+      if (hasBlockOnDate(this.blocksOnDate(dropDate), 0, dropDate) &&
+        this.blocksOnDate(dropDate).some((b: PlanBlock): boolean => b.lessonId === lessonId)) {
+        this.showHint(`${this.mdText(dropDate)} 已经排过这一讲了`);
+        return;
+      }
       const range: number[] = dropRange(AXIS, localY, LESSON_MIN);
       this.placeLesson(l, range[0], range[1] - range[0], dropDate);
       return;
@@ -782,6 +836,13 @@ export struct PlanDayView {
     }
     const todo: Todo | undefined = this.todoOf(todoId);
     if (todo === undefined) {
+      return;
+    }
+    // ⚠️ 同一天已经有它了就别再排一块：托盘按设计只过滤"当前查看日"，
+    // 拖到侧列那天之后它仍留在托盘里；用户以为没排上、再拖一次 → 重复块 →
+    // 而 estimate_min 是"所有块之和"，于是"预计时间越来越长"（用户实测）。
+    if (hasBlockOnDate(this.blocksOnDate(dropDate), todoId, dropDate)) {
+      this.showHint(`${this.mdText(dropDate)} 已经排过它了；要改时长请点开那一块`);
       return;
     }
     const range: number[] = dropRange(AXIS, localY, todo.estimateMin);
@@ -1947,6 +2008,15 @@ export struct PlanDayView {
                     .fontSize(LAYOUT.cardSub)
                     .fontColor('#9BA7BD')
                     .margin({ top: 2 })
+                  // 已经在别的天排过 → 标出来（否则用户会以为"拖了没反应"又拖一次）
+                  if (this.scheduledBadge(t.id).length > 0) {
+                    Text(`已排 ${this.scheduledBadge(t.id)}`)
+                      .fontSize(LAYOUT.cardSub)
+                      .fontColor('#7C8798')
+                      .maxLines(1)
+                      .textOverflow({ overflow: TextOverflow.Ellipsis })
+                      .margin({ top: 2 })
+                  }
                 }
                 .width('100%')
                 .alignItems(HorizontalAlign.Start)
