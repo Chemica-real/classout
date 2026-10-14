@@ -2,6 +2,8 @@ import { image } from '@kit.ImageKit';
 import { display } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { WallpaperRepo } from '../data/WallpaperRepo';
+import { curves } from '@kit.ArkUI';
+import { DUR_ORBIT, isMotionOn } from './Motion';
 
 /**
  * 毛玻璃材质（glassmorphism）的统一定义 —— **深色主题版**。
@@ -161,9 +163,36 @@ export struct PageBackground {
   @StorageLink('wallpaper') @Watch('onWallpaperChanged') wallpaper: string = '';
   /** 解码后的背景图；undefined = 还没解出来/解码失败 → 显示渐变 */
   @State pixmap: image.PixelMap | undefined = undefined;
+  /**
+   * 光晕漂移的"另一端"（用户要的"模仿沉浸光感"）。
+   * 用一个 `iterations: -1 + Alternate` 的无限动画在两个位置之间来回，
+   * 只动 `translate` / `opacity`，并**限帧到 15fps** —— 它是常驻动画，
+   * 不能让它满帧跑一整天（见 view/Motion.ets 的三条约束）。
+   */
+  @State orbit: boolean = false;
+  private orbitStarted: boolean = false;
 
   aboutToAppear(): void {
     this.refreshWallpaper();
+    this.startOrbit();
+  }
+
+  /** 常驻光晕漂移：极慢（20 多秒一个来回）+ 限帧，开销压到最低 */
+  private startOrbit(): void {
+    if (this.orbitStarted || !isMotionOn()) {
+      return;
+    }
+    this.orbitStarted = true;
+    // ⚠️ `getUIContext().animateTo`：全局 `animateTo` 在 API 18 已废弃
+    this.getUIContext().animateTo({
+      duration: DUR_ORBIT,
+      curve: curves.cubicBezierCurve(0.42, 0.0, 0.58, 1.0),
+      iterations: -1,
+      playMode: PlayMode.Alternate,
+      expectedFrameRateRange: { min: 8, max: 24, expected: 15 }
+    }, (): void => {
+      this.orbit = true;
+    });
   }
 
   onWallpaperChanged(): void {
@@ -212,6 +241,9 @@ export struct PageBackground {
         .blur(GLOW_PINK_BLUR)
         .opacity(GLOW_PINK_OPACITY)
         .position({ top: 60, right: -40 })
+        // 漂移 + 呼吸（幅度很小，肉眼是"背景在缓缓流动"）
+        .translate({ x: this.orbit ? -46 : 0, y: this.orbit ? 64 : 0 })
+        .opacity(this.orbit ? GLOW_PINK_OPACITY * 0.65 : GLOW_PINK_OPACITY)
         .hitTestBehavior(HitTestMode.None)
       Column()
         .width(200)
@@ -221,6 +253,8 @@ export struct PageBackground {
         .blur(GLOW_CYAN_BLUR)
         .opacity(GLOW_CYAN_OPACITY)
         .position({ bottom: 100, left: -30 })
+        .translate({ x: this.orbit ? 54 : 0, y: this.orbit ? -48 : 0 })
+        .opacity(this.orbit ? GLOW_CYAN_OPACITY * 1.25 : GLOW_CYAN_OPACITY)
         .hitTestBehavior(HitTestMode.None)
       if (this.pixmap !== undefined) {
         Image(this.pixmap)

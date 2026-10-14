@@ -18,6 +18,8 @@ import { backStack } from '../util/BackStack';
 import { GLASS_BLUR, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_SHEET, GLASS_TINT_PANEL,
   GLASS_TINT_SHEET, PageBackground, SCRIM_COLOR } from '../view/Glass';
 import { FLOAT_GAP, FLOAT_SIDE, FLOAT_TOP, H_HEADER, H_TABBAR, H_WEEKROW } from '../view/Float';
+import { DUR_SWEEP, TYPE_MS, curveOrLinear, dur, isMotionOn, loadMotionSetting,
+  sweepCurve } from '../view/Motion';
 import { WallpaperRepo } from '../data/WallpaperRepo';
 
 import { ChipButton } from '../view/ChipButton';
@@ -130,6 +132,15 @@ struct Index {
    * 页面通过 `onModalChange` 回调把它报上来（和 `CourseManager.close` 同一套路）。
    */
   @State pageModalOpen: boolean = false;
+
+  // ---------------- 动画相关状态（见 view/Motion.ets）----------------
+  /** 打字机：已经"打"出来的那部分启动文案 */
+  @State typedStatus: string = '';
+  /** 页头那道一次性扫光：位移目标 / 是否在播 */
+  @State sweep: boolean = false;
+  @State sweepVisible: boolean = false;
+  private typeTimer: number = -1;
+  private sweepTimers: number[] = [];
   /** 内容层上方要让出的高度（设置页没有页头，所以是 0） */
   private topInset(): number {
     return this.tab === 3 ? 0 : this.headerBlockH;
@@ -151,6 +162,17 @@ struct Index {
    * 而不是关掉那一层。ArkUI 的 `onBackPress` 只能写在 `@Entry` 上，所以集中在这里，
    * 子组件通过 `util/BackStack` 注册各自的处理器。
    */
+  aboutToDisappear(): void {
+    if (this.typeTimer !== -1) {
+      clearInterval(this.typeTimer);
+      this.typeTimer = -1;
+    }
+    for (const t of this.sweepTimers) {
+      clearTimeout(t);
+    }
+    this.sweepTimers = [];
+  }
+
   onBackPress(): boolean {
     if (backStack.handleBack()) {
       return true;   // 子组件已经处理掉了
@@ -196,11 +218,73 @@ struct Index {
     return getContext(this) as common.UIAbilityContext;
   }
 
+  /**
+   * 打字机：把 `statusText` 一个字一个字地"打"出来。
+   *
+   * 只用在**启动加载文案**上（`正在重排提醒…` 这类）—— 它本来就是"正在做事"的语气，
+   * 逐字出现比整句跳出更有"在跑"的感觉。动画关掉时直接整句显示。
+   */
+  private typeStatus(full: string): void {
+    if (this.typeTimer !== -1) {
+      clearInterval(this.typeTimer);
+      this.typeTimer = -1;
+    }
+    if (!isMotionOn() || full.length === 0) {
+      this.typedStatus = full;
+      return;
+    }
+    this.typedStatus = '';
+    let i: number = 0;
+    this.typeTimer = setInterval((): void => {
+      i++;
+      this.typedStatus = full.substring(0, i);
+      if (i >= full.length) {
+        clearInterval(this.typeTimer);
+        this.typeTimer = -1;
+      }
+    }, TYPE_MS);
+  }
+
+  /**
+   * 页头那道一次性斜扫高光（模仿"沉浸光感"里光掠过玻璃的那一下）。
+   *
+   * **只在事件发生时扫一次**，不是常驻循环 —— 常驻扫光会让屏幕一直在重绘。
+   * 触发时机：切标签、首次加载完成（都是"这一页刚亮起来"的时刻）。
+   */
+  private playSweep(): void {
+    if (!isMotionOn()) {
+      return;
+    }
+    this.sweepVisible = true;
+    this.sweep = false;
+    // 先让"起点"渲染一帧，再动画过去，否则会直接跳到终点
+    this.sweepTimers.push(setTimeout((): void => {
+      // ⚠️ 用 `getUIContext().animateTo`：全局 `animateTo` 在 API 18 已废弃
+      // （会多出一条警告，而本项目刻意把警告数钉在 6 条，见 HANDOFF §6.3）
+      this.getUIContext().animateTo(
+        { duration: dur(DUR_SWEEP), curve: curveOrLinear(sweepCurve) },
+        (): void => {
+          this.sweep = true;
+        });
+    }, 16));
+    this.sweepTimers.push(setTimeout((): void => {
+      this.sweepVisible = false;
+      this.sweep = false;
+    }, dur(DUR_SWEEP) + 60));
+  }
+
+  /** 启动文案变了 → 重新打一遍 */
+  private onStatusChanged(): void {
+    this.typeStatus(this.statusText);
+  }
+
   private async init(): Promise<void> {
     const ctx: common.UIAbilityContext = this.context();
     // 冷启动恢复自定义背景（没有就用渐变兜底）。AppStorage 是内存态，所以每次启动都要读回来；
     // 设置页选完图会直接写 AppStorage，PageBackground 靠 @StorageLink 立刻跟着换。
     AppStorage.setOrCreate('wallpaper', await WallpaperRepo.load(ctx));
+    // 动画总开关：AppStorage 是内存态，每次冷启动都要从 kv 读回来
+    await loadMotionSetting(ctx);
     const sem: Semester = await Seeder.ensureSemester(ctx);
     this.semester = sem;
     await Seeder.ensureRestWindows(ctx);
@@ -228,6 +312,9 @@ struct Index {
     hilog.info(DOMAIN, TAG, 'reminder plan: %{public}s', JSON.stringify(plan));
     await this.writeRunReport(ctx, sem, outcome, plan, migrated);
     this.loading = false;
+    // 首屏亮起来时让玻璃"过一道光"（用户要的"模仿沉浸光感"，**只发生这一次**；
+    // 切标签时不做，用户明确说过那样"太丑太鸡肋"）
+    this.playSweep();
   }
 
   private async reloadData(): Promise<void> {
@@ -509,6 +596,7 @@ struct Index {
 
   @Builder
   Header() {
+    Stack() {
     Column() {
       Row() {
         Column() {
@@ -583,6 +671,24 @@ struct Index {
     .width('100%')
     .padding({ left: 16, right: 16, top: 12, bottom: 10 })
     .glassSheet()
+
+    // 一次性扫光：一道倾斜的白色渐变带从左掠到右（不接触摸、不参与布局）
+    if (this.sweepVisible) {
+      Column()
+        .width('55%')
+        .height('300%')
+        .linearGradient({
+          angle: 70,
+          colors: [['rgba(255,255,255,0.0)', 0.0], ['rgba(255,255,255,0.16)', 0.5],
+            ['rgba(255,255,255,0.0)', 1.0]]
+        })
+        .translate({ x: this.sweep ? '300%' : '-300%' })
+        .rotate({ angle: 6 })
+        .hitTestBehavior(HitTestMode.None)
+    }
+    }
+    .width('100%')
+    .clip(true)
   }
 
   /**
@@ -751,6 +857,8 @@ struct Index {
     .height('100%')
     .justifyContent(FlexAlign.Center)
     .onClick((): void => {
+      // ⚠️ 切标签**不做任何过渡**：用户实测反馈"切菜单的动画太丑太鸡肋"。
+      // 页面直接换掉最干净 —— 别在这里加淡入/位移/扫光。
       this.tab = index;
     })
   }
@@ -1139,7 +1247,7 @@ struct Index {
             .fontSize(34)
             .fontWeight(FontWeight.Bold)
             .fontColor('#F2F5FA')
-          Text(this.statusText)
+          Text(this.typedStatus)
             .fontSize(13)
             .fontColor('#94A0B5')
             .margin({ top: 12 })
@@ -1166,6 +1274,7 @@ struct Index {
             .layoutWeight(1)
             .scrollBar(BarState.Off)
             .align(Alignment.TopStart)
+            // 切标签：淡入 + 轻微上移（只动 opacity/translate，不重排）
           } else if (this.tab === 1) {
             Column() {
               TodoInbox({

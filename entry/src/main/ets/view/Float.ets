@@ -48,3 +48,11 @@ export const H_DAYBAR: number = 46;
 export const H_COLHEAD: number = 34;
 export const H_ACTIONS: number = 44;
 export const H_TITLE: number = 44;
+
+/**
+ * 右侧抽屉的宽度（占屏宽）。
+ *
+ * 留出左边那一条有两个作用：① 让人看出"底下还有一页、这是个面板而不是整页"；
+ * ② 它就是"点外面关掉"的区域。84% 是按 1084px 屏宽试出来的：再宽就看不到底页了。
+ */
+export const DRAWER_W: string = '84%';

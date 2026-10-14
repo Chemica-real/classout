@@ -10,7 +10,9 @@ import { ChipButton } from './ChipButton';
 import { BackHandler, backStack } from '../util/BackStack';
 import { GLASS_BLUR, GLASS_EDGE_SOFT, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_ROW,
   GLASS_SHADOW_SHEET, GLASS_TINT_ROW, GLASS_TINT_SHEET } from './Glass';
-import { FLOAT_GAP, FLOAT_SIDE, H_ACTIONS } from './Float';
+import { DRAWER_W, FLOAT_GAP, FLOAT_SIDE, H_ACTIONS } from './Float';
+import { DUR_DRAWER, DUR_ITEM, DUR_SHARD, curveOrLinear, drawerCurve, dur, isMotionOn,
+  motionCurve } from './Motion';
 
 // 文件内 @Styles（Glass.ets 顶部说明了为什么不能跨文件 export）
 // 深色版：模糊只留给"大面"（编辑窗），列表卡退化成半透明纯色（性能取舍）
@@ -45,6 +47,15 @@ const DOMAIN: number = 0x0000;
 const TAG: string = 'ClassOUT';
 
 /**
+ * "碎裂掉出"的碎片参数：4 块，各飞一个方向。
+ * dx/dy 是相对原位的位移（vp），rot 是旋转角。刻意做成**不对称** ——
+ * 对称飞出去看起来像"开花"，不像"碎"。
+ */
+const SHARD_DX: number[] = [-30, 34, -20, 26];
+const SHARD_DY: number[] = [-22, -10, 30, 22];
+const SHARD_ROT: number[] = [-46, 38, 28, -34];
+
+/**
  * 预设的预计时长档位。选择器里排在「自定义」输入框前面。
  *
  * ⚠️ 这些档位是**快捷选择**，不是约束本身。约束在下一条：
@@ -68,6 +79,10 @@ export struct TodoInbox {
   @State actionsH: number = H_ACTIONS;
   /** 编辑窗开着时通知 Index（它要把悬浮浮窗层改画到内容层之下，见 Index.pageModalOpen） */
   onModalChange: (open: boolean) => void = (): void => {};
+  /** 正在"碎裂掉出"的那一条（0 = 没有）：先播碎片飞散，播完再真删 */
+  @State shatterId: number = 0;
+  /** 碎片是否已经飞出去（驱动碎片自身与卡片本体的位移/透明） */
+  @State shatterFly: boolean = false;
 
   @State pendingList: Todo[] = [];
   @State activeList: Todo[] = [];
@@ -272,6 +287,11 @@ export struct TodoInbox {
   }
 
   private mutate(id: number, status: string): void {
+    // 先在内存里摘掉（带动画），再落库 + reload 校准：这样"确认/完成"是滑走的，
+    // 不是"啪"地消失。动画关掉时 animateTo 的时长是 0，等于直接动。
+    this.getUIContext().animateTo(
+      { duration: dur(DUR_ITEM), curve: curveOrLinear(motionCurve) },
+      (): void => { this.optimisticRemove(id); });
     this.doMutate(id, status).catch((e: Object): void => {
       hilog.error(DOMAIN, TAG, 'todo mutate failed: %{public}s', JSON.stringify(e));
     });
@@ -284,11 +304,50 @@ export struct TodoInbox {
     await this.reload();
   }
 
-  /** 删掉自动生成的待办 → 记进黑名单，以后不再生成 */
+  /**
+   * 删掉自动生成的待办 → 记进黑名单，以后不再生成。
+   *
+   * ★ 用户要的"删除时碎裂掉出"就在这里：**先播动画、播完再真删**。
+   *   顺序很讲究：
+   *     ① 标记这一条正在碎（挂出 4 块碎片）
+   *     ② 下一帧开始动画（卡片本体缩掉淡出、碎片飞散旋转）
+   *     ③ 动画结束时，在 `animateTo` **里面同步**把它从内存列表里摘掉 ——
+   *        这样上下两条的位移也是动画过去的，不会"啪"地跳一下
+   *     ④ 最后才落库（异步）并 reload 校准
+   *   动画关掉时跳过 ①②③，直接删。
+   */
   private removeConfirmed(t: Todo): void {
-    this.doRemove(t).catch((e: Object): void => {
-      hilog.error(DOMAIN, TAG, 'todo remove failed: %{public}s', JSON.stringify(e));
-    });
+    if (!isMotionOn()) {
+      this.doRemove(t).catch((e: Object): void => {
+        hilog.error(DOMAIN, TAG, 'todo remove failed: %{public}s', JSON.stringify(e));
+      });
+      return;
+    }
+    this.shatterId = t.id;
+    this.shatterFly = false;
+    // ② 先渲染一帧"没碎"的样子，再动画过去（否则会直接跳到终点）
+    setTimeout((): void => {
+      this.getUIContext().animateTo(
+        { duration: dur(DUR_SHARD), curve: curveOrLinear(motionCurve) },
+        (): void => { this.shatterFly = true; });
+    }, 16);
+    // ③④ 碎片飞完：带动画地把这条从列表里摘掉，然后落库
+    setTimeout((): void => {
+      this.shatterId = 0;
+      this.shatterFly = false;
+      this.getUIContext().animateTo(
+        { duration: dur(DUR_ITEM), curve: curveOrLinear(motionCurve) },
+        (): void => { this.optimisticRemove(t.id); });
+      this.doRemove(t).catch((e: Object): void => {
+        hilog.error(DOMAIN, TAG, 'todo remove failed: %{public}s', JSON.stringify(e));
+      });
+    }, dur(DUR_SHARD) + 16);
+  }
+
+  /** 先从内存列表里摘掉（带动画），库里随后再删/再 reload 校准 */
+  private optimisticRemove(id: number): void {
+    this.pendingList = this.pendingList.filter((x: Todo) => x.id !== id);
+    this.activeList = this.activeList.filter((x: Todo) => x.id !== id);
   }
 
   private async doRemove(t: Todo): Promise<void> {
@@ -442,6 +501,7 @@ export struct TodoInbox {
 
   @Builder
   PendingCard(t: Todo) {
+    Stack() {
     Column() {
       Row() {
         if (t.courseId > 0) {
@@ -486,6 +546,37 @@ export struct TodoInbox {
     .padding(12)
     .glassCard()
     .border({ width: 1, color: 'rgba(255,255,255,0.14)' })
+    // 碎裂时本体缩掉淡出（碎片在外面飞）
+    .opacity(this.shatterId === t.id && this.shatterFly ? 0 : 1)
+    .scale({
+      x: this.shatterId === t.id && this.shatterFly ? 0.86 : 1,
+      y: this.shatterId === t.id && this.shatterFly ? 0.86 : 1
+    })
+
+    // 碎片：只在"这一条正在碎"的时候挂出来，飞完就连节点一起没了
+    if (this.shatterId === t.id) {
+      ForEach([0, 1, 2, 3], (i: number) => {
+        Column()
+          .width(16)
+          .height(16)
+          .borderRadius(4)
+          .backgroundColor(i % 2 === 0 ? 'rgba(255,255,255,0.30)' : 'rgba(127,168,255,0.55)')
+          .position({ x: 26 + i * 56, y: 22 + (i % 2) * 34 })
+          .translate({
+            x: this.shatterFly ? SHARD_DX[i] : 0,
+            y: this.shatterFly ? SHARD_DY[i] : 0
+          })
+          .rotate({ angle: this.shatterFly ? SHARD_ROT[i] : 0 })
+          .opacity(this.shatterFly ? 0 : 1)
+          .hitTestBehavior(HitTestMode.None)
+      }, (i: number) => `shard-${t.id}-${i}`)
+    }
+    }
+    .width('100%')
+    // 出现/消失都走同一套过渡（新条滑下来、被移走的滑走）
+    .transition(TransitionEffect.OPACITY
+      .combine(TransitionEffect.translate({ y: -10 }))
+      .animation({ duration: dur(DUR_ITEM), curve: curveOrLinear(motionCurve) }))
     .margin({ bottom: 8 })
   }
 
@@ -585,16 +676,32 @@ export struct TodoInbox {
 
   @Builder
   EditorPanel() {
-    Column() {
-      // ⚠️ 原来这个窗**既没有高度上限、也没有滚动**：内容一长（比如考试类、
-      // 或表单被撑高）就直接被裁掉，和计划页的编辑窗一样的问题。
-      // 现在和计划页对齐：可滚 + 上限 100%（浮窗已不占布局，整屏高度都能用）。
-      Scroll() {
+    Row() {
+      // 左侧留白：既是"底下还有一页"的暗示，也是"点外面关掉"的区域
+      Blank()
       Column() {
-        Text(this.editId === 0 ? '新建待办' : '编辑待办')
-          .fontSize(18)
-          .fontWeight(FontWeight.Medium)
-          .fontColor('#F2F5FA')
+        // 抽屉头：标题固定不滚；右侧 ✕ = 关掉（底部那个「保存」也还在）
+        Row() {
+          Text(this.editId === 0 ? '新建待办' : '编辑待办')
+            .fontSize(18)
+            .fontWeight(FontWeight.Medium)
+            .fontColor('#F2F5FA')
+            .layoutWeight(1)
+          Text('✕')
+            .fontSize(14)
+            .fontColor('#A9B5C9')
+            .padding({ left: 12, bottom: 4 })
+            .onClick((): void => {
+              this.editorVisible = false;
+            })
+        }
+        .width('100%')
+        .margin({ bottom: 10 })
+
+        // ⚠️ 内容一长（考试类、或表单被撑高）必须能滚：抽屉高度是**固定**的，
+        // 超出时在这里滚，不能再像原来那样既没上限也没滚动、直接被裁掉。
+        Scroll() {
+          Column() {
 
         TextInput({ text: this.editTitle, placeholder: '比如：课乙 P123 第 5-9 题' })
           .fontColor('#F2F5FA')
@@ -814,19 +921,24 @@ export struct TodoInbox {
         }
         .width('100%')
         .margin({ top: 20 })
+          }
+          .width('100%')
+        }
+        .layoutWeight(1)
+        .scrollBar(BarState.Off)
+        .align(Alignment.TopStart)
       }
-      .width('100%')
-      .padding(18)
+      .width(DRAWER_W)
+      .height('100%')
+      .padding({ left: 18, right: 18, top: 14, bottom: 14 })
       .glassShell()
-      }
-      .constraintSize({ maxHeight: '100%' })
-      .scrollBar(BarState.Off)
-      .align(Alignment.TopStart)
+      // 从右侧滑入/滑出（和计划页的抽屉同一套时长与曲线）
+      .transition(TransitionEffect.translate({ x: '100%' })
+        .animation({ duration: dur(DUR_DRAWER), curve: curveOrLinear(drawerCurve) }))
     }
     .width('100%')
     .height('100%')
-    .padding({ left: 16, right: 16, top: 12, bottom: 12 })
-    .justifyContent(FlexAlign.Center)
+    .padding({ right: FLOAT_SIDE, top: 10, bottom: 10 })
   }
 
   build() {
@@ -970,11 +1082,13 @@ export struct TodoInbox {
       }
 
       if (this.editorVisible) {
-        // 遮罩（点空白关闭）
+        // 遮罩（点空白关闭）：与抽屉同时长渐显
         Column()
           .width('100%')
           .height('100%')
           .backgroundColor('rgba(12,18,28,0.45)')
+          .transition(TransitionEffect.OPACITY
+            .animation({ duration: dur(DUR_DRAWER), curve: curveOrLinear(drawerCurve) }))
           .onClick((): void => {
             this.editorVisible = false;
           })

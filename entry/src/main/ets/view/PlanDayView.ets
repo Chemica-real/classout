@@ -27,7 +27,9 @@ import { BackHandler, backStack } from '../util/BackStack';
 import { GLASS_BLUR, GLASS_EDGE_SHELF, GLASS_EDGE_SOFT, GLASS_EDGE_STRONG, GLASS_RADIUS,
   GLASS_RADIUS_SHELF, GLASS_SHADOW_ROW, GLASS_SHADOW_SHELF, GLASS_SHADOW_SHEET, GLASS_TINT_PANEL,
   GLASS_TINT_ROW, GLASS_TINT_SHELF, GLASS_TINT_SHEET } from './Glass';
-import { FLOAT_GAP, FLOAT_SIDE, H_COLHEAD, H_DAYBAR } from './Float';
+import { DRAWER_W, FLOAT_GAP, FLOAT_SIDE, H_COLHEAD, H_DAYBAR } from './Float';
+import { DUR_DRAWER, DUR_TRAY, curveOrLinear, drawerCurve, dur, loadTrayOpen, motionCurve,
+  persistTrayOpen } from './Motion';
 
 // 文件内 @Styles（Glass.ets 顶部说明了为什么不能跨文件 export）
 // 深色版：模糊只留给页头/托盘/编辑窗这些"大面"，托盘卡用小卡材质（不模糊）
@@ -128,8 +130,16 @@ export struct PlanDayView {
    * 没量到时用 `topBarsBlockH()` 按名义高度估一个，免得第一帧内容顶到屏幕上边。
    */
   @State topBarsH: number = 0;
-  /** 待安排托盘（悬浮货架）量出来的高度：网格底部要给它留 padding */
-  @State trayH: number = 0;
+  /**
+   * 底部"待安排"那一块（展开的货架 / 收起的召唤 bar）量出来的高度。
+   * 网格内容的底部 padding 与"边缘自动滚动"的底边都用它。
+   */
+  @State bottomPaneH: number = 0;
+  /**
+   * 待安排是展开还是收起。用户要求：「待安排可以常态隐藏，点击小召唤 bar 唤出」，
+   * 并且**记住上次的状态**（存 kv，冷启动读回来）。
+   */
+  @State trayOpen: boolean = false;
   /** 本页浮窗叠（含 Index 页头让出的那段）的实际占位高度 */
   private topBarsBlockH(): number {
     if (this.topBarsH > 0) {
@@ -274,6 +284,12 @@ export struct PlanDayView {
   private backHandler: BackHandler | undefined = undefined;
 
   aboutToAppear(): void {
+    // 待安排的展开状态：用户选择"记忆上次状态"，所以冷启动/切页面都读回来
+    loadTrayOpen(this.context()).then((open: boolean): void => {
+      this.trayOpen = open;
+    }).catch((e: Object): void => {
+      hilog.warn(DOMAIN, TAG, 'load tray state failed: %{public}s', JSON.stringify(e));
+    });
     this.date = formatDate(today());
     // 先按当前视图把列日期填上，别等 reload 回来（否则首帧网格是空的）
     this.colDates = dayDates(this.date, this.viewCols);
@@ -840,7 +856,7 @@ export struct PlanDayView {
    */
   private edgeBottom(): number {
     return this.gridViewBottom - this.bottomInset
-      - (this.trayH > 0 ? this.trayH + FLOAT_GAP : 0);
+      - (this.bottomPaneH > 0 ? this.bottomPaneH + FLOAT_GAP : 0);
   }
 
   /**
@@ -1809,9 +1825,15 @@ export struct PlanDayView {
             .fontSize(LAYOUT.tray)
             .fontColor('#8B97AC')
         }
+        // 收起：点标题行任意处（用户要"常态隐藏"，所以必须好收）
+        Text('收起 ▾')
+          .fontSize(LAYOUT.cardSub)
+          .fontColor('#A9B5C9')
+          .margin({ left: 10 })
       }
       .width('100%')
       .margin({ bottom: 8 })
+      .onClick((): void => this.setTrayOpen(false))
 
       if (this.poolTodos().length === 0) {
         Text('没有待安排的事项。先去『待办』里确认几条。')
@@ -1940,33 +1962,91 @@ export struct PlanDayView {
     .padding({ left: 12, right: 12, top: 10, bottom: 10 })
     // 悬浮货架：和导航栏刻意用不同材质（见 Glass.ets 的 GLASS_TINT_SHELF）
     .glassShelf()
+    // 展开：从下往上滑出来 / 收起：滑回去（都只动位移与透明度）
+    .transition(TransitionEffect.translate({ y: '100%' })
+      .combine(TransitionEffect.OPACITY)
+      .animation({ duration: dur(DUR_TRAY), curve: curveOrLinear(motionCurve) }))
     .onAreaChange((oldArea: Area, newArea: Area): void => {
       const h: Length | undefined = newArea.height;
       if (typeof h === 'number') {
-        this.trayH = h;
+        this.bottomPaneH = h;
       }
     })
   }
 
+  /**
+   * 收起的"召唤 bar"（用户要求：「待安排可以常态隐藏，点击小召唤 bar 唤出」）。
+   *
+   * 它和展开后的货架是**互斥的两块**：一点就换成货架（上滑进来），
+   * 货架的标题行一点又收回来。两者高度都由 `bottomPaneH` 量着，
+   * 网格的底部 padding 跟着它走 —— 所以收起时列表能多露一屏。
+   */
+  @Builder
+  TraySummonBar() {
+    Row() {
+      Text('待安排')
+        .fontSize(LAYOUT.tray)
+        .fontWeight(FontWeight.Medium)
+        .fontColor('#F2F5FA')
+      Text(`${this.poolTodos().length + this.poolLessons().length}`)
+        .fontSize(LAYOUT.cardSub)
+        .fontColor('#7FA8FF')
+        .margin({ left: 6 })
+      Blank()
+      Text('展开 ▴')
+        .fontSize(LAYOUT.cardSub)
+        .fontColor('#A9B5C9')
+    }
+    .width('100%')
+    .padding({ left: 14, right: 14, top: 10, bottom: 10 })
+    .glassShelf()
+    .transition(TransitionEffect.translate({ y: '100%' })
+      .combine(TransitionEffect.OPACITY)
+      .animation({ duration: dur(DUR_TRAY), curve: curveOrLinear(motionCurve) }))
+    .onClick((): void => this.setTrayOpen(true))
+    .onAreaChange((oldArea: Area, newArea: Area): void => {
+      const h: Length | undefined = newArea.height;
+      if (typeof h === 'number') {
+        this.bottomPaneH = h;
+      }
+    })
+  }
+
+  /** 展开/收起待安排：改状态 + 记进 kv（用户选择"记忆上次状态"） */
+  private setTrayOpen(open: boolean): void {
+    this.trayOpen = open;
+    persistTrayOpen(this.context(), open).catch((e: Object): void => {
+      hilog.warn(DOMAIN, TAG, 'persist tray state failed: %{public}s', JSON.stringify(e));
+    });
+  }
+
   @Builder
   BlockEditor(b: PlanBlock) {
-    Column() {
-      // ⚠️ 编辑窗内容长（课程/日期/开始/时长/截止/其他块/三个按钮），
-      // 在真机上实测会超出屏幕，底部的「完成」被裁到 TabBar 底下点不到 ——
-      // 所以套一层 Scroll，内容短时仍然居中、长时可滚。
-      //
-      // ⚠️ 这里的 `maxHeight` **不能再卡一个百分比**（原来是 88%）：
-      // 那是"页头 + 导航栏还占着布局流"的时代留下的 —— 现在两条浮窗都被编辑窗的
-      // 遮罩压在下面、不占布局，屏幕整个高度都能用。卡住的话就会出现
-      // 用户报的现象：「上下明明还有空档，编辑窗却没显示完整」（窗口提前封顶 +
-      // 居中，于是上下留白、内容还得滚）。用 `100%` 让窗口**按内容长高**，
-      // 只有当内容真的超过整屏时才滚。
-      Scroll() {
+    Row() {
+      // 左侧留白：它既是"底下还有一页"的暗示，也是"点外面关掉"的区域
+      Blank()
       Column() {
-        Text(this.blockTitle(b))
-          .fontSize(LAYOUT.chip)
-          .fontWeight(FontWeight.Medium)
-          .fontColor('#F2F5FA')
+        // 抽屉头：标题固定、不跟着内容滚；右侧 ✕ = 关掉（底部那个「完成」也还在）
+        Row() {
+          Text(this.blockTitle(b))
+            .fontSize(LAYOUT.chip)
+            .fontWeight(FontWeight.Medium)
+            .fontColor('#F2F5FA')
+            .layoutWeight(1)
+          Text('✕')
+            .fontSize(LAYOUT.tray)
+            .fontColor('#A9B5C9')
+            .padding({ left: 12, bottom: 4 })
+            .onClick((): void => this.closeEditor())
+        }
+        .width('100%')
+        .margin({ bottom: 10 })
+
+        // ⚠️ 内容长（课程/日期/开始/时长/截止/其他块/三个按钮），必须能滚。
+        // 抽屉高度是**固定**的（整屏减上下留缝），超出时在这里滚 ——
+        // 不再是以前那种"窗口按内容长高"的居中弹窗。
+        Scroll() {
+          Column() {
         // 课程属性（只读）：用户要求计划页把待办的课程显示出来
         if (this.editorCourseText(b).length > 0) {
           Text(this.editorCourseText(b))
@@ -2224,20 +2304,24 @@ export struct PlanDayView {
           .width('100%')
           .margin({ top: 10 })
           .onClick((): void => this.closeEditor())
+          }
+          .width('100%')
+        }
+        .layoutWeight(1)
+        .scrollBar(BarState.Off)
+        .align(Alignment.TopStart)
       }
-      .width('100%')
-      .padding(18)
+      .width(DRAWER_W)
+      .height('100%')
+      .padding({ left: 18, right: 18, top: 14, bottom: 14 })
       .glassShell()
-      }
-      .constraintSize({ maxHeight: '100%' })
-      .scrollBar(BarState.Off)
-      .align(Alignment.TopStart)
+      // 从右侧滑入/滑出：位移走 transition（不动布局）
+      .transition(TransitionEffect.translate({ x: '100%' })
+        .animation({ duration: dur(DUR_DRAWER), curve: curveOrLinear(drawerCurve) }))
     }
     .width('100%')
     .height('100%')
-    // 上下各留 12：窗口贴边时也还看得出"这是浮起来的窗"，而不是整屏换页
-    .padding({ left: 16, right: 16, top: 12, bottom: 12 })
-    .justifyContent(FlexAlign.Center)
+    .padding({ right: FLOAT_SIDE, top: 10, bottom: 10 })
   }
 
   /** 编辑窗里的截止时间显示 */
@@ -2404,7 +2488,7 @@ export struct PlanDayView {
             top: this.topBarsBlockH() + FLOAT_GAP,
             // ⚠️ `+ DDL_MARK_ALLOW`：截止标记会从网格底边往下挂出一行，
             // 不留余量就会被悬浮货架盖掉下半截（用户实测发现的）
-            bottom: this.bottomInset + FLOAT_GAP + this.trayH + FLOAT_GAP + DDL_MARK_ALLOW
+            bottom: this.bottomInset + FLOAT_GAP + this.bottomPaneH + FLOAT_GAP + DDL_MARK_ALLOW
           })
         .layoutWeight(1)
         .scrollBar(BarState.Off)
@@ -2463,11 +2547,15 @@ export struct PlanDayView {
       .justifyContent(FlexAlign.Start)
       .hitTestBehavior(HitTestMode.Transparent)
 
-      // 底部：待安排托盘 —— **悬浮货架**，浮在悬浮导航栏之上。
-      // 它和导航栏刻意用不同材质（压暗 + 小一号圆角 + 收敛阴影），
-      // 这样两层叠在一起时有层次感，而不是两块一样的玻璃（用户要求）。
+      // 底部：待安排 —— **悬浮货架**（展开）/ **召唤 bar**（常态收起），
+      // 浮在悬浮导航栏之上。货架和导航栏刻意用不同材质（压暗 + 小一号圆角 +
+      // 收敛阴影），两层叠在一起才有层次感，而不是两块一样的玻璃（用户要求）。
       Column() {
-        this.TodoPool()
+        if (this.trayOpen) {
+          this.TodoPool()
+        } else {
+          this.TraySummonBar()
+        }
       }
       .width('100%')
       .height('100%')
@@ -2511,12 +2599,15 @@ export struct PlanDayView {
         .hitTestBehavior(HitTestMode.None)
       }
 
-      // 编辑窗遮罩：点窗外的深色区域 = 不保存直接退出（用户要求的行为）
+      // 抽屉遮罩：点窗外的深色区域 = 不保存直接退出（用户要求的行为）。
+      // 抽屉从右侧滑入的同时它淡入 —— 两者时长/曲线同源，看起来是一次动作。
       if (this.editingBlock !== undefined) {
         Column()
           .width('100%')
           .height('100%')
           .backgroundColor('rgba(12,18,28,0.45)')
+          .transition(TransitionEffect.OPACITY
+            .animation({ duration: dur(DUR_DRAWER), curve: curveOrLinear(drawerCurve) }))
           .onClick((): void => this.closeEditor())
         this.BlockEditor(this.editingBlock)
       }

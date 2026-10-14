@@ -26,6 +26,7 @@ import { PAGE_GRADIENT_A, PAGE_GRADIENT_B, PAGE_GRADIENT_C, WALLPAPER_VEIL } fro
 import { GLASS_BLUR, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_ROW, GLASS_SHADOW_SHEET,
   GLASS_TINT_PANEL, GLASS_TINT_SHEET } from './Glass';
 import { FLOAT_GAP, FLOAT_SIDE, FLOAT_TOP, H_TITLE } from './Float';
+import { persistMotionSetting } from './Motion';
 
 // 文件内 @Styles（见 Glass.ets 顶部注释：@Styles 不能跨文件 export）
 // 深色版。设置页的卡片按用户拍定算"大面" → 保留模糊（`glassPanelCard`），
@@ -90,6 +91,11 @@ export struct SettingsPage {
   @State wallPreview: image.PixelMap | undefined = undefined;
   /** toast 自动消失的定时器（-1 = 没在计时） */
   private toastTimer: number = -1;
+  /**
+   * 动画总开关（用户要求"可在设置中一次性关闭"）。
+   * ⚠️ `@StorageLink` 的键名必须写字面量 —— 详情见 view/Motion.ets。
+   */
+  @StorageLink('motionOn') motionOn: boolean = true;
 
   aboutToAppear(): void {
     this.refreshPreview();
@@ -295,6 +301,56 @@ export struct SettingsPage {
       .fontColor('#94A0B5')
       .width('100%')
       .margin({ top: 12, bottom: 4 })
+  }
+
+  /**
+   * 动画卡片：用户要求"在一个地方一次性关掉"。
+   *
+   * 关掉之后**所有**动效立刻退化为直接切换（列表增删、抽屉、托盘、页面切换、
+   * 打字机、光晕漂移、扫光），不需要重启 App —— 每个动效都在用
+   * `dur()` / `curveOrLinear()` 取值，而它们直接读这个开关（见 view/Motion.ets）。
+   */
+  @Builder
+  MotionCard() {
+    Column() {
+      this.SectionTitle('动画', '关掉之后所有动效都退化为直接切换：列表增删、抽屉、托盘、页面切换、打字机与光晕漂移全部停。')
+
+      Row() {
+        Column() {
+          Text('界面动画')
+            .fontSize(14)
+            .fontWeight(FontWeight.Medium)
+            .fontColor('#F2F5FA')
+          Text(this.motionOn ? '开着：进出场、碎裂掉出、光晕漂移都在跑' : '已关闭：一切直接切换（更省电）')
+            .fontSize(11)
+            .fontColor('#94A0B5')
+            .margin({ top: 2 })
+        }
+        .layoutWeight(1)
+        .alignItems(HorizontalAlign.Start)
+
+        Toggle({ type: ToggleType.Switch, isOn: this.motionOn })
+          .selectedColor('#2E6BE6')
+          .onChange((on: boolean): void => {
+            persistMotionSetting(this.context(), on).catch((e: Object): void => {
+              hilog.warn(DOMAIN, TAG, 'persist motion failed: %{public}s', JSON.stringify(e));
+            });
+            this.showToast(on ? '动画已开启' : '动画已关闭（所有动效直接切换）');
+          })
+      }
+      .width('100%')
+      .padding({ top: 4 })
+
+      Text('不会影响数据的读写与提醒；关掉只是不再播放过渡效果。')
+        .fontSize(11)
+        .fontColor('#8B97AC')
+        .width('100%')
+        .margin({ top: 10 })
+    }
+    .width('100%')
+    .padding(16)
+    .glassPanelCard()
+    .margin({ bottom: 12 })
   }
 
   @Builder
@@ -599,6 +655,7 @@ export struct SettingsPage {
             }
 
             this.WallpaperCard()
+            this.MotionCard()
             this.ReminderCard()
             this.RestCard()
           }
