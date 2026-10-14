@@ -977,7 +977,8 @@ export struct CourseManager {
                   .fontColor('#9BA7BD')
                   .width('100%')
                   .margin({ top: 4 })
-              }, (r: SessionRule) => `lr-${r.id}`)
+              }, (r: SessionRule) =>
+                `lr-${r.id}-${r.weekday}-${r.startSection}-${r.endSection}-${r.weeksMask}-${r.location}-${r.isQuiz}`)
 
               ForEach(this.templatesOf(c.id), (t: TodoTemplate) => {
                 Text(`⚙ ${this.tplText(t)}`)
@@ -985,7 +986,8 @@ export struct CourseManager {
                   .fontColor('#7BD69A')
                   .width('100%')
                   .margin({ top: 4 })
-              }, (t: TodoTemplate) => `lt-${t.id}`)
+              }, (t: TodoTemplate) =>
+                `lt-${t.id}-${t.titleTemplate}-${t.ddlRule}-${t.ddlParam}-${t.estimateMin}-${t.enabled}`)
 
               if (c.isVirtual) {
                 Text(`虚拟课程 · ${this.lessonsOf(c.id).length} 讲，已完成 ${this.doneLessonsOf(c.id)}`)
@@ -1005,7 +1007,10 @@ export struct CourseManager {
             .borderRadius(10)
             .margin({ bottom: 8 })
             .onClick((): void => this.openCourse(c))
-          }, (c: Course) => `lc-${c.id}`)
+          }, (c: Course) =>
+            // ⚠️ key 必须带上**这一行真正渲染的字段**：只写 id 的话，
+            // 改完课程回到列表会按 key 复用旧节点、看到的是旧名字（§12.4 第 4 条）
+            `lc-${c.id}-${c.name}-${c.shortName}-${c.colorIndex}-${c.autoTodoEnabled}-${c.isVirtual}-${this.rulesOf(c.id).length}-${this.templatesOf(c.id).length}`)
 
           if (this.courses.length > 0) {
             if (this.confirmClear) {
@@ -1117,7 +1122,9 @@ export struct CourseManager {
                 .onClick((): void => {
                   this.editCourse.colorIndex = idx;
                 })
-            }, (col: string, idx: number) => `col-${idx}`)
+            }, (col: string, idx: number) =>
+              // 选中环是按 idx 判定的：key 里必须带「选中与否」，否则换了颜色不重画
+              `col-${idx}-${this.editCourse.colorIndex === idx}`)
           }
           .width('100%')
 
@@ -1244,7 +1251,8 @@ export struct CourseManager {
             }
             .width('100%')
             .margin({ bottom: 6 })
-          }, (r: SessionRule) => `er-${r.id}-${this.pendingDeleteKey === this.deleteKey('rule', r.id)}`)
+          }, (r: SessionRule) =>
+              `er-${r.id}-${r.weekday}-${r.startSection}-${r.endSection}-${r.weeksMask}-${r.location}-${this.pendingDeleteKey === this.deleteKey('rule', r.id)}`)
 
           // 生成模板
           Row() {
@@ -1300,7 +1308,8 @@ export struct CourseManager {
             }
             .width('100%')
             .margin({ bottom: 6 })
-          }, (t: TodoTemplate) => `et-${t.id}-${this.pendingDeleteKey === this.deleteKey('tpl', t.id)}`)
+          }, (t: TodoTemplate) =>
+              `et-${t.id}-${t.titleTemplate}-${t.ddlRule}-${t.ddlParam}-${t.estimateMin}-${this.pendingDeleteKey === this.deleteKey('tpl', t.id)}`)
 
           Row() {
             Button('保存课程')
@@ -1443,7 +1452,8 @@ export struct CourseManager {
             .glassCard()
             .borderRadius(8)
             .margin({ bottom: 6 })
-          }, (s: Semester) => `sem-${s.id}`)
+          }, (s: Semester) =>
+            `sem-${s.id}-${s.name}-${s.startDate}-${s.totalWeeks}-${s.firstDayOfWeek}-${s.showWeekend}`)
 
           Text('新建学期（下学期开学时用）')
             .fontSize(14)
@@ -1788,7 +1798,8 @@ export struct CourseManager {
             }
             .width('100%')
             .padding({ top: 4, bottom: 4 })
-          }, (st: SectionTime) => `sec-${st.section}`)
+          }, (st: SectionTime) =>
+              `sec-${st.section}-${st.startMin}-${st.endMin}-${st.flexible}`)
 
           Row() {
             Button('+ 加一节')

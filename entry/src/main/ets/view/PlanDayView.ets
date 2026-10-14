@@ -1900,7 +1900,9 @@ export struct PlanDayView {
                 color: this.selectedTodoId === t.id ? '#7FA8FF' : GLASS_EDGE_SOFT
               })
               .margin({ right: 8 })
-            }, (t: Todo) => `pool-${t.id}`)
+            }, (t: Todo) =>
+              // 托盘卡的「选中」样式要靠 key 变化才会重画
+              `pool-${t.id}-${t.title}-${t.courseId}-${t.estimateMin}-${this.selectedTodoId === t.id}`)
           }
         }
         .scrollable(ScrollDirection.Horizontal)

@@ -635,7 +635,8 @@ export struct SettingsPage {
         }
         .width('100%')
         .margin({ bottom: 6 })
-      }, (w: RestWindow) => `rest-${w.id}-${this.pendingDeleteKey === this.deleteKey(w.id)}`)
+      }, (w: RestWindow) =>
+              `rest-${w.id}-${w.weekday}-${w.startMin}-${w.endMin}-${w.label}-${this.pendingDeleteKey === this.deleteKey(w.id)}`)
 
       this.FieldLabel('名称')
       TextInput({ text: this.newRestLabel, placeholder: '午休' })

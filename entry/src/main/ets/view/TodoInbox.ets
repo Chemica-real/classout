@@ -899,7 +899,9 @@ export struct TodoInbox {
                   this.editCourseId = c.id;
                 }
               })
-            }, (c: Course) => `c-${c.id}`)
+            }, (c: Course) =>
+            // 选中态靠 key 里的 selected 变化才能重画（§12.4 第 4 条）
+            `c-${c.id}-${c.name}-${c.shortName}-${this.editCourseId === c.id}`)
           }
           .width('100%')
         }

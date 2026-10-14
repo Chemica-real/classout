@@ -1187,7 +1187,8 @@ struct Index {
           .backgroundColor('rgba(255,255,255,0.08)')
           .borderRadius(8)
           .margin({ bottom: 6 })
-        }, (o: SessionOverride) => `ov-${o.id}`)
+        }, (o: SessionOverride) =>
+              `ov-${o.id}-${o.kind}-${o.date}-${o.newDate}-${o.newStartSection}-${o.newEndSection}-${o.newLocation}-${o.courseId}`)
 
         Button('关闭')
           .backgroundColor('rgba(255,255,255,0.14)')
@@ -1236,7 +1237,7 @@ struct Index {
                 this.extraCourseId = c.id;
               }
             })
-          }, (c: Course) => `ec-${c.id}`)
+          }, (c: Course) => `ec-${c.id}-${c.name}-${c.shortName}-${c.colorIndex}`)
         }
         .width('100%')
 
