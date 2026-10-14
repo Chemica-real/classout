@@ -190,6 +190,30 @@ export function normalizeDuration(min: number): number {
 }
 
 /**
+ * 把一个块平分成两半，返回 `[前半, 后半]`（分钟）。
+ *
+ * 用户 2026-10-14 拍定的规则：「若无法整除，取相近的两个五的倍数，他们的**加和为**原时长」。
+ * 所以这里守三条：
+ * 1. 两块都落在 5 分钟刻度上（全项目的时长都在这条刻度上，见 Validate.normalizeEstimate）；
+ * 2. 两块之和**严格等于** total —— 不是各自四舍五入，那会让"预计时长"凭空一变；
+ * 3. 拆不出两个 ≥5 分钟的块（total < 10）就返回空数组，调用方据此不显示「对半分」。
+ *
+ * 例：90 → [45,45]；95 → [45,50]；15 → [5,10]；10 → [5,5]；5 → []。
+ */
+export function halveMinutes(total: number): number[] {
+  if (total < 10) {
+    return [];
+  }
+  const half: number = Math.floor(total / 2 / 5) * 5;
+  const first: number = half < 5 ? 5 : half;
+  const second: number = total - first;
+  if (second < 5) {
+    return [];
+  }
+  return [first, second];
+}
+
+/**
  * 把「时长 durationMin 的块」放到 y 处，返回 [start, end]。
  *
  * 起点按全局刻度吸附；**时长原样保留**，结束时间由 `起点 + 时长` 得出。

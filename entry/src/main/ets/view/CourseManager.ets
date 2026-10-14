@@ -411,14 +411,56 @@ export struct CourseManager {
 
   private openRule(r: SessionRule | undefined): void {
     if (r === undefined) {
-      this.ruleDraft = blankRule(maskAll(this.semester === undefined ? 16 : this.semester.totalWeeks));
-      this.ruleDraft.courseId = this.editCourse.id;
-      this.ruleWeeksText = '1-16';
-    } else {
-      this.ruleDraft = r;
-      this.ruleWeeksText = maskToText(r.weeksMask);
+      this.startNewRule().catch((e: Object): void => {
+        hilog.error(DOMAIN, TAG, 'ensure course before rule failed: %{public}s', JSON.stringify(e));
+      });
+      return;
     }
+    this.ruleDraft = r;
+    this.ruleWeeksText = maskToText(r.weeksMask);
     this.ruleDialog = true;
+  }
+
+  /**
+   * 「+ 添加时段」：**先把课程落库、拿到 id**，再开弹窗。
+   *
+   * ⚠️ 以前这里直接开弹窗，规则就带着 `course_id = 0` 存进去了 —— 挂在**一门不存在的课**上：
+   * 编辑页里当场看得见（过滤用的就是 0），可等用户点「保存课程」拿到真 id 之后，
+   * 那条时段再也查不出来，于是"新建课程时加的时段/模板，一保存就没了"。
+   * 用户实测报的就是这条：「课程第一次新建时无法添加时段等信息」。
+   */
+  private async startNewRule(): Promise<void> {
+    if (!await this.ensureCourseSaved()) {
+      return;
+    }
+    this.ruleDraft = blankRule(maskAll(this.semester === undefined ? 16 : this.semester.totalWeeks));
+    this.ruleDraft.courseId = this.editCourse.id;
+    this.ruleWeeksText = '1-16';
+    this.ruleDialog = true;
+  }
+
+  /**
+   * 新建课程时的"先落库"：加了时段/模板之后，这门课**已经存在**了。
+   *
+   * 名字为空就先要名字（和「保存课程」同一套校验），绝不创建"未命名课程"。
+   * 返回 false = 没准备好，调用方不要继续。
+   */
+  private async ensureCourseSaved(): Promise<boolean> {
+    if (this.editCourse.id !== 0) {
+      return true;
+    }
+    const name: string = this.editCourse.name.trim();
+    if (name.length === 0) {
+      this.toast = '先给课程起个名字，再加时段 / 模板';
+      return false;
+    }
+    this.editCourse.name = name;
+    const ctx: common.UIAbilityContext = this.context();
+    const id: number = await TimetableRepo.insertCourse(ctx, this.editCourse);
+    this.editCourse.id = id;
+    this.toast = '课程已先保存（加了时段就不会丢）';
+    await this.reload();
+    return true;
   }
 
   private saveRule(): void {
@@ -480,11 +522,22 @@ export struct CourseManager {
 
   private openTemplate(t: TodoTemplate | undefined): void {
     if (t === undefined) {
-      this.tplDraft = blankTemplate();
-      this.tplDraft.courseId = this.editCourse.id;
-    } else {
-      this.tplDraft = t;
+      this.startNewTemplate().catch((e: Object): void => {
+        hilog.error(DOMAIN, TAG, 'ensure course before template failed: %{public}s', JSON.stringify(e));
+      });
+      return;
     }
+    this.tplDraft = t;
+    this.tplDialog = true;
+  }
+
+  /** 「+ 添加模板」：同 `startNewRule()`，先把课程落库拿到 id（否则模板挂到 course_id = 0 上） */
+  private async startNewTemplate(): Promise<void> {
+    if (!await this.ensureCourseSaved()) {
+      return;
+    }
+    this.tplDraft = blankTemplate();
+    this.tplDraft.courseId = this.editCourse.id;
     this.tplDialog = true;
   }
 

@@ -4,7 +4,8 @@ import { storedAbilityContext } from '../util/Ctx';
 import { Course, COURSE_COLORS, Todo, TodoCategory, TodoSource, TodoStatus } from '../model/Types';
 import { TimetableRepo } from '../data/TimetableRepo';
 import { TodoRepo } from '../data/TodoRepo';
-import { addDays, countdownText, formatDate, parseDate, relativeDayText, today } from '../util/DateUtil';
+import { addDays, countdownText, formatDate, minToHHmm, parseDate, relativeDayText, today } from '../util/DateUtil';
+import { pickDateTime } from '../util/DateTimePicker';
 import { normalizeEstimate, Validation, validateEstimate } from '../domain/Validate';
 import { ChipButton } from './ChipButton';
 import { BackHandler, backStack } from '../util/BackStack';
@@ -77,6 +78,12 @@ export struct TodoInbox {
   @Prop bottomInset: number = 0;
   /** 底部那条行动按钮浮窗量出来的高度 */
   @State actionsH: number = H_ACTIONS;
+  /**
+   * 「请打开这条待办」的请求（计划页的截止列表点进来的）。
+   * 数据载入后执行一次，然后回调 Index 清 0（否则每次 reload 都会再开一次窗）。
+   */
+  @Prop openTodoId: number = 0;
+  onOpenTodoConsumed: () => void = (): void => {};
   /** 编辑窗开着时通知 Index（它要把悬浮浮窗层改画到内容层之下，见 Index.pageModalOpen） */
   onModalChange: (open: boolean) => void = (): void => {};
   /** 正在"碎裂掉出"的那一条（0 = 没有）：先播碎片飞散，播完再真删 */
@@ -86,6 +93,10 @@ export struct TodoInbox {
 
   @State pendingList: Todo[] = [];
   @State activeList: Todo[] = [];
+  /** 已完成的待办：放在列表最下方、加灰显示（用户要求"不要让它消失"） */
+  @State doneList: Todo[] = [];
+  /** 「已完成」区是否展开。默认展开 —— 用户要的就是"完成之后能看见它去哪了" */
+  @State doneOpen: boolean = true;
   @State courses: Course[] = [];
   @State loading: boolean = true;
 
@@ -195,7 +206,38 @@ export struct TodoInbox {
     this.courses = await TimetableRepo.listCourses(ctx, this.semesterId);
     this.pendingList = await TodoRepo.listTodos(ctx, 'status = ?', [TodoStatus.Pending]);
     this.activeList = await TodoRepo.listTodos(ctx, 'status = ?', [TodoStatus.Active]);
+    this.doneList = await TodoRepo.listDoneTodos(ctx);
     this.loading = false;
+    // 计划页请求打开某条待办：数据到位了才找得到它
+    this.openRequestedTodo();
+  }
+
+  /**
+   * 处理"计划页截止列表点了一条"的请求。
+   * 找不到（比如那条刚被删了）就静默放弃 —— 但**请求一样要清掉**，免得一直重试。
+   */
+  private openRequestedTodo(): void {
+    const id: number = this.openTodoId;
+    if (id <= 0) {
+      return;
+    }
+    const t: Todo | undefined = this.findTodo(id);
+    this.onOpenTodoConsumed();
+    if (t !== undefined) {
+      this.openEdit(t);
+    }
+  }
+
+  private findTodo(id: number): Todo | undefined {
+    const lists: Todo[][] = [this.pendingList, this.activeList, this.doneList];
+    for (const list of lists) {
+      for (const t of list) {
+        if (t.id === id) {
+          return t;
+        }
+      }
+    }
+    return undefined;
   }
 
   /**
@@ -211,7 +253,7 @@ export struct TodoInbox {
    */
   private todoKey(prefix: string, t: Todo): string {
     return `${prefix}-${t.id}-${t.title}-${t.ddl}-${t.category}-${t.courseId}`
-      + `-${t.estimateMin}-${t.status}-${t.note}`;
+      + `-${t.estimateMin}-${t.status}-${t.note}-${t.doneAt}`;
   }
 
   private courseOf(id: number): Course | undefined {
@@ -285,6 +327,46 @@ export struct TodoInbox {
     const date: Date = parseDate(ddl.substring(0, 10));
     const time: string = ddl.length >= 16 ? ddl.substring(11, 16) : '';
     return `${date.getMonth() + 1}/${date.getDate()} ${time} · ${relativeDayText(date)}`;
+  }
+
+  /** 四个快捷胶囊对应的截止时间（顺序：今天 / 明天 / 本周日 / 3 天后，都是 23:59） */
+  private presetDdls(): string[] {
+    const wd: number = today().getDay() === 0 ? 7 : today().getDay();
+    return [
+      `${formatDate(today())} 23:59`,
+      `${formatDate(addDays(today(), 1))} 23:59`,
+      `${formatDate(addDays(today(), 7 - wd))} 23:59`,
+      `${formatDate(addDays(today(), 3))} 23:59`
+    ];
+  }
+
+  /** 当前截止时间是不是正好落在某个快捷档位上（是的话「自定义」胶囊不亮） */
+  private ddlIsPreset(): boolean {
+    return this.presetDdls().indexOf(this.editDdl) >= 0;
+  }
+
+  /** '2026-10-15 14:07' → '10/15 14:07'：够短，能直接当胶囊文字 */
+  private ddlShort(ddl: string): string {
+    if (ddl.length < 16) {
+      return '自定义…';
+    }
+    return `${ddl.substring(5, 7)}/${ddl.substring(8, 10)} ${ddl.substring(11, 16)}`;
+  }
+
+  /** 「自定义…」：走鸿蒙的日期 + 时间选择器（分钟不受 5 分钟那套限制） */
+  private pickCustomDdl(): void {
+    pickDateTime(this.getUIContext(), this.editDdl, (v: string): void => {
+      this.editDdl = v;
+    });
+  }
+
+  /** '10/14 12:03 完成'：已完成条目上那行小字 */
+  private doneAtText(t: Todo): string {
+    if (t.doneAt <= 0) {
+      return '已完成';
+    }
+    const d: Date = new Date(t.doneAt);
+    return `${d.getMonth() + 1}/${d.getDate()} ${minToHHmm(d.getHours() * 60 + d.getMinutes())} 完成`;
   }
 
   private confirm(t: Todo): void {
@@ -361,6 +443,7 @@ export struct TodoInbox {
   private optimisticRemove(id: number): void {
     this.pendingList = this.pendingList.filter((x: Todo) => x.id !== id);
     this.activeList = this.activeList.filter((x: Todo) => x.id !== id);
+    this.doneList = this.doneList.filter((x: Todo) => x.id !== id);
   }
 
   private async doRemove(t: Todo): Promise<void> {
@@ -411,6 +494,19 @@ export struct TodoInbox {
       await this.deleteRecord(t);
     }
     await this.reload();
+  }
+
+  /**
+   * 列表里任意一条的「带动画删除」（已完成的条目、以及编辑抽屉走这条）。
+   * 「待确认」卡片另有"碎裂掉出"，见 `removeConfirmed()`。
+   */
+  private deleteRow(t: Todo): void {
+    this.getUIContext().animateTo(
+      { duration: dur(DUR_ITEM), curve: curveOrLinear(motionCurve) },
+      (): void => { this.optimisticRemove(t.id); });
+    this.doRemove(t).catch((e: Object): void => {
+      hilog.error(DOMAIN, TAG, 'todo remove failed: %{public}s', JSON.stringify(e));
+    });
   }
 
   /**
@@ -677,6 +773,54 @@ export struct TodoInbox {
     .onClick((): void => this.openEdit(t))
   }
 
+  /**
+   * 已完成的待办：**加灰 + 划掉**，留在列表最下方而不是消失（用户要求）。
+   * 两个动作：恢复成待办 / 删除（删除走二次确认，和其它删除一致）。
+   */
+  @Builder
+  DoneRow(t: Todo) {
+    Row() {
+      Text('✓')
+        .fontSize(16)
+        .fontColor('#7C8798')
+        .margin({ right: 10 })
+      Column() {
+        Text(t.title)
+          .fontSize(14)
+          .fontColor('#8B97AC')
+          .decoration({ type: TextDecorationType.LineThrough, color: '#7C8798' })
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+        Text(`${this.doneAtText(t)}${t.estimateMin > 0 ? ` · 预计 ${t.estimateMin} 分钟` : ''}`)
+          .fontSize(11)
+          .fontColor('#7C8798')
+          .margin({ top: 3 })
+      }
+      .layoutWeight(1)
+      .alignItems(HorizontalAlign.Start)
+      if (this.pendingDeleteId === t.id) {
+        this.SmallButton('确认删除', '#FF8080', (): void => this.deleteRow(t))
+        this.SmallButton('取消', '#A9B5C9', (): void => {
+          this.pendingDeleteId = 0;
+        })
+      } else {
+        this.SmallButton('恢复', '#7FA8FF', (): void => this.reopen(t))
+        this.SmallButton('删除', '#FF8080', (): void => {
+          this.pendingDeleteId = t.id;
+        })
+      }
+    }
+    .width('100%')
+    .padding(12)
+    .backgroundColor('rgba(255,255,255,0.05)')
+    .borderRadius(GLASS_RADIUS)
+    .border({ width: 1, color: 'rgba(255,255,255,0.08)' })
+    .margin({ bottom: 8 })
+    .transition(TransitionEffect.OPACITY
+      .combine(TransitionEffect.translate({ y: -10 }))
+      .animation({ duration: dur(DUR_ITEM), curve: curveOrLinear(motionCurve) }))
+  }
+
   @Builder
   ExamCard(t: Todo) {
     Row() {
@@ -861,8 +1005,20 @@ export struct TodoInbox {
             this.editDdl = '';
           }
           })
+          // 自定义：滚鸿蒙自己的日期 + 时间选择器（分钟不受任何限制）
+          ChipButton({
+            text: this.editDdl.length > 0 && !this.ddlIsPreset()
+              ? this.ddlShort(this.editDdl) : '自定义…',
+            selected: this.editDdl.length > 0 && !this.ddlIsPreset(),
+            onTap: (): void => this.pickCustomDdl()
+          })
         }
         .width('100%')
+        Text(this.editDdl.length > 0 ? `截止：${this.ddlText(this.editDdl)}` : '截止：无')
+          .fontSize(11)
+          .fontColor('#8B97AC')
+          .width('100%')
+          .margin({ top: 2 })
 
         if (this.editCategory !== TodoCategory.Exam) {
           Text('预计耗时')
@@ -1126,6 +1282,38 @@ export struct TodoInbox {
               ForEach(this.taskList(), (t: Todo) => {
                 this.ActiveRow(t)
               }, (t: Todo) => this.todoKey('a', t))
+
+              // ---- 已完成：留在页面最下方、加灰显示 ----
+              // ★ 用户实测反馈：完成之后那条**直接消失**了，既看不到它去哪了、也没法恢复。
+              //   现在放到这里：默认展开（就是要让人看见"它没丢"），可收起。
+              if (this.doneList.length > 0) {
+                Row() {
+                  Text('已完成')
+                    .fontSize(15)
+                    .fontWeight(FontWeight.Medium)
+                    .fontColor('#94A0B5')
+                  Text(`${this.doneList.length} 条`)
+                    .fontSize(12)
+                    .fontColor('#7C8798')
+                    .margin({ left: 6 })
+                  Blank()
+                  Text(this.doneOpen ? '收起 ▴' : '展开 ▾')
+                    .fontSize(11)
+                    .fontColor('#7FA8FF')
+                    .padding({ left: 8 })
+                    .onClick((): void => {
+                      this.doneOpen = !this.doneOpen;
+                    })
+                }
+                .width('100%')
+                .margin({ top: 18, bottom: 8 })
+
+                if (this.doneOpen) {
+                  ForEach(this.doneList, (t: Todo) => {
+                    this.DoneRow(t)
+                  }, (t: Todo) => this.todoKey('d', t))
+                }
+              }
             }
             .width('100%')
             // 上下都给悬浮浮窗让位：上面是页头，下面是「行动按钮 + 导航栏」两条。

@@ -1,7 +1,7 @@
 import { relationalStore } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 import { Db } from './Db';
-import { PlanBlock, Todo, TodoCategory, TodoTemplate, VirtualLesson } from '../model/Types';
+import { PlanBlock, Todo, TodoCategory, TodoStatus, TodoTemplate, VirtualLesson } from '../model/Types';
 import { isExamCategory, migrateEstimate, normalizeEstimate } from '../domain/Validate';
 
 /** 待办时长的迁移项（见 normalizeAllEstimates） */
@@ -121,6 +121,24 @@ export class TodoRepo {
     const rs = await store.querySql(
       `SELECT * FROM todo WHERE ${statusClause} ORDER BY
        CASE WHEN ddl = '' THEN 1 ELSE 0 END, ddl, priority DESC, id DESC`, args);
+    const list: Todo[] = [];
+    while (rs.goToNextRow()) {
+      list.push(TodoRepo.readTodo(rs));
+    }
+    rs.close();
+    return list;
+  }
+
+  /**
+   * 已完成的待办：**按完成时刻倒序**（最近完成的在最上面）。
+   *
+   * ⚠️ 单独开一条，不复用 `listTodos`：那条是按 ddl 排的（托盘要用），
+   * 放到"已完成"列表里就变成按截止日期排、跟完成先后无关，看着很乱。
+   */
+  static async listDoneTodos(context: common.Context): Promise<Todo[]> {
+    const store: relationalStore.RdbStore = await Db.get(context);
+    const rs = await store.querySql(
+      `SELECT * FROM todo WHERE status = '${TodoStatus.Done}' ORDER BY done_at DESC, id DESC`);
     const list: Todo[] = [];
     while (rs.goToNextRow()) {
       list.push(TodoRepo.readTodo(rs));
@@ -403,6 +421,24 @@ export class TodoRepo {
     const store: relationalStore.RdbStore = await Db.get(context);
     const rs = await store.querySql(
       'SELECT * FROM plan_block WHERE todo_id = ? ORDER BY date, start_min', [todoId]);
+    const list: PlanBlock[] = [];
+    while (rs.goToNextRow()) {
+      list.push(TodoRepo.readBlock(rs));
+    }
+    rs.close();
+    return list;
+  }
+
+  /**
+   * 全部计划块（不分日期）。
+   *
+   * 用途：判断"这个待办/这一讲**已经排过没有**" —— 用户 2026-10-14 定的规则是
+   * **排到任何一天都算排过**，托盘里就该消失。所以过滤不能只看当天
+   * （原来只看当天，于是拖到别的天之后它还在托盘里，用户以为没排上、又拖一次）。
+   */
+  static async listAllBlocks(context: common.Context): Promise<PlanBlock[]> {
+    const store: relationalStore.RdbStore = await Db.get(context);
+    const rs = await store.querySql('SELECT * FROM plan_block ORDER BY date, start_min');
     const list: PlanBlock[] = [];
     while (rs.goToNextRow()) {
       list.push(TodoRepo.readBlock(rs));

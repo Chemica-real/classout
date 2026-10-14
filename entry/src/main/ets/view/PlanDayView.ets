@@ -9,8 +9,7 @@ import { sessionsOnDate } from '../domain/Timetable';
 import { generateForLesson } from '../domain/TodoGenerator';
 import { TimeAxis, DEFAULT_AXIS, allBlocksDone,
   dragOffsetWithScroll, dropRange, edgeScrollDepth, edgeScrollDirection, edgeScrollStep,
-  durationToH, findFreeSlot, hasBlockOnDate, moveRange, normalizeDuration,
-  scheduledDays,
+  durationToH, findFreeSlot, halveMinutes, hasBlockOnDate, moveRange, normalizeDuration,
   resizeRange, sortBlocksByTime,
   selectPoolTodos } from '../domain/PlanMath';
 import { BLOCK_MIN_MIN, DURATION_STEP_MIN, pinchDeltaLabel, pinchEnd, resizeEndTo,
@@ -23,6 +22,7 @@ import { AXIS_W, canBeginDrag, centerIndex, COLS_DAY, COLS_THREE, columnAtX, col
 import { addDays, formatDate, hhmmToMin, minToHHmm, parseDate, relativeDayText, today, WEEKDAY_CN,
   weekdayOf } from '../util/DateUtil';
 import { ChipButton } from './ChipButton';
+import { pickDateTime } from '../util/DateTimePicker';
 import { hapticLongPress } from '../util/Haptics';
 import { BackHandler, backStack } from '../util/BackStack';
 import { GLASS_BLUR, GLASS_EDGE_SHELF, GLASS_EDGE_SOFT, GLASS_EDGE_STRONG, GLASS_RADIUS,
@@ -117,6 +117,12 @@ const DDL_MARK_ALLOW: number = 36;
  */
 const CONTENT_W: string = `calc(100% - ${AXIS_W}vp)`;
 
+/** 截止标记的分组：同一分钟上的待办合成一条（用户要求"别重叠、点开看全部"） */
+interface DdlGroup {
+  minute: number;
+  todos: Todo[];
+}
+
 @Component
 export struct PlanDayView {
   @Prop semesterId: number;
@@ -126,6 +132,13 @@ export struct PlanDayView {
   @Prop bottomInset: number = 0;
   /** 编辑窗开着时通知 Index（它要把悬浮浮窗层改画到内容层之下，见 Index.pageModalOpen） */
   onModalChange: (open: boolean) => void = (): void => {};
+  /**
+   * 点截止列表里的一条 → 请求打开那条待办（Index 会切到「待办」标签并让它开编辑窗）。
+   * 计划页自己不造第二份待办编辑窗 —— 编辑入口只该有一处（见 TodoInbox）。
+   */
+  onOpenTodo: (id: number) => void = (): void => {};
+  /** 当前展开的截止分组（分钟数）；-1 = 没有展开任何一组 */
+  @State ddlOpenMinute: number = -1;
   /**
    * 本页那叠浮窗（日期栏 [+ 三日列头]）量出来的总高度；**0 = 还没量到**。
    * 没量到时用 `topBarsBlockH()` 按名义高度估一个，免得第一帧内容顶到屏幕上边。
@@ -137,10 +150,10 @@ export struct PlanDayView {
    */
   @State bottomPaneH: number = 0;
   /**
-   * 「待安排」卡片上的"已排 …"角标：todoId → "10/15、10/16"。
-   * 只在 reload() 里重建（普通成员即可：它的消费方会因 `this.todos` 变化而重渲）。
+   * **全部日期**上的计划块。只用来判断"这个待办 / 这一讲排过没有"（托盘过滤）。
+   * 网格渲染与拖拽数学一律用 `this.blocks` / `left*` / `right*`（那是"当前视图里的"）。
    */
-  private scheduledText: Map<number, string> = new Map<number, string>();
+  @State allBlocks: PlanBlock[] = [];
   /**
    * 待安排是展开还是收起。用户要求：「待安排可以常态隐藏，点击小召唤 bar 唤出」，
    * 并且**记住上次的状态**（存 kv，冷启动读回来）。
@@ -424,12 +437,6 @@ export struct PlanDayView {
     return [];
   }
 
-  /** 角标文本（没有就返回空串，调用方用 length 判断） */
-  private scheduledBadge(id: number): string {
-    const v: string | undefined = this.scheduledText.get(id);
-    return v === undefined ? '' : v;
-  }
-
   /** "已排"角标里的日期写法：8/15（短） */
   private mdText(dateStr: string): string {
     const d: Date = parseDate(dateStr);
@@ -533,21 +540,10 @@ export struct PlanDayView {
       this.rightBlocks = [];
     }
     this.todos = await TodoRepo.listTodos(ctx, 'status != ?', [TodoStatus.Archived]);
-    // 托盘里的待办：查一下它**在别的天**排过没有，有就给它挂个"已排 …"角标。
-    // 这样"拖到侧列后它仍留在托盘"就不是 bug 观感了 —— 用户一眼看到刚才那下生效了。
-    const badge: Map<number, string> = new Map<number, string>();
-    for (const t of selectPoolTodos(this.todos, this.blocks)) {
-      const all: PlanBlock[] = await TodoRepo.listBlocksByTodo(ctx, t.id);
-      const days: string[] = scheduledDays(all, t.id);
-      if (days.length > 0) {
-        const parts: string[] = [];
-        for (const d of days) {
-          parts.push(this.mdText(d));
-        }
-        badge.set(t.id, parts.join('、'));
-      }
-    }
-    this.scheduledText = badge;
+    // ★ 「排到任何一天都算排过」：托盘过滤要用**全部**日期上的块，不能只用当天的。
+    //   以前只看当天 → 拖到侧列那天之后它仍留在托盘里（用户实测报的就是这条）。
+    //   角标「已排 10/13」是当时给这个行为打的补丁，规则改掉之后它就没有意义了，一并删掉。
+    this.allBlocks = await TodoRepo.listAllBlocks(ctx);
     this.restWindows = await TimetableRepo.listRestWindows(ctx);
     this.lessons = await TodoRepo.listLessonsOfVirtualCourses(ctx, sem.id);
     this.loading = false;
@@ -617,10 +613,10 @@ export struct PlanDayView {
     return `${name} 第 ${l.seq} 讲`;
   }
 
-  /** 还没做完、且今天还没排过的课时 */
+  /** 还没做完、且**任何一天都没排过**的虚拟课时（同 poolTodos 的规则） */
   private poolLessons(): VirtualLesson[] {
     const scheduled: Set<number> = new Set<number>();
-    for (const b of this.blocks) {
+    for (const b of this.allBlocks) {
       if (b.lessonId > 0) {
         scheduled.add(b.lessonId);
       }
@@ -688,13 +684,18 @@ export struct PlanDayView {
   }
 
   /**
-   * 「待安排」托盘里的待办：未完成、且**今天**还没排过。
+   * 「待安排」托盘里的待办：**未完成、且任何一天都没排过**。
+   *
    * 判据在 domain/PlanMath.selectPoolTodos（纯函数，有离线断言）。
-   * this.blocks 由 listBlocksOn(ctx, this.date) 载入，只含当天，正好对上那边的要求。
-   * 换到别的日期时待办会重新出现，所以「拆成多块分散在不同天」仍然可行。
+   * ⚠️ 传进去的必须是 `this.allBlocks`（全部日期）—— 用户 2026-10-14 明确：
+   * 「理应无论放到哪一天待安排栏中的对应都会消失」。以前传 `this.blocks`（当天），
+   * 于是拖到别的天之后它还在托盘里。
+   *
+   * ⚠️ 这条规则同时意味着**不能再从托盘拖第二块**：一天多块/多天分散改走
+   * 「块属性 → 对半分」再把其中一块拖到别的天（用户拍定的链路）。
    */
   private poolTodos(): Todo[] {
-    return selectPoolTodos(this.todos, this.blocks);
+    return selectPoolTodos(this.todos, this.allBlocks);
   }
 
   private selectedTodo(): Todo | undefined {
@@ -838,13 +839,11 @@ export struct PlanDayView {
     if (todo === undefined) {
       return;
     }
-    // ⚠️ 同一天已经有它了就别再排一块：托盘按设计只过滤"当前查看日"，
-    // 拖到侧列那天之后它仍留在托盘里；用户以为没排上、再拖一次 → 重复块 →
-    // 而 estimate_min 是"所有块之和"，于是"预计时间越来越长"（用户实测）。
-    if (hasBlockOnDate(this.blocksOnDate(dropDate), todoId, dropDate)) {
-      this.showHint(`${this.mdText(dropDate)} 已经排过它了；要改时长请点开那一块`);
-      return;
-    }
+    // ⚠️ 这里**故意不再拦"同一天已排过"**：
+    //   ① 托盘现在按"任何一天排过就消失"过滤（见 poolTodos），能拖出来的必然一块都没有；
+    //   ② 用户 2026-10-14 明确要求允许一天排多块（拆法走「对半分」，见 splitBlockHalf）。
+    //   早先那条拦截是为了修"重复块 → estimate 越来越长"，那个问题的根因是托盘过滤
+    //   只看当天，现在根因已经堵住，拦截反而与新规则矛盾。
     const range: number[] = dropRange(AXIS, localY, todo.estimateMin);
     this.place(todo, range[0], range[1] - range[0], dropDate);
   }
@@ -1481,6 +1480,47 @@ export struct PlanDayView {
     });
   }
 
+  /**
+   * 「对半分」：把当前块原地拆成**前后相邻**的两块（用户 2026-10-14 拍定）。
+   *
+   * 为什么要有它：托盘现在按"任何一天排过就消失"过滤，没法再从托盘拖出第二块；
+   * 一天两块 / 多天分散就走这里 —— 拆完把其中一块拖到别的天（跨天拖拽本来就有）。
+   *
+   * 只对**待办块**开放（课程灰带是规则、虚拟课时是"某一讲"，拆开没有语义）。
+   * 拆前拆后总时长不变，所以 `estimate_min` 也不该变 —— 仍然调一次
+   * `syncTodoDuration`，让"库里的值"始终由同一处保证与块的和一致。
+   */
+  private splitBlockHalf(b: PlanBlock): void {
+    this.doSplitBlock(b).catch((e: Object): void => {
+      hilog.error(DOMAIN, TAG, 'split block failed: %{public}s', JSON.stringify(e));
+    });
+  }
+
+  private async doSplitBlock(b: PlanBlock): Promise<void> {
+    const parts: number[] = halveMinutes(b.endMin - b.startMin);
+    if (parts.length !== 2) {
+      this.showHint('这块太短了，拆不开');
+      return;
+    }
+    const ctx: common.UIAbilityContext = this.context();
+    const mid: number = b.startMin + parts[0];
+    const first: PlanBlock = {
+      id: b.id, todoId: b.todoId, lessonId: b.lessonId, date: b.date,
+      startMin: b.startMin, endMin: mid, done: b.done
+    };
+    await TodoRepo.updateBlock(ctx, first);
+    const second: PlanBlock = {
+      id: 0, todoId: b.todoId, lessonId: b.lessonId, date: b.date,
+      startMin: mid, endMin: mid + parts[1], done: false
+    };
+    await TodoRepo.insertBlock(ctx, second);
+    await this.syncTodoDuration(b.todoId);
+    this.showHint(`已对半分：${parts[0]} + ${parts[1]} 分钟（可把其中一块拖到别的天）`);
+    await this.reload();
+    // 编辑窗还开着：把里面的数值刷成"前半块"，否则显示的还是拆之前那个时长
+    await this.refreshEditor();
+  }
+
   /** 点完成圆圈：三列都可点 */
   private onBlockToggleDone(block: PlanBlock): void {
     this.toggleBlockDone(block);
@@ -1906,25 +1946,155 @@ export struct PlanDayView {
     })
   }
 
+  /**
+   * 截止标记：**同一时刻的多条合成一行**。
+   *
+   * ★ 用户实测反馈：「截止时间的渲染会重合重叠的，可以设置点击以展开所有在此时截止的事项」。
+   *   原来是"一条待办一行、各自绝对定位" —— 而 23:59 这种默认档位常常一次压着好几条，
+   *   几行像素级叠在一起，看着只有一条。
+   *   现在按分钟分组：只有一条就照旧显示标题，多条显示「⚑ N 项截止」，
+   *   **点一下在网格上浮出完整列表**（点其中一条 → 跳到待办页打开它）。
+   */
   @Builder
   DdlMarkers() {
     Stack({ alignContent: Alignment.TopStart }) {
-      ForEach(this.ddlToday(), (t: Todo) => {
+      ForEach(this.ddlGroups(), (g: DdlGroup) => {
         Row() {
-          Text(`⚑ ${t.title} 截止`)
+          Text(g.todos.length > 1
+            ? `⚑ ${g.todos.length} 项截止`
+            : `⚑ ${g.todos[0].title} 截止`)
             .fontSize(LAYOUT.tray)
             .fontColor('#FF8A8A')
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .layoutWeight(1)
         }
         .width(CONTENT_W)
         .padding({ left: 6, top: 1, bottom: 1 })
-        .backgroundColor('rgba(214,69,69,0.18)')
+        .backgroundColor(this.ddlOpenMinute === g.minute
+          ? 'rgba(214,69,69,0.45)' : 'rgba(214,69,69,0.18)')
         .borderRadius(4)
-        .position({ x: AXIS_W, y: this.yOf(this.ddlMinute(t)) })
-      }, (t: Todo) => `ddl-${t.id}`)
+        .position({ x: AXIS_W, y: this.yOf(g.minute) })
+        .onClick((): void => {
+          // 再点同一条 = 收起（否则用户没有"关掉"的直觉）
+          this.ddlOpenMinute = this.ddlOpenMinute === g.minute ? -1 : g.minute;
+        })
+      }, (g: DdlGroup) => `ddlg-${g.minute}-${g.todos.length}-${g.todos[0].id}`)
+
+      if (this.ddlOpenMinute >= 0 && this.ddlGroupTodos().length > 0) {
+        this.DdlExpandPanel()
+      }
     }
     .width('100%')
     .height(GRID_H)
     .hitTestBehavior(HitTestMode.Transparent)
+  }
+
+  /** 展开的截止列表：浮在网格上，点条目跳去待办页那条的编辑窗 */
+  @Builder
+  DdlExpandPanel() {
+    Column() {
+      Row() {
+        Text(`${minToHHmm(this.ddlOpenMinute)} 截止 · ${this.ddlGroupTodos().length} 项`)
+          .fontSize(LAYOUT.cardSub)
+          .fontColor('#FF8A8A')
+          .layoutWeight(1)
+        Text('✕')
+          .fontSize(LAYOUT.cardSub)
+          .fontColor('#A9B5C9')
+          .padding({ left: 10 })
+          .onClick((): void => {
+            this.ddlOpenMinute = -1;
+          })
+      }
+      .width('100%')
+      .margin({ bottom: 4 })
+
+      Scroll() {
+        Column() {
+          ForEach(this.ddlGroupTodos(), (t: Todo) => {
+            Row() {
+              if (t.courseId > 0) {
+                Text(this.courseShort(t.courseId))
+                  .fontSize(LAYOUT.compact)
+                  .fontColor('#EAF0FA')
+                  .backgroundColor(this.colorOf(t.courseId))
+                  .borderRadius(3)
+                  .padding({ left: 4, right: 4 })
+                  .margin({ right: 5 })
+              }
+              Text(t.title)
+                .fontSize(LAYOUT.cardSub)
+                .fontColor('#F2F5FA')
+                .maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+                .layoutWeight(1)
+              Text('›')
+                .fontSize(LAYOUT.cardSub)
+                .fontColor('#7FA8FF')
+                .margin({ left: 6 })
+            }
+            .width('100%')
+            .padding({ top: 5, bottom: 5 })
+            .onClick((): void => {
+              // 收起并跳到待办页 —— 那里才有真正的待办编辑窗（一处入口，不重复造）
+              this.ddlOpenMinute = -1;
+              this.onOpenTodo(t.id);
+            })
+          }, (t: Todo) => `ddlx-${t.id}-${t.title}-${t.status}`)
+        }
+        .width('100%')
+      }
+      .constraintSize({ maxHeight: 180 })
+      .scrollBar(BarState.Off)
+      .align(Alignment.TopStart)
+    }
+    .width(CONTENT_W)
+    .padding(10)
+    .glassSheet()
+    .position({ x: AXIS_W, y: this.ddlPanelY() })
+  }
+
+  /** 展开列表的落点：贴着那条标记往下，但别掉出网格底边 */
+  private ddlPanelY(): number {
+    const want: number = this.yOf(this.ddlOpenMinute) + 22;
+    const cap: number = GRID_H - 230;
+    return want > cap ? cap : want;
+  }
+
+  /** 当前展开的那一分钟上的所有待办（升序按标题，顺序稳定） */
+  private ddlGroupTodos(): Todo[] {
+    for (const g of this.ddlGroups()) {
+      if (g.minute === this.ddlOpenMinute) {
+        return g.todos;
+      }
+    }
+    return [];
+  }
+
+  /**
+   * 当天的截止事项**按分钟分组**。
+   * 分组只在这里做，渲染与"展开"都读它 —— 两边各算一次迟早会算出不一致的分组。
+   */
+  private ddlGroups(): DdlGroup[] {
+    const buckets: Map<number, Todo[]> = new Map<number, Todo[]>();
+    for (const t of this.ddlToday()) {
+      const min: number = this.ddlMinute(t);
+      const cur: Todo[] | undefined = buckets.get(min);
+      if (cur === undefined) {
+        buckets.set(min, [t]);
+      } else {
+        cur.push(t);
+      }
+    }
+    const out: DdlGroup[] = [];
+    buckets.forEach((todos: Todo[], minute: number): void => {
+      const sorted: Todo[] = todos.slice();
+      sorted.sort((a: Todo, b: Todo): number => a.id - b.id);
+      out.push({ minute: minute, todos: sorted });
+    });
+    out.sort((a: DdlGroup, b: DdlGroup): number => a.minute - b.minute);
+    return out;
   }
 
   private ddlToday(): Todo[] {
@@ -2008,15 +2178,6 @@ export struct PlanDayView {
                     .fontSize(LAYOUT.cardSub)
                     .fontColor('#9BA7BD')
                     .margin({ top: 2 })
-                  // 已经在别的天排过 → 标出来（否则用户会以为"拖了没反应"又拖一次）
-                  if (this.scheduledBadge(t.id).length > 0) {
-                    Text(`已排 ${this.scheduledBadge(t.id)}`)
-                      .fontSize(LAYOUT.cardSub)
-                      .fontColor('#7C8798')
-                      .maxLines(1)
-                      .textOverflow({ overflow: TextOverflow.Ellipsis })
-                      .margin({ top: 2 })
-                  }
                 }
                 .width('100%')
                 .alignItems(HorizontalAlign.Start)
@@ -2369,6 +2530,17 @@ export struct PlanDayView {
               fontSize: LAYOUT.title,
               onTap: (): void => this.setEditorDdl('')
             })
+            // 自定义：鸿蒙自己的日期 + 时间选择器（分钟不限，同待办页）
+            ChipButton({
+              text: '自定义…',
+              selected: false,
+              fontSize: LAYOUT.title,
+              onTap: (): void => {
+                pickDateTime(this.getUIContext(), this.editorDdlRaw(b), (v: string): void => {
+                  this.setEditorDdl(v);
+                });
+              }
+            })
           }
           .width('100%')
 
@@ -2389,6 +2561,20 @@ export struct PlanDayView {
                 .width('100%')
                 .padding({ top: 2, bottom: 2 })
             }, (o: PlanBlock) => `eo-${o.id}-${o.done}`)
+          }
+
+          // ---- 对半分：把这一个块拆成前后两块 ----
+          // 用户 2026-10-14 拍定：托盘里排过一次就消失，那"一天两块 / 多天分散"就得靠这里 ——
+          // 拆完把其中一块拖到别的天即可（跨天拖拽本来就有）。
+          // 只对**待办块**开放：课程灰带是规则、虚拟课时是"某一讲"，拆开没有语义。
+          if (b.todoId > 0 && halveMinutes(b.endMin - b.startMin).length === 2) {
+            Button(`对半分（${halveMinutes(b.endMin - b.startMin)[0]} + ${halveMinutes(b.endMin - b.startMin)[1]} 分钟）`)
+              .backgroundColor('rgba(46,107,230,0.22)')
+              .fontColor('#7FA8FF')
+              .fontSize(LAYOUT.title)
+              .width('100%')
+              .margin({ top: 12 })
+              .onClick((): void => this.splitBlockHalf(b))
           }
         }
 
@@ -2482,6 +2668,12 @@ export struct PlanDayView {
       return '当前：无截止';
     }
     return `当前：${t.ddl}`;
+  }
+
+  /** 该块对应待办的 ddl 原文 —— 给日期/时间选择器当初始值（没有就是空串） */
+  private editorDdlRaw(b: PlanBlock): string {
+    const t: Todo | undefined = this.todoOf(b.todoId);
+    return t === undefined ? '' : t.ddl;
   }
 
   /**

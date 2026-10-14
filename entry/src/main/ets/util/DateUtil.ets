@@ -52,6 +52,29 @@ export function hhmmToMin(s: string): number {
   return h * 60 + m;
 }
 
+/** Date（含时分）→ 'YYYY-MM-DD HH:mm'。`parseDateTime` 的逆运算 */
+export function formatDateTime(d: Date): string {
+  return `${formatDate(d)} ${minToHHmm(d.getHours() * 60 + d.getMinutes())}`;
+}
+
+/**
+ * 'YYYY-MM-DD HH:mm' → **带时分的** Date。
+ *
+ * ⚠️ 和 `parseDate` 的分工：`parseDate` 只认日期、时分归零（比较日期用）；
+ * 这个把时分也带上，专门喂给鸿蒙的 DatePicker / TimePicker 当初始值 ——
+ * 拿 `parseDate` 的结果去喂，每次打开选择器都会把手表重置成 00:00，
+ * 用户会以为"刚挑的时刻没生效"。解析不出来就退回此刻（而不是 00:00）。
+ */
+export function parseDateTime(s: string): Date {
+  if (s.length < 16) {
+    return new Date();
+  }
+  const d: Date = parseDate(s.substring(0, 10));
+  const min: number = hhmmToMin(s.substring(11, 16));
+  d.setHours(Math.floor(min / 60), min % 60, 0, 0);
+  return d;
+}
+
 /** 1 = 周一 ... 7 = 周日 */
 export function weekdayOf(d: Date): number {
   const w: number = d.getDay();

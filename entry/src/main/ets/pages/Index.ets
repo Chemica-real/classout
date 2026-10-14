@@ -164,6 +164,14 @@ struct Index {
    * 页面通过 `onModalChange` 回调把它报上来（和 `CourseManager.close` 同一套路）。
    */
   @State pageModalOpen: boolean = false;
+  /**
+   * 「请打开这条待办」的跨页请求（计划页的截止列表点进来的）。
+   *
+   * 计划页自己不造第二份待办编辑窗（编辑入口只该有一处），所以它把 id 报上来，
+   * Index 切到「待办」标签并把 id 传下去，由 TodoInbox 打开自己的编辑窗。
+   * TodoInbox 执行完通过 `onOpenTodoConsumed` 把它清 0 —— 否则每次 reload 都会再开一次窗。
+   */
+  @State pendingTodoId: number = 0;
 
   // ---------------- 动画相关状态（见 view/Motion.ets）----------------
   /** 打字机：已经"打"出来的那部分启动文案 */
@@ -1606,6 +1614,10 @@ struct Index {
                 semesterId: this.semester.id,
                 topInset: this.topInset(),
                 bottomInset: this.bottomInset(),
+                openTodoId: this.pendingTodoId,
+                onOpenTodoConsumed: (): void => {
+                  this.pendingTodoId = 0;
+                },
                 onModalChange: (open: boolean): void => {
                   this.pageModalOpen = open;
                 }
@@ -1619,6 +1631,11 @@ struct Index {
                 semesterId: this.semester.id,
                 topInset: this.topInset(),
                 bottomInset: this.bottomInset(),
+                onOpenTodo: (id: number): void => {
+                  // 计划页的截止列表点了一条 → 切到待办页并让它打开那条
+                  this.pendingTodoId = id;
+                  this.tab = 1;
+                },
                 onModalChange: (open: boolean): void => {
                   this.pageModalOpen = open;
                 }

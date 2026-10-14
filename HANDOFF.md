@@ -2373,3 +2373,76 @@ strings signing/*.p7b | grep -o '"device-ids":\[[^]]*\]'      # 排除 verify-*.
 ```bash
 ./hdc.sh -t <设备序列号> install -r entry/build/default/outputs/default/entry-default-signed.hap
 ```
+
+---
+
+## 24. 2026-10-14 用户报的 7 条清单（进行中：6 条已做，1 条待做）
+
+用户原话（一次给了 7 条）：① 课程第一次新建时无法添加时段等信息；② 待办截止时间个性化细化
+（用鸿蒙的日期/时间控件，截止时间不必是 5 的整数倍）；③ 考试时间个性化细化（考试有固定时间
+范围，自动放入计划视图的相应时间段）；④ 待办页面完成的待办应当移动到下方并加灰而不是消失；
+⑤ 截止时间渲染重叠 → 点击展开所有在此时截止的事项；⑥ 待安排栏判定有逻辑问题（放到任何一天
+都该从托盘消失）+ 允许一天排多个；⑦ 计划块属性视图加「对半分」。
+
+**动手前用 `ask_user_question` 定了四个设计点**（用户全选推荐项）：
+托盘消失后"第二块"走对半分 + 拖动；考试与已有块**重叠也照排**；已完成区**全部显示、可恢复可删**；
+截止标记**合并成「⚑ N 项截止」+ 点击浮出列表**。
+
+### 24.1 已做（① ② ④ ⑤ ⑥ ⑦）
+
+| # | 改法 | 关键文件 |
+|---|---|---|
+| ① | 「+ 添加时段 / + 添加模板」**先把课程落库拿到 id**（`ensureCourseSaved()`），否则规则/模板带着 `course_id = 0` 存进去，保存课程后就再也查不出来 | `view/CourseManager.ets` |
+| ② | 新增 `util/DateTimePicker.ets`：先弹鸿蒙 `showDatePickerDialog`、定了日期再弹 `showTimePickerDialog`；两处截止时间（待办编辑窗、计划块编辑窗）都加了「自定义…」胶囊并显示当前值。**分钟不受任何限制**（5 分钟那条规矩只属于"预计时长"） | `util/DateTimePicker.ets`(新) `util/DateUtil.ets`(±) `view/TodoInbox.ets` `view/PlanDayView.ets` |
+| ④ | `TodoRepo.listDoneTodos()`（按 `done_at` 倒序）+ 页面最下方「已完成 n」区：加灰 + 划掉 + `完成时间`，可**恢复为待办 / 删除**（删除走二次确认）。`optimisticRemove` 也要清 doneList | `data/TodoRepo.ets` `view/TodoInbox.ets` |
+| ⑤ | `DdlMarkers` 按**分钟分组**：单条照旧显示标题，多条显示「⚑ N 项截止」；点它在网格上浮出完整列表，点其中一条 → **跨页打开那条待办**（见 24.3） | `view/PlanDayView.ets` `pages/Index.ets` |
+| ⑥ | 托盘过滤改用 `TodoRepo.listAllBlocks()`（**全部日期**）→ 排到任何一天都从托盘消失；删掉「已排 …」角标与"同一天不许再排"的拦截（正是用户否掉的那两条） | `data/TodoRepo.ets` `view/PlanDayView.ets` |
+| ⑦ | `PlanMath.halveMinutes(total)`（纯函数）：两块都是 5 的倍数、**和严格等于**原时长、相差 ≤5；<10 分钟拆不开。块编辑窗加「对半分（a + b 分钟）」按钮，只对待办块出现 | `domain/PlanMath.ets` `view/PlanDayView.ets` |
+
+### 24.2 ★ 真机实测抓到的一个新 bug：DatePicker 的 `selected` 会**差一天**
+
+给日期选择器喂 `"2026-10-14 21:59"`（本地时间），弹出来却高亮在 **10月15日**；
+**什么都不改直接点确定，截止时间就被悄悄推后一天**（真机截图复现）。
+
+**修法**：日期那一步喂**当天正午**（`new Date(y, m, d, 12, 0)`）—— 无论 ArkUI 按 ±12 小时里
+哪种口径解释 `selected`，都落在同一天。时刻那一步仍用真实时刻（实测 TimePicker 不受影响）。
+落在 `util/DateTimePicker.ets`，注释里写了实测现象与原因。
+
+### 24.3 跨页打开待办（⑤ 的配套）
+
+计划页**不另造一份待办编辑窗**（编辑入口只该有一处）：截止列表点一条 → `onOpenTodo(id)`
+→ `Index` 置 `pendingTodoId` 并 `tab = 1` → `TodoInbox` 载完数据后 `openRequestedTodo()`
+打开编辑窗，再回调 `onOpenTodoConsumed()` 清 0（不清的话每次 reload 都会重开）。
+
+### 24.4 验证（诚实版）
+
+```bash
+./tools/domain-check/run.sh     # 382 项全绿（363 + 19 条新增：日期时刻互转 / 托盘规则 / 对半分）
+LANG=zh_CN.UTF-8 ./build.sh clean && LANG=zh_CN.UTF-8 ./build.sh assembleHap   # ERROR: 0 / 警告 6 条
+./sign-and-install.sh --install # 装机成功（两台设备都已白名单）
+```
+
+| 项 | 结果 |
+|---|---|
+| ⑦ 对半分 | ✅ 真机：按钮显示「对半分（30 + 30 分钟）」，点了之后左列出现**相邻两块**（60 → 30+30） |
+| ⑥ 托盘规则 | ✅ 真机：把测试待办放到**另一天**（10/13，当时在看 10/14）后，托盘里**不再有它**、「已排」角标也没了 |
+| ② 日期/时间选择器 | ✅ 真机：两个系统弹窗串起来正常、选完写回并显示；顺带抓到上面那个差一天的 bug |
+| ④ 已完成区 | ⚠️ **未逐项点过**（代码 + 构建过，但我的验证待办是删掉的、没走"完成"那一下） |
+| ⑤ 截止标记合并/展开 | ⚠️ **未验证**（需要同一时刻压着多条；这次的构建刚装上，没构造这种数据） |
+| ① 新建课程加时段 | ⚠️ **未点过**（改法与成因清楚，但没有在真机上把"新建课程→加时段→保存→回看"走一遍） |
+| 断言 / 构建 | ✅ 见上面 |
+
+> 测试用的待办「ZZ核对」已连同它的块**删干净**（核实过页面上 0 个残留），用户真实数据没动。
+
+### 24.5 ❌ ③ 考试时间细化 —— **还没做**
+
+要做的（已跟用户确认"与已有块重叠也照排"）：`todo` 加 `end_at`（`Db.ensureColumn` 迁移）、
+考试编辑用两组日期+时间选择器、`ddl` 仍存开始时刻（提醒/倒计时沿用），保存时**自动在计划视图
+生成/更新一块**覆盖 `[开始, 结束]`（纯函数算区间 + 进离线断言），考试卡片显示时间段。
+⚠️ 别忘 `BackupRepo` 的导出/导入也要带上 `end_at`，否则备份恢复会丢考试时间。
+
+### 24.6 这一轮涉及的文件
+
+`pages/Index.ets`、`view/TodoInbox.ets`、`view/PlanDayView.ets`、`view/CourseManager.ets`、
+`data/TodoRepo.ets`、`domain/PlanMath.ets`、`util/DateUtil.ets`、
+**新增** `util/DateTimePicker.ets`、`tools/domain-check/test.ts`。

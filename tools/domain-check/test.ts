@@ -11,13 +11,13 @@ import { Course, CourseSession, DEFAULT_REST_WINDOWS, OverrideKind, PlanBlock, R
   Semester, SectionTime, SessionOverride, SessionRule, Todo, PKU_SECTION_TIMES } from './Types';
 import { computeWeekSessions, weekOfDate } from './Timetable';
 import { maskAll, maskFromText, maskToText, maskHas } from './WeekMask';
-import { countdownText, minToHHmm, parseDate } from './DateUtil';
+import { countdownText, formatDateTime, minToHHmm, parseDate, parseDateTime } from './DateUtil';
 import { computeDdl, renderTitle } from './TodoGenerator';
 import { TimeAxis, DEFAULT_WINDOW, WINDOW_MAX_END, allBlocksDone, dragOffsetWithScroll,
   dropRange, edgeScrollDepth, edgeScrollDirection, edgeScrollStep, findFreeSlot, moveRange,
   normalizeDuration, normalizeWindow,
   overlaps, resizeRange,
-  hasBlockOnDate, scheduledDays,
+  hasBlockOnDate, halveMinutes, scheduledDays,
   selectPoolTodos, snap, sortBlocksByTime, sortPoolTodos, windowForContent } from './PlanMath';
 
 /**
@@ -538,10 +538,36 @@ check('空待办列表 → 空托盘',
   check('没排过=空', String(scheduledDays(multiDay, 9).length), '0');
   check('空块集=空', String(scheduledDays([], 5).length), '0');
 
-// 关键：托盘只按「传入的块」过滤。调用方传当天的块，所以换一天待办会重新出现，
-// 「拆成多块分散在不同天」不受影响（TESTING.md 第 15 步）。
-check('换到明天（传空块集）→ 待办重新出现在托盘',
+// 关键：`selectPoolTodos` 只按「传入的块」过滤，**和日期无关**。
+// 2026-10-14 用户改的规则：调用方传**全部日期**的块 ——「无论放到哪一天，待安排栏里的
+// 对应项都该消失」。下面显式钉住这条：块排在别的天，也照样把待办从托盘里滤掉。
+check('块排在别的天（传全部块）→ 托盘里也没有它',
+  titles(selectPoolTodos([td(5, '排过别天的', 'active')], [blk(1, 5, '2026-10-20', false)])), '');
+check('块排在那天（传全部块）→ 同理',
+  titles(selectPoolTodos([td(5, '排过这天的', 'active')], [blk(1, 5, '2026-10-14', false)])), '');
+// 传空块集时它当然还在托盘里 —— 这条是给"数据没加载出来"这种情况兜底的语义
+check('传空块集 → 仍在托盘（过滤只看传入的块）',
   titles(selectPoolTodos([td(5, '已排的', 'active')], [])), '已排的');
+
+// ---------- 对半分（块属性窗的「对半分」）----------
+console.log('【对半分：两块都是 5 的倍数、和严格等于原时长】');
+check('90 → 45+45', halveMinutes(90).join('+'), '45+45');
+check('95 → 45+50（相近的两个 5 的倍数）', halveMinutes(95).join('+'), '45+50');
+check('100 → 50+50', halveMinutes(100).join('+'), '50+50');
+check('105 → 50+55', halveMinutes(105).join('+'), '50+55');
+check('15 → 5+10', halveMinutes(15).join('+'), '5+10');
+check('10 → 5+5', halveMinutes(10).join('+'), '5+5');
+check('5 → 拆不开（返回空）', String(halveMinutes(5).length), '0');
+check('0 → 拆不开', String(halveMinutes(0).length), '0');
+// 和必须严格等于原时长：这一条防的是"各自四舍五入"那种实现（会让预计时长凭空变）
+check('和严格等于原时长（90/95/105 各查一遍）',
+  `${halveMinutes(90)[0] + halveMinutes(90)[1]},${halveMinutes(95)[0] + halveMinutes(95)[1]},${halveMinutes(105)[0] + halveMinutes(105)[1]}`,
+  '90,95,105');
+check('两块都 ≥5 分钟且落在 5 的刻度上',
+  `${halveMinutes(95)[0] % 5},${halveMinutes(95)[1] % 5},${halveMinutes(15)[0] >= 5}`,
+  '0,0,true');
+check('两块相差不超过 5（"平分"的实质）',
+  String(Math.abs(halveMinutes(95)[0] - halveMinutes(95)[1]) <= 5), 'true');
 
 // ---------- 时间轴不变式（回归自「底部 24:00 被裁掉」的真 bug）----------
 console.log('【时间轴：刻度数 × 60 == 网格高度】');
@@ -1040,6 +1066,23 @@ check('休息时段：weekday 8 → 不合法',
 check('休息时段提示：结束必须晚于开始',
   `${validateRestWindow({ id: 0, weekday: 0, startMin: 780, endMin: 720, label: '' }).message}`,
   '结束时间必须晚于开始时间');
+
+// ---------- 截止时间的"日期+时刻"组装 / 解析（截止时间选择器用）----------
+// 真机上的日期/时间选择器给的是 Date，存进库的是 'YYYY-MM-DD HH:mm'。
+// 这两个互逆函数就在这条缝上，出错的表现是"挑完时间存进去变成了别的时刻"。
+check('formatDateTime：打上时分、补零',
+  formatDateTime(new Date(2026, 9, 5, 9, 7)), '2026-10-05 09:07');
+check('formatDateTime：午夜 00:00',
+  formatDateTime(new Date(2026, 0, 1, 0, 0)), '2026-01-01 00:00');
+check('parseDateTime：时分带上了（不是 00:00）',
+  formatDateTime(parseDateTime('2026-10-14 14:07')), '2026-10-14 14:07');
+check('parseDateTime：分钟不被"5 分钟倍数"那套改动（用户要求 ddl 不受限）',
+  formatDateTime(parseDateTime('2026-10-14 14:03')), '2026-10-14 14:03');
+check('parseDateTime：空串退回此刻而不是 00:00',
+  `${formatDateTime(parseDateTime('')).length}`, '16');
+check('parseDateTime→formatDateTime 往返稳定',
+  formatDateTime(parseDateTime(formatDateTime(new Date(2026, 11, 31, 23, 58)))),
+  '2026-12-31 23:58');
 
 // ---------- 汇总 ----------
 console.log('');
