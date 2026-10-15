@@ -17,6 +17,7 @@ import { CATEGORY_NAME_MAX, CategoryOption, LEGACY_OTHER, addCustomCategory,
   removeCustomCategory, serializeCustomCategories, validateCategoryName } from './Categories';
 import { GuideTab, guideStepAt, guideStepCount, guideTabsValid, guideTextsNonEmpty,
   isLastGuideStep, nextGuideStep, prevGuideStep } from './Guide';
+import { PrivacySection, privacySections, privacyUpdatedAt } from './Privacy';
 import { maskAll, maskFromText, maskToText, maskHas } from './WeekMask';
 import { countdownText, formatDateTime, minToHHmm, parseDate, parseDateTime } from './DateUtil';
 import { computeDdl, renderTitle } from './TodoGenerator';
@@ -1354,6 +1355,23 @@ check('prev 在第 1 步上不动', `${prevGuideStep(0)}`, '0');
 check('prev 正常回退', `${prevGuideStep(3)}`, '2');
 check('isLast 只在最后一步为真',
   `${!isLastGuideStep(0) && isLastGuideStep(guideStepCount() - 1)}`, 'true');
+
+// ---------- 隐私政策（上架要交的正文；应用内与 PRIVACY.md 是同一份）----------
+console.log('【隐私政策正文】');
+
+check('至少 6 节（少了说明被误删）', `${privacySections().length >= 6}`, 'true');
+check('每一节都有标题和正文',
+  `${privacySections().filter((s: PrivacySection): boolean =>
+    s.heading.trim().length === 0 || s.body.trim().length === 0).length === 0}`, 'true');
+check('更新日期不是空的', `${privacyUpdatedAt().length >= 10}`, 'true');
+check('正文明确说了"离线"',
+  `${privacySections().some((s: PrivacySection): boolean => s.body.indexOf('离线') >= 0)}`, 'true');
+check('正文明确说了"不收集"',
+  `${privacySections().some((s: PrivacySection): boolean => s.body.indexOf('不收集') >= 0)}`, 'true');
+check('正文点名了日历权限的用途',
+  `${privacySections().some((s: PrivacySection): boolean => s.body.indexOf('日历') >= 0)}`, 'true');
+check('正文里还留着待填的邮箱占位（上架前必须换成真邮箱）',
+  `${privacySections().some((s: PrivacySection): boolean => s.body.indexOf('<在这里填你的邮箱>') >= 0)}`, 'true');
 
 // ---------- 汇总 ----------
 console.log('');

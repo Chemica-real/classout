@@ -83,6 +83,26 @@ cd ..
 
 > 注意：因为 API 26，代理提醒上限是 **64 条**（API ≤25 才是 30）。我们的预算按 60 排。
 
+## 要**上架**（发布签名）怎么办？
+
+调试签名这套只够自己/朋友侧载。上架应用市场要用**发布证书 + 发布 Profile**，
+而且交上去的是 **`.app`**（app pack）不是 `.hap`：
+
+```bash
+export PATH="/home/chemica/ChemicaWorkspace/.locale-shim:$PATH"   # 见 HANDOFF §23.5
+./tools/publish-wizard.sh     # ← 交互式向导：开链接、收发布证书/Profile、打并校验发布包
+# 或者材料齐了直接：
+./sign-release.sh             # release 构建 + 发布签名 + 校验 → dist/ClassOUT-<版本>-release.app
+```
+
+- 发布材料放 `signing/release/`（该目录的**材料文件**已被 `.gitignore` 挡住，说明见
+  [`release/README.md`](release/README.md)）。
+- 发布包**装不上手机**是正常的（发布签名只能上架）。
+- 上架前必须先解决的：**图标版权**（已换成自绘，见 `tools/make-icon.py`）、
+  **软著 / 电子版权认证**、**APP 备案号**、**隐私政策链接**（仓库根目录 `PRIVACY.md`）。
+
+---
+
 ## 装完之后的排错
 
 ```bash

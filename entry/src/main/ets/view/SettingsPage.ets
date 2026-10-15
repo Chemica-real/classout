@@ -11,9 +11,11 @@
  * ⚠️ 从 `CourseManager` 搬过来的东西**必须同时从那边删掉**，否则同一个设置有两处入口。
  */
 
-import { common } from '@kit.AbilityKit';
+import { common, bundleManager } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { storedAbilityContext } from '../util/Ctx';
+import { BackHandler, backStack } from '../util/BackStack';
+import { PrivacySection, privacySections, privacyUpdatedAt } from '../domain/Privacy';
 import { RestWindow, TodoCategory } from '../model/Types';
 import { TimetableRepo } from '../data/TimetableRepo';
 import { TodoRepo } from '../data/TodoRepo';
@@ -136,6 +138,15 @@ export struct SettingsPage {
   /** 首页标语的就地编辑副本（保存前不动 AppStorage，免得打字时就改到加载页） */
   @State mottoDraft: string = MOTTO_DEFAULT;
   /**
+   * 「关于」卡片里的版本号 —— 从**安装包自己**读，不写死（写死迟早和 app.json5 对不上）。
+   * 读不到就留空，卡片上那一行不显示。
+   */
+  @State appVersion: string = '';
+  /** 隐私政策浮层开着吗（@Watch 见 `refreshModal`） */
+  @State @Watch('refreshModal') privacyOpen: boolean = false;
+  /** 系统返回的处理器（注册到 util/BackStack；见 HANDOFF §15.2） */
+  private backHandler: BackHandler | undefined = undefined;
+  /**
    * 已经保存的标语（`Prefs.saveMotto` 写的就是这个键）。
    *
    * ⚠️ 为什么需要它：设置页是**切标签时销毁、切回来重建**的组件，而 `mottoDraft` 每次
@@ -167,8 +178,40 @@ export struct SettingsPage {
   aboutToAppear(): void {
     // 回显已保存的标语（见上面 `savedMotto` 的注释）
     this.mottoDraft = this.savedMotto;
+    this.readAppVersion();
+    // 系统返回：先关「隐私政策」，再关「调整背景」（见 handleBack）
+    this.backHandler = (): boolean => this.handleBack();
+    backStack.register(this.backHandler);
     this.refreshPreview();
     this.load();
+  }
+
+  private readAppVersion(): void {
+    try {
+      const info: bundleManager.BundleInfo =
+        bundleManager.getBundleInfoForSelfSync(bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT);
+      this.appVersion = info.versionName;
+    } catch (e) {
+      hilog.warn(DOMAIN, TAG, 'read version failed: %{public}s', JSON.stringify(e));
+    }
+  }
+
+  /**
+   * 本页的返回顺序：隐私政策浮层 → 调整背景浮层 → 不管（交回 Index/系统）。
+   *
+   * ⚠️ 这是 §15.3 那条规矩：**新增任何浮层都要在宿主组件里注册一条**，
+   * 否则手势返回会把整个 App 切走（「调整背景」原来就漏了这条）。
+   */
+  private handleBack(): boolean {
+    if (this.privacyOpen) {
+      this.privacyOpen = false;
+      return true;
+    }
+    if (this.adjusting) {
+      this.adjusting = false;
+      return true;
+    }
+    return false;
   }
 
   private context(): common.UIAbilityContext {
@@ -196,12 +239,21 @@ export struct SettingsPage {
 
   /** 弹一条会自动消失的提示（不占布局，避免整页上下跳） */
   aboutToDisappear(): void {
+    if (this.backHandler !== undefined) {
+      backStack.unregister(this.backHandler);
+      this.backHandler = undefined;
+    }
     // 组件销毁（切标签）时浮层也跟着没了，别把"有浮层"的状态留给 Index
     this.onModalChange(false);
   }
 
+  /** 两个全屏浮层（调整背景 / 隐私政策）任一开着，都要让 Index 把悬浮浮窗层挪下去 */
+  private refreshModal(): void {
+    this.onModalChange(this.adjusting || this.privacyOpen);
+  }
+
   private onAdjustChanged(): void {
-    this.onModalChange(this.adjusting);
+    this.refreshModal();
   }
 
   /** 打开「调整背景」：把当前的位置/缩放读出来当起点，并解一张预览图 */
@@ -1414,6 +1466,125 @@ export struct SettingsPage {
     .margin({ top: 12 })
   }
 
+  /**
+   * 「关于」卡片：版本 + 隐私政策入口。
+   *
+   * 上架（应用市场）要求应用内有隐私政策可看 + 一个可访问的链接；
+   * 正文在 `domain/Privacy.ets`，仓库根目录的 `PRIVACY.md` 是同一份（填链接用那份）。
+   */
+  @Builder
+  AboutCard() {
+    Column() {
+      this.SectionTitle('关于', '本应用纯离线运行：不联网、不上传、不需要账号，也不收集任何信息。')
+
+      Row() {
+        Text('ClassOUT')
+          .fontSize(14)
+          .fontColor('#F2F5FA')
+        Blank()
+        Text(this.appVersion.length > 0 ? `v${this.appVersion}` : '')
+          .fontSize(12)
+          .fontColor('#8B97AC')
+      }
+      .width('100%')
+
+      Row() {
+        Text('隐私政策')
+          .fontSize(13)
+          .fontColor('#7FA8FF')
+          .layoutWeight(1)
+          .onClick((): void => {
+            this.privacyOpen = true;
+          })
+        Text('MIT 许可')
+          .fontSize(12)
+          .fontColor('#8B97AC')
+      }
+      .width('100%')
+      .padding({ top: 12 })
+
+      Text('隐私政策正文也在仓库根目录的 PRIVACY.md（应用市场里填链接用那份）。')
+        .fontSize(11)
+        .fontColor('#8B97AC')
+        .width('100%')
+        .margin({ top: 8 })
+    }
+    .width('100%')
+    .padding(16)
+    .glassPanelCard()
+    .alignItems(HorizontalAlign.Start)
+    .margin({ top: 12 })
+  }
+
+  /**
+   * 隐私政策全屏浮层。
+   * 用**不透明**深色底：政策是要逐字读的东西，玻璃在这里只会碍事（§16.2 的取舍）。
+   */
+  @Builder
+  PrivacyOverlay() {
+    Column() {
+      Row() {
+        Text('隐私政策')
+          .fontSize(17)
+          .fontWeight(FontWeight.Medium)
+          .fontColor('#F2F5FA')
+          .layoutWeight(1)
+        Text('✕')
+          .fontSize(14)
+          .fontColor('#A9B5C9')
+          .padding({ left: 14, top: 4, bottom: 4 })
+          .onClick((): void => {
+            this.privacyOpen = false;
+          })
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16, top: 14, bottom: 10 })
+
+      Scroll() {
+        Column() {
+          Text(`更新日期：${privacyUpdatedAt()}`)
+            .fontSize(11)
+            .fontColor('#8B97AC')
+            .width('100%')
+            .margin({ bottom: 12 })
+
+          ForEach(privacySections(), (s: PrivacySection) => {
+            Text(s.heading)
+              .fontSize(14)
+              .fontWeight(FontWeight.Medium)
+              .fontColor('#F2F5FA')
+              .width('100%')
+              .margin({ top: 12, bottom: 4 })
+            Text(s.body)
+              .fontSize(12)
+              .fontColor('#C3CDDE')
+              .lineHeight(20)
+              .width('100%')
+          }, (s: PrivacySection) => `pv-${s.heading}`)
+
+          Button('关闭')
+            .backgroundColor('rgba(255,255,255,0.14)')
+            .fontColor('#C3CDDE')
+            .fontSize(14)
+            .width('100%')
+            .margin({ top: 20, bottom: 12 })
+            .onClick((): void => {
+              this.privacyOpen = false;
+            })
+        }
+        .width('100%')
+        .padding({ left: 16, right: 16 })
+        .alignItems(HorizontalAlign.Start)
+      }
+      .layoutWeight(1)
+      .scrollBar(BarState.Off)
+      .align(Alignment.TopStart)
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor('#0E1420')
+  }
+
   build() {
     Stack() {
       Column() {
@@ -1440,6 +1611,7 @@ export struct SettingsPage {
             this.CategoryCard()
             this.PlanWindowCard()
             this.GuideCard()
+            this.AboutCard()
           }
           .width('100%')
           // 上下都给悬浮浮窗让位；padding 加在**滚动内容**上，卡片才能滑到浮窗下面
@@ -1490,6 +1662,11 @@ export struct SettingsPage {
       //    （`onModalChange` → `Index.pageModalOpen`，和两个编辑窗同一套路，见 §20.8）。
       if (this.adjusting) {
         this.AdjustOverlay()
+      }
+
+      // 隐私政策浮层：同样画在页面内部，所以也接上了 onModalChange（见 refreshModal）
+      if (this.privacyOpen) {
+        this.PrivacyOverlay()
       }
     }
     .width('100%')
