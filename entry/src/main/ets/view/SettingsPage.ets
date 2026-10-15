@@ -88,6 +88,8 @@ export struct SettingsPage {
    * —— 和两个编辑窗同一套路（见 Index.pageModalOpen 的注释）。
    */
   onModalChange: (open: boolean) => void = (): void => {};
+  /** 点「开始演练」→ 由 Index 建沙箱库、切库、挂引导条（见 data/GuideRepo） */
+  onStartGuide: () => void = (): void => {};
   /** 本页标题栏浮窗量出来的高度 */
   @State titleH: number = H_TITLE;
 
@@ -683,8 +685,7 @@ export struct SettingsPage {
   }
 
   @Builder
-  CategoryCard() {
-    Column() {
+  CategoryCard() {    Column() {
       this.SectionTitle('待办类型',
         `内置的四个不能删；自定义的可以加、可以删（最多 ${CATEGORY_MAX_COUNT} 个）。删掉一个类型时，用了它的待办会改成「无」。`)
 
@@ -1379,6 +1380,40 @@ export struct SettingsPage {
     .margin({ top: 12 })
   }
 
+  /**
+   * 新手引导入口（用户 2026-10-15：「做一个新手引导……你步步引导」）。
+   *
+   * 点「开始演练」不是在这里做什么，而是回调 `Index`：它会切到一个**空的沙箱库**
+   * （`classout_demo.db`）、灌几门演示课，然后在真实界面底部挂一条步骤引导条。
+   * 演练里随便改、随便删；退出时沙箱整个删掉，用户自己的课表一点都不动。
+   */
+  @Builder
+  GuideCard() {
+    Column() {
+      this.SectionTitle('新手引导',
+        '第一次上手？可以在「演练」里走一遍：会开一个沙箱（几门演示课 + 演示待办），你随便改、随便删，退出时整份丢弃。')
+
+      Button('开始演练')
+        .backgroundColor('#2E6BE6')
+        .fontColor('#FFFFFF')
+        .fontSize(14)
+        .width('100%')
+        .margin({ top: 4 })
+        .onClick((): void => this.onStartGuide())
+
+      Text('演练期间右下角会有一条「第 n/N 步」的引导条，跟着点就行；随时可以「退出演练」。')
+        .fontSize(11)
+        .fontColor('#8B97AC')
+        .width('100%')
+        .margin({ top: 8 })
+    }
+    .width('100%')
+    .padding(16)
+    .glassPanelCard()
+    .alignItems(HorizontalAlign.Start)
+    .margin({ top: 12 })
+  }
+
   build() {
     Stack() {
       Column() {
@@ -1404,6 +1439,7 @@ export struct SettingsPage {
             this.RestCard()
             this.CategoryCard()
             this.PlanWindowCard()
+            this.GuideCard()
           }
           .width('100%')
           // 上下都给悬浮浮窗让位；padding 加在**滚动内容**上，卡片才能滑到浮窗下面

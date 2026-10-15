@@ -26,6 +26,9 @@ import { MOTTO_DEFAULT, PLAN_END_KEY, PLAN_START_KEY, TODO_CATEGORIES_KEY, loadC
   loadMotto, loadPlanWindow } from '../data/Prefs';
 import { TimeWindow } from '../domain/PlanMath';
 import { serializeCustomCategories } from '../domain/Categories';
+import { GuideStep, guideStepAt, guideStepCount, isLastGuideStep, nextGuideStep,
+  prevGuideStep } from '../domain/Guide';
+import { GuideRepo } from '../data/GuideRepo';
 
 import { ChipButton } from '../view/ChipButton';
 import { SectionPicker } from '../view/SectionPicker';
@@ -178,6 +181,18 @@ struct Index {
    */
   @State pendingTodoId: number = 0;
 
+  // ---------------- 新手演练（沙箱引导，见 data/GuideRepo + domain/Guide）----------------
+  /** 演练进行中？ */
+  @State guideActive: boolean = false;
+  /** 当前第几步（下标，见 domain/Guide.guideSteps） */
+  @State guideStep: number = 0;
+  /** 引导条量出来的高度（内容层要让出这段） */
+  @State guideBarH: number = 0;
+  /** 首次启动那句询问开着吗 */
+  @State guidePrompt: boolean = false;
+  /** 正在切库/灌演示数据（挡一下输入，免得中途点进半截状态） */
+  @State guideBusy: boolean = false;
+
   // ---------------- 动画相关状态（见 view/Motion.ets）----------------
   /** 打字机：已经"打"出来的那部分启动文案 */
   @State typedStatus: string = '';
@@ -207,9 +222,10 @@ struct Index {
     return this.tab === 3 ? 0 : this.headerBlockH;
   }
 
-  /** 内容层下方要让出的高度（悬浮导航栏 + 间距） */
+  /** 内容层下方要让出的高度（悬浮导航栏 + 间距；演练时再加一条引导条） */
   private bottomInset(): number {
-    return this.tabbarH + FLOAT_GAP;
+    const guide: number = this.guideActive ? this.guideBarH + FLOAT_GAP : 0;
+    return this.tabbarH + FLOAT_GAP + guide;
   }
 
   /**
@@ -363,6 +379,9 @@ struct Index {
 
   private async init(): Promise<void> {
     const ctx: common.UIAbilityContext = this.context();
+    // 冷启动第一件事：清掉上次演练可能留下的沙箱库。
+    // `.db` 默认连的是真实库，所以进程重启后沙箱文件一定是垃圾（哪怕上次是"演练中"被杀掉的）。
+    await GuideRepo.cleanupDemoFile(ctx);
     // 冷启动恢复自定义背景（没有就用渐变兜底）。AppStorage 是内存态，所以每次启动都要读回来；
     // 设置页选完图会直接写 AppStorage，PageBackground 靠 @StorageLink 立刻跟着换。
     AppStorage.setOrCreate('wallpaper', await WallpaperRepo.load(ctx));
@@ -413,6 +432,9 @@ struct Index {
     // ⚠️ 最后一步（日历提醒）是真·耗时的大头，它本来就看得见；
     // 这里**不再补等待**，别让"本来就慢的那一步"更慢。
     this.bootStep = 4;      // 提醒同步完成 → 就绪
+    // 第一次用（或升级后第一次）问一句要不要走一遍演练。它是**非模态**的：
+    // 用户点「先自己用用」之前照样能用 App（只是那张卡浮在最上面）。
+    this.guidePrompt = !(await GuideRepo.guidePrompted(ctx));
     // 不直接切界面，而是播完"浓缩成小球 → 扩张淡出"这段过场（见 playBootExit）
     this.playBootExit();
   }
@@ -562,6 +584,123 @@ struct Index {
     const clamped: number = w < 1 ? 1 : (w > this.semester.totalWeeks ? this.semester.totalWeeks : w);
     this.week = clamped;
     this.refresh();
+  }
+
+  // ---------------- 新手演练 ----------------
+
+  /** 某天落在第几周（夹在学期范围内） */
+  private clampWeek(d: Date): number {
+    const w: number = weekOfDate(this.semester, d);
+    return w < 1 ? 1 : (w > this.semester.totalWeeks ? this.semester.totalWeeks : w);
+  }
+
+  private guideStepOf(index: number): GuideStep {
+    return guideStepAt(index);
+  }
+
+  /** 首次启动的询问：先自己用用 */
+  private dismissGuidePrompt(): void {
+    this.guidePrompt = false;
+    GuideRepo.markPrompted(this.context()).catch((e: Object): void => {
+      hilog.warn(DOMAIN, TAG, 'mark guide prompted failed: %{public}s', JSON.stringify(e));
+    });
+  }
+
+  private startGuide(): void {
+    this.doStartGuide().catch((e: Object): void => {
+      this.guideBusy = false;
+      hilog.error(DOMAIN, TAG, 'start guide failed: %{public}s', JSON.stringify(e));
+    });
+  }
+
+  /**
+   * 进入演练：**先记下"问过了"（写真实库）**，再切到沙箱库、灌演示数据。
+   * 顺序不能反 —— 切库之后写 kv 写的就成沙箱了。
+   */
+  private async doStartGuide(): Promise<void> {
+    const ctx: common.UIAbilityContext = this.context();
+    this.guideBusy = true;
+    this.guidePrompt = false;
+    await GuideRepo.markPrompted(ctx);
+    const demo: Semester = await GuideRepo.startDemo(ctx);
+    this.semester = demo;
+    this.week = this.clampWeek(today());
+    this.sessionSheet = false;
+    this.adjustSheet = false;
+    this.extraSheet = false;
+    this.showManager = false;
+    this.guideStep = 0;
+    this.tab = this.guideStepOf(0).tab;
+    await this.reloadData();
+    this.guideActive = true;
+    this.guideBusy = false;
+    hilog.info(DOMAIN, TAG, 'guide started (sandbox db)');
+  }
+
+  private exitGuide(): void {
+    this.doExitGuide().catch((e: Object): void => {
+      this.guideBusy = false;
+      hilog.error(DOMAIN, TAG, 'exit guide failed: %{public}s', JSON.stringify(e));
+    });
+  }
+
+  /**
+   * 退出演练：切回真实库 → **把偏好从真实库读回来**（演练里可能改过标语/时间范围/类型）
+   * → 删掉沙箱文件 → 回到课表。
+   *
+   * `this.tab = 0` 是刻意的：待办/计划/设置三个页面都是按 `tab` 条件渲染的，
+   * 切到 0 会把它们卸载，下次进去时重新 mount、重新读真实库 ——
+   * 否则它们手里还攥着沙箱里的数据（而且沙箱学期 id 常常和真实学期撞号，@Watch 也不会触发）。
+   */
+  private async doExitGuide(): Promise<void> {
+    const ctx: common.UIAbilityContext = this.context();
+    this.guideBusy = true;
+    this.guideActive = false;
+    this.tab = 0;
+    await GuideRepo.exitDemo(ctx);
+    await this.reloadPrefsFromDb(ctx);
+    const real: Semester = await Seeder.ensureSemester(ctx);
+    this.semester = real;
+    this.week = this.clampWeek(today());
+    await this.reloadData();
+    this.guideBusy = false;
+    hilog.info(DOMAIN, TAG, 'guide finished, back to real db');
+  }
+
+  /** 从**当前库**把偏好读回 AppStorage（进出沙箱后都要对齐） */
+  private async reloadPrefsFromDb(ctx: common.UIAbilityContext): Promise<void> {
+    AppStorage.setOrCreate('wallpaper', await WallpaperRepo.load(ctx));
+    AppStorage.setOrCreate('wallpaperFocus', await WallpaperRepo.loadFocus(ctx));
+    AppStorage.setOrCreate('bootMotto', await loadMotto(ctx));
+    const w: TimeWindow = await loadPlanWindow(ctx);
+    AppStorage.setOrCreate(PLAN_START_KEY, w.startMin);
+    AppStorage.setOrCreate(PLAN_END_KEY, w.endMin);
+    AppStorage.setOrCreate(TODO_CATEGORIES_KEY,
+      serializeCustomCategories(await loadCustomCategories(ctx)));
+    await loadMotionSetting(ctx);
+  }
+
+  /** 跳到第 i 步：顺带切到该步的标签页、关掉挡路的浮层 */
+  private setGuideStep(i: number): void {
+    this.guideStep = i;
+    this.sessionSheet = false;
+    this.adjustSheet = false;
+    this.extraSheet = false;
+    this.showManager = false;
+    this.tab = this.guideStepOf(i).tab;
+  }
+
+  private guidePrev(): void {
+    this.setGuideStep(prevGuideStep(this.guideStep));
+  }
+
+  /** 下一步；已经是最后一步就当成"完成演练" */
+  private guideNext(): void {
+    if (isLastGuideStep(this.guideStep)) {
+      this.exitGuide();
+      return;
+    }
+    this.setGuideStep(nextGuideStep(this.guideStep));
   }
 
   private sectionHeight(section: number): number {
@@ -1693,8 +1832,11 @@ struct Index {
         .hitTestBehavior(HitTestMode.Transparent)
       }
 
-      // 底部浮窗：导航栏
+      // 底部浮窗：引导条（演练时）+ 导航栏
       Column() {
+        if (this.guideActive) {
+          this.GuideBar()
+        }
         this.TabBar()
       }
       .width('100%')
@@ -1703,6 +1845,132 @@ struct Index {
       .justifyContent(FlexAlign.End)
       .hitTestBehavior(HitTestMode.Transparent)
     }
+  }
+
+  /**
+   * 新手演练的**引导条**（浮在导航栏上方）。
+   *
+   * 用户拍定的形态：不遮罩、不高亮，就在真实界面底部挂一条"第 n/N 步 + 要做什么"，
+   * 每一步自动切到对应标签页，用户照着做（做的每一下都真实写进沙箱库）。
+   */
+  @Builder
+  GuideBar() {
+    Column() {
+      Row() {
+        Text(`第 ${this.guideStep + 1}/${guideStepCount()} 步`)
+          .fontSize(10)
+          .fontColor('#E8B25C')
+        Text(this.guideStepOf(this.guideStep).title)
+          .fontSize(14)
+          .fontWeight(FontWeight.Medium)
+          .fontColor('#F2F5FA')
+          .layoutWeight(1)
+          .margin({ left: 8 })
+        Text('退出演练')
+          .fontSize(11)
+          .fontColor('#FF8A8A')
+          .padding({ left: 10, top: 2, bottom: 2 })
+          .onClick((): void => this.exitGuide())
+      }
+      .width('100%')
+
+      Text(this.guideStepOf(this.guideStep).body)
+        .fontSize(12)
+        .fontColor('#C3CDDE')
+        .width('100%')
+        .margin({ top: 4 })
+
+      Row() {
+        Button('上一步')
+          .backgroundColor('rgba(255,255,255,0.14)')
+          .fontColor('#C3CDDE')
+          .fontSize(13)
+          .height(34)
+          .layoutWeight(1)
+          .enabled(this.guideStep > 0)
+          .opacity(this.guideStep > 0 ? 1 : 0.4)
+          .onClick((): void => this.guidePrev())
+        Button(isLastGuideStep(this.guideStep) ? '完成演练' : '下一步')
+          .backgroundColor('#2E6BE6')
+          .fontColor('#FFFFFF')
+          .fontSize(13)
+          .height(34)
+          .layoutWeight(1)
+          .margin({ left: 10 })
+          .onClick((): void => this.guideNext())
+      }
+      .width('100%')
+      .margin({ top: 10 })
+    }
+    .width('100%')
+    .padding(14)
+    .glassSheet()
+    .margin({ bottom: FLOAT_GAP })
+    .onAreaChange((oldArea: Area, newArea: Area): void => {
+      const h: Length | undefined = newArea.height;
+      if (typeof h === 'number' && h > 0) {
+        this.guideBarH = h;
+      }
+    })
+  }
+
+  /** 首次启动的那句询问（沙箱说明 + 两个按钮） */
+  @Builder
+  GuidePromptCard() {
+    Column() {
+      Column() {
+        Text('第一次用 ClassOUT？')
+          .fontSize(18)
+          .fontWeight(FontWeight.Medium)
+          .fontColor('#F2F5FA')
+        Text('可以在「演练」里走一遍：会建一个沙箱（里面有几门演示课和演示待办），'
+          + '你随便改、随便删；退出时整个沙箱删掉，你自己的课表一点都不会动。')
+          .fontSize(12)
+          .fontColor('#C3CDDE')
+          .margin({ top: 8 })
+        Text(`共 ${guideStepCount()} 步，大约两分钟。`)
+          .fontSize(11)
+          .fontColor('#8B97AC')
+          .margin({ top: 6 })
+
+        Button('开始演练')
+          .backgroundColor('#2E6BE6')
+          .fontColor('#FFFFFF')
+          .width('100%')
+          .margin({ top: 14 })
+          .onClick((): void => this.startGuide())
+        Button('先自己用用')
+          .backgroundColor('rgba(255,255,255,0.14)')
+          .fontColor('#C3CDDE')
+          .width('100%')
+          .margin({ top: 10 })
+          .onClick((): void => this.dismissGuidePrompt())
+      }
+      .width('100%')
+      .padding(18)
+      .glassSheet()
+    }
+    .width('100%')
+    .height('100%')
+    .padding(24)
+    .justifyContent(FlexAlign.Center)
+    .backgroundColor('rgba(12,18,28,0.55)')
+  }
+
+  /** 切库/灌演示数据时挡一下（那一瞬间数据是半截的） */
+  @Builder
+  GuideBusyLayer() {
+    Column() {
+      Text(this.guideActive ? '正在准备演练…' : '正在恢复你的课表…')
+        .fontSize(13)
+        .fontColor('#F2F5FA')
+        .padding(18)
+        .glassSheet()
+    }
+    .width('100%')
+    .height('100%')
+    .justifyContent(FlexAlign.Center)
+    .backgroundColor('rgba(12,18,28,0.55)')
   }
 
   build() {
@@ -1792,6 +2060,8 @@ struct Index {
                 semesterId: this.semester.id,
                 topInset: this.topInset(),
                 bottomInset: this.bottomInset(),
+                // 设置页的「新手引导」入口 → 由 Index 负责建沙箱、切库、挂引导条
+                onStartGuide: (): void => this.startGuide(),
                 // 设置页的「调整背景」是全屏浮层，开着时也要把浮窗层挪到内容层之下
                 onModalChange: (open: boolean): void => {
                   this.pageModalOpen = open;
@@ -1936,6 +2206,16 @@ struct Index {
             this.extraSheet = false;
           })
         this.ExtraSheet()
+      }
+
+      // ---- 新手演练的两层（都在最上面）----
+      // 首次启动的询问：等加载页/过场彻底结束再出现，别叠在启动动画上
+      if (this.guidePrompt && !this.loading && this.bootExit === 0 && !this.guideBusy) {
+        this.GuidePromptCard()
+      }
+      // 切库那一两秒挡一下输入
+      if (this.guideBusy) {
+        this.GuideBusyLayer()
       }
     }
     .width('100%')

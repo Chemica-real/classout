@@ -11,6 +11,16 @@ export class Db {
   private static store: relationalStore.RdbStore | undefined = undefined;
   /** 正在打开中的 Promise：避免多个组件同时初始化时重复开库、重复建表 */
   private static opening: Promise<relationalStore.RdbStore> | undefined = undefined;
+  /**
+   * 当前连的是哪个库。默认真实库；「新手演练」期间会切成沙箱库（见 `Schema.DEMO_DB_NAME`）。
+   * ⚠️ 进程重启后回到默认值 —— 沙箱绝不会"粘"到下一次冷启动上。
+   */
+  private static activeName: string = DB_NAME;
+
+  /** 当前库名（诊断/日志用） */
+  static currentName(): string {
+    return Db.activeName;
+  }
 
   /** 取连接（首次调用会建表） */
   static async get(context: common.Context): Promise<relationalStore.RdbStore> {
@@ -23,9 +33,24 @@ export class Db {
     return await Db.opening;
   }
 
+  /**
+   * 换一个库连（「新手演练」进出沙箱用）。
+   * 关掉旧连接、清掉缓存的 Promise，再按新库名开一次（建表 + 迁移都会重跑）。
+   */
+  static async use(context: common.Context, name: string): Promise<void> {
+    if (Db.activeName === name && Db.store !== undefined) {
+      return;
+    }
+    Db.store = undefined;
+    Db.opening = undefined;
+    Db.activeName = name;
+    hilog.info(DOMAIN, TAG, 'switch database to %{public}s', name);
+    await Db.get(context);
+  }
+
   private static async open(context: common.Context): Promise<relationalStore.RdbStore> {
     const config: relationalStore.StoreConfig = {
-      name: DB_NAME,
+      name: Db.activeName,
       securityLevel: relationalStore.SecurityLevel.S1
     };
     const store: relationalStore.RdbStore = await relationalStore.getRdbStore(context, config);
@@ -65,9 +90,10 @@ export class Db {
 
   /** 彻底重置（重建引导用） */
   static async wipe(context: common.Context): Promise<void> {
+    const name: string = Db.activeName;
     Db.store = undefined;
     Db.opening = undefined;
-    await relationalStore.deleteRdbStore(context, DB_NAME);
+    await relationalStore.deleteRdbStore(context, name);
     hilog.info(DOMAIN, TAG, '%{public}s', 'database wiped');
   }
 

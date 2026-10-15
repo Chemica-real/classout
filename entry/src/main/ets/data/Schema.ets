@@ -2,6 +2,18 @@
 
 export const DB_NAME: string = 'classout.db';
 
+/**
+ * 「新手演练」用的沙箱数据库。
+ *
+ * 用户 2026-10-15 要一个新手引导，并选了「真实操作真写库、退出后自己的数据一点不变」。
+ * 做法不是往真实库塞一个"演示学期"（待办表根本没有学期字段，塞进去会和真实待办混在一起），
+ * 而是**整库切换**：演练期间 App 连的是这个空库，退出时切回 `classout.db` 并把它删掉。
+ * 于是沙箱是彻底的 —— 演练里删课程、删待办都不可能碰到真实数据。
+ *
+ * ⚠️ 只在进程活着时用它；冷启动一律从 `DB_NAME` 起（并顺手删掉遗留的沙箱文件）。
+ */
+export const DEMO_DB_NAME: string = 'classout_demo.db';
+
 export const SCHEMA_SQL: string[] = [
   `CREATE TABLE IF NOT EXISTS semester (
      id INTEGER PRIMARY KEY AUTOINCREMENT,

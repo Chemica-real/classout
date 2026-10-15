@@ -15,6 +15,8 @@ import { WALLPAPER_MAX_ZOOM, WallpaperGeometry, clampFocus, formatWallpaperFocus
 import { CATEGORY_NAME_MAX, CategoryOption, LEGACY_OTHER, addCustomCategory,
   allCategoryOptions, builtinCategoryOptions, categoryLabel, parseCustomCategories,
   removeCustomCategory, serializeCustomCategories, validateCategoryName } from './Categories';
+import { GuideTab, guideStepAt, guideStepCount, guideTabsValid, guideTextsNonEmpty,
+  isLastGuideStep, nextGuideStep, prevGuideStep } from './Guide';
 import { maskAll, maskFromText, maskToText, maskHas } from './WeekMask';
 import { countdownText, formatDateTime, minToHHmm, parseDate, parseDateTime } from './DateUtil';
 import { computeDdl, renderTitle } from './TodoGenerator';
@@ -1332,6 +1334,26 @@ check('删除不存在的类型是安全的', removeCustomCategory(['阅读'], '
 check('allCategoryOptions = 内置 + 自定义',
   allCategoryOptions(['阅读']).map((o: CategoryOption): string => o.label).join(','),
   '作业,自学,考试,无,阅读');
+
+// ---------- 新手演练的步骤脚本（用户 2026-10-15）----------
+console.log('【新手演练：步骤脚本】');
+
+check('步骤数固定为 7（改了要同步核对引导条）', `${guideStepCount()}`, '7');
+check('每一步的标签页都在 0..3 内', `${guideTabsValid()}`, 'true');
+check('每一步都有标题和正文', `${guideTextsNonEmpty()}`, 'true');
+check('第 1 步在课表页', `${guideStepAt(0).tab}`, `${GuideTab.Timetable}`);
+check('待办那一步切到待办页',
+  `${guideStepAt(2).tab === GuideTab.Todo && guideStepAt(3).tab === GuideTab.Todo}`, 'true');
+check('计划那一步切到计划页', `${guideStepAt(4).tab}`, `${GuideTab.Plan}`);
+check('最后一步在设置页（完成按钮就在那儿）', `${guideStepAt(guideStepCount() - 1).tab}`, `${GuideTab.Settings}`);
+check('越界下标退回最后一步', `${guideStepAt(99).title === guideStepAt(guideStepCount() - 1).title}`, 'true');
+check('负数下标退回第 1 步', `${guideStepAt(-3).title === guideStepAt(0).title}`, 'true');
+check('next 在第 1 步上是 1', `${nextGuideStep(0)}`, '1');
+check('next 在最后一步上不动（避免越界）', `${nextGuideStep(guideStepCount() - 1)}`, `${guideStepCount() - 1}`);
+check('prev 在第 1 步上不动', `${prevGuideStep(0)}`, '0');
+check('prev 正常回退', `${prevGuideStep(3)}`, '2');
+check('isLast 只在最后一步为真',
+  `${!isLastGuideStep(0) && isLastGuideStep(guideStepCount() - 1)}`, 'true');
 
 // ---------- 汇总 ----------
 console.log('');
