@@ -17,6 +17,15 @@
 /signing/*.csr
 /signing/*.cer
 /signing/*.p7b
+# 发布（上架）用的那套也一样：单独放 signing/release/，材料绝不入库
+# （⚠️ 只挡材料文件，不挡该目录的 README.md —— 那个要入库）
+/signing/release/*.p12
+/signing/release/*.csr
+/signing/release/*.cer
+/signing/release/*.p7b
+
+# 上架产物（.app）—— 每次都能重新打，不入库
+/dist
 
 # 真机联调时抓的运行时日志与截图
 /.logs

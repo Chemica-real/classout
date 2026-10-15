@@ -3031,6 +3031,79 @@ LANG=zh_CN.UTF-8 ./build.sh clean && LANG=zh_CN.UTF-8 ./build.sh assembleHap   #
   而壁纸文件在共享的 `filesDir` 里，不随库切换）。退出时会把偏好从真实库读回来，
   但旧文件已经没了 → 退回默认渐变。属于边角情况，先记着。
 
+---
+
+## 31. 2026-10-16 上架（发布）准备：CLI 打发布包的链路已打通
+
+用户：「我现在想要把该应用发布到应用市场，我应当如何？」
+（§22.5 里的 **B 路线**，他之前一直没选，现在选了。）
+
+### 31.1 ★ 这台机器没有 DevEco，发布包只能用命令行打 —— 链路是这样的
+
+上架要交的是 **`.app`（app pack）**，不是 `.hap`。原来 `build.sh` 只有 `assembleHap`，
+而且 `sign-and-install.sh` 签的是调试 HAP。这轮把发布链路补齐并**实测跑通**：
+
+| 步骤 | 命令 | 产物 |
+|---|---|---|
+| 1. release 构建 | `./build.sh assembleApp` | `build/outputs/default/ClassOUT-default-unsigned.app` |
+| 2. 发布签名 | `./sign-release.sh` | `dist/ClassOUT-<版本>-release.app` |
+| 3. 校验 | 脚本里自动 `verify-app -inForm zip` | `verify: Verify success` |
+
+**踩到的坑（必须记）**：`assembleApp` 走的是 **release 构建档**，而
+`entry/build-profile.json5` 的 release 档里声明了
+`obfuscation.ruleOptions.files: ["./obfuscation-rules.txt"]` —— 文件不存在时 hvigor
+**连编译都不开始**，直接报：
+
+```
+00304036 Not Found
+The obfuscation rule file './obfuscation-rules.txt' cannot be found …
+```
+
+`assembleHap`（debug 档）**不会**踩到，所以之前一直没暴露。
+→ 已补 `entry/obfuscation-rules.txt`（**只有注释也要存在**；`enable=false` 表示没开混淆）。
+
+另一个坑：`.app` 是 zip，签名要显式给 **`-inForm zip`**；
+`hap-sign-tool` 的 `sign-app` 帮助里 `-inFile` 只写了 `.hap, .bin, .elf`，
+但 `-inForm zip` 能正常签 `.app`（实测 `verify-app` 通过）。
+
+### 31.2 新增的东西
+
+| 文件 | 作用 |
+|---|---|
+| `entry/obfuscation-rules.txt` | **必须存在**，否则 `assembleApp` 构建直接失败（见上） |
+| `sign-release.sh` | release 构建 + 发布证书/Profile 签名 + 校验，产物落 `dist/`。支持 `--no-build` |
+| `signing/release/README.md` | 发布材料放哪、怎么在 AGC 拿发布证书/Profile、怎么用 `hap-sign-tool` 生成密钥库+CSR |
+| `.gitignore` | 加 `/dist` 与 `/signing/release/*.p12|csr|cer|p7b`（**只挡材料，不挡那个 README**） |
+
+口令仍然只在 `signing/local.env`：`CLASS_OUT_KEY_PWD`，想给发布单独一个就用
+`CLASS_OUT_RELEASE_KEY_PWD`；复用调试密钥库时设 `CLASS_OUT_RELEASE_KEY_ALIAS=classout-debug`。
+**没有任何口令/私钥入库**（自检命令见 §2.1）。
+
+### 31.3 上架必须先解决的（**都不是代码问题，是材料问题**）
+
+| 项 | 现状 | 谁做 |
+|---|---|---|
+| **用户协议/隐私政策** | 没写 | 我可以起草（纯离线、不收集，内容很短），但**必须有一个可访问的链接**（Gitee 仓库里的 markdown 也算） |
+| **应用图标** | ❌ 游戏角色素材（《明日方舟》"圣聆初雪"，见 §25.2） | **必须换成自绘/有版权的图**，否则审核驳回。这是硬门槛 |
+| **软件著作权 / 电子版权认证** | ❌ 没有 | 只有用户能办（周期以周计，建议现在就启动） |
+| **APP（移动应用）备案号** | ❌ 没有 | 只有用户能办（工信部备案，境内分发要求） |
+| 开发者账号实名 | ✅ 已有（调试证书 2027-10-13 到期） | — |
+| 应用包名 | ✅ `com.chemica.classout`（AGC 建应用时**必须填一致**，建后不可改） | — |
+
+> ⚠️ **诚实说明**：我搜到的都是二手文章（华为官方文档站是 JS 渲染的，`web_fetch` 抓回来是空的），
+> 有一篇还提到"直接创建应用需要受邀名单"——**这条我没能核实，不要当结论**。
+> 真正的权威清单是 AGC 里那页 **「应用审核 Checklist」**（developer.huawei.com/consumer/cn/doc/app/50170），
+> 以它为准。
+
+### 31.4 还没做的
+
+- **AGC 向导脚本**（`tools/publish-wizard.sh`）：只有用户能操作的网页步骤（建应用、传 CSR 换证书、
+  建发布 Profile、上传包、填信息、提审）打算做成一个交互式 bash 向导，逐步开链接、收材料、校验。
+  阶段清单已列给用户确认，**还没动手写**。
+- **隐私政策文本 + 应用内入口**（设置页「关于/隐私政策」）还没加。
+- 发布包**没在 AGC 上真传过**：本地 `verify-app` 通过 ≠ AGC 一定收（bundleName/版本/材料匹配只有平台能判）。
+
+
 
 
 

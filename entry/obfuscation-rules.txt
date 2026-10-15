@@ -1,0 +1,16 @@
+# ClassOUT 混淆规则
+#
+# ⚠️ **这个文件目前是空的（只有注释），但必须存在。**
+# `entry/build-profile.json5` 的 release 构建档里写了
+#   "obfuscation": { "ruleOptions": { "enable": false, "files": ["./obfuscation-rules.txt"] } }
+# hvigor 会去解析 `files` 里的路径 —— 文件不存在时**连编译都不开始**，直接报
+#   00304036 Not Found: The obfuscation rule file './obfuscation-rules.txt' cannot be found
+# （`./build.sh assembleApp` 走 release 档，所以只有它会踩到；assembleHap 不会。）
+#
+# 也就是说：**enable=false 表示现在没开混淆**，这个文件纯粹是给 hvigor 一个落脚点。
+# 删了它 release/app 构建就挂。
+#
+# 哪天要开混淆：把 `enable` 改成 true，再在下面按需加规则。要留意的地方：
+#   - 备份导出/导入用 JSON 的**字段名是字符串字面量**，混淆不会动字符串，一般不受影响；
+#   - 通过反射 / `Record<string, ...>` 访问的成员名要 `-keep-property-name`；
+#   - ArkTS 的 @Component/@Entry 等装饰器类名建议保留，免得路由找不到。
