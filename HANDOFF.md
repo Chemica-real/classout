@@ -16,7 +16,16 @@ ClassOUT 是一款**纯离线鸿蒙原生（ArkTS）「课表 + 待办 + 计划�
 **v1.0.0 保持不动**，不再挪它）。最新提交用 `git log -1` 看。
 远端：`git@gitee.com:the-person-on-the-tree/classout.git`（**公开**，master + tag 都已推齐）。
 
-> ## ✅ 最新一轮：**§23 两个用户报的 bug**
+> ## ✅ 最新一轮：**§27 补课/换教室 bug + 四条优化**（2026-10-15，未发版）
+> ① 补课改地点原来会**多存一条 room 覆盖**（「本周调整」显示两条、地点还不生效）→
+> 改成改 extra 自己那条 + 老数据自动合并；② 虚拟课讲数改成 **1–50 滑条**；
+> ③ 待办**备注**（自动生成为空）；④ 首页标语在设置页**回显**；
+> ⑤ 计划页**时间范围（上下限）**可在设置页按整半小时设。
+> 断言 422 → **447** 全绿，clean 构建 `ERROR: 0` / 警告 6 条；§27 记了真机验证了什么。
+> ⚠️ 还没提交 / 没发版（版本号仍是 1.1.0）。
+
+
+> ## ✅ 上一轮：**§23 两个用户报的 bug**
 > ① 已确认的待办**原来没有删除入口**（编辑抽屉只有取消/保存）→ 抽屉底部加「删除待办」+ 二次确认；
 > ② 课表改完课程属性不刷新（`weekSessions` 不是 `@State` + 块的 `ForEach` key 缺字段）、
 > 起/止节次胶囊点了没反馈（又是 `@Builder` 参数固化）→ 抽成 `view/SectionPicker.ets`。
@@ -2622,3 +2631,140 @@ git tag -a v1.1.0 -m "…" && git push origin master && git push origin v1.1.0
   滑杆是等价的兜底路径，也没单独点过）；
 - 图标在桌面上的实际观感（换完没重启桌面/没截图确认，只确认了资源文件已更新并装机）；
 - §24.4 / §24.8 里那几项"未逐项点过"的（已被后续轮次补掉的除外）。
+
+---
+
+## 27. 2026-10-15 第二批：补课/换教室 bug + 四条优化
+
+用户原话（一次给了 BUG + 优化两组）：
+
+> **BUG**：调换课系统：如果是补课，再加上改了补课的地点，那么应该在补课详情里面只显示一条，
+> 而不应该显示成两条。同时，更改本周某上课地点并没有在课程表内立即刷新，不对，好像根本就没有刷新。
+>
+> **优化**：虚拟课程讲数只需要滑条选择（1～50）即可（不用设计那么多按钮）；
+> 代办可写备注（自动生成的时候不可以自动生成备注，备注直接默认为空）；
+> 首页标语改了之后在设置页不会显示；
+> 计划页面的上下限也应当可以设置（整半小时时段）（独立于不可排时段）。
+
+> 动手前只用 `ask_user_question` 问了一个设计点（时间范围设置放哪），用户选了
+> **「设置页，挨着不可排时段下面」**。其余按现状最小改动。
+
+### 27.1 ★ BUG 根因：「换教室」无条件新建一条 `room` 覆盖
+
+`Index.applyRoom()` 原来无论点的是哪种课，都 `insertOverride(kind: 'room')`。
+而**补课本身已经是一条 `extra` 覆盖**，于是同一天同一门课有两条记录：
+
+| 症状 | 机制 |
+|---|---|
+| 「本周调整」里**两条** | `AdjustSheet` 把 `extra` 和 `room` 各渲染一行 |
+| **地点根本不刷新** | `computeWeekSessions` 的补课分支只读 `extra.newLocation`，**从不看 roomMap** |
+
+> 注意用户说的是"改本周某上课地点"，但**规则课的换教室一直是好的**（room 覆盖按
+> `courseId|originDate` 命中规则课）。真正坏的是**补课那节** —— 两个症状同一个根因。
+
+**改法（两条路一起走，新的不再产生脏数据 + 老的自动修）**：
+
+1. `CourseSession` 新增 **`isExtra`**（`fromOverride` 区分不了补课和调课）。
+   `openSession` 记下 `selIsExtra`；`applyRoom` 优先改**产生这节的那条覆盖**
+   （补课 → `extra`、调课 → `move`、否则已有的 `room`），改 `newLocation` 走新的
+   `TimetableRepo.updateOverride`。**不再插第二条。**
+2. 老数据合并：`domain/Timetable.mergeRoomOverrides(overrides)`（**纯函数 + 离线断言 + 变异测试**）
+   —— `room` 若与同 `courseId|date` 的 `move`/`extra` 撞上，就把地点写进后者、标记删除前者。
+   `Index.reloadData()` 里调用一次（幂等；正常数据 `deleteIds` 为空、不写库）。
+3. 顺带把 `computeWeekSessions` 的补课分支也认 room 覆盖（兜底，双保险）。
+4. `hasOverrideFor` / `clearOverridesForSel` 现在**按 `isExtra` 分流**：
+   同一门课那天本来就有课、又补了一节时，规则课不会因为旁边那条 extra 就显示/执行
+   「撤销这节课的调整」（原来会把补课一起删掉）。
+
+**顺手修的同族静默 no-op**：补课那节的「只挪这一天」「本周停课」原来也是新建 `move`/`cancel`
+覆盖，而补课分支**都不认** → 点了像没反应。现在对补课分别改成**改 extra 自己**与
+**删掉 extra**，并按上下文改文案：「改到这一天」/「取消这次补课」/「改这次补课的地点」，
+标题里也加了「· 补课」标记（`Index.SessionSheet`）。
+
+### 27.2 优化：虚拟课程讲数 = 滑条 1–50
+
+`CourseManager` 编辑课程页里那排 `4/6/8…32 讲` 胶囊换成
+`Slider({value, min: 1, max: 50, step: 1})` + 两端 `1`/`50` 与当前值文字。
+打开课程时把讲数 `clampLessonCount()` 夹进范围（滑条值越界会让滑块和文字对不上）。
+
+### 27.3 优化：待办备注（自动生成为空）
+
+`todo.note` 这个字段早就有（原来只给考试当「考场 / 座位」用）。现在：
+
+- 编辑抽屉里**所有类型**都显示备注框；考试时标签仍是「考场 / 座位」，其余是「备注」。
+  `openEdit` / `doSave` 都不再按 `category` 条件读写（原来非考试会被强制写成 `''`）。
+- `ActiveRow` / `PendingCard` 有备注才显示一行（考试卡片照旧）。
+- **`TodoGenerator` 里 `note: t.note` → `note: ''`** —— 用户要求「自动生成的时候不可以
+  自动生成备注，备注直接默认为空」。（模板的 `note` 字段本来也没 UI 可编辑，一直是空串，
+  所以这是把规矩钉死，不改现有数据。）
+
+### 27.4 优化：首页标语在设置页回显
+
+`SettingsPage` 是**切标签销毁、切回来重建**的组件，而 `mottoDraft` 的初值写死成
+`MOTTO_DEFAULT` → 保存明明成功，再进设置页看到的还是默认标语。
+新增 `@StorageLink('bootMotto') savedMotto`（`Prefs.saveMotto` 写的就是这个键），
+`aboutToAppear` 里 `this.mottoDraft = this.savedMotto`。
+**真机核对**：输入框显示的是用户自己存的 `CHEMICA SAVES THE WORLD`（24/32），不再是默认。
+
+### 27.5 优化：计划页时间范围（上下限，整半小时）
+
+时间窗从「模块级常量 07:00–24:00」变成**可设**：
+
+| 环节 | 做法 |
+|---|---|
+| 纯逻辑 | `PlanMath.WINDOW_SNAP_MIN = 30`；`normalizeWindow`/`alignWindow` 改成**吸附整半小时**（原来是 15 分钟 + 强制整点）。新增 `formatWindow` / `parseWindow`（存库往返） |
+| 刻度不变式 | 半小时边界会让**末段不足 1 小时**，所以不变式从「刻度数 × 60 == 高度」放宽成 `(marks-1)*60 < 高度 <= marks*60`（末行 30 或 60 分钟）。`HourLines` 显式 `height(gridH) + clip(true)`，末段只是没有下边界线 |
+| 存取 | `Prefs.loadPlanWindow` / `savePlanWindow`（kv `plan_window` = `'start,end'`，AppStorage 键 `planStartMin` / `planEndMin`）；`Index.init()` 冷启动读回 |
+| 计划页 | `PlanDayView` 用 `@StorageLink('planStartMin'/'planEndMin')` + `ax()`（带缓存）/ `gridH()`；原来 25 处 `AXIS.*` / 3 处 `GRID_H` 全部跟着改。**设置页改完切回计划页立刻生效** |
+| 设置页 | 「不可排时段」下面新增「计划页时间范围」卡片：上/下边界各一组 `‹ HH:MM ›`（步进 30 分钟）+ 当前跨度 + 恢复默认 |
+| 裁到窗口 | 网格里的图层包进一个 `clip(true)` 的内层 Stack（不然把上边界设到 10:00 后，08:00 的课会画到网格外）；**截止标记留在裁剪层外**（它本来就故意从网格底边往下挂一行，见 `DDL_MARK_ALLOW`）。`ddlGroupsOn` 新增 `axisEndMin`，晚于终点的标记**夹到终点**（原来只夹起点） |
+
+> 注意：设置页和服务端都**没动「不可排时段」**——两者独立，用户明确要求。
+
+### 27.6 验证（诚实版）
+
+```bash
+./tools/domain-check/run.sh     # 447 项全绿（422 → 447：+时间窗半小时/存取、补课+换教室合并、ddl 夹终点）
+LANG=zh_CN.UTF-8 ./build.sh clean && LANG=zh_CN.UTF-8 ./build.sh assembleHap   # ERROR: 0 / 警告 6 条
+./sign-and-install.sh --install # 装机成功（本机连的是 <设备序列号>）
+```
+
+变异测试（都确认会 FAIL，再恢复全绿）：
+`mergeRoomOverrides` 不写回地点 → FAIL 2 条；`normalizeWindow` 退回 15 分钟吸附 → FAIL 2 条；
+`ddlGroupsOn` 不夹终点 → FAIL 1 条；`parseWindow` 恒返回默认 → FAIL 2 条。
+
+| 真机项 | 结果 |
+|---|---|
+| 设置页「首页标语」回显已保存的值 | ✅ 显示 `CHEMICA SAVES THE WORLD`（24/32） |
+| 计划页时间范围卡片 + 步进 | ✅ 上边界 07:00→07:30、下边界 24:00→23:30，卡片显示「07:30 – 23:30（共 16 小时）」；切到计划页网格**从 07:30 起**、底部到 23:30（截图 `t-plan-window` / `t-plan-bottom`）；点「恢复默认」回到 07:00–24:00 |
+| 虚拟课程滑条 | ✅ 编辑「离散」（虚拟课）看到滑条 1–50、当前 24、两端 1/50（截图 `t-course-edit`） |
+| 待办备注框 | ✅ 打开「填写学籍表」的编辑抽屉，出现「备注」输入框（截图 `t-todo-editor`） |
+| **补课 + 改地点只一条 + 地点生效** | ✅ 新建补课（课甲 周六 1-2）「本周调整」1→**2**；点该课→「改这次补课的地点」→「换到这儿」后仍是 **2 条**，那一条变成 `课甲 · 2026-10-17 补课 第 1-2 节 · 地点 教学楼407TEST101`，周六格子也变成了新地点（截图 `t-room-changed` / `t-adjust`） |
+| 测试数据已清理 | ✅ 撤销掉测试补课后「本周调整」回到 **1**（只剩用户原有的 `课丁 · 2026-10-16 补课 第 10-11 节`，未动）；计划页时间范围已点回默认 |
+
+❌ **没验的**：
+- **老数据自动合并**只在离线断言里验过（真机上用户当前那份没有"补课 + room 两条"的残留，
+  或者已经在启动时被静默合并了 —— 我只能确认界面现在是一条）。想看合并是否真的落库，
+  得导出备份看 `session_override` 表。
+- **规则课的「换教室」**这次没再点（它是旧路径，用户上一轮报的就是补课那条）。
+- 时间窗设到"把现有课程挡在外面"时，网格外的块被 `clip` 掉**没有任何提示**——
+  这是刻意的（只按显示范围裁），但用户可能觉得"课不见了"，**要不要给个提示需要问**。
+- 考试卡片的备注（考场/座位）这次没单独点过。
+
+### 27.7 这一轮改的文件
+
+| 文件 | 改了什么 |
+|---|---|
+| `model/Types.ets` | `CourseSession.isExtra` |
+| `domain/Timetable.ets` | 补课分支认 room 覆盖 + `isExtra`；新增纯函数 `mergeRoomOverrides` / `RoomMergePlan` |
+| `domain/PlanMath.ets` | 时间窗改整半小时吸附；`TimeAxis` 不变式；`formatWindow` / `parseWindow`；`ddlGroupsOn` 加 `axisEndMin` |
+| `domain/TodoGenerator.ets` | 自动生成待办 `note: ''` |
+| `data/TimetableRepo.ets` | 新增 `updateOverride` / `deleteOverrides` |
+| `data/Prefs.ets` | 新增计划页时间窗的存取（`loadPlanWindow` / `savePlanWindow` + 键名常量） |
+| `pages/Index.ets` | `applyRoom` 改走 update；`roomTargetOverride` / `extraOverrideForSel`；补课的挪课/取消；`hasOverrideFor`/`clearOverridesForSel` 按 isExtra 分流；`reloadData` 合并老数据；`overrideText` 带地点；SessionSheet 文案；冷启动读时间窗 |
+| `view/CourseManager.ets` | 虚拟讲数滑条 1–50 |
+| `view/TodoInbox.ets` | 备注对所有类型可读写；卡片显示备注 |
+| `view/SettingsPage.ets` | 标语回显；「计划页时间范围」卡片 |
+| `view/PlanDayView.ets` | 时间轴改为可设（`ax()`/`gridH()`）；网格图层裁剪；截止标记移到裁剪层外 |
+| `tools/domain-check/test.ts` | +25 条断言（时间窗/存取/合并/ddl 夹终点） |
+

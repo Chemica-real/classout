@@ -84,6 +84,14 @@ export interface CourseSession {
   isQuiz: boolean;
   /** 来自覆盖层（调课/加课），用于 UI 区分显示 */
   fromOverride: boolean;
+  /**
+   * 这节是不是**补课**（`kind = extra`）。
+   *
+   * 为什么要单独标出来：补课和"调课"共用 `fromOverride`，但两者在「改这一周的地点」时
+   * 要改的是**不同的那条覆盖记录**（补课改 extra、调课改 move）。少了这个字段就只能靠
+   * `date === originDate` 猜，而"某门课本来就在那天有课、又补了一节"时会猜错。
+   */
+  isExtra: boolean;
 }
 
 export class OverrideKind {

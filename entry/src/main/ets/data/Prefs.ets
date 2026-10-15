@@ -1,6 +1,7 @@
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { Db } from './Db';
+import { DEFAULT_WINDOW, TimeWindow, formatWindow, normalizeWindow, parseWindow } from '../domain/PlanMath';
 
 /**
  * 首页标语（ClassOUT 字标下面那一行）。
@@ -107,4 +108,43 @@ export async function saveMotto(context: common.Context, raw: string): Promise<s
     hilog.warn(0x0000, 'ClassOUT', 'save motto failed: %{public}s', JSON.stringify(e));
   }
   return t;
+}
+
+// ---------------- 计划页时间范围（上下限） ----------------
+
+/**
+ * 计划页时间窗的 AppStorage 键（分钟）。
+ * ⚠️ 组件里 `@StorageLink` **必须写字面量** `'planStartMin'` / `'planEndMin'`，
+ *    用常量会静默不生效（项目里踩过一次，见 HANDOFF §20.8）。
+ */
+export const PLAN_START_KEY: string = 'planStartMin';
+export const PLAN_END_KEY: string = 'planEndMin';
+/** kv 里的持久化键，值是 `'start,end'` */
+export const PLAN_WINDOW_KV: string = 'plan_window';
+
+/** 冷启动读回来（读不到/坏了都退回默认窗 07:00–24:00） */
+export async function loadPlanWindow(context: common.Context): Promise<TimeWindow> {
+  try {
+    return parseWindow(await Db.getKv(context, PLAN_WINDOW_KV));
+  } catch (e) {
+    hilog.warn(0x0000, 'ClassOUT', 'load plan window failed: %{public}s', JSON.stringify(e));
+    return DEFAULT_WINDOW;
+  }
+}
+
+/**
+ * 设置页保存：规范化（吸附 30 分钟 + 夹紧 + 最小跨度）→ 写 AppStorage + kv。
+ * 返回真正生效的那个窗，让调用方把 UI 也刷新成规范后的值。
+ */
+export async function savePlanWindow(context: common.Context,
+  w: TimeWindow): Promise<TimeWindow> {
+  const n: TimeWindow = normalizeWindow(w);
+  AppStorage.setOrCreate(PLAN_START_KEY, n.startMin);
+  AppStorage.setOrCreate(PLAN_END_KEY, n.endMin);
+  try {
+    await Db.setKv(context, PLAN_WINDOW_KV, formatWindow(n));
+  } catch (e) {
+    hilog.warn(0x0000, 'ClassOUT', 'save plan window failed: %{public}s', JSON.stringify(e));
+  }
+  return n;
 }

@@ -6,7 +6,7 @@ import { Course, COURSE_COLORS, CourseSession, OverrideKind, SectionTime, Semest
 import { TimetableRepo } from '../data/TimetableRepo';
 import { Db } from '../data/Db';
 import { Seeder } from '../data/Seeder';
-import { computeWeekSessions, dateOfWeekday, weekOfDate } from '../domain/Timetable';
+import { computeWeekSessions, dateOfWeekday, mergeRoomOverrides, weekOfDate } from '../domain/Timetable';
 import { generateMissedTodos, GenerationOutcome } from '../domain/TodoGenerator';
 import { ReminderPlan, syncReminders } from '../domain/ReminderScheduler';
 import { formatDate, minToHHmm, today, WEEKDAY_CN, weekdayOf } from '../util/DateUtil';
@@ -22,7 +22,8 @@ import { BOOT_EXTRA_CAP_MS, BOOT_STEP_MS, DUR_BALL_DWELL, DUR_COLLAPSE, DUR_EXPA
   DUR_SPRAY, TYPE_MS, collapseCurve, curveOrLinear, dur, expandCurve, isMotionOn,
   loadMotionSetting, motionCurve } from '../view/Motion';
 import { WallpaperRepo } from '../data/WallpaperRepo';
-import { MOTTO_DEFAULT, loadMotto } from '../data/Prefs';
+import { MOTTO_DEFAULT, PLAN_END_KEY, PLAN_START_KEY, loadMotto, loadPlanWindow } from '../data/Prefs';
+import { TimeWindow } from '../domain/PlanMath';
 
 import { ChipButton } from '../view/ChipButton';
 import { SectionPicker } from '../view/SectionPicker';
@@ -121,6 +122,8 @@ struct Index {
   @State selTeacher: string = '';
   @State selIsQuiz: boolean = false;
   @State selAdjusted: boolean = false;
+  /** 被点的这节是不是**补课**（`extra`）—— 「换教室」要改的是它自己那条覆盖，见 `applyRoom()` */
+  @State selIsExtra: boolean = false;
   @State roomDraft: string = '';
   @State moveWeekday: number = 1;
   @State moveStart: number = 1;
@@ -365,6 +368,10 @@ struct Index {
     AppStorage.setOrCreate('wallpaperFocus', await WallpaperRepo.loadFocus(ctx));
     // 首页标语：也在第一帧之前读回来（加载页字标下面那行就是它）
     AppStorage.setOrCreate('bootMotto', await loadMotto(ctx));
+    // 计划页时间范围（上下限）：同样是内存态，每次冷启动都要读回来
+    const planWin: TimeWindow = await loadPlanWindow(ctx);
+    AppStorage.setOrCreate(PLAN_START_KEY, planWin.startMin);
+    AppStorage.setOrCreate(PLAN_END_KEY, planWin.endMin);
     // 动画总开关：AppStorage 是内存态，每次冷启动都要从 kv 读回来
     await loadMotionSetting(ctx);
     this.bootStep = 0;
@@ -487,6 +494,13 @@ struct Index {
     const from: string = formatDate(dateOfWeekday(this.semester, this.week, 1));
     const to: string = formatDate(dateOfWeekday(this.semester, this.week, 7));
     this.overrides = await TimetableRepo.listOverridesBetween(ctx, from, to);
+    // 老数据修复：补课/调课 + 单独一条「换教室」会显示成两条（用户实测报的 bug）。
+    // 合并是幂等的，正常数据下 deleteIds 为空、不写库。
+    const merge = mergeRoomOverrides(this.overrides);
+    if (merge.deleteIds.length > 0) {
+      await TimetableRepo.deleteOverrides(ctx, merge.deleteIds);
+      this.overrides = merge.list;
+    }
     this.weekSessions = computeWeekSessions(this.semester, this.courses, this.rules,
       this.overrides, this.sectionTimes, this.week);
   }
@@ -645,7 +659,8 @@ struct Index {
     this.selLocation = s.location;
     this.selTeacher = s.course.teacher;
     this.selIsQuiz = s.isQuiz;
-    this.selAdjusted = this.hasOverrideFor(s.course.id, s.originDate);
+    this.selIsExtra = s.isExtra;
+    this.selAdjusted = this.hasOverrideFor(s.course.id, s.originDate, s.isExtra);
     this.roomDraft = s.location;
     this.moveWeekday = s.weekday;
     this.moveStart = s.startSection;
@@ -653,9 +668,23 @@ struct Index {
     this.sessionSheet = true;
   }
 
-  private hasOverrideFor(courseId: number, originDate: string): boolean {
+  /**
+   * 这节有没有"可撤销的调整"。
+   *
+   * ⚠️ 要区分补课和规则课：`date` 相同不代表是同一件事 ——
+   * 「某门课本来就在那天有课，又补了一节」时，规则课不该因为旁边那条 extra
+   * 就显示「撤销这节课的调整」（撤销会把补课一起删掉）。
+   */
+  private hasOverrideFor(courseId: number, originDate: string, isExtra: boolean): boolean {
     for (const o of this.overrides) {
-      if (o.courseId === courseId && o.date === originDate) {
+      if (o.courseId !== courseId || o.date !== originDate) {
+        continue;
+      }
+      if (isExtra) {
+        if (o.kind === OverrideKind.Extra) {
+          return true;
+        }
+      } else if (o.kind !== OverrideKind.Extra) {
         return true;
       }
     }
@@ -671,9 +700,11 @@ struct Index {
       return `${name} · ${o.date} 换到 ${o.newLocation}`;
     }
     if (o.kind === OverrideKind.Move) {
-      return `${name} · ${o.date} 挪到 ${o.newDate} 第 ${o.newStartSection}-${o.newEndSection} 节`;
+      const loc: string = o.newLocation.length > 0 ? ` · 换到 ${o.newLocation}` : '';
+      return `${name} · ${o.date} 挪到 ${o.newDate} 第 ${o.newStartSection}-${o.newEndSection} 节${loc}`;
     }
-    return `${name} · ${o.newDate} 补课 第 ${o.newStartSection}-${o.newEndSection} 节`;
+    const extraLoc: string = o.newLocation.length > 0 ? ` · 地点 ${o.newLocation}` : '';
+    return `${name} · ${o.newDate} 补课 第 ${o.newStartSection}-${o.newEndSection} 节${extraLoc}`;
   }
 
   private addOverride(o: SessionOverride): void {
@@ -712,9 +743,14 @@ struct Index {
   private async doClearOverridesForSel(): Promise<void> {
     const ctx: common.UIAbilityContext = this.context();
     for (const o of this.overrides) {
-      if (o.courseId === this.selCourseId && o.date === this.selOriginDate) {
-        await TimetableRepo.deleteOverride(ctx, o.id);
+      if (o.courseId !== this.selCourseId || o.date !== this.selOriginDate) {
+        continue;
       }
+      // 同 `hasOverrideFor`：补课与规则课各自撤各自的，别互相误删
+      if (this.selIsExtra !== (o.kind === OverrideKind.Extra)) {
+        continue;
+      }
+      await TimetableRepo.deleteOverride(ctx, o.id);
     }
     this.sessionSheet = false;
     this.refresh();
@@ -734,26 +770,123 @@ struct Index {
   }
 
   private applyCancel(): void {
+    // 补课那节没有"规则"可停 —— 它本身就是一个 extra 覆盖，"停课"= 取消这次补课（删掉它）
+    if (this.selIsExtra) {
+      const extra: SessionOverride | undefined = this.extraOverrideForSel();
+      if (extra !== undefined) {
+        this.sessionSheet = false;
+        this.dropOverride(extra);
+        return;
+      }
+    }
     this.addOverride(this.blankOverride(this.selCourseId, this.selOriginDate, OverrideKind.Cancel));
   }
 
+  /** 被点的这节如果是补课，取它那条 `extra` 覆盖（否则 undefined） */
+  private extraOverrideForSel(): SessionOverride | undefined {
+    for (const o of this.overrides) {
+      if (o.courseId === this.selCourseId && o.date === this.selOriginDate
+        && o.kind === OverrideKind.Extra) {
+        return o;
+      }
+    }
+    return undefined;
+  }
+
   private applyRoom(): void {
-    const o: SessionOverride = this.blankOverride(this.selCourseId, this.selOriginDate,
-      OverrideKind.Room);
-    o.newLocation = this.roomDraft.trim();
-    if (o.newLocation.length === 0) {
+    const loc: string = this.roomDraft.trim();
+    if (loc.length === 0) {
       return;
     }
-    this.addOverride(o);
+    this.doApplyRoom(loc).catch((e: Object): void => {
+      hilog.error(DOMAIN, TAG, 'apply room failed: %{public}s', JSON.stringify(e));
+    });
+  }
+
+  /**
+   * 「换教室（只改这一周）」。
+   *
+   * ⚠️ 这里**不能**无脑 `insertOverride(room)`：补课（extra）/ 调课（move）本身已经是一条
+   * 覆盖记录，再插一条 room 就变成两条 —— 用户实测报的正是这个：
+   * 「如果是补课，再加上改了补课的地点，那么应该在补课详情里面只显示一条，而不应该显示成两条」，
+   * 而且补课那条地点**根本没变**（计算补课时只读 extra 自己的地点），看着像"课表没刷新"。
+   *
+   * 正确做法：优先改**产生这节的那条覆盖**（extra → move → 已有的 room），
+   * 都没有才新建一条 room。
+   */
+  private async doApplyRoom(loc: string): Promise<void> {
+    const ctx: common.UIAbilityContext = this.context();
+    const target: SessionOverride | undefined = this.roomTargetOverride();
+    if (target !== undefined) {
+      target.newLocation = loc;
+      await TimetableRepo.updateOverride(ctx, target);
+    } else {
+      const o: SessionOverride = this.blankOverride(this.selCourseId, this.selOriginDate,
+        OverrideKind.Room);
+      o.newLocation = loc;
+      await TimetableRepo.insertOverride(ctx, o);
+    }
+    this.sessionSheet = false;
+    this.refresh();
+  }
+
+  /**
+   * 「换教室」该改哪条覆盖：补课 > 调课 > 已有的换教室。
+   *
+   * `selIsExtra` 是关键 —— 光看 `date === originDate` 会把"同一门课那天本来就有课、
+   * 又补了一节"的规则课误判成补课，从而改错记录。
+   */
+  private roomTargetOverride(): SessionOverride | undefined {
+    let room: SessionOverride | undefined = undefined;
+    for (const o of this.overrides) {
+      if (o.courseId !== this.selCourseId || o.date !== this.selOriginDate) {
+        continue;
+      }
+      if (this.selIsExtra && o.kind === OverrideKind.Extra) {
+        return o;
+      }
+      if (!this.selIsExtra && o.kind === OverrideKind.Move) {
+        return o;
+      }
+      if (o.kind === OverrideKind.Room) {
+        room = o;
+      }
+    }
+    return room;
   }
 
   private applyMove(): void {
+    const newDate: string = formatDate(dateOfWeekday(this.semester, this.week, this.moveWeekday));
+    const newStart: number = this.moveStart;
+    const newEnd: number = this.moveEnd < this.moveStart ? this.moveStart : this.moveEnd;
+    // 补课那节要挪，就改它自己那条 extra；新建 move 对补课是**无效**的
+    //（computeWeekSessions 的补课分支只认 extra），点了会像"没反应"。
+    if (this.selIsExtra) {
+      const extra: SessionOverride | undefined = this.extraOverrideForSel();
+      if (extra !== undefined) {
+        this.doMoveExtra(extra, newDate, newStart, newEnd).catch((e: Object): void => {
+          hilog.error(DOMAIN, TAG, 'move extra failed: %{public}s', JSON.stringify(e));
+        });
+        return;
+      }
+    }
     const o: SessionOverride = this.blankOverride(this.selCourseId, this.selOriginDate,
       OverrideKind.Move);
-    o.newDate = formatDate(dateOfWeekday(this.semester, this.week, this.moveWeekday));
-    o.newStartSection = this.moveStart;
-    o.newEndSection = this.moveEnd < this.moveStart ? this.moveStart : this.moveEnd;
+    o.newDate = newDate;
+    o.newStartSection = newStart;
+    o.newEndSection = newEnd;
     this.addOverride(o);
+  }
+
+  private async doMoveExtra(extra: SessionOverride, newDate: string, start: number,
+    end: number): Promise<void> {
+    const ctx: common.UIAbilityContext = this.context();
+    extra.newDate = newDate;
+    extra.newStartSection = start;
+    extra.newEndSection = end;
+    await TimetableRepo.updateOverride(ctx, extra);
+    this.sessionSheet = false;
+    this.refresh();
   }
 
   private applyExtra(): void {
@@ -1049,7 +1182,7 @@ struct Index {
           .fontSize(18)
           .fontWeight(FontWeight.Medium)
           .fontColor('#F2F5FA')
-        Text(`${this.selDate} 周${WEEKDAY_CN[this.selWeekday - 1]} · 第 ${this.selStart}-${this.selEnd} 节${this.selIsQuiz ? ' · 习题课' : ''}`)
+        Text(`${this.selDate} 周${WEEKDAY_CN[this.selWeekday - 1]} · 第 ${this.selStart}-${this.selEnd} 节${this.selIsQuiz ? ' · 习题课' : ''}${this.selIsExtra ? ' · 补课' : ''}`)
           .fontSize(12)
           .fontColor('#9BA7BD')
           .margin({ top: 4 })
@@ -1064,7 +1197,7 @@ struct Index {
             .margin({ top: 2 })
         }
 
-        Text('换教室（只改这一周）')
+        Text(this.selIsExtra ? '改这次补课的地点' : '换教室（只改这一周）')
           .fontSize(12)
           .fontColor('#94A0B5')
           .width('100%')
@@ -1087,7 +1220,7 @@ struct Index {
         }
         .width('100%')
 
-        Text('调到哪一天')
+        Text(this.selIsExtra ? '改到哪一天' : '调到哪一天')
           .fontSize(12)
           .fontColor('#94A0B5')
           .width('100%')
@@ -1129,13 +1262,13 @@ struct Index {
         })
 
         Row() {
-          Button('只挪这一天')
+          Button(this.selIsExtra ? '改到这一天' : '只挪这一天')
             .backgroundColor('rgba(46,107,230,0.22)')
             .fontColor('#7FA8FF')
             .fontSize(13)
             .layoutWeight(1)
             .onClick((): void => this.applyMove())
-          Button('本周停课')
+          Button(this.selIsExtra ? '取消这次补课' : '本周停课')
             .backgroundColor('rgba(214,69,69,0.18)')
             .fontColor('#FF8A8A')
             .fontSize(13)

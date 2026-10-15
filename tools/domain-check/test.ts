@@ -9,15 +9,16 @@
 import { SEED_COURSES, SEED_START_DATE, SEED_TOTAL_WEEKS, SeedCourse, SeedTemplate } from './SeedData';
 import { Course, CourseSession, DEFAULT_REST_WINDOWS, OverrideKind, PlanBlock, RestWindow,
   Semester, SectionTime, SessionOverride, SessionRule, Todo, PKU_SECTION_TIMES } from './Types';
-import { computeWeekSessions, weekOfDate } from './Timetable';
+import { computeWeekSessions, mergeRoomOverrides, weekOfDate, weekdayOfDate } from './Timetable';
 import { WALLPAPER_MAX_ZOOM, WallpaperGeometry, clampFocus, formatWallpaperFocus,
   parseWallpaperFocus, wallpaperGeometry } from './Wallpaper';
 import { maskAll, maskFromText, maskToText, maskHas } from './WeekMask';
 import { countdownText, formatDateTime, minToHHmm, parseDate, parseDateTime } from './DateUtil';
 import { computeDdl, renderTitle } from './TodoGenerator';
-import { TimeAxis, DEFAULT_WINDOW, WINDOW_MAX_END, allBlocksDone, dragOffsetWithScroll,
-  dropRange, edgeScrollDepth, edgeScrollDirection, edgeScrollStep, findFreeSlot, moveRange,
-  normalizeDuration, normalizeWindow,
+import { TimeAxis, DEFAULT_WINDOW, WINDOW_MAX_END, WINDOW_MIN_SPAN, WINDOW_SNAP_MIN,
+  allBlocksDone, dragOffsetWithScroll,
+  dropRange, edgeScrollDepth, edgeScrollDirection, edgeScrollStep, findFreeSlot, formatWindow, moveRange,
+  normalizeDuration, normalizeWindow, parseWindow,
   overlaps, resizeRange,
   hasBlockOnDate, halveMinutes, scheduledDays,
   DdlGroup, ddlGroupsOn, ddlMinuteOf, selectPoolTodos, snap, sortBlocksByTime, sortPoolTodos,
@@ -356,6 +357,47 @@ const both: CourseSession[] = computeWeekSessions(sem, courses, rules,
     ov(xgId, '2026-10-17', OverrideKind.Extra, '2026-10-17', 3, 4, '')], times, 6);
 check('调课 + 补课同时生效：16 节', `${both.length}`, '16');
 
+// ---------- 7b. 补课 / 调课 + 换教室（用户 2026-10-15 报的 bug）----------
+console.log('【补课 + 换教室：只算一条、地点要生效】');
+
+const extraWithRoom: CourseSession[] = computeWeekSessions(sem, courses, rules,
+  [ov(xgId, '2026-10-17', OverrideKind.Extra, '2026-10-17', 3, 4, ''),
+    ov(xgId, '2026-10-17', OverrideKind.Room, '', 0, 0, '理教202')], times, 6);
+check('补课 + 单独一条换教室：地点用换教室那条', locationOf(extraWithRoom, '课丁', 6), '理教202');
+check('补课那节的 isExtra = true', `${pickOf(extraWithRoom, '课丁', 6)?.isExtra}`, 'true');
+check('补课自己写了地点就优先用它', locationOf(computeWeekSessions(sem, courses, rules,
+  [ov(xgId, '2026-10-17', OverrideKind.Extra, '2026-10-17', 3, 4, '教学楼101')], times, 6),
+  '课丁', 6), '教学楼101');
+check('规则课 isExtra = false', `${pickOf(week6, '课甲', 2)?.isExtra}`, 'false');
+
+const mergeInput: SessionOverride[] = [
+  ov(xgId, '2026-10-17', OverrideKind.Extra, '2026-10-17', 3, 4, ''),
+  ov(xgId, '2026-10-17', OverrideKind.Room, '', 0, 0, '理教202')
+];
+mergeInput[0].id = 11;
+mergeInput[1].id = 12;
+const merged = mergeRoomOverrides(mergeInput);
+check('合并后只剩一条（"补课详情不应显示两条"）', `${merged.list.length}`, '1');
+check('   └ 被删的是那条 room', `${merged.deleteIds.length === 1 && merged.deleteIds[0] === 12}`, 'true');
+check('   └ 地点写进了补课那条', merged.list[0].newLocation, '理教202');
+check('   └ 补课的节次没丢', `${merged.list[0].newStartSection}-${merged.list[0].newEndSection}`, '3-4');
+check('再合并一次是幂等的', `${mergeRoomOverrides(merged.list).deleteIds.length}`, '0');
+
+const moveRoom: SessionOverride[] = [
+  ov(gsId, '2026-10-13', OverrideKind.Move, '2026-10-17', 5, 6, ''),
+  ov(gsId, '2026-10-13', OverrideKind.Room, '', 0, 0, '三教101')
+];
+moveRoom[0].id = 21;
+moveRoom[1].id = 22;
+const mergeMove = mergeRoomOverrides(moveRoom);
+check('调课 + 换教室也合成一条', `${mergeMove.list.length}`, '1');
+check('   └ 地点写进了调课那条', mergeMove.list[0].newLocation, '三教101');
+check('   └ 新日期没丢', mergeMove.list[0].newDate, '2026-10-17');
+
+const loneRoom: SessionOverride[] = [ov(gsId, '2026-10-13', OverrideKind.Room, '', 0, 0, '理教101')];
+check('孤立的换教室保持原样', `${mergeRoomOverrides(loneRoom).list.length}`, '1');
+check('   └ 没有要删的', `${mergeRoomOverrides(loneRoom).deleteIds.length}`, '0');
+
 // ---------- 8. 每日简报正文 ----------
 console.log('【每日简报正文】');
 
@@ -576,11 +618,27 @@ check('两块相差不超过 5（"平分"的实质）',
   String(Math.abs(halveMinutes(95)[0] - halveMinutes(95)[1]) <= 5), 'true');
 
 // ---------- 时间轴不变式（回归自「底部 24:00 被裁掉」的真 bug）----------
-console.log('【时间轴：刻度数 × 60 == 网格高度】');
+console.log('【时间轴：刻度行不超出网格，最多差最后半段】');
 
-/** 不变式：网格高度必须恰好等于所有刻度行高之和 */
+/**
+ * 不变式：
+ *   ① 前 n−1 行刻度的满行高**严格小于**网格高度（否则多画了一整行）；
+ *   ② 网格高度**不超过** n 行刻度（末行可以不足 60 分钟，但不能超出）；
+ *   ③ 高度是 30 的倍数（起止吸附到整半小时）；
+ *   ④ 第一个刻度就是起点。
+ *
+ * ⚠️ 2026-10-15 起允许半小时边界，所以不能再要求"恰好铺满"——
+ * 07:30–24:00 的最后一格只有 30 分钟，07:00–22:30 同理。把"末行余量 ∈ (0,60]"
+ * 钉死，免得以后又把尾段算丢（旧 bug 就是底部被裁）。
+ */
 function invariantHolds(axis: TimeAxis): boolean {
-  return axis.marks.length * 60 === axis.height();
+  const n: number = axis.marks.length;
+  const full: number = (n - 1) * 60;
+  return n > 0
+    && axis.height() > full
+    && axis.height() <= n * 60
+    && axis.height() % 30 === 0
+    && axis.marks[0] === axis.startMin;
 }
 
 function spanOf(axis: TimeAxis): string {
@@ -594,31 +652,52 @@ check('07:00–24:00（新默认窗）不变式成立', `${invariantHolds(new Ti
 check('   └ 刻度数 17 个', `${new TimeAxis(DEFAULT_WINDOW).marks.length}`, '17');
 check('   └ 高度 1020vp', `${new TimeAxis(DEFAULT_WINDOW).height()}`, '1020');
 check('8 小时整窗不变式成立', `${invariantHolds(new TimeAxis({ startMin: 480, endMin: 960 }))}`, 'true');
-check('起点不在整点（07:30）会被对齐到整点', `${invariantHolds(new TimeAxis({ startMin: 450, endMin: 1440 }))}`, 'true');
-check('   └ 07:30 对齐成 07:00', `${new TimeAxis({ startMin: 450, endMin: 1440 }).startMin}`, '420');
-check('末段半小时（07:00–22:30）对齐成 23:00', `${new TimeAxis({ startMin: 420, endMin: 1350 }).endMin}`, '1380');
-check('   └ 不变式成立', `${invariantHolds(new TimeAxis({ startMin: 420, endMin: 1350 }))}`, 'true');
+check('起点不在整点（07:30）**保留**半小时', `${invariantHolds(new TimeAxis({ startMin: 450, endMin: 1440 }))}`, 'true');
+check('   └ 07:30 仍是 07:30', `${new TimeAxis({ startMin: 450, endMin: 1440 }).startMin}`, '450');
+check('末段半小时（07:00–22:30）**保留**', `${new TimeAxis({ startMin: 420, endMin: 1350 }).endMin}`, '1350');
+check('   └ 不变式成立（末行只有 30 分钟）', `${invariantHolds(new TimeAxis({ startMin: 420, endMin: 1350 }))}`, 'true');
+check('   └ 末行正好 30 分钟',
+  `${new TimeAxis({ startMin: 420, endMin: 1350 }).height() - (new TimeAxis({ startMin: 420, endMin: 1350 }).marks.length - 1) * 60}`,
+  '30');
+check('起点和终点都是半点（07:30–22:00）不变式成立',
+  `${invariantHolds(new TimeAxis({ startMin: 450, endMin: 1320 }))}`, 'true');
 check('最小 1 小时窗不变式成立', `${invariantHolds(new TimeAxis({ startMin: 420, endMin: 480 }))}`, 'true');
 
-console.log('【时间窗规范化】');
-check('起点先吸附到一刻钟，再对齐到整点（428 → 435 → 420）',
+console.log('【时间窗规范化（整半小时刻度）】');
+check('起点 428 先吸附到半小时 → 420',
   spanOf(new TimeAxis({ startMin: 428, endMin: 1440 })), '420-1440');
-check('   └ 吸附本身是 435', `${snap(428)}`, '435');
+check('半小时吸附常量为 30', `${WINDOW_SNAP_MIN}`, '30');
+check('   └ 435 吸附成 450', `${new TimeAxis({ startMin: 435, endMin: 1440 }).startMin}`, '450');
 check('end 超过 24:00 被夹回', `${normalizeWindow({ startMin: 420, endMin: 1500 }).endMin}`, `${WINDOW_MAX_END}`);
 check('start 低于 0 被夹回', `${normalizeWindow({ startMin: -100, endMin: 1440 }).startMin}`, '0');
-check('窗太窄时撑到最小跨度', `${normalizeWindow({ startMin: 600, endMin: 610 }).endMin - normalizeWindow({ startMin: 600, endMin: 610 }).startMin}`, '60');
+check('窗太窄时撑到最小跨度', `${normalizeWindow({ startMin: 600, endMin: 610 }).endMin - normalizeWindow({ startMin: 600, endMin: 610 }).startMin}`, `${WINDOW_MIN_SPAN}`);
 check('整体越界也能得到合法窗',
-  `${normalizeWindow({ startMin: 1400, endMin: 1400 }).endMin - normalizeWindow({ startMin: 1400, endMin: 1400 }).startMin}`, '60');
+  `${normalizeWindow({ startMin: 1400, endMin: 1400 }).endMin - normalizeWindow({ startMin: 1400, endMin: 1400 }).startMin}`, `${WINDOW_MIN_SPAN}`);
+
+console.log('【时间窗的存取（设置页 ↔ 计划页）】');
+check('往返：07:30–22:30', formatWindow({ startMin: 450, endMin: 1350 }), '450,1350');
+check('解析：450,1350 → 07:30–22:30',
+  `${parseWindow('450,1350').startMin}-${parseWindow('450,1350').endMin}`, '450-1350');
+check('解析：空串 → 默认窗',
+  `${parseWindow('').startMin}-${parseWindow('').endMin}`,
+  `${DEFAULT_WINDOW.startMin}-${DEFAULT_WINDOW.endMin}`);
+check('解析：半截字符串 → 默认窗',
+  `${parseWindow('450').startMin}-${parseWindow('450').endMin}`,
+  `${DEFAULT_WINDOW.startMin}-${DEFAULT_WINDOW.endMin}`);
+check('解析：垃圾值 → 默认窗',
+  `${parseWindow('x,y').startMin}-${parseWindow('x,y').endMin}`,
+  `${DEFAULT_WINDOW.startMin}-${DEFAULT_WINDOW.endMin}`);
+check('解析：脏值会被规范化（30,10 → 0,60）', formatWindow(parseWindow('30,10')), '0,60');
 
 console.log('【内容驱动时间窗】');
 // 周三真实内容：08:00 第一节开课、19:30 课甲习题课下课
 // （注意：是节次的 start/end，不是节次编号。19:30 = 1170）
 const wedContent: number[] = [480, 1170];
-check('周三内容 08:00–19:30、上下各留 60 分 → 07:00–21:00',
-  spanOf(new TimeAxis(windowForContent(wedContent, 60, 420, 1440))), '420-1260');
-check('   └ 比满窗（07:00–24:00）短 3 小时',
+check('周三内容 08:00–19:30、上下各留 60 分 → 07:00–20:30',
+  spanOf(new TimeAxis(windowForContent(wedContent, 60, 420, 1440))), '420-1230');
+check('   └ 比满窗（07:00–24:00）短 3.5 小时',
   `${new TimeAxis(DEFAULT_WINDOW).height() - new TimeAxis(windowForContent(wedContent, 60, 420, 1440)).height()}`,
-  '180');
+  '210');
 check('周一两节 13:00–17:00 → 12:00–18:00',
   spanOf(new TimeAxis(windowForContent([780, 1020], 60, 420, 1440))), '720-1080');
 check('没有内容时退回默认窗',
@@ -1151,6 +1230,10 @@ check('空串 ddl → 不进标记',
 check('别的日期 → 不进标记（标记只画当前查看日）',
   `${ddlGroupsOn(ddlPool, '2026-10-14', 420).length}`, '0');
 check('archived 也不算', `${ddlGroupsOn([dt(9, 'X', '2026-10-15 08:00', 'archived')], '2026-10-15', 420).length}`, '0');
+check('晚于时间轴终点 → 夹到终点（时间窗可改，不夹会画到网格外）',
+  `${ddlGroupsOn([dt(9, 'X', '2026-10-15 23:59', 'active')], '2026-10-15', 420, 1320)[0].minute}`, '1320');
+check('   └ 早于起点仍夹到起点',
+  `${ddlGroupsOn([dt(9, 'X', '2026-10-15 02:00', 'active')], '2026-10-15', 420, 1320)[0].minute}`, '420');
 check('ddlMinuteOf：23:59 → 1439', `${ddlMinuteOf('2026-10-15 23:59')}`, '1439');
 check('ddlMinuteOf：00:07 → 7（非 5 倍数也照算）', `${ddlMinuteOf('2026-10-15 00:07')}`, '7');
 check('ddlMinuteOf：没有时刻 → -1', `${ddlMinuteOf('2026-10-15')}`, '-1');

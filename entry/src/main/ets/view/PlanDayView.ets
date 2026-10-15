@@ -7,7 +7,7 @@ import { TimetableRepo } from '../data/TimetableRepo';
 import { TodoRepo } from '../data/TodoRepo';
 import { sessionsOnDate } from '../domain/Timetable';
 import { generateForLesson } from '../domain/TodoGenerator';
-import { TimeAxis, DEFAULT_AXIS, allBlocksDone,
+import { TimeAxis, DEFAULT_WINDOW, allBlocksDone,
   dragOffsetWithScroll, dropRange, edgeScrollDepth, edgeScrollDirection, edgeScrollStep,
   DdlGroup, ddlGroupsOn, durationToH, findFreeSlot, halveMinutes, hasBlockOnDate, moveRange, normalizeDuration,
   resizeRange, sortBlocksByTime,
@@ -88,11 +88,13 @@ const TAG: string = 'ClassOUT';
 const LESSON_MIN: number = 90;
 
 /**
- * 网格用的时间轴。改版后会由「管理课程」里的时间窗设置算出，
- * 目前固定在默认窗（07:00–24:00）。
+ * 网格用的时间轴 —— **不再是模块级常量**。
+ *
+ * 用户 2026-10-15 要求：「计划页面的上下限也应当可以设置（整半小时时段）」。
+ * 所以起止改成从 `AppStorage` 订阅（设置页写的就是这两个键），用 `ax()` 现算。
+ * 原来的模块级常量 `AXIS` / `GRID_H` 是写死的 07:00–24:00。
  */
-const AXIS: TimeAxis = DEFAULT_AXIS;
-const GRID_H: number = AXIS.height();
+
 /**
  * 截止标记（"⚑ … 截止"）的高度余量（vp）。
  *
@@ -133,6 +135,18 @@ export struct PlanDayView {
   @Prop topInset: number = 0;
   /** 下方悬浮浮窗（导航栏）占掉的高度，由 Index 量好传进来 */
   @Prop bottomInset: number = 0;
+  /**
+   * 计划页时间范围的起止（分钟）—— 设置页可改，冷启动由 `Index.init()` 从库读回来。
+   *
+   * ⚠️ `@StorageLink` 的键名**必须写字面量**（用常量会静默不生效，HANDOFF §20.8 踩过）。
+   * 起止都按整半小时，取值合法性由 `PlanMath.normalizeWindow` 保证；这里再兜一层
+   * `ax()`（TimeAxis 构造时会规范化），所以即使 AppStorage 里是脏值也不会崩。
+   */
+  @StorageLink('planStartMin') planStartMin: number = DEFAULT_WINDOW.startMin;
+  @StorageLink('planEndMin') planEndMin: number = DEFAULT_WINDOW.endMin;
+  /** 当前时间轴缓存（构造一次要算刻度，拖拽时会被调很多次） */
+  private axisCache: TimeAxis | undefined = undefined;
+  private axisCacheKey: string = '';
   /** 编辑窗开着时通知 Index（它要把悬浮浮窗层改画到内容层之下，见 Index.pageModalOpen） */
   onModalChange: (open: boolean) => void = (): void => {};
   /**
@@ -169,6 +183,24 @@ export struct PlanDayView {
     }
     // 名义高度：Index 页头让出的那段 + 一条缝 + 日期栏
     return this.topInset + FLOAT_GAP + H_DAYBAR + FLOAT_GAP;
+  }
+
+  /**
+   * 当前生效的时间轴（起止来自设置页）。
+   * 用「键 → 对象」的小缓存，避免拖拽时每帧重算刻度。
+   */
+  private ax(): TimeAxis {
+    const key: string = `${this.planStartMin}|${this.planEndMin}`;
+    if (this.axisCache === undefined || this.axisCacheKey !== key) {
+      this.axisCache = new TimeAxis({ startMin: this.planStartMin, endMin: this.planEndMin });
+      this.axisCacheKey = key;
+    }
+    return this.axisCache;
+  }
+
+  /** 网格高度（vp）= 时间窗跨度，1 分钟 = 1vp */
+  private gridH(): number {
+    return this.ax().height();
   }
 
   @State semester: Semester | undefined = undefined;
@@ -414,8 +446,8 @@ export struct PlanDayView {
       if (w.weekday !== 0 && w.weekday !== wd) {
         continue;
       }
-      const from: number = Math.max(w.startMin, AXIS.startMin);
-      const to: number = Math.min(w.endMin, AXIS.endMin);
+      const from: number = Math.max(w.startMin, this.ax().startMin);
+      const to: number = Math.min(w.endMin, this.ax().endMin);
       if (to - from < 10) {
         continue;   // 太窄就不画，免得变成一条噪线
       }
@@ -676,8 +708,8 @@ export struct PlanDayView {
   private autoPlaceLesson(l: VirtualLesson): void {
     const weekday: number = weekdayOf(parseDate(this.date));
     const isToday: boolean = this.date === formatDate(today());
-    const from: number = isToday ? this.nowMinute() : AXIS.startMin;
-    const slot: number = findFreeSlot(AXIS, this.busyRanges(), this.restRanges(weekday), LESSON_MIN, from);
+    const from: number = isToday ? this.nowMinute() : this.ax().startMin;
+    const slot: number = findFreeSlot(this.ax(), this.busyRanges(), this.restRanges(weekday), LESSON_MIN, from);
     if (slot < 0) {
       this.showHint('这天（或剩余时间）排不下了，换一天试试');
       return;
@@ -766,7 +798,7 @@ export struct PlanDayView {
         // 这里改成和 onPoolDrop 完全一致的换算法，两处终于统一。
         const rawY: number = event.windowY - this.gridTop;
         const localY: number = rawY > 0 ? rawY : 0;
-        const range: number[] = dropRange(AXIS, localY, todo.estimateMin);
+        const range: number[] = dropRange(this.ax(), localY, todo.estimateMin);
         this.place(todo, range[0], range[1] - range[0], tapDate);
         return;
       }
@@ -830,7 +862,7 @@ export struct PlanDayView {
         this.showHint(`${this.mdText(dropDate)} 已经排过这一讲了`);
         return;
       }
-      const range: number[] = dropRange(AXIS, localY, LESSON_MIN);
+      const range: number[] = dropRange(this.ax(), localY, LESSON_MIN);
       this.placeLesson(l, range[0], range[1] - range[0], dropDate);
       return;
     }
@@ -847,7 +879,7 @@ export struct PlanDayView {
     //   ② 用户 2026-10-14 明确要求允许一天排多块（拆法走「对半分」，见 splitBlockHalf）。
     //   早先那条拦截是为了修"重复块 → estimate 越来越长"，那个问题的根因是托盘过滤
     //   只看当天，现在根因已经堵住，拦截反而与新规则矛盾。
-    const range: number[] = dropRange(AXIS, localY, todo.estimateMin);
+    const range: number[] = dropRange(this.ax(), localY, todo.estimateMin);
     this.place(todo, range[0], range[1] - range[0], dropDate);
   }
 
@@ -1100,7 +1132,7 @@ export struct PlanDayView {
     }
     // 开始时间**不动**，只把结束时间往下拉长 / 往上压短；
     // 5 分钟分度、最短 15 分钟、不越过时间窗末尾都在 pinchEnd 里（纯函数，有断言）
-    const next: number = pinchEnd(b.startMin, this.pinchBaseEndMin, event.scale, AXIS.endMin);
+    const next: number = pinchEnd(b.startMin, this.pinchBaseEndMin, event.scale, this.ax().endMin);
     this.pinchEndMin = next;
     this.pinchLabel = pinchDeltaLabel(next - this.pinchBaseEndMin);
   }
@@ -1136,7 +1168,7 @@ export struct PlanDayView {
       return;   // 长按了但既没动也没跨天 → 不产生空改动
     }
     // moveRange 把开始时间吸附到 15 分钟刻度（用户要求「以开始时间为准吸附」）
-    const range: number[] = moveRange(AXIS, b.startMin, b.endMin, offset);
+    const range: number[] = moveRange(this.ax(), b.startMin, b.endMin, offset);
     b.startMin = range[0];
     b.endMin = range[1];
     if (crossDay) {
@@ -1289,12 +1321,12 @@ export struct PlanDayView {
       this.editorError = `开始时间要落在 ${DURATION_STEP_MIN} 分钟刻度上，比如 14:30`;
       return;
     }
-    if (min < AXIS.startMin || min > AXIS.endMin) {
-      this.editorError = `开始时间要在 ${minToHHmm(AXIS.startMin)}–${minToHHmm(AXIS.endMin)} 之间`;
+    if (min < this.ax().startMin || min > this.ax().endMin) {
+      this.editorError = `开始时间要在 ${minToHHmm(this.ax().startMin)}–${minToHHmm(this.ax().endMin)} 之间`;
       return;
     }
     const dur: number = b.endMin - b.startMin;
-    if (min + dur > AXIS.endMin) {
+    if (min + dur > this.ax().endMin) {
       this.editorError = '这个开始时间放不下当前时长（会超出 24:00）';
       return;
     }
@@ -1323,7 +1355,7 @@ export struct PlanDayView {
       this.editorError = `时长要是 ${DURATION_STEP_MIN} 分钟的整数倍`;
       return;
     }
-    if (b.startMin + n > AXIS.endMin) {
+    if (b.startMin + n > this.ax().endMin) {
       this.editorError = '这么长会超过 24:00，先把开始时间挪早一点';
       return;
     }
@@ -1342,7 +1374,7 @@ export struct PlanDayView {
   private adjustEditorStart(b: PlanBlock, delta: number): void {
     const min: number = b.startMin + delta;
     const dur: number = b.endMin - b.startMin;
-    if (min < AXIS.startMin || min + dur > AXIS.endMin) {
+    if (min < this.ax().startMin || min + dur > this.ax().endMin) {
       this.editorError = '再挪就出时间窗了';
       return;
     }
@@ -1353,7 +1385,7 @@ export struct PlanDayView {
   }
 
   private adjustEditorDuration(b: PlanBlock, delta: number): void {
-    const end: number = resizeEndTo(b.startMin, b.endMin + delta, AXIS.endMin);
+    const end: number = resizeEndTo(b.startMin, b.endMin + delta, this.ax().endMin);
     if (end === b.endMin) {
       this.editorError = '改不动了（最短 15 分钟，且不能超过 24:00）';
       return;
@@ -1438,8 +1470,8 @@ export struct PlanDayView {
   private autoPlace(t: Todo): void {
     const weekday: number = weekdayOf(parseDate(this.date));
     const isToday: boolean = this.date === formatDate(today());
-    const from: number = isToday ? this.nowMinute() : AXIS.startMin;
-    const slot: number = findFreeSlot(AXIS, this.busyRanges(), this.restRanges(weekday),
+    const from: number = isToday ? this.nowMinute() : this.ax().startMin;
+    const slot: number = findFreeSlot(this.ax(), this.busyRanges(), this.restRanges(weekday),
       t.estimateMin, from);
     if (slot < 0) {
       this.showHint('这天（或剩余时间）排不下了，换一天试试');
@@ -1580,7 +1612,7 @@ export struct PlanDayView {
   }
 
   private yOf(min: number): number {
-    return AXIS.minuteToY(min);
+    return this.ax().minuteToY(min);
   }
 
   private hOf(from: number, to: number): number {
@@ -1589,7 +1621,7 @@ export struct PlanDayView {
 
   /** 块的 y：拖动中带上实时位移，只改预览 */
   private blockY(b: PlanBlock): number {
-    const base: number = AXIS.minuteToY(b.startMin);
+    const base: number = this.ax().minuteToY(b.startMin);
     return this.dragBlockId === b.id ? base + this.dragOffsetY : base;
   }
 
@@ -1653,7 +1685,7 @@ export struct PlanDayView {
   /** 拖动中的块留在原位的"空位"的 y */
   private ghostY(): number {
     const b: PlanBlock | undefined = this.blockById(this.dragBlockId);
-    return b === undefined ? -999 : AXIS.minuteToY(b.startMin);
+    return b === undefined ? -999 : this.ax().minuteToY(b.startMin);
   }
 
   /** 拖动中的块留在原位的"空位"的高度 */
@@ -1688,11 +1720,16 @@ export struct PlanDayView {
       }, (mark: number) => `hour-${mark}`)
     }
     .width('100%')
+    // 时间窗起止可以设在半小时上，于是末段可能不足 1 小时（刻度行固定 60vp）。
+    // 把这一层钉到真实网格高度并裁掉溢出，最后那 30 分钟就只是"没有下边界"，
+    // 不会把分隔线画到网格外面去。起止都在整点上时行为和以前完全一样。
+    .height(this.gridH())
+    .clip(true)
   }
 
   private hourMarks(): number[] {
     const list: number[] = [];
-    for (const t of AXIS.marks) {
+    for (const t of this.ax().marks) {
       list.push(t);
     }
     return list;
@@ -1805,7 +1842,7 @@ export struct PlanDayView {
     ForEach([1, 2], (i: number) => {
       Column()
         .width(1)
-        .height(GRID_H)
+        .height(this.gridH())
         .backgroundColor('rgba(255,255,255,0.12)')
         .position({ x: this.colXOf(i), y: 0 })
     }, (i: number) => `csep-${i}`)
@@ -2011,7 +2048,7 @@ export struct PlanDayView {
       }, (g: DdlGroup) => `ddlg-${g.minute}-${g.todos.length}-${g.todos[0].id}`)
     }
     .width('100%')
-    .height(GRID_H)
+    .height(this.gridH())
     .hitTestBehavior(HitTestMode.Transparent)
   }
 
@@ -2095,7 +2132,7 @@ export struct PlanDayView {
    * 渲染与"展开"都读这一份，两边各算一次迟早会算出不一致的分组。
    */
   private ddlGroups(): DdlGroup[] {
-    return ddlGroupsOn(this.todos, this.date, AXIS.startMin);
+    return ddlGroupsOn(this.todos, this.date, this.ax().startMin, this.ax().endMin);
   }
 
   @Builder
@@ -2767,34 +2804,45 @@ export struct PlanDayView {
               this.ColHeadRow()
             }
             Stack({ alignContent: Alignment.TopStart }) {
-              // 最下面一层：不可排时段的淡纹理（网格线与课程/块都压在它上面）
-              this.RestBands()
-              this.HourLines()
-              if (this.viewCols > COLS_DAY) {
-                this.ColumnSeparators()
+              // ⚠️ 2026-10-15：时间范围现在**可设**（设置页），所以网格里的图层必须裁到网格高度 ——
+              // 否则窗口上/下边界以内的内容（比如把上边界设到 10:00 之后的 08:00 那节课）
+              // 会画到网格外面去。**截止标记不能一起裁**：它本来就故意从网格底边往下挂一行
+              // （见 DDL_MARK_ALLOW），所以它单独放在裁剪层外面。
+              Stack({ alignContent: Alignment.TopStart }) {
+                // 最下面一层：不可排时段的淡纹理（网格线与课程/块都压在它上面）
+                this.RestBands()
+                this.HourLines()
+                if (this.viewCols > COLS_DAY) {
+                  this.ColumnSeparators()
+                }
+                // 每一列各自画自己的课程灰带与块。
+                // 单日视图 viewCols=1，这段退化成和以前完全一样的一列。
+                ForEach(this.colDates, (cd: string, ci: number) => {
+                  ForEach(this.sessionsOfCol(ci), (s: CourseSession) => {
+                    this.ClassBlock(s, ci)
+                  }, (s: CourseSession) => `cls-${ci}-${s.course.id}-${s.startSection}`)
+                }, (cd: string) => `colcls-${cd}`)
+                // 被拖走的块留在原位的虚线空位：让用户看清"这一块是从哪儿抽出来的"
+                if (this.dragBlockId > 0) {
+                  this.DragGhost()
+                }
+                ForEach(this.colDates, (cd: string, ci: number) => {
+                  ForEach(this.blocksOfCol(ci), (b: PlanBlock) => {
+                    this.PlanBlockView(b, ci)
+                  }, (b: PlanBlock) => `blk-${ci}-${b.id}-${b.startMin}-${b.endMin}-${b.done}`)
+                }, (cd: string) => `colblk-${cd}`)
               }
-              // 每一列各自画自己的课程灰带与块。
-              // 单日视图 viewCols=1，这段退化成和以前完全一样的一列。
-              ForEach(this.colDates, (cd: string, ci: number) => {
-                ForEach(this.sessionsOfCol(ci), (s: CourseSession) => {
-                  this.ClassBlock(s, ci)
-                }, (s: CourseSession) => `cls-${ci}-${s.course.id}-${s.startSection}`)
-              }, (cd: string) => `colcls-${cd}`)
-              // 被拖走的块留在原位的虚线空位：让用户看清"这一块是从哪儿抽出来的"
-              if (this.dragBlockId > 0) {
-                this.DragGhost()
-              }
-              ForEach(this.colDates, (cd: string, ci: number) => {
-                ForEach(this.blocksOfCol(ci), (b: PlanBlock) => {
-                  this.PlanBlockView(b, ci)
-                }, (b: PlanBlock) => `blk-${ci}-${b.id}-${b.startMin}-${b.endMin}-${b.done}`)
-              }, (cd: string) => `colblk-${cd}`)
+              .width('100%')
+              .height(this.gridH())
+              .clip(true)
+
               // 截止标记只画在当前查看日那一列：它是"今天要交什么"的提示，
-              // 侧列本来就是只读展示，铺满三列反而更乱
+              // 侧列本来就是只读展示，铺满三列反而更乱。
+              // ⚠️ 它是**裁剪层外**的兄弟节点，因为标记允许从网格底边往下挂一行。
               this.DdlMarkers()
             }
             .width('100%')
-            .height(GRID_H)
+            .height(this.gridH())
             .onAreaChange((oldArea: Area, newArea: Area): void => {
               const y: Length | undefined = newArea.globalPosition.y;
               if (typeof y === 'number') {

@@ -39,16 +39,30 @@ export interface TimeWindow {
   endMin: number;
 }
 
-/** 默认时间窗 07:00–24:00（可在「管理课程」里改，见 PLAN_REDESIGN.md §2） */
+/** 默认时间窗 07:00–24:00（可在**设置页**里改，见 PLAN_REDESIGN.md §2） */
 export const DEFAULT_WINDOW: TimeWindow = { startMin: 7 * 60, endMin: 24 * 60 };
 export const WINDOW_MIN_START: number = 0;
 export const WINDOW_MAX_END: number = 24 * 60;
 export const WINDOW_MIN_SPAN: number = 60;
+/**
+ * 时间窗起止的吸附刻度：**整半小时**。
+ *
+ * 用户 2026-10-15 要求：「计划页面的上下限也应当可以设置（整半小时时段）」。
+ * 所以 07:30 / 22:30 这类边界是合法的（早先是强制对齐整点）。
+ */
+export const WINDOW_SNAP_MIN: number = 30;
 
-/** 合法的时间窗：吸附到 15 分钟，并夹进可用范围 */
+/** 吸附到任意刻度（内部用；`snap()` 仍是 15 分钟的通用吸附） */
+function snapTo(v: number, step: number): number {
+  return Math.round(v / step) * step;
+}
+
+/** 合法的时间窗：吸附到 30 分钟，并夹进可用范围 */
 export function normalizeWindow(w: TimeWindow): TimeWindow {
-  let s: number = clamp(snap(w.startMin), WINDOW_MIN_START, WINDOW_MAX_END - WINDOW_MIN_SPAN);
-  let e: number = clamp(snap(w.endMin), WINDOW_MIN_START + WINDOW_MIN_SPAN, WINDOW_MAX_END);
+  let s: number = clamp(snapTo(w.startMin, WINDOW_SNAP_MIN), WINDOW_MIN_START,
+    WINDOW_MAX_END - WINDOW_MIN_SPAN);
+  let e: number = clamp(snapTo(w.endMin, WINDOW_SNAP_MIN), WINDOW_MIN_START + WINDOW_MIN_SPAN,
+    WINDOW_MAX_END);
   if (e - s < WINDOW_MIN_SPAN) {
     s = e - WINDOW_MIN_SPAN;
     if (s < WINDOW_MIN_START) {
@@ -60,17 +74,37 @@ export function normalizeWindow(w: TimeWindow): TimeWindow {
 }
 
 /**
- * 把时间窗对齐到整小时：start 向下取整点、end 向上取整点，再规范化。
+ * 把时间窗对齐到**整半小时**网格，再规范化。
  *
- * 为什么必须对齐：刻度是**按 60 分钟定距递增**的（07:30 → 08:30 → …），
- * 如果窗口起点不在整点或长度不是整小时，末段就会不足 60 分钟而刻度数算少，
- * 「刻度数 × 60 == 网格高度」这条不变式就崩了（实测 07:30–24:00 会差 30vp）。
- * 对齐后刻度天然铺满，且标签永远是整点 —— 时间窗本来就该按整点设。
+ * 为什么不再强制整点：用户要求边界可按半小时设（07:30–22:30 要能设）。
+ * 刻度仍然是**每小时一个**（07:30 → 08:30 → …），所以跨度不是 60 的整数倍时，
+ * 最后会剩一段**不足 1 小时**的尾段（30 分钟）—— 刻度数 × 60 会比网格高度少 30，
+ * 这是设计内的，不变式改成了「余量 >= 0 且 < 60」（见 `TimeAxis` 与 test.ts）。
  */
 export function alignWindow(w: TimeWindow): TimeWindow {
+  return normalizeWindow(w);
+}
+
+/** 时间窗 → 存库字符串（`'start,end'`，分钟） */
+export function formatWindow(w: TimeWindow): string {
   const n: TimeWindow = normalizeWindow(w);
-  const s: number = Math.floor(n.startMin / HOUR_MIN) * HOUR_MIN;
-  const e: number = Math.ceil(n.endMin / HOUR_MIN) * HOUR_MIN;
+  return `${n.startMin},${n.endMin}`;
+}
+
+/**
+ * 存库字符串 → 时间窗；解析不出来 / 空串都退回默认窗。
+ * 纯函数（有断言）：老库、手改过的 kv、半截字符串都不该让计划页崩掉。
+ */
+export function parseWindow(raw: string): TimeWindow {
+  const parts: string[] = raw.split(',');
+  if (parts.length !== 2) {
+    return DEFAULT_WINDOW;
+  }
+  const s: number = parseInt(parts[0], 10);
+  const e: number = parseInt(parts[1], 10);
+  if (Number.isNaN(s) || Number.isNaN(e)) {
+    return DEFAULT_WINDOW;
+  }
   return normalizeWindow({ startMin: s, endMin: e });
 }
 
@@ -82,9 +116,9 @@ export function alignWindow(w: TimeWindow): TimeWindow {
  * 但每个刻度渲染成 60vp 的一行 → 19×60 = 1140vp 塞进 1080vp 的容器，**底部那行被裁掉**。
  *
  * 现在的不变式（test.ts 有断言）：
- *   `marks.length * HOUR_MIN === height()`
- * 网格高度恰好等于所有刻度行高之和，永远不多画也不少画。
- * 靠的是**把时间窗对齐到整小时**（alignWindow），刻度才能天然铺满。
+ *   `(marks.length - 1) * HOUR_MIN < height() <= marks.length * HOUR_MIN`
+ * 即「刻度行铺满到最后一格，最后一格可以是**不足 1 小时**的尾段」。
+ * 起止按整半小时对齐后，末格只可能是 30 或 60 分钟。
  */
 export class TimeAxis {
   readonly startMin: number;
@@ -556,10 +590,13 @@ export function ddlMinuteOf(ddl: string): number {
  * - 只收**带时刻**的 ddl（'YYYY-MM-DD' 这种只有日期的会被 `ddlMinuteOf` 判成 -1 丢掉）；
  * - 早于时间轴起点的（例如 02:00 截止）**夹到轴起点** —— 轴从 07:00 起，
  *   不夹的话标记会被算到网格上面去（和不可排时段那条"必须裁到时间轴范围"是同一类坑）。
+ * - 晚于时间轴终点的（例如把下限定到 22:00、却有 23:59 的截止）**夹到轴终点** ——
+ *   时间窗现在可以改（用户 2026-10-15），不夹就会画到网格外面。
  *
  * 抽成纯函数是为了能离线断言：UI 那边只负责画，分组算错没算错一眼看得出来。
  */
-export function ddlGroupsOn(todos: Todo[], date: string, axisStartMin: number): DdlGroup[] {
+export function ddlGroupsOn(todos: Todo[], date: string, axisStartMin: number,
+  axisEndMin: number = WINDOW_MAX_END): DdlGroup[] {
   const buckets: Map<number, Todo[]> = new Map<number, Todo[]>();
   for (const t of todos) {
     if (t.status === TodoStatus.Done || t.status === TodoStatus.Archived) {
@@ -572,7 +609,10 @@ export function ddlGroupsOn(todos: Todo[], date: string, axisStartMin: number): 
     if (raw < 0) {
       continue;
     }
-    const min: number = raw < axisStartMin ? axisStartMin : raw;
+    let min: number = raw < axisStartMin ? axisStartMin : raw;
+    if (min > axisEndMin) {
+      min = axisEndMin;
+    }
     const cur: Todo[] | undefined = buckets.get(min);
     if (cur === undefined) {
       buckets.set(min, [t]);

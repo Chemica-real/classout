@@ -31,7 +31,8 @@ import { GLASS_BLUR, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_ROW, GLASS_SH
 import { FLOAT_GAP, FLOAT_SIDE, FLOAT_TOP, H_TITLE } from './Float';
 import { persistMotionSetting } from './Motion';
 import { MOTTO_DEFAULT, MOTTO_MAX_UNITS, clampMottoUnits, cleanMotto, loadMotto, mottoUnits,
-  saveMotto } from '../data/Prefs';
+  saveMotto, savePlanWindow } from '../data/Prefs';
+import { DEFAULT_WINDOW, TimeWindow, WINDOW_MAX_END, WINDOW_MIN_SPAN, WINDOW_SNAP_MIN } from '../domain/PlanMath';
 
 // 文件内 @Styles（见 Glass.ets 顶部注释：@Styles 不能跨文件 export）
 // 深色版。设置页的卡片按用户拍定算"大面" → 保留模糊（`glassPanelCard`），
@@ -127,8 +128,26 @@ export struct SettingsPage {
   @StorageLink('motionOn') motionOn: boolean = true;
   /** 首页标语的就地编辑副本（保存前不动 AppStorage，免得打字时就改到加载页） */
   @State mottoDraft: string = MOTTO_DEFAULT;
+  /**
+   * 已经保存的标语（`Prefs.saveMotto` 写的就是这个键）。
+   *
+   * ⚠️ 为什么需要它：设置页是**切标签时销毁、切回来重建**的组件，而 `mottoDraft` 每次
+   * 都会重置成默认值 —— 于是「首页标语改了之后在设置页不显示」（用户实测报的 bug）：
+   * 保存是成功的，但再进设置页看到的是 `离线课表 · 待办 · 计划`。
+   * 挂上这个 StorageLink，重建时就能把**存过的那份**读回输入框。
+   */
+  @StorageLink('bootMotto') savedMotto: string = MOTTO_DEFAULT;
+
+  /**
+   * 计划页时间范围（上下限）。键名必须写字面量（见 Prefs.PLAN_START_KEY 的注释）。
+   * 设置页直接写 AppStorage + kv，计划页用同名 `@StorageLink` 订阅，回计划页立刻生效。
+   */
+  @StorageLink('planStartMin') winStart: number = DEFAULT_WINDOW.startMin;
+  @StorageLink('planEndMin') winEnd: number = DEFAULT_WINDOW.endMin;
 
   aboutToAppear(): void {
+    // 回显已保存的标语（见上面 `savedMotto` 的注释）
+    this.mottoDraft = this.savedMotto;
     this.refreshPreview();
     this.load();
   }
@@ -484,6 +503,117 @@ export struct SettingsPage {
       hilog.warn(DOMAIN, TAG, 'save motto failed: %{public}s', JSON.stringify(e));
       this.showToast('保存失败');
     });
+  }
+
+  // ---------------- 计划页时间范围（上下限） ----------------
+
+  /**
+   * 上/下边界各走一格（`delta = ±WINDOW_SNAP_MIN`）。
+   *
+   * 夹紧交给 `normalizeWindow`：它保证 [0,24:00] 内、至少 1 小时、且吸附到半小时。
+   * 所以"上边界推到下边界头上"时会被顶住，不会出现反着的窗。
+   */
+  private stepPlanWindow(isStart: boolean, delta: number): void {
+    const w: TimeWindow = isStart
+      ? { startMin: this.winStart + delta, endMin: this.winEnd }
+      : { startMin: this.winStart, endMin: this.winEnd + delta };
+    this.applyPlanWindow(w);
+  }
+
+  private resetPlanWindow(): void {
+    this.applyPlanWindow(DEFAULT_WINDOW);
+  }
+
+  private applyPlanWindow(w: TimeWindow): void {
+    savePlanWindow(this.context(), w).then((n: TimeWindow): void => {
+      this.winStart = n.startMin;
+      this.winEnd = n.endMin;
+    }).catch((e: Object): void => {
+      hilog.warn(DOMAIN, TAG, 'save plan window failed: %{public}s', JSON.stringify(e));
+      this.showToast('保存失败');
+    });
+  }
+
+  private windowSpanText(): string {
+    const total: number = this.winEnd - this.winStart;
+    const h: number = Math.floor(total / 60);
+    const m: number = total % 60;
+    return m === 0 ? `${h} 小时` : `${h} 小时 ${m} 分`;
+  }
+
+  /**
+   * 计划页时间范围卡片（用户要求：「计划页面的上下限也应当可以设置（整半小时时段）
+   * （独立于不可排时段）」）。
+   *
+   * 和「不可排时段」是两件事：这个只管**画哪一段**（显示范围），
+   * 不可排时段是「一键找空档」要跳过的区间。所以单独一张卡片、互不影响。
+   */
+  @Builder
+  WindowStepRow(label: string, isStart: boolean) {
+    Row() {
+      Text(label)
+        .fontSize(13)
+        .fontColor('#F2F5FA')
+        .layoutWeight(1)
+      Button('‹')
+        .backgroundColor('rgba(255,255,255,0.12)')
+        .fontColor('#7FA8FF')
+        .fontSize(15)
+        .width(38)
+        .height(30)
+        .onClick((): void => this.stepPlanWindow(isStart, -WINDOW_SNAP_MIN))
+      Text(isStart ? minToHHmm(this.winStart) : minToHHmm(this.winEnd))
+        .fontSize(14)
+        .fontColor('#EAF0FA')
+        .width(64)
+        .textAlign(TextAlign.Center)
+      Button('›')
+        .backgroundColor('rgba(255,255,255,0.12)')
+        .fontColor('#7FA8FF')
+        .fontSize(15)
+        .width(38)
+        .height(30)
+        .onClick((): void => this.stepPlanWindow(isStart, WINDOW_SNAP_MIN))
+    }
+    .width('100%')
+    .padding({ top: 6, bottom: 6 })
+  }
+
+  @Builder
+  PlanWindowCard() {
+    Column() {
+      this.SectionTitle('计划页时间范围',
+        '计划网格画哪一段（上下限），按整半小时调。它只管显示范围，和「不可排时段」是两件事。')
+
+      this.WindowStepRow('上边界（最早）', true)
+      this.WindowStepRow('下边界（最晚）', false)
+
+      Text(`当前：${minToHHmm(this.winStart)} – ${minToHHmm(this.winEnd)}（共 ${this.windowSpanText()}）`)
+        .fontSize(11)
+        .fontColor('#8B97AC')
+        .width('100%')
+        .margin({ top: 6 })
+
+      Button('恢复默认 07:00–24:00')
+        .backgroundColor('rgba(255,255,255,0.10)')
+        .fontColor('#C3CDDE')
+        .fontSize(12)
+        .height(32)
+        .width('100%')
+        .margin({ top: 12 })
+        .onClick((): void => this.resetPlanWindow())
+
+      Text(`最窄 ${WINDOW_MIN_SPAN / 60} 小时；最晚到 ${minToHHmm(WINDOW_MAX_END)}。`)
+        .fontSize(10)
+        .fontColor('#7C8798')
+        .width('100%')
+        .margin({ top: 8 })
+    }
+    .width('100%')
+    .padding(16)
+    .glassPanelCard()
+    .alignItems(HorizontalAlign.Start)
+    .margin({ top: 12 })
   }
 
   /**
@@ -1024,6 +1154,7 @@ export struct SettingsPage {
             this.MotionCard()
             this.ReminderCard()
             this.RestCard()
+            this.PlanWindowCard()
           }
           .width('100%')
           // 上下都给悬浮浮窗让位；padding 加在**滚动内容**上，卡片才能滑到浮窗下面

@@ -119,8 +119,8 @@ export struct TodoInbox {
   @State editEstimateError: string = '';
   @State editCourseId: number = 0;
   @State editCategory: string = TodoCategory.Other;
-  /** 考试专用：考场 / 座位，存在 note 里 */
-  @State editPlace: string = '';
+  /** 备注（**所有类型都能写**）。考试时这个框的标签是「考场 / 座位」，见 EditorPanel */
+  @State editNote: string = '';
   /** 考试专用：**结束**时刻（开始时刻存在 editDdl 里）；其它类型恒为 '' */
   @State editExamEnd: string = '';
   /** 考试起止不合法时的提示（'' = 没问题） */
@@ -566,7 +566,7 @@ export struct TodoInbox {
     this.editEstimateFocus = false;
     this.editCourseId = 0;
     this.editCategory = TodoCategory.Other;
-    this.editPlace = '';
+    this.editNote = '';
     this.editExamEnd = '';
     this.editExamError = '';
     this.editorConfirmDelete = false;
@@ -599,7 +599,7 @@ export struct TodoInbox {
     this.editEstimateFocus = false;
     this.editCourseId = t.courseId;
     this.editCategory = t.category;
-    this.editPlace = t.category === TodoCategory.Exam ? t.note : '';
+    this.editNote = t.note;
     // 考试：回填结束时刻。老数据没有 end_at（迁移补的是空串）→ 给个"开始 +2 小时"的默认，
     // 免得用户一打开就看到"结束时间没选"、还得自己算。
     this.editExamEnd = t.category === TodoCategory.Exam ? this.endOfExam(t) : '';
@@ -696,7 +696,7 @@ export struct TodoInbox {
         status: TodoStatus.Active,
         source: TodoSource.Manual,
         generationKey: '',
-        note: isExam ? this.editPlace : '',
+        note: this.editNote,
         submitChannel: '',
         repeatRule: '',
         photos: '',
@@ -717,9 +717,7 @@ export struct TodoInbox {
         existing.endAt = isExam ? this.editExamEnd : '';
         existing.estimateMin = isExam ? examMinutes : this.editEstimate;
         existing.courseId = this.editCourseId;
-        if (isExam) {
-          existing.note = this.editPlace;
-        }
+        existing.note = this.editNote;
         await TodoRepo.updateTodo(ctx, existing);
         await TodoRepo.syncExamBlock(ctx, existing);
       }
@@ -763,6 +761,17 @@ export struct TodoInbox {
           .layoutWeight(1)
       }
       .width('100%')
+
+      // 备注：有才显示（自动生成的待办备注为空，见 domain/TodoGenerator）
+      if (t.note.length > 0) {
+        Text(t.note)
+          .fontSize(11)
+          .fontColor('#7C8798')
+          .maxLines(2)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .width('100%')
+          .margin({ top: 2 })
+      }
 
       Row() {
         Text(this.ddlText(t.ddl))
@@ -854,6 +863,15 @@ export struct TodoInbox {
           .fontSize(11)
           .fontColor('#94A0B5')
           .margin({ top: 3 })
+        // 备注：有才显示（自动生成的待办备注为空，见 domain/TodoGenerator）
+        if (t.note.length > 0) {
+          Text(t.note)
+            .fontSize(11)
+            .fontColor('#7C8798')
+            .maxLines(2)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .margin({ top: 2 })
+        }
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
@@ -1038,20 +1056,24 @@ export struct TodoInbox {
         }
         .width('100%')
 
-        if (this.editCategory === TodoCategory.Exam) {
-          Text('考场 / 座位')
-            .fontSize(12)
-            .fontColor('#94A0B5')
-            .width('100%')
-            .margin({ top: 6, bottom: 6 })
-          TextInput({ text: this.editPlace, placeholder: '教学楼 101 · 12 号座' })
-            .fontColor('#F2F5FA')
-            .placeholderColor('#8B97AC')
-            .caretColor('#7FA8FF')
-            .onChange((v: string): void => {
-              this.editPlace = v;
-            })
-        }
+        // 备注：**所有类型都能写**（用户要求「待办可写备注」）。
+        // 考试时它就是原来的「考场 / 座位」—— 同一个 `note` 字段，只是标签随类型变。
+        Text(this.editCategory === TodoCategory.Exam ? '考场 / 座位' : '备注')
+          .fontSize(12)
+          .fontColor('#94A0B5')
+          .width('100%')
+          .margin({ top: 6, bottom: 6 })
+        TextInput({
+          text: this.editNote,
+          placeholder: this.editCategory === TodoCategory.Exam
+            ? '教学楼 101 · 12 号座' : '可选，随便记点什么'
+        })
+          .fontColor('#F2F5FA')
+          .placeholderColor('#8B97AC')
+          .caretColor('#7FA8FF')
+          .onChange((v: string): void => {
+            this.editNote = v;
+          })
 
         if (this.editCategory === TodoCategory.Exam) {
           // 考试 = 一段**固定时间**（用户 2026-10-14）：开始 + 结束各滚一次系统选择器。

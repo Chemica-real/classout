@@ -332,8 +332,35 @@ export class TimetableRepo {
     return await store.insert('session_override', bucket);
   }
 
+  /**
+   * 就地改一条覆盖。
+   *
+   * 为什么要它：对**补课 / 调课**来的那节课「换教室」时，必须改它自己那条记录
+   * （`extra` / `move` 本来就有 `new_location` 字段），而不是再插一条 `room` ——
+   * 后者会让「本周调整」里同一天同一门课出现两条，而且补课那条根本不会用上这个地点
+   *（用户实测：「补课详情里显示成两条」「改了补课地点课程表根本没刷新」）。
+   */
+  static async updateOverride(context: common.Context, o: SessionOverride): Promise<void> {
+    const store: relationalStore.RdbStore = await Db.get(context);
+    await store.executeSql(
+      `UPDATE session_override SET new_date = ?, new_start_section = ?, new_end_section = ?,
+       new_location = ? WHERE id = ?`,
+      [o.newDate, o.newStartSection, o.newEndSection, o.newLocation, o.id]);
+  }
+
   static async deleteOverride(context: common.Context, id: number): Promise<void> {
     const store: relationalStore.RdbStore = await Db.get(context);
     await store.executeSql('DELETE FROM session_override WHERE id = ?', [id]);
+  }
+
+  /** 批量删除（合并重复的 `room` 覆盖用，见 domain/Timetable.mergeRoomOverrides） */
+  static async deleteOverrides(context: common.Context, ids: number[]): Promise<void> {
+    if (ids.length === 0) {
+      return;
+    }
+    const store: relationalStore.RdbStore = await Db.get(context);
+    for (const id of ids) {
+      await store.executeSql('DELETE FROM session_override WHERE id = ?', [id]);
+    }
   }
 }

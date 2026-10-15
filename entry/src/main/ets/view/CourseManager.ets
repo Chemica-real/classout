@@ -58,6 +58,10 @@ const DD_LABELS: string[] = [
 ];
 const DD_RULES: string[] = ['next_session', 'weekday', 'week_end', 'same_day', 'days', 'none'];
 
+/** 虚拟课程讲数的可调范围（用户要求：滑条 1–50） */
+const LESSON_COUNT_MIN: number = 1;
+const LESSON_COUNT_MAX: number = 50;
+
 /**
  * 模板变量按钮上的中文标签，**下标必须和 `Validate.TEMPLATE_VARS` 一一对应**。
  * （%D 这种记号用户记不住，写清楚"布置日期"才好点。）
@@ -346,8 +350,16 @@ export struct CourseManager {
     };
     this.editRules = this.rulesOf(c.id);
     this.editTemplates = this.templatesOf(c.id);
-    this.editLessonCount = this.lessonsOf(c.id).length;
+    // 夹进滑条范围：滑条是 1–50（用户要求），值越界会让滑块和文字对不上
+    this.editLessonCount = this.clampLessonCount(this.lessonsOf(c.id).length);
     this.mode = 'course';
+  }
+
+  private clampLessonCount(n: number): number {
+    if (n < LESSON_COUNT_MIN) {
+      return LESSON_COUNT_MIN;
+    }
+    return n > LESSON_COUNT_MAX ? LESSON_COUNT_MAX : n;
   }
 
   private openNewCourse(): void {
@@ -648,7 +660,8 @@ export struct CourseManager {
       endMin: 690,
       location: this.editCourse.location,
       isQuiz: false,
-      fromOverride: false
+      fromOverride: false,
+      isExtra: false
     };
     // week=6 / n=2 只是样例值，让 %W / %N 也有东西可看
     return `预览：${renderTitle(this.tplDraft.titleTemplate, sample, 6, 2)}`;
@@ -1271,22 +1284,42 @@ export struct CourseManager {
               .fontColor('#94A0B5')
               .width('100%')
               .margin({ top: 8, bottom: 6 })
-            Flex({ wrap: FlexWrap.Wrap }) {
-              ForEach([4, 6, 8, 10, 12, 14, 16, 20, 24, 32], (n: number) => {
-                ChipButton({
-                  text: `${n} 讲`,
-                  selected: this.editLessonCount === n,
-                  onTap: (): void => {
-                  this.editLessonCount = n;
-                }
-                })
-              }, (n: number) => `vl-${n}`)
+            // 用户要求：「虚拟课程讲数只需要滑条选择（1～50）即可（不用设计那么多按钮）」。
+            // 原来的 4/6/8…32 一排胶囊换成一个 1–50 的滑条，`showTips` 拖动时显示当前值。
+            Slider({
+              value: this.editLessonCount,
+              min: LESSON_COUNT_MIN,
+              max: LESSON_COUNT_MAX,
+              step: 1,
+              style: SliderStyle.OutSet
+            })
+              .width('100%')
+              .selectedColor('#2E6BE6')
+              .trackColor('rgba(255,255,255,0.16)')
+              .showTips(true)
+              .onChange((v: number, mode: SliderChangeMode): void => {
+                // 取整即可（step=1 时 v 已经是整数，这里只是兜底）
+                this.editLessonCount = Math.round(v);
+              })
+            Row() {
+              Text(`${LESSON_COUNT_MIN}`)
+                .fontSize(10)
+                .fontColor('#8B97AC')
+              Blank()
+              Text(`${this.editLessonCount} 讲`)
+                .fontSize(12)
+                .fontColor('#7FA8FF')
+              Blank()
+              Text(`${LESSON_COUNT_MAX}`)
+                .fontSize(10)
+                .fontColor('#8B97AC')
             }
             .width('100%')
             Text('课时排进计划、打勾完成之后，会像真课下课一样按下面的模板生成待办。')
               .fontSize(11)
               .fontColor('#7BD69A')
               .width('100%')
+              .margin({ top: 6 })
           }
 
           // 时段规则

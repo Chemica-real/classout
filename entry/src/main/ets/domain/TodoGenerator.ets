@@ -149,7 +149,9 @@ export async function generateForSession(context: common.Context, sem: Semester,
       status: TodoStatus.Pending,
       source: TodoSource.Template,
       generationKey: key,
-      note: t.note,
+      // 用户要求：「自动生成的时候不可以自动生成备注，备注直接默认为空」。
+      // 模板里那个 `note` 字段不再带进待办 —— 备注是用户自己写的东西，不该被生成器代填。
+      note: '',
       submitChannel: t.submitChannel,
       repeatRule: '',
       photos: '',
@@ -204,7 +206,8 @@ export async function generateForLesson(context: common.Context, sem: Semester,
     endMin: endMin,
     location: course.location,
     isQuiz: false,
-    fromOverride: false
+    fromOverride: false,
+    isExtra: false
   };
   return await generateForSession(context, sem, courses, rules, times, [], s);
 }

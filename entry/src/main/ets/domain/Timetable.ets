@@ -136,7 +136,8 @@ export function computeWeekSessions(sem: Semester, courses: Course[], rules: Ses
       endMin: minutes[1],
       location: location,
       isQuiz: rule.isQuiz,
-      fromOverride: moved !== undefined
+      fromOverride: moved !== undefined,
+      isExtra: false
     });
   }
 
@@ -156,6 +157,14 @@ export function computeWeekSessions(sem: Semester, courses: Course[], rules: Ses
     const startSection: number = o.newStartSection > 0 ? o.newStartSection : 1;
     const endSection: number = o.newEndSection >= startSection ? o.newEndSection : startSection;
     const minutes: number[] = sectionMinutes(timeMap, startSection, endSection);
+    // 补课这一节也可能被"改地点"：新流程是把地点写回 extra 自己，但老数据里
+    // 「补课 + 单独一条 room 覆盖」是两条记录（用户实测报的"补课详情显示两条、地点不刷新"）。
+    // 这里让补课也认 room 覆盖，配合 `Index` 里的数据合并，两条路都不会漏。
+    const roomForExtra = roomMap.get(`${o.courseId}|${o.newDate}`);
+    let extraLocation: string = o.newLocation;
+    if (roomForExtra !== undefined && roomForExtra.newLocation.length > 0) {
+      extraLocation = roomForExtra.newLocation;
+    }
     const synthetic: SessionRule = {
       id: 0,
       courseId: o.courseId,
@@ -163,7 +172,7 @@ export function computeWeekSessions(sem: Semester, courses: Course[], rules: Ses
       startSection: startSection,
       endSection: endSection,
       weeksMask: '',
-      location: o.newLocation,
+      location: extraLocation,
       isQuiz: false
     };
     result.push({
@@ -176,9 +185,10 @@ export function computeWeekSessions(sem: Semester, courses: Course[], rules: Ses
       endSection: endSection,
       startMin: minutes[0],
       endMin: minutes[1],
-      location: o.newLocation.length > 0 ? o.newLocation : course.location,
+      location: extraLocation.length > 0 ? extraLocation : course.location,
       isQuiz: false,
-      fromOverride: true
+      fromOverride: true,
+      isExtra: true
     });
   }
 
@@ -195,6 +205,53 @@ export function computeWeekSessions(sem: Semester, courses: Course[], rules: Ses
 export function weekdayOfDate(d: Date): number {
   const w: number = d.getDay();
   return w === 0 ? 7 : w;
+}
+
+/**
+ * 「补课 / 调课」与「另外单独存的一条换教室」合并成**一条**。
+ *
+ * 用户实测报的 bug：「如果是补课，再加上改了补课的地点，那么应该在补课详情里面
+ * 只显示一条，而不应该显示成两条」。成因是「换教室」无条件新建一条 `room` 覆盖，
+ * 而补课/调课本身已经占了一条记录 —— 同一天同一门课于是有两条。
+ *
+ * 合并规则：`room` 覆盖若与同 `courseId|date` 的 `move` / `extra` 撞上，
+ * 就把地点写进后者（后者的 `newLocation` 本来就支持存地点），并标记删除前者。
+ * 纯函数，方便离线断言；**不碰数据库**，调用方负责按 `deleteIds` 删行。
+ */
+export interface RoomMergePlan {
+  /** 合并之后该保留的覆盖（被并入的 `move`/`extra` 已就地更新过地点） */
+  list: SessionOverride[];
+  /** 需要从库里删掉的 `room` 覆盖 id */
+  deleteIds: number[];
+}
+
+export function mergeRoomOverrides(overrides: SessionOverride[]): RoomMergePlan {
+  const byKey: Map<string, SessionOverride> = new Map<string, SessionOverride>();
+  for (const o of overrides) {
+    if (o.kind === OverrideKind.Move || o.kind === OverrideKind.Extra) {
+      byKey.set(`${o.courseId}|${o.date}`, o);
+    }
+  }
+  const list: SessionOverride[] = [];
+  const deleteIds: number[] = [];
+  for (const o of overrides) {
+    if (o.kind !== OverrideKind.Room) {
+      list.push(o);
+      continue;
+    }
+    const target: SessionOverride | undefined = byKey.get(`${o.courseId}|${o.date}`);
+    if (target === undefined) {
+      list.push(o);
+      continue;
+    }
+    if (o.newLocation.length > 0) {
+      target.newLocation = o.newLocation;
+    }
+    if (o.id > 0) {
+      deleteIds.push(o.id);
+    }
+  }
+  return { list: list, deleteIds: deleteIds };
 }
 
 /** 按星期分组（下标 0 = 周一） */
