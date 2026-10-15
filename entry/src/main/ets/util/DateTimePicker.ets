@@ -1,5 +1,5 @@
 import { UIContext } from '@kit.ArkUI';
-import { formatDate, formatDateTime, parseDate, parseDateTime } from './DateUtil';
+import { formatDate, formatDateTime, minToHHmm, parseDate, parseDateTime } from './DateUtil';
 
 /**
  * 用**鸿蒙自己的**日期选择器 + 时间选择器挑一个「日期 + 时刻」。
@@ -60,6 +60,41 @@ export function pickDate(ui: UIContext, initial: string, onPicked: (day: string)
     selected: seed,
     onDateAccept: (day: Date): void => {
       onPicked(formatDate(day));
+    }
+  });
+}
+
+/**
+ * 只挑「时刻」（'HH:mm'）。不可排时段这类字段用它 ——
+ * 用户 2026-10-15：「不可排时段添加时这样强制要求格式的不符合正常人使用规律，
+ * 改成鸿蒙自带的时间控件」。
+ *
+ * 两个细节：
+ * - `initial` 是 `'HH:mm'`；空串 / 解析不出来就取"此刻"当起点（总比 00:00 有用）。
+ * - `'24:00'` 是合法值（默认的「睡觉 23:30–24:00」就是它），但系统滚轮只到 23:59，
+ *   所以**种子里把 24:00 归零成 00:00**，调用方再把"00:00"还原成 24:00
+ *   （见 `SettingsPage.pickRestTime`）—— 否则用户想设到午夜就没法设了。
+ */
+export function pickTime(ui: UIContext, initial: string, onPicked: (value: string) => void): void {
+  const now: Date = new Date();
+  let h: number = now.getHours();
+  let m: number = now.getMinutes();
+  if (initial.length >= 5) {
+    const parts: string[] = initial.split(':');
+    const ph: number = parseInt(parts[0], 10);
+    const pm: number = parseInt(parts[1], 10);
+    if (!Number.isNaN(ph) && !Number.isNaN(pm) && ph >= 0 && ph <= 23 && pm >= 0 && pm <= 59) {
+      h = ph;
+      m = pm;
+    }
+  }
+  ui.showTimePickerDialog({
+    selected: new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m),
+    useMilitaryTime: true,
+    onAccept: (v: TimePickerResult): void => {
+      const hh: number = v.hour === undefined ? h : v.hour;
+      const mm: number = v.minute === undefined ? m : v.minute;
+      onPicked(minToHHmm(hh * 60 + mm));
     }
   });
 }

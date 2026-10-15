@@ -479,6 +479,22 @@ export function validateRestWindow(w: RestWindow): Validation {
   return pass();
 }
 
+/**
+ * 结束时刻的"午夜"归位：用户 2026-10-15 要求不可排时段改用**系统时间滚轮**，
+ * 而系统滚轮的"时"只到 23，选不到 24:00 —— 但默认时段里就有「睡觉 23:30–24:00」。
+ *
+ * 所以：**结束选中 00:00、而开始不是 0 时，按"到午夜"理解成 24:00**（= `DAY_MIN`）。
+ * 不这样处理，`validateRestWindow` 会判它"结束早于开始"，用户再也设不出到午夜的时段。
+ *
+ * 纯函数（有离线断言）：这条规则很容易在改 UI 时被顺手写丢。
+ */
+export function normalizeRestEnd(pickedMin: number, startMin: number): number {
+  if (pickedMin === 0 && startMin > 0) {
+    return DAY_MIN;
+  }
+  return pickedMin;
+}
+
 // ---------------- 考试的时间范围 ----------------
 
 /**

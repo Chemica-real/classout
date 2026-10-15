@@ -17,7 +17,7 @@ import { storedAbilityContext } from '../util/Ctx';
 import { RestWindow } from '../model/Types';
 import { TimetableRepo } from '../data/TimetableRepo';
 import { ReminderSettings, loadReminderSettings, saveReminderSettings } from '../domain/ReminderScheduler';
-import { Validation, validateRestWindow } from '../domain/Validate';
+import { Validation, normalizeRestEnd, validateRestWindow } from '../domain/Validate';
 import { WEEKDAY_CN, hhmmToMin, minToHHmm } from '../util/DateUtil';
 import { ChipButton } from './ChipButton';
 import { image } from '@kit.ImageKit';
@@ -30,6 +30,7 @@ import { GLASS_BLUR, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_ROW, GLASS_SH
   GLASS_TINT_PANEL, GLASS_TINT_SHEET } from './Glass';
 import { FLOAT_GAP, FLOAT_SIDE, FLOAT_TOP, H_TITLE } from './Float';
 import { persistMotionSetting } from './Motion';
+import { pickTime } from '../util/DateTimePicker';
 import { MOTTO_DEFAULT, MOTTO_MAX_UNITS, clampMottoUnits, cleanMotto, loadMotto, mottoUnits,
   saveMotto, savePlanWindow } from '../data/Prefs';
 import { DEFAULT_WINDOW, TimeWindow, WINDOW_MAX_END, WINDOW_MIN_SPAN, WINDOW_SNAP_MIN } from '../domain/PlanMath';
@@ -364,7 +365,7 @@ export struct SettingsPage {
   private async doAddRest(): Promise<void> {
     const ctx: common.UIAbilityContext = this.context();
     if (this.newRestStart.length !== 5 || this.newRestEnd.length !== 5) {
-      this.showToast('时间格式应为 HH:mm，比如 12:00');
+      this.showToast('请先选好开始和结束时间');
       return;
     }
     const label: string = this.newRestLabel.trim().length > 0 ? this.newRestLabel.trim() : '休息';
@@ -391,6 +392,56 @@ export struct SettingsPage {
     this.doDeleteRest(w).catch((e: Object): void => {
       hilog.error(DOMAIN, TAG, 'delete rest window failed: %{public}s', JSON.stringify(e));
     });
+  }
+
+  /**
+   * 选开始 / 结束时刻：弹**鸿蒙自己的时间滚轮**（用户 2026-10-15：「不可排时段添加时这样
+   * 强制要求格式的不符合正常人使用规律，改成鸿蒙自带的时间控件」）。
+   *
+   * ⚠️ 系统滚轮的"时"只到 23，而默认时段里有「睡觉 23:30–24:00」。
+   * 所以**结束选成 00:00 且开始不是 0 时，按"到午夜"理解成 24:00** ——
+   * 不这样处理，用户就再也设不出到午夜的时段了（00:00 会被判成"结束早于开始"）。
+   */
+  private pickRestTime(isStart: boolean): void {
+    const cur: string = isStart ? this.newRestStart : this.newRestEnd;
+    pickTime(this.getUIContext(), cur, (v: string): void => {
+      if (isStart) {
+        this.newRestStart = v;
+        return;
+      }
+      // 结束：把滚轮选到的 00:00 归位成 24:00（纯函数 + 断言，见 domain/Validate）
+      const end: number = normalizeRestEnd(hhmmToMin(v), hhmmToMin(this.newRestStart));
+      this.newRestEnd = minToHHmm(end);
+    });
+  }
+
+  /**
+   * 不可排时段的时刻行：标签 + 当前值 + 「选择…」。
+   *
+   * ⚠️ 显示值必须**直接读 `this.newRestStart/newRestEnd`**，不能当 `@Builder` 参数传进来 ——
+   *    参数按值传入、首次渲染后固化（HANDOFF §6.4），选完时间界面不会跟着变。
+   *    `isStart` 是静态的（永远不变），所以它当参数没问题。
+   */
+  @Builder
+  RestTimeRow(label: string, isStart: boolean) {
+    Row() {
+      Text(label)
+        .fontSize(13)
+        .fontColor('#94A0B5')
+        .width(48)
+      Text(isStart ? this.newRestStart : this.newRestEnd)
+        .fontSize(15)
+        .fontColor('#F2F5FA')
+        .layoutWeight(1)
+      Button('选择…')
+        .backgroundColor('rgba(255,255,255,0.14)')
+        .fontColor('#7FA8FF')
+        .fontSize(12)
+        .height(32)
+        .onClick((): void => this.pickRestTime(isStart))
+    }
+    .width('100%')
+    .padding({ top: 4, bottom: 4 })
   }
 
   private async doDeleteRest(w: RestWindow): Promise<void> {
@@ -1092,30 +1143,9 @@ export struct SettingsPage {
       }
       .width('100%')
 
-      Row() {
-        TextInput({ text: this.newRestStart, placeholder: '12:00' })
-          .fontColor('#F2F5FA')
-          .placeholderColor('#8B97AC')
-          .caretColor('#7FA8FF')
-          .layoutWeight(1)
-          .onChange((v: string): void => {
-            this.newRestStart = v;
-          })
-        Text('–')
-          .fontSize(14)
-          .fontColor('#94A0B5')
-          .margin({ left: 8, right: 8 })
-        TextInput({ text: this.newRestEnd, placeholder: '13:00' })
-          .fontColor('#F2F5FA')
-          .placeholderColor('#8B97AC')
-          .caretColor('#7FA8FF')
-          .layoutWeight(1)
-          .onChange((v: string): void => {
-            this.newRestEnd = v;
-          })
-      }
-      .width('100%')
-      .margin({ top: 10 })
+      this.FieldLabel('时间')
+      this.RestTimeRow('开始', true)
+      this.RestTimeRow('结束', false)
 
       Button('添加')
         .backgroundColor('#2E6BE6')

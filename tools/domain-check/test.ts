@@ -41,7 +41,7 @@ import { AXIS_W, compactMinH, compactThreshold, COLS_DAY, COLS_THREE, columnAtX,
   LAYOUT, TAP_OPEN, TAP_SELECT, tapAction } from './PlanLayout';
 import { ExamRange, examRangeOf, findRuleConflicts, isStepMultiple, migrateEstimate,
   normalizeEstimate, pinchDeltaLabel, pinchEnd, resizeEndTo, spanOfRule, totalBlockMinutes,
-  validateEstimate, validateExamRange, validateRestWindow,
+  validateEstimate, validateExamRange, validateRestWindow, normalizeRestEnd,
   validateSectionTime, validateSectionTimes, validateSessionRule, validateTemplateDdl,
   validateTemplateTitle } from './Validate';
 
@@ -1151,6 +1151,16 @@ check('休息时段：weekday 8 → 不合法',
 check('休息时段提示：结束必须晚于开始',
   `${validateRestWindow({ id: 0, weekday: 0, startMin: 780, endMin: 720, label: '' }).message}`,
   '结束时间必须晚于开始时间');
+
+// 系统时间滚轮只到 23:59，选不到 24:00；「睡觉 23:30–24:00」要靠这条归位（用户 2026-10-15）
+check('结束选 00:00、开始 23:30 → 归位成 24:00（1440）',
+  `${normalizeRestEnd(0, 23 * 60 + 30)}`, '1440');
+check('   └ 归位后能通过校验',
+  `${validateRestWindow({ id: 0, weekday: 0, startMin: 23 * 60 + 30, endMin: normalizeRestEnd(0, 23 * 60 + 30), label: '睡觉' }).ok}`,
+  'true');
+check('开始是 0 时，结束 00:00 不归位（否则会变成 00:00–24:00 的整天空窗）',
+  `${normalizeRestEnd(0, 0)}`, '0');
+check('普通时刻原样返回', `${normalizeRestEnd(780, 720)}`, '780');
 
 // ---------- 截止时间的"日期+时刻"组装 / 解析（截止时间选择器用）----------
 // 真机上的日期/时间选择器给的是 Date，存进库的是 'YYYY-MM-DD HH:mm'。
