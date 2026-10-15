@@ -8,10 +8,13 @@
 
 import { SEED_COURSES, SEED_START_DATE, SEED_TOTAL_WEEKS, SeedCourse, SeedTemplate } from './SeedData';
 import { Course, CourseSession, DEFAULT_REST_WINDOWS, OverrideKind, PlanBlock, RestWindow,
-  Semester, SectionTime, SessionOverride, SessionRule, Todo, PKU_SECTION_TIMES } from './Types';
+  Semester, SectionTime, SessionOverride, SessionRule, Todo, TodoCategory, PKU_SECTION_TIMES } from './Types';
 import { computeWeekSessions, mergeRoomOverrides, weekOfDate, weekdayOfDate } from './Timetable';
 import { WALLPAPER_MAX_ZOOM, WallpaperGeometry, clampFocus, formatWallpaperFocus,
   parseWallpaperFocus, wallpaperGeometry } from './Wallpaper';
+import { CATEGORY_NAME_MAX, CategoryOption, LEGACY_OTHER, addCustomCategory,
+  allCategoryOptions, builtinCategoryOptions, categoryLabel, parseCustomCategories,
+  removeCustomCategory, serializeCustomCategories, validateCategoryName } from './Categories';
 import { maskAll, maskFromText, maskToText, maskHas } from './WeekMask';
 import { countdownText, formatDateTime, minToHHmm, parseDate, parseDateTime } from './DateUtil';
 import { computeDdl, renderTitle } from './TodoGenerator';
@@ -1287,6 +1290,48 @@ check('解析后再格式化是幂等的',
     parseWallpaperFocus('0.5,0.5,1.5')[2]),
   '0.5,0.5,1.5');
 check('clampFocus：NaN 落到下限', clampFocus(Number.NaN, 0, 1).join(','), '-1,0,1');
+
+// ---------- 待办类型（内置 + 自定义，用户 2026-10-15）----------
+console.log('【待办类型：内置 / 自定义 / 「无」】');
+
+check('内置四个：作业 自学 考试 无',
+  builtinCategoryOptions().map((o: CategoryOption): string => o.label).join(','),
+  '作业,自学,考试,无');
+check('内置的 key 不会撞上退役的 other',
+  `${builtinCategoryOptions().filter((o: CategoryOption): boolean => o.key === LEGACY_OTHER).length}`, '0');
+check('「无」的显示名是空串（卡片上不画标签）', `'${categoryLabel(TodoCategory.None, [])}'`, `''`);
+check('旧「其他」还能显示成人话（迁移前的兜底）', categoryLabel(LEGACY_OTHER, []), '其他');
+check('自定义类型显示成它自己', categoryLabel('阅读', ['阅读']), '阅读');
+check('认不出的 key 原样显示（不显示空白）', categoryLabel('实验', []), '实验');
+
+check('解析：空串 → 空列表', `${parseCustomCategories('').length}`, '0');
+check('解析：换行分隔、去空行',
+  parseCustomCategories('阅读\n\n实验\n').join(','), '阅读,实验');
+check('解析：保留字被丢掉（防止和内置重名）',
+  parseCustomCategories('阅读\n作业\nhomework\n无\n其他\nother').join(','), '阅读');
+check('解析：重复的只留一个', parseCustomCategories('阅读\n阅读').join(','), '阅读');
+check('解析：超长的名字被丢掉',
+  `${parseCustomCategories('这是一个特别特别长的类型名').length}`, '0');
+check('序列化往返稳定',
+  serializeCustomCategories(['阅读', '实验']), '阅读\n实验');
+check('序列化会顺手规范化（去重/去保留字）',
+  serializeCustomCategories(['阅读', '阅读', '作业']), '阅读');
+
+check('校验：空 → 不通过', `${validateCategoryName('  ', []).ok}`, 'false');
+check('校验：和内置重名 → 不通过', `${validateCategoryName('作业', []).ok}`, 'false');
+check('校验：和保留 key 重名 → 不通过', `${validateCategoryName('exam', []).ok}`, 'false');
+check('校验：和已有自定义重名 → 不通过', `${validateCategoryName('阅读', ['阅读']).ok}`, 'false');
+check('校验：超长 → 不通过', `${validateCategoryName('一'.repeat(CATEGORY_NAME_MAX + 1), []).ok}`, 'false');
+check('校验：正常 → 通过', `${validateCategoryName('阅读', []).ok}`, 'true');
+check('校验提示是人话', validateCategoryName('作业', []).message, '这个类型已经有了');
+
+check('新增：追加到末尾', addCustomCategory(['阅读'], '实验').join(','), '阅读,实验');
+check('新增：重复的不会再加一条', addCustomCategory(['阅读'], '阅读').join(','), '阅读');
+check('删除：只删那一个', removeCustomCategory(['阅读', '实验'], '阅读').join(','), '实验');
+check('删除不存在的类型是安全的', removeCustomCategory(['阅读'], '没有').join(','), '阅读');
+check('allCategoryOptions = 内置 + 自定义',
+  allCategoryOptions(['阅读']).map((o: CategoryOption): string => o.label).join(','),
+  '作业,自学,考试,无,阅读');
 
 // ---------- 汇总 ----------
 console.log('');

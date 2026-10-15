@@ -14,8 +14,9 @@
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { storedAbilityContext } from '../util/Ctx';
-import { RestWindow } from '../model/Types';
+import { RestWindow, TodoCategory } from '../model/Types';
 import { TimetableRepo } from '../data/TimetableRepo';
+import { TodoRepo } from '../data/TodoRepo';
 import { ReminderSettings, loadReminderSettings, saveReminderSettings } from '../domain/ReminderScheduler';
 import { Validation, normalizeRestEnd, validateRestWindow } from '../domain/Validate';
 import { WEEKDAY_CN, hhmmToMin, minToHHmm } from '../util/DateUtil';
@@ -31,9 +32,12 @@ import { GLASS_BLUR, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_ROW, GLASS_SH
 import { FLOAT_GAP, FLOAT_SIDE, FLOAT_TOP, H_TITLE } from './Float';
 import { persistMotionSetting } from './Motion';
 import { pickTime } from '../util/DateTimePicker';
-import { MOTTO_DEFAULT, MOTTO_MAX_UNITS, clampMottoUnits, cleanMotto, loadMotto, mottoUnits,
-  saveMotto, savePlanWindow } from '../data/Prefs';
+import { MOTTO_DEFAULT, MOTTO_MAX_UNITS, clampMottoUnits, cleanMotto,
+  loadMotto, mottoUnits, saveCustomCategories, saveMotto, savePlanWindow } from '../data/Prefs';
 import { DEFAULT_WINDOW, TimeWindow, WINDOW_MAX_END, WINDOW_MIN_SPAN, WINDOW_SNAP_MIN } from '../domain/PlanMath';
+import { CATEGORY_MAX_COUNT, CATEGORY_NAME_MAX, CategoryOption, CategoryVerdict,
+  addCustomCategory, builtinCategoryOptions, parseCustomCategories, removeCustomCategory,
+  validateCategoryName } from '../domain/Categories';
 
 // 文件内 @Styles（见 Glass.ets 顶部注释：@Styles 不能跨文件 export）
 // 深色版。设置页的卡片按用户拍定算"大面" → 保留模糊（`glassPanelCard`），
@@ -145,6 +149,18 @@ export struct SettingsPage {
    */
   @StorageLink('planStartMin') winStart: number = DEFAULT_WINDOW.startMin;
   @StorageLink('planEndMin') winEnd: number = DEFAULT_WINDOW.endMin;
+
+  /**
+   * 自定义待办类型（`'\n'` 分隔）。和待办编辑窗里的「＋新建类型」共用同一份 ——
+   * 在待办卡片上新建的类型，回到设置页就能看到、也能删。
+   */
+  @StorageLink('todoCategories') catRaw: string = '';
+  @State catDraft: string = '';
+  @State catError: string = '';
+  /** 正在等二次确认删除的自定义类型（'' = 没有） */
+  @State catPendingDelete: string = '';
+  /** 那个类型下有多少条待办（点「删」时查出来，写进确认文案） */
+  @State catPendingCount: number = 0;
 
   aboutToAppear(): void {
     // 回显已保存的标语（见上面 `savedMotto` 的注释）
@@ -592,6 +608,176 @@ export struct SettingsPage {
     return m === 0 ? `${h} 小时` : `${h} 小时 ${m} 分`;
   }
 
+  // ---------------- 待办类型（自定义 category） ----------------
+
+  /**
+   * 自定义待办类型的管理（用户 2026-10-15）：
+   * 「待办类型允许在设置里添加或者删除自定义的类型……同时可以选择类型为无」。
+   *
+   * 内置的「作业 / 自学 / 考试 / 无」不能删：考试的固定时间、自动排块语义挂在 `exam` 上，
+   * 作业/自学是老数据的默认值。老的「其他」已退役（编辑窗那个位置让给「新建类型」），
+   * 存量待办在启动时被迁成「无」（见 `domain/Categories` 的文件头）。
+   *
+   * 删一个自定义类型时，**用了它的待办会改成「无」**（用户拍定），所以确认文案里带上条数。
+   */
+  private customCategories(): string[] {
+    return parseCustomCategories(this.catRaw);
+  }
+
+  private addCategory(): void {
+    const verdict: CategoryVerdict = validateCategoryName(this.catDraft, this.customCategories());
+    if (!verdict.ok) {
+      this.catError = verdict.message;
+      return;
+    }
+    const name: string = this.catDraft.trim();
+    this.catError = '';
+    this.catDraft = '';
+    this.persistCategories(addCustomCategory(this.customCategories(), name));
+    this.showToast(`已添加类型「${name}」`);
+  }
+
+  private armCategoryDelete(name: string): void {
+    this.doArmCategoryDelete(name).catch((e: Object): void => {
+      hilog.warn(DOMAIN, TAG, 'count category failed: %{public}s', JSON.stringify(e));
+      this.catPendingDelete = name;
+      this.catPendingCount = 0;
+    });
+  }
+
+  private async doArmCategoryDelete(name: string): Promise<void> {
+    this.catPendingCount = await TodoRepo.countByCategory(this.context(), name);
+    this.catPendingDelete = name;
+  }
+
+  private confirmCategoryDelete(name: string): void {
+    this.doConfirmCategoryDelete(name).catch((e: Object): void => {
+      hilog.error(DOMAIN, TAG, 'delete category failed: %{public}s', JSON.stringify(e));
+      this.showToast('删除失败');
+    });
+  }
+
+  private async doConfirmCategoryDelete(name: string): Promise<void> {
+    const ctx: common.UIAbilityContext = this.context();
+    // 先用它的待办改成「无」（不会留下一个永远选不到的孤儿类型）
+    await TodoRepo.reassignCategory(ctx, name, TodoCategory.None);
+    this.catPendingDelete = '';
+    this.catPendingCount = 0;
+    await this.persistCategories(removeCustomCategory(this.customCategories(), name));
+    this.showToast(`已删除类型「${name}」`);
+  }
+
+  private async persistCategories(list: string[]): Promise<void> {
+    this.catRaw = (await saveCustomCategories(this.context(), list)).join('\n');
+  }
+
+  /** 内置类型的只读胶囊（长得像 ChipButton，但不可点） */
+  @Builder
+  BuiltinCategoryChip(label: string) {    Text(label)
+      .fontSize(12)
+      .fontColor('#A9B5C9')
+      .backgroundColor('rgba(255,255,255,0.08)')
+      .borderRadius(12)
+      .padding({ left: 12, right: 12, top: 6, bottom: 6 })
+      .margin({ right: 8, bottom: 8 })
+  }
+
+  @Builder
+  CategoryCard() {
+    Column() {
+      this.SectionTitle('待办类型',
+        `内置的四个不能删；自定义的可以加、可以删（最多 ${CATEGORY_MAX_COUNT} 个）。删掉一个类型时，用了它的待办会改成「无」。`)
+
+      Text('内置')
+        .fontSize(12)
+        .fontColor('#94A0B5')
+        .width('100%')
+        .margin({ bottom: 6 })
+      Flex({ wrap: FlexWrap.Wrap }) {
+        ForEach(builtinCategoryOptions(), (o: CategoryOption) => {
+          this.BuiltinCategoryChip(o.label)
+        }, (o: CategoryOption) => `catb-${o.key}`)
+      }
+      .width('100%')
+
+      Text(`自定义（${this.customCategories().length}）`)
+        .fontSize(12)
+        .fontColor('#94A0B5')
+        .width('100%')
+        .margin({ top: 8, bottom: 6 })
+
+      if (this.customCategories().length === 0) {
+        Text('还没有自定义类型。下面加一个，或者直接在待办编辑窗里点「＋新建类型」。')
+          .fontSize(12)
+          .fontColor('#8B97AC')
+          .width('100%')
+      }
+
+      ForEach(this.customCategories(), (name: string) => {
+        Column() {
+          Row() {
+            Text(name)
+              .fontSize(13)
+              .fontColor('#F2F5FA')
+              .layoutWeight(1)
+            Text('删')
+              .fontSize(12)
+              .fontColor('#FF8080')
+              .padding({ left: 10, right: 10 })
+              .onClick((): void => this.armCategoryDelete(name))
+          }
+          .width('100%')
+          .padding(10)
+          .backgroundColor('rgba(255,255,255,0.08)')
+          .borderRadius(8)
+
+          if (this.catPendingDelete === name) {
+            this.CategoryDeleteConfirmRow(
+              this.catPendingCount > 0
+                ? `确定删除「${name}」？${this.catPendingCount} 条待办会改成「无」。`
+                : `确定删除「${name}」？`,
+              (): void => this.confirmCategoryDelete(name))
+          }
+        }
+        .width('100%')
+        .margin({ bottom: 6 })
+      }, (name: string) => `cat-${name}-${this.catPendingDelete === name}`)
+
+      Row() {
+        TextInput({ text: this.catDraft, placeholder: `新类型名（最多 ${CATEGORY_NAME_MAX} 个字）` })
+          .fontColor('#F2F5FA')
+          .placeholderColor('#8B97AC')
+          .caretColor('#7FA8FF')
+          .layoutWeight(1)
+          .onChange((v: string): void => {
+            this.catDraft = v;
+            this.catError = '';
+          })
+        Button('添加')
+          .backgroundColor('#2E6BE6')
+          .fontColor('#FFFFFF')
+          .fontSize(13)
+          .margin({ left: 8 })
+          .onClick((): void => this.addCategory())
+      }
+      .width('100%')
+      .margin({ top: 10 })
+
+      if (this.catError.length > 0) {
+        Text(this.catError)
+          .fontSize(11)
+          .fontColor('#FF8A8A')
+          .width('100%')
+          .margin({ top: 6 })
+      }
+    }
+    .width('100%')
+    .padding(16)
+    .glassPanelCard()
+    .alignItems(HorizontalAlign.Start)
+    .margin({ top: 12 })
+  }
+
   /**
    * 计划页时间范围卡片（用户要求：「计划页面的上下限也应当可以设置（整半小时时段）
    * （独立于不可排时段）」）。
@@ -798,6 +984,38 @@ export struct SettingsPage {
         .padding({ left: 10, right: 10 })
         .onClick((): void => {
           this.pendingDeleteKey = '';
+        })
+      Text('删除')
+        .fontSize(12)
+        .fontColor('#FFFFFF')
+        .backgroundColor('#D64545')
+        .borderRadius(8)
+        .padding({ left: 10, right: 10, top: 4, bottom: 4 })
+        .onClick(onConfirm)
+    }
+    .width('100%')
+    .margin({ top: 8 })
+  }
+
+  /**
+   * 待办类型的删除确认行。
+   * ⚠️ 不能复用 `DeleteConfirmRow` —— 它的「取消」写死清的是 `pendingDeleteKey`（不可排时段那个），
+   *    拿来给类型用会"点取消关不掉"。
+   */
+  @Builder
+  CategoryDeleteConfirmRow(message: string, onConfirm: () => void) {
+    Row() {
+      Text(message)
+        .fontSize(11)
+        .fontColor('#FF8A8A')
+        .layoutWeight(1)
+      Text('取消')
+        .fontSize(12)
+        .fontColor('#A9B5C9')
+        .padding({ left: 10, right: 10 })
+        .onClick((): void => {
+          this.catPendingDelete = '';
+          this.catPendingCount = 0;
         })
       Text('删除')
         .fontSize(12)
@@ -1184,6 +1402,7 @@ export struct SettingsPage {
             this.MotionCard()
             this.ReminderCard()
             this.RestCard()
+            this.CategoryCard()
             this.PlanWindowCard()
           }
           .width('100%')

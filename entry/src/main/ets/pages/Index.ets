@@ -22,8 +22,10 @@ import { BOOT_EXTRA_CAP_MS, BOOT_STEP_MS, DUR_BALL_DWELL, DUR_COLLAPSE, DUR_EXPA
   DUR_SPRAY, TYPE_MS, collapseCurve, curveOrLinear, dur, expandCurve, isMotionOn,
   loadMotionSetting, motionCurve } from '../view/Motion';
 import { WallpaperRepo } from '../data/WallpaperRepo';
-import { MOTTO_DEFAULT, PLAN_END_KEY, PLAN_START_KEY, loadMotto, loadPlanWindow } from '../data/Prefs';
+import { MOTTO_DEFAULT, PLAN_END_KEY, PLAN_START_KEY, TODO_CATEGORIES_KEY, loadCustomCategories,
+  loadMotto, loadPlanWindow } from '../data/Prefs';
 import { TimeWindow } from '../domain/PlanMath';
+import { serializeCustomCategories } from '../domain/Categories';
 
 import { ChipButton } from '../view/ChipButton';
 import { SectionPicker } from '../view/SectionPicker';
@@ -372,6 +374,8 @@ struct Index {
     const planWin: TimeWindow = await loadPlanWindow(ctx);
     AppStorage.setOrCreate(PLAN_START_KEY, planWin.startMin);
     AppStorage.setOrCreate(PLAN_END_KEY, planWin.endMin);
+    // 自定义待办类型：设置页与待办编辑窗共用这一份（存 '\n' 分隔的字符串）
+    AppStorage.setOrCreate(TODO_CATEGORIES_KEY, serializeCustomCategories(await loadCustomCategories(ctx)));
     // 动画总开关：AppStorage 是内存态，每次冷启动都要从 kv 读回来
     await loadMotionSetting(ctx);
     this.bootStep = 0;
@@ -381,7 +385,7 @@ struct Index {
     await Seeder.ensureRestWindows(ctx);
     const migrated: number = await Seeder.migrateData(ctx);
     if (migrated > 0) {
-      hilog.info(DOMAIN, TAG, 'migrated %{public}d todo estimates to 5-min grid', migrated);
+      hilog.info(DOMAIN, TAG, 'migrated %{public}d rows (estimates / categories)', migrated);
     }
     await this.dwellBootStep(stepAt);   // 让人看清"初始化本地数据"这一步
     stepAt = Date.now();
@@ -530,7 +534,7 @@ struct Index {
       lines.push(`课程 ${this.courses.length} · 时段规则 ${this.rules.length} · 节次 ${this.sectionTimes.length}`);
       lines.push(`本次补生成待办: ${outcome.created} 条（回看 ${outcome.scannedDays} 天）`);
       if (migratedCount > 0) {
-        lines.push(`数据迁移: ${migratedCount} 条待办时长已对齐到 5 分钟刻度`);
+        lines.push(`数据迁移: ${migratedCount} 行（时长对齐 5 分钟 / 旧类型「其他」→「无」）`);
       }
       lines.push(`通知权限: ${plan.enabled ? '已开' : '未开（提醒不会响）'}`);
       lines.push(`提醒发布: ${plan.published} 条 → 上课 ${plan.classes} / 截止 ${plan.ddl} / 计划块 ${plan.blocks} / 简报 ${plan.briefs}`);

@@ -2,6 +2,7 @@ import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { Db } from './Db';
 import { DEFAULT_WINDOW, TimeWindow, formatWindow, normalizeWindow, parseWindow } from '../domain/PlanMath';
+import { parseCustomCategories, serializeCustomCategories } from '../domain/Categories';
 
 /**
  * 首页标语（ClassOUT 字标下面那一行）。
@@ -147,4 +148,40 @@ export async function savePlanWindow(context: common.Context,
     hilog.warn(0x0000, 'ClassOUT', 'save plan window failed: %{public}s', JSON.stringify(e));
   }
   return n;
+}
+
+// ---------------- 待办类型（自定义 category） ----------------
+
+/**
+ * 自定义待办类型的 AppStorage 键，值是 `'\n'` 分隔的字符串。
+ * ⚠️ 组件里 `@StorageLink` 必须写字面量 `'todoCategories'`（常量会静默不生效）。
+ */
+export const TODO_CATEGORIES_KEY: string = 'todoCategories';
+/** kv 持久化键 */
+export const TODO_CATEGORIES_KV: string = 'todo_categories';
+
+/** 冷启动读回来（坏数据由 `parseCustomCategories` 兜底成空列表） */
+export async function loadCustomCategories(context: common.Context): Promise<string[]> {
+  try {
+    return parseCustomCategories(await Db.getKv(context, TODO_CATEGORIES_KV));
+  } catch (e) {
+    hilog.warn(0x0000, 'ClassOUT', 'load todo categories failed: %{public}s', JSON.stringify(e));
+    return [];
+  }
+}
+
+/**
+ * 保存自定义类型：内存（设置页与待办编辑窗立刻同步）+ kv 一起写。
+ * 返回规范化之后的列表，让调用方拿它回写自己的草稿。
+ */
+export async function saveCustomCategories(context: common.Context,
+  list: string[]): Promise<string[]> {
+  const clean: string[] = parseCustomCategories(serializeCustomCategories(list));
+  AppStorage.setOrCreate(TODO_CATEGORIES_KEY, serializeCustomCategories(clean));
+  try {
+    await Db.setKv(context, TODO_CATEGORIES_KV, serializeCustomCategories(clean));
+  } catch (e) {
+    hilog.warn(0x0000, 'ClassOUT', 'save todo categories failed: %{public}s', JSON.stringify(e));
+  }
+  return clean;
 }

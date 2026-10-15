@@ -58,7 +58,10 @@ export class Seeder {
   }
 
   static async migrateData(context: common.Context): Promise<number> {
-    return await TodoRepo.normalizeAllEstimates(context);
+    const estimates: number = await TodoRepo.normalizeAllEstimates(context);
+    // 「其他」退役 →「无」（用户 2026-10-15；见 domain/Categories 的文件头）
+    const categories: number = await TodoRepo.migrateCategories(context);
+    return estimates + categories;
   }
 
   /** 首次启动写入默认不可排时段（午休/晚饭/睡觉），用户可改 */

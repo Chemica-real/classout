@@ -170,6 +170,16 @@ export class TodoCategory {
   static readonly Homework: string = 'homework';
   static readonly Self: string = 'self';
   static readonly Exam: string = 'exam';
+  /**
+   * 「无」= 没有类型。用户 2026-10-15 要求类型可选「无」。
+   * 卡片上不给它画类型标签（见 `domain/Categories.categoryLabel`）。
+   */
+  static readonly None: string = 'none';
+  /**
+   * ⚠️ **已退役**：用户要求把编辑窗里的「其他」胶囊换成「新建类型」按钮，
+   * 存量 `'other'` 由 `Seeder.migrateData` 迁成 `'none'`。
+   * 保留这个常量只是为了迁移与显示兜底，**不要再往新数据里写它**。
+   */
   static readonly Other: string = 'other';
 }
 

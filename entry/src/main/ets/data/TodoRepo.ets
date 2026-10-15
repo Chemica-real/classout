@@ -229,6 +229,64 @@ export class TodoRepo {
       [status, doneAt, id]);
   }
 
+  // ---------- 待办类型（自定义 category） ----------
+
+  /** 这个类型下有多少条待办（含各状态；删类型时要告诉用户会改到多少条） */
+  static async countByCategory(context: common.Context, category: string): Promise<number> {
+    const store: relationalStore.RdbStore = await Db.get(context);
+    const rs = await store.querySql('SELECT COUNT(*) AS n FROM todo WHERE category = ?', [category]);
+    let n: number = 0;
+    if (rs.goToFirstRow()) {
+      n = rs.getLong(rs.getColumnIndex('n'));
+    }
+    rs.close();
+    return n;
+  }
+
+  /**
+   * 把一个类型的待办整批改成另一个类型。
+   *
+   * 用户 2026-10-15 拍定：删掉一个自定义类型时，用了它的待办**改成「无」**
+   * （而不是留一个永远选不到的孤儿值）。
+   */
+  static async reassignCategory(context: common.Context, from: string,
+    to: string): Promise<number> {
+    const store: relationalStore.RdbStore = await Db.get(context);
+    const n: number = await TodoRepo.countByCategory(context, from);
+    if (n === 0) {
+      return 0;
+    }
+    await store.executeSql('UPDATE todo SET category = ? WHERE category = ?', [to, from]);
+    return n;
+  }
+
+  /**
+   * 一次性迁移：**退役的「其他」→「无」**（用户 2026-10-15 要求把「其他」胶囊换成
+   * 「新建类型」按钮，所以 `'other'` 不再是一个可选的类型）。
+   * 模板表也顺手改（虽然模板的 category 一直是 `'homework'`，防老库里有残留）。
+   * 幂等：返回改动的条数，0 表示无事可做。
+   */
+  static async migrateCategories(context: common.Context): Promise<number> {
+    const store: relationalStore.RdbStore = await Db.get(context);
+    const todoN: number = await TodoRepo.countByCategory(context, TodoCategory.Other);
+    if (todoN > 0) {
+      await store.executeSql('UPDATE todo SET category = ? WHERE category = ?',
+        [TodoCategory.None, TodoCategory.Other]);
+    }
+    let tplN: number = 0;
+    const rs = await store.querySql('SELECT COUNT(*) AS n FROM todo_template WHERE category = ?',
+      [TodoCategory.Other]);
+    if (rs.goToFirstRow()) {
+      tplN = rs.getLong(rs.getColumnIndex('n'));
+    }
+    rs.close();
+    if (tplN > 0) {
+      await store.executeSql('UPDATE todo_template SET category = ? WHERE category = ?',
+        [TodoCategory.None, TodoCategory.Other]);
+    }
+    return todoN + tplN;
+  }
+
   /** 某门课已经生成过多少条模板待办（%N 自增用） */
   static async countTemplateTodos(context: common.Context, courseId: number): Promise<number> {
     const store: relationalStore.RdbStore = await Db.get(context);

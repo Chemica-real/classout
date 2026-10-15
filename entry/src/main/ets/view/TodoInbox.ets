@@ -9,6 +9,10 @@ import { addDays, countdownText, formatDate, hhmmToMin, minToHHmm, parseDate, re
 import { pickDateTime } from '../util/DateTimePicker';
 import { ExamRange, Validation, examRangeOf, normalizeEstimate, validateEstimate,
   validateExamRange } from '../domain/Validate';
+import { CATEGORY_NAME_MAX, CategoryOption, CategoryVerdict, addCustomCategory,
+  allCategoryOptions, categoryLabel, parseCustomCategories,
+  validateCategoryName } from '../domain/Categories';
+import { saveCustomCategories } from '../data/Prefs';
 import { ChipButton } from './ChipButton';
 import { BackHandler, backStack } from '../util/BackStack';
 import { GLASS_BLUR, GLASS_EDGE_SOFT, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_ROW,
@@ -118,7 +122,16 @@ export struct TodoInbox {
   /** 自定义时长被归一化时的说明（'' = 输入没问题）。只在失焦/提交后出现，打字中途不打断 */
   @State editEstimateError: string = '';
   @State editCourseId: number = 0;
-  @State editCategory: string = TodoCategory.Other;
+  @State editCategory: string = TodoCategory.None;
+  /**
+   * 自定义待办类型（`'\n'` 分隔，和设置页共用一份）。
+   * 在编辑窗里「＋新建类型」新建的**就是全局的**，回到设置页能看到、也能删（用户 2026-10-15）。
+   */
+  @StorageLink('todoCategories') catRaw: string = '';
+  /** 「＋新建类型」展开的输入行 */
+  @State catCreating: boolean = false;
+  @State catDraft: string = '';
+  @State catError: string = '';
   /** 备注（**所有类型都能写**）。考试时这个框的标签是「考场 / 座位」，见 EditorPanel */
   @State editNote: string = '';
   /** 考试专用：**结束**时刻（开始时刻存在 editDdl 里）；其它类型恒为 '' */
@@ -565,7 +578,10 @@ export struct TodoInbox {
     this.editEstimateCustom = '';
     this.editEstimateFocus = false;
     this.editCourseId = 0;
-    this.editCategory = TodoCategory.Other;
+    this.editCategory = TodoCategory.None;
+    this.catCreating = false;
+    this.catDraft = '';
+    this.catError = '';
     this.editNote = '';
     this.editExamEnd = '';
     this.editExamError = '';
@@ -599,6 +615,9 @@ export struct TodoInbox {
     this.editEstimateFocus = false;
     this.editCourseId = t.courseId;
     this.editCategory = t.category;
+    this.catCreating = false;
+    this.catDraft = '';
+    this.catError = '';
     this.editNote = t.note;
     // 考试：回填结束时刻。老数据没有 end_at（迁移补的是空串）→ 给个"开始 +2 小时"的默认，
     // 免得用户一打开就看到"结束时间没选"、还得自己算。
@@ -637,6 +656,74 @@ export struct TodoInbox {
       this.editExamEnd = this.defaultExamEnd(this.editDdl);
     }
     this.editExamError = '';
+  }
+
+  // ---- 待办类型（内置 + 自定义） ----
+
+  private customCategories(): string[] {
+    return parseCustomCategories(this.catRaw);
+  }
+
+  /**
+   * 编辑窗里那一排类型胶囊。
+   *
+   * 除了"内置四个 + 自定义"，还要**兜一条认不出的当前值**（比如备份恢复后少了类型定义，
+   * 或者极老的 `'other'`）：不兜的话用户打开这条待办会看到"一个都没选中"，
+   * 像是类型丢了。`categoryLabel` 给得出中文名就显示出来。
+   */
+  private editorCategories(): CategoryOption[] {
+    const out: CategoryOption[] = allCategoryOptions(this.customCategories());
+    const cur: string = this.editCategory;
+    if (cur.length === 0 || cur === TodoCategory.None) {
+      return out;
+    }
+    for (const o of out) {
+      if (o.key === cur) {
+        return out;
+      }
+    }
+    const label: string = categoryLabel(cur, this.customCategories());
+    if (label.length > 0) {
+      out.push({ key: cur, label: label, builtin: false });
+    }
+    return out;
+  }
+
+  /** 卡片上的类型小标签；「无」返回空串（不画） */
+  private categoryText(t: Todo): string {
+    return categoryLabel(t.category, this.customCategories());
+  }
+
+  private toggleCatCreating(): void {
+    this.catCreating = !this.catCreating;
+    this.catDraft = '';
+    this.catError = '';
+  }
+
+  /**
+   * 在待办卡片上新建一个类型 —— **这是全局新建**：写进 kv + AppStorage，
+   * 设置页那份会立刻跟着变（用户 2026-10-15 明确要求）。
+   */
+  private addCategoryInline(): void {
+    const list: string[] = this.customCategories();
+    const verdict: CategoryVerdict = validateCategoryName(this.catDraft, list);
+    if (!verdict.ok) {
+      this.catError = verdict.message;
+      return;
+    }
+    const name: string = this.catDraft.trim();
+    saveCustomCategories(this.context(), addCustomCategory(list, name))
+      .then((clean: string[]): void => {
+        this.catRaw = clean.join('\n');
+        this.editCategory = name;
+        this.catCreating = false;
+        this.catDraft = '';
+        this.catError = '';
+      })
+      .catch((e: Object): void => {
+        this.catError = '保存失败';
+        hilog.error(DOMAIN, TAG, 'add category failed: %{public}s', JSON.stringify(e));
+      });
   }
 
   /**
@@ -740,6 +827,23 @@ export struct TodoInbox {
       .onClick(onTap)
   }
 
+  /**
+   * 卡片上的**类型小标签**（用户 2026-10-15：「要：在待办卡片上显示一个小类型标签」）。
+   * 用中性灰，和彩色的课程胶囊区分开；「无」不画（`categoryText` 返回空串）。
+   */
+  @Builder
+  CategoryTag(t: Todo) {
+    if (this.categoryText(t).length > 0) {
+      Text(this.categoryText(t))
+        .fontSize(10)
+        .fontColor('#C3CDDE')
+        .backgroundColor('rgba(255,255,255,0.14)')
+        .borderRadius(3)
+        .padding({ left: 5, right: 5, top: 1, bottom: 1 })
+        .margin({ right: 6 })
+    }
+  }
+
   @Builder
   PendingCard(t: Todo) {
     Stack() {
@@ -754,6 +858,7 @@ export struct TodoInbox {
             .padding({ left: 5, right: 5, top: 1, bottom: 1 })
             .margin({ right: 6 })
         }
+        this.CategoryTag(t)
         Text(t.title)
           .fontSize(16)
           .fontWeight(FontWeight.Medium)
@@ -851,6 +956,7 @@ export struct TodoInbox {
               .padding({ left: 4, right: 4 })
               .margin({ right: 6 })
           }
+          this.CategoryTag(t)
           Text(t.title)
             .fontSize(15)
             .fontColor('#F2F5FA')
@@ -895,12 +1001,17 @@ export struct TodoInbox {
         .fontColor('#7C8798')
         .margin({ right: 10 })
       Column() {
-        Text(t.title)
-          .fontSize(14)
-          .fontColor('#8B97AC')
-          .decoration({ type: TextDecorationType.LineThrough, color: '#7C8798' })
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
+        Row() {
+          this.CategoryTag(t)
+          Text(t.title)
+            .fontSize(14)
+            .fontColor('#8B97AC')
+            .decoration({ type: TextDecorationType.LineThrough, color: '#7C8798' })
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .layoutWeight(1)
+        }
+        .width('100%')
         Text(`${this.doneAtText(t)}${t.estimateMin > 0 ? ` · 预计 ${t.estimateMin} 分钟` : ''}`)
           .fontSize(11)
           .fontColor('#7C8798')
@@ -1027,34 +1138,63 @@ export struct TodoInbox {
           .width('100%')
           .margin({ top: 14, bottom: 6 })
         Flex({ wrap: FlexWrap.Wrap }) {
-          ChipButton({
-            text: '作业',
-            selected: this.editCategory === TodoCategory.Homework,
-            onTap: (): void => {
-            this.editCategory = TodoCategory.Homework;
-          }
-          })
-          ChipButton({
-            text: '自学',
-            selected: this.editCategory === TodoCategory.Self,
-            onTap: (): void => {
-            this.editCategory = TodoCategory.Self;
-          }
-          })
-          ChipButton({
-            text: '考试',
-            selected: this.editCategory === TodoCategory.Exam,
-            onTap: (): void => this.chooseCategory(TodoCategory.Exam)
-          })
-          ChipButton({
-            text: '其他',
-            selected: this.editCategory === TodoCategory.Other,
-            onTap: (): void => {
-            this.editCategory = TodoCategory.Other;
-          }
-          })
+          // 内置四个（作业/自学/考试/无）+ 自定义的类型。
+          // ⚠️ key 必须带选中态，否则点一下不会重画（§21.6d 老坑）。
+          ForEach(this.editorCategories(), (o: CategoryOption) => {
+            ChipButton({
+              text: o.label,
+              selected: this.editCategory === o.key,
+              onTap: (): void => this.chooseCategory(o.key)
+            })
+          }, (o: CategoryOption) => `cat-${o.key}-${this.editCategory === o.key}`)
+          // 用户 2026-10-15：把原来的「其他」胶囊换成「新建类型」按钮，颜色略不同。
+          // 点开就地输入，新建的是**全局类型**（设置页同步可见）。
+          Text('＋ 新建类型')
+            .fontSize(12)
+            .fontColor('#E8B25C')
+            .backgroundColor('rgba(232,178,92,0.16)')
+            .borderRadius(14)
+            .padding({ left: 12, right: 12, top: 6, bottom: 6 })
+            .margin({ right: 8, bottom: 8 })
+            .onClick((): void => this.toggleCatCreating())
         }
         .width('100%')
+
+        if (this.catCreating) {
+          Row() {
+            TextInput({ text: this.catDraft, placeholder: `新类型名（最多 ${CATEGORY_NAME_MAX} 个字）` })
+              .fontColor('#F2F5FA')
+              .placeholderColor('#8B97AC')
+              .caretColor('#7FA8FF')
+              .layoutWeight(1)
+              .onChange((v: string): void => {
+                this.catDraft = v;
+                this.catError = '';
+              })
+              .onSubmit((): void => this.addCategoryInline())
+            Button('添加')
+              .backgroundColor('rgba(232,178,92,0.20)')
+              .fontColor('#E8B25C')
+              .fontSize(12)
+              .margin({ left: 8 })
+              .onClick((): void => this.addCategoryInline())
+            Button('取消')
+              .backgroundColor('rgba(255,255,255,0.12)')
+              .fontColor('#A9B5C9')
+              .fontSize(12)
+              .margin({ left: 8 })
+              .onClick((): void => this.toggleCatCreating())
+          }
+          .width('100%')
+          .margin({ top: 2, bottom: 4 })
+
+          if (this.catError.length > 0) {
+            Text(this.catError)
+              .fontSize(11)
+              .fontColor('#FF8A8A')
+              .width('100%')
+          }
+        }
 
         // 备注：**所有类型都能写**（用户要求「待办可写备注」）。
         // 考试时它就是原来的「考场 / 座位」—— 同一个 `note` 字段，只是标签随类型变。
