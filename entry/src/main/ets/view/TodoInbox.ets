@@ -89,6 +89,12 @@ export struct TodoInbox {
    * 数据载入后执行一次，然后回调 Index 清 0（否则每次 reload 都会再开一次窗）。
    */
   @Prop openTodoId: number = 0;
+  /**
+   * 「请重新读库」的令牌：Index 每次切到「待办」标签时会先补生成下课待办，
+   * 补生成完自增它 —— 这个组件是按 `tab` 条件渲染的，刚挂载时列表还是补生成之前的，
+   * 靠这个 @Watch 再读一次库，新条目才会当场出现（用户 2026-10-16 要求）。
+   */
+  @Prop @Watch('onReloadRequested') reloadToken: number = 0;
   onOpenTodoConsumed: () => void = (): void => {};
   /** 编辑窗开着时通知 Index（它要把悬浮浮窗层改画到内容层之下，见 Index.pageModalOpen） */
   onModalChange: (open: boolean) => void = (): void => {};
@@ -215,6 +221,11 @@ export struct TodoInbox {
    * 便一直停在旧数据 —— 用户看到的又是「要切一下页面才刷新」。
    */
   onSemesterIdChanged(): void {
+    this.load();
+  }
+
+  /** Index 补生成完下课待办 → 再读一次库 */
+  onReloadRequested(): void {
     this.load();
   }
 

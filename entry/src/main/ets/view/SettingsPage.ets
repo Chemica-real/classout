@@ -35,11 +35,14 @@ import { FLOAT_GAP, FLOAT_SIDE, FLOAT_TOP, H_TITLE } from './Float';
 import { persistMotionSetting } from './Motion';
 import { pickTime } from '../util/DateTimePicker';
 import { MOTTO_DEFAULT, MOTTO_MAX_UNITS, clampMottoUnits, cleanMotto,
-  loadMotto, mottoUnits, saveCustomCategories, saveMotto, savePlanWindow } from '../data/Prefs';
+  loadMotto, mottoUnits, saveCustomCategories, saveMotto, savePlanWindow,
+  saveSyncInterval } from '../data/Prefs';
 import { DEFAULT_WINDOW, TimeWindow, WINDOW_MAX_END, WINDOW_MIN_SPAN, WINDOW_SNAP_MIN } from '../domain/PlanMath';
 import { CATEGORY_MAX_COUNT, CATEGORY_NAME_MAX, CategoryOption, CategoryVerdict,
   addCustomCategory, builtinCategoryOptions, parseCustomCategories, removeCustomCategory,
   validateCategoryName } from '../domain/Categories';
+import { SYNC_INTERVAL_CHOICES, SYNC_INTERVAL_DEFAULT, SYNC_INTERVAL_MAX, SYNC_INTERVAL_MIN,
+  normalizeSyncInterval } from '../domain/SyncCadence';
 
 // 文件内 @Styles（见 Glass.ets 顶部注释：@Styles 不能跨文件 export）
 // 深色版。设置页的卡片按用户拍定算"大面" → 保留模糊（`glassPanelCard`），
@@ -174,6 +177,13 @@ export struct SettingsPage {
   @State catPendingDelete: string = '';
   /** 那个类型下有多少条待办（点「删」时查出来，写进确认文案） */
   @State catPendingCount: number = 0;
+
+  /**
+   * 日历同步 / 闲置重启的间隔 `n`（分钟），默认 10。
+   * 用户 2026-10-16：一个值管两件事 —— 连续用到 n 的整数倍自动同步一次；
+   * 闲置超过 n 再回来就重新启动。
+   */
+  @StorageLink('syncIntervalMin') syncIntervalMin: number = SYNC_INTERVAL_DEFAULT;
 
   aboutToAppear(): void {
     // 回显已保存的标语（见上面 `savedMotto` 的注释）
@@ -1433,6 +1443,60 @@ export struct SettingsPage {
   }
 
   /**
+   * 日历同步卡片：
+   * `n` 分钟同时管两件事 —— ① 连续使用到 n 的整数倍时自动同步一次；
+   * ② 闲置超过 n 再回到前台就重新启动（重新补生成待办并同步日历）。
+   */
+  @Builder
+  SyncCard() {
+    Column() {
+      this.SectionTitle('日历同步',
+        `连续使用到 ${this.syncIntervalMin} 分钟的整数倍时会自动同步一次（页面上方会弹出提示）；`
+        + `闲置超过 ${this.syncIntervalMin} 分钟后再次打开，App 会重新启动一次，好让提醒始终是最新的。`)
+
+      Flex({ wrap: FlexWrap.Wrap }) {
+        ForEach(SYNC_INTERVAL_CHOICES, (m: number) => {
+          ChipButton({
+            text: `${m} 分钟`,
+            selected: this.syncIntervalMin === m,
+            onTap: (): void => this.pickSyncInterval(m)
+          })
+        }, (m: number) => `sync-${m}-${this.syncIntervalMin === m}`)
+      }
+      .width('100%')
+
+      Text(`当前：每 ${this.syncIntervalMin} 分钟同步一次（默认 ${SYNC_INTERVAL_DEFAULT} 分钟）`)
+        .fontSize(11)
+        .fontColor('#8B97AC')
+        .width('100%')
+        .margin({ top: 8 })
+
+      Text('页头「⟳ 立即与日历同步」可以随时手动同步一次。')
+        .fontSize(11)
+        .fontColor('#8B97AC')
+        .width('100%')
+        .margin({ top: 4 })
+    }
+    .width('100%')
+    .padding(16)
+    .glassPanelCard()
+    .alignItems(HorizontalAlign.Start)
+    .margin({ top: 12 })
+  }
+
+  private pickSyncInterval(m: number): void {
+    const n: number = normalizeSyncInterval(m);
+    this.syncIntervalMin = n;
+    saveSyncInterval(this.context(), n).then((saved: number): void => {
+      this.syncIntervalMin = saved;
+      this.showToast(`日历同步间隔：每 ${saved} 分钟`);
+    }).catch((e: Object): void => {
+      hilog.warn(DOMAIN, TAG, 'save sync interval failed: %{public}s', JSON.stringify(e));
+      this.showToast('保存失败');
+    });
+  }
+
+  /**
    * 新手引导入口（用户 2026-10-15：「做一个新手引导……你步步引导」）。
    *
    * 点「开始演练」不是在这里做什么，而是回调 `Index`：它会切到一个**空的沙箱库**
@@ -1607,6 +1671,7 @@ export struct SettingsPage {
             this.MottoCard()
             this.MotionCard()
             this.ReminderCard()
+            this.SyncCard()
             this.RestCard()
             this.CategoryCard()
             this.PlanWindowCard()

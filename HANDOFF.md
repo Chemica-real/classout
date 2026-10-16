@@ -10,13 +10,20 @@ ClassOUT 是一款**纯离线鸿蒙原生（ArkTS）「课表 + 待办 + 计划�
 已成功签名并**安装在用户的真机（华为 nova 15）上运行**，启动无崩溃、种子课表渲染正确、
 自动生成待办跑通、提醒已落入系统日历。
 
-**当前状态：v1.4.1（上架准备中，**尚未提交审核**）**。
-健康度：干净构建 `ERROR: 0`、警告 6 条（均为刻意保留）、离线断言 **501 项全绿**、
+**当前状态：v1.5.0（上架准备中，**尚未提交审核**）**。
+健康度：干净构建 `ERROR: 0`、警告 6 条（均为刻意保留）、离线断言 **524 项全绿**、
 工作区干净。已推的 tag：`v1.4.0`（`v1.0.0` 那次错位与强推见 §22.7 / §23.7，**v1.0.0 保持不动**）。
 最新提交用 `git log -1` 看。
 远端：`git@gitee.com:the-person-on-the-tree/classout.git`（**公开**，master + tag 都已推齐）。
 
-> ## ✅ 最新一轮：**§33 三条优化（考试不算截止 / 三日截止分列 / 备注可展开）**
+> ## ✅ 最新一轮：**§34 日历同步节奏（自动同步 / 闲置重启 / 页头手动同步 / 切页补生成）**
+> 用户 2026-10-16 的四条：① 闲置超过 `n` 分钟（设置里配，默认 10）后下次点开必定重新启动；
+> ② 连续使用到 `n` 的整数倍时弹「正在与日历同步」并真的同步；③ 页头「大一上」大块里加
+> 「立即与日历同步」按钮（同一个弹窗）；④ 每次切到待办页立刻补生成一遍下课待办。
+> `n` 一个值管前三条，纯逻辑抽在 `domain/SyncCadence.ets`（断言 +27）。
+> 断言 501 → **524**。
+
+> ## ✅ 上一轮：**§33 三条优化（考试不算截止 / 三日截止分列 / 备注可展开）**
 > 用户 2026-10-16 报的三条，都在**演练沙箱**里验过了：
 > ① 考试不再出现在任何"截止"里（网格 ⚑ 标记、计划块属性面板、每日简报）；
 > ② 三日视图的截止标记**按列**显示（原来横跨三列、另外两天看不到自己的截止）；
@@ -779,6 +786,24 @@ cp /tmp/pm.bak entry/src/main/ets/domain/PlanMath.ets
 
 其余转录内容已逐条核对无误（课甲 周二1-2 周四3-4、课乙 周二3-4 周四1-2、课丙 周一5-6 周三3-4、
 课丁 周一7-8、课戊 周三5-6 周五3-4、课己 周二5-6、课庚 周三7-8、课程辛 周五5-6、课壬 周五7-8）。
+
+### 9.1 ⚠️ 2026-10-16 一条**未解释**的覆盖（补课）消失 —— 下一任 agent 请留意
+
+- 现象：`2026-10-16 01:23` 真机上「本周调整 **1**」，那条是 `课丁 · 2026-10-16 补课 第 10-11 节`
+  （§27.1 那个 bug 修好后当场验的）。`2026-10-16 23:24` 我导出备份复查时，
+  **`overrides` 变成 0**，`todos 26 / blocks 15 / courses 13` 都还在（课程没被删、没被重灌）。
+- 我逐个查了**全部**覆盖删除点，都是"按单条 `id` 删"，没有一个能自动/连带删掉一条 `extra`：
+  | 位置 | 触发条件 |
+  |---|---|
+  | `Index.doDropOverride` | 用户点「本周调整」表里那一行的红色**「撤销」**（⚠️ **没有二次确认**） |
+  | `Index.doClearOverridesForSel` | 用户选中那节课 →「撤销这节课的调整」（按 `courseId+date+是否 extra` 三重匹配） |
+  | `TimetableRepo.deleteCourse` | 删除该课程（`courses` 数量没变，但不是没可能"删了再加回来"） |
+  | `BackupRepo.importAll` | 用户主动「恢复备份」（其余数据看不出被覆盖过） |
+  | `mergeRoomOverrides` | **只删 `kind === room` 的行**（`domain/Timetable.ets` 里断言过），删不到 `extra` |
+- 结论：**没找到任何一条能"自己消失"的代码路径**；最可能是当时在验"补课 + 换地点"时手点到了
+  那一行的「撤销」（那行 `撤销` 只有 12vp、紧挨着文字、且**无确认**）。已如实告知用户，
+  并建议：① 需要就一分钟重建；② 定期用「备份与恢复 → 导出备份」留一份。
+- 下一任可以做的加固：给「撤销」加一次确认（用户尚未拍板，别擅自加）。
 
 ---
 
@@ -3286,3 +3311,141 @@ LANG=zh_CN.UTF-8 ./build.sh clean && LANG=zh_CN.UTF-8 ./build.sh assembleHap   #
 
 
 
+
+
+## 34. 2026-10-16 日历同步节奏（自动同步 / 闲置重启 / 页头手动同步 / 切页补生成）
+
+用户原话：
+
+> 1. 未使用超过 n min（设置里可配，默认 10）后下次点开必定重新启动应用
+> 2. 长时间使用达到 n min（或整数倍）时在页面靠上方弹出「正在与日历同步」的弹窗（动画类似首页
+>    Ubuntu 加载动画）并真的同步
+> 3. 页头「大一上」大块里加「立即与日历同步」按钮（同一弹窗）
+> 4. 每次切换到待办列立即补生成下课列表
+
+### 34.1 一个 `n` 管三条 + 抽成纯函数（`domain/SyncCadence.ets`）
+
+「整数倍」这种事最容易差一格（`0` 算不算？刚好等于 `n` 算不算？用户把 `n` 从 10 改成 15
+时已经数到 10 分钟了怎么办？），而这两条在真机上各要等好几分钟才能试一次 ——
+所以判定逻辑全部抽成纯函数，进离线断言（+27 条）：
+
+| 函数 | 规则 |
+|---|---|
+| `normalizeSyncInterval(raw)` | 坏值/`<=0` → 默认 10；越界夹到 `[1, 180]` 并取整 |
+| `isSyncBoundary(activeMin, interval)` | `activeMin > 0` **且** `activeMin % n === 0`（即 n、2n、3n…） |
+| `shouldRestartAfterIdle(idleMs, interval)` | `idleMs > n * 60000`（用户说"**超过**"，所以**刚好等于不重启**） |
+
+常量：`SYNC_INTERVAL_DEFAULT=10`、`SYNC_INTERVAL_MIN=1`、`SYNC_INTERVAL_MAX=180`、
+设置页档位 `SYNC_INTERVAL_CHOICES=[5,10,15,30,60]`。
+存取：`Prefs.SYNC_INTERVAL_KV='sync_interval_min'` ↔ AppStorage `'syncIntervalMin'`（字面量！）。
+
+### 34.2 `n` 从哪来：设置页新增「日历同步」卡片（`SyncCard`）
+
+- 位置：设置页 **提醒卡片之后**（`ReminderCard()` → `SyncCard()`）。
+- 内容：标题 + 动态说明（文案里直接嵌当前 `n`）+ 5/10/15/30/60 胶囊 + 「当前：每 n 分钟…」。
+- 真机验证：点「5 分钟」→ 下方立刻变「当前：每 **5** 分钟同步一次（默认 10 分钟）」。
+
+### 34.3 ★「闲置太久 → 重新启动」为什么是"重放启动流程"而不是真重启
+
+**这台机器的 SDK 里 `UIAbilityContext` 没有 `restart()`**（只有 `terminateSelf`）；
+真去 `terminateSelf` 用户会看到"点了图标却退回桌面"，体验比不重启还差。
+所以：
+
+- `EntryAbility`：新增 `coldStart` 标记 —— **冷启动那次 `onForeground` 不算"闲置回来"**
+  （否则每次开机都白重启一遍）。第一次之后每次回前台才 `checkIdleRestart()`。
+- `onBackground()` 写 `last_background_at = Date.now()`，但**只写真实库**
+  （`Db.currentName() !== 'classout.db'` 直接 return）—— 演练沙箱不该覆盖这个时间戳。
+- 判定通过 → `AppStorage['restartToken']++`。
+- `Index`：`@StorageLink('restartToken') @Watch('onRestartRequested')` →
+  `restartAfterIdle()`：把 `tab/各抽屉/弹窗`全关掉、`statusText='正在重新启动…'`、
+  `loading=true`、`bootStep=bootExtra=bootExit=0`，再跑一遍 `init()` ——
+  用户看到的就是**加载页 + 就绪过场又放了一遍**（=重新启动的观感），
+  而日历同步、补生成下课待办都是 `init()` 的一部分，所以"必定理一遍提醒"这件事是真的。
+- 插队保护：`loading || guideBusy || bootExit > 0` 直接 return；**演练沙箱期间不重启**
+  （会把用户从演练里踢出去，而且 `init()` 会跑到沙箱库上），日志留
+  `idle restart skipped: guide active`。
+
+### 34.4 连续使用计时：`onPageShow` / `onPageHide`
+
+`Index` 里 `setInterval(60000)` 每分钟 `activeMin++`；
+`onPageShow` 开表、`onPageHide` 停表（切后台/锁屏期间不该继续数，否则"在用"这个前提就假了）。
+到 `isSyncBoundary(activeMin, syncIntervalMin)` 就 `runCalendarSync(false)`。
+
+### 34.5 同步本身 + 提示条（`SyncToast`）
+
+- `runCalendarSync(manual)` 的三个门槛：`syncing`（重入）、`guideActive`（**沙箱绝不同步** ——
+  会把演示课写进用户的系统日历）、`semester.id === 0`（还没建课）。
+- `doCalendarSync` 复用原有的 `syncReminders(ctx, semester)`，日志
+  `calendar sync (manual|auto): {...}`；`finally` 里保证动画至少亮 **1.2 秒**
+  （同步太快会一闪而过，看不见反馈）。
+- `SyncToast()`：**靠上方**浮着（`padding.top = this.topInset() + FLOAT_GAP`），
+  5 个点依次亮起（`PlayMode.Alternate` + `delay: i*140`，就是首页 Ubuntu 点阵那套），
+  两行字「正在与系统日历同步…」/「把上课与截止提醒重排一遍，避免漏提醒」；
+  `HitTestMode.None` —— 它只是提示，**绝不吞点击**；关掉动画时保持"半亮"静止。
+- 页头：原来「本地生成 · 无需联网」那行挪成**第三行**，右边加 `⟳ 立即与日历同步`
+  → `runCalendarSync(true)`（和自动同步**完全同一套**，只有日志里的 manual/auto 不同）。
+
+### 34.6 切到「待办」立刻补生成（`refreshMissedTodos`）
+
+- `TabItem` 的 `onClick` 里记 `was = this.tab`，`index === 1 && was !== 1` 才触发
+  （**每次切进来都补一次**，不是在待办页里点别的也补）。
+- `doRefreshMissedTodos()` → `generateMissedTodos(ctx, semester)`，日志
+  `todo tab: backfilled N todos`，然后 `todoReloadToken++`。
+- **为什么需要 `todoReloadToken`**：待办页是按 `tab` 条件渲染的，刚挂载那一刻列表已经
+  读完了库；补生成出来的新条目不会自己冒出来。`TodoInbox` 加
+  `@Prop @Watch('onReloadRequested') reloadToken`，收到就重读。
+  （这是"补生成了但界面没反应"这类 bug 的典型成因。）
+
+### 34.7 验证
+
+```bash
+./tools/domain-check/run.sh     # 524 项全绿（+27：SyncCadence 的规范化/边界/闲置判定）
+LANG=zh_CN.UTF-8 ./build.sh clean && LANG=zh_CN.UTF-8 ./build.sh assembleHap   # ERROR: 0 / 警告 6 条
+```
+
+变异测试：把 `isSyncBoundary` 的 `% n === 0` 改成 `% n === 1`、`shouldRestartAfterIdle`
+的 `>` 改成 `>=` → **FAIL 5 条**，恢复后全绿（说明这 27 条真的在盯边界）。
+
+| 项 | 真机结果（nova 15） |
+|---|---|
+| 设置页「日历同步」卡片 | 可见 5/10/15/30/60 胶囊；点「5 分钟」→ 文案立刻变「当前：每 5 分钟同步一次（默认 10 分钟）」；**测完已改回默认 10 分钟** |
+| 手动同步（页头按钮） | 页头第三行右侧「⟳ 立即与日历同步」；点它 → 上方弹出 5 点动画 + 「正在与系统日历同步…」；日志 `calendar sync (manual): {... "published":0,"enabled":true,"calendarEvents":36}` |
+| **自动同步（连续用满 n 分钟）** | ★ **已验**（装在 v1.5.0 的构建上）：间隔设为 5 分钟 → 冷启动 23:42:20 后一直停在前台不动 → **23:47:28** 日志 `calendar sync (auto): {...}` —— 正好是第 5 分钟，用户当时也亲眼看到了那个提示条 |
+| 切换到待办补生成 | 切到「待办」→ 日志 `todo tab: backfilled 0 todos`（当时没有漏生成的，所以是 0；刷新链路本身跑通） |
+| 装出来的版本 | 重装后再看「设置 → 关于」显示 **v1.5.0**（`AppScope/app.json5` 的 `versionName` 生效） |
+| 闲置重启 | ★ **已验**：间隔设成 5 分钟 → 按 Home 进后台（日志 `EntryAbility onBackground`）→ 等 5.5 分钟 → `aa start` 拉回前台：日志 `idle 330425 ms > 5 min, asking page to restart` + `idle restart: replay boot sequence`；**截图确认加载页整段重放了一遍**（初始化本地数据 ✓ / 载入课表与节次 ✓ / 补生成下课待办 进行中…），5 秒后跑完 `reminders synced` —— 即"闲置回来 = 重新启动 + 重排提醒"是真做了，不是假动画 |
+
+> ⚠️ 上面这条是**装 v1.5.0 之前**（当时的工作区代码）验的。验完发现一个连带 bug 并当场修掉：
+> `restartAfterIdle()` 里 `stopUseTicker()` 之后**没有重新开表**，而 `onPageShow` 不会因为这次
+> 重放再触发一次（页面一直是"显示中"）—— 于是重启动之后的**整个前台会话都不会再自动同步**。
+> 修法：`this.loading = true` 之后补一句 `this.startUseTicker()`（`startUseTicker` 本身幂等）。
+> 这是"关表和开表不对称"的典型漏法 —— 以后凡是写 `stopX()`，都要回头问一句谁负责 `startX()`。
+
+**另一条顺手发现的、与这轮无关的噪声**（不是这轮引入的，`published` 一直是 0）：
+
+```
+E ClassOUT: publish reminder failed: {"data":1700002,"code":1700002,
+  "message":"The number of reminders exceeds the limit."}
+I ClassOUT: reminders synced: published=0 class=16 ddl=13 block=3 brief=7 skipped=0
+W ClassOUT: agent reminder unavailable, falling back to system calendar
+```
+
+即**代理提醒（reminderAgent）配额在这台机器上不够**（要 39 条），所以每条都发失败，
+然后按既定设计**回落到系统日历**（`calendarEvents: 36`，提醒实际是好的）。
+`published=0` 早于这一轮（见 23:28 那次 `calendar sync (manual)` 日志），
+所以**不是回归**；但值得知道：这台机器上"代理提醒"这条路是死的，日历那条才是活的。
+`skippedByBudget=0` 说明 `ReminderScheduler` 自己的预算截断没起作用（配额是系统侧拒的）。
+
+### 34.8 这一轮改的文件
+
+| 文件 | 改了什么 |
+|---|---|
+| `domain/SyncCadence.ets` | **新增**：`n` 的规范化 / 整数倍判定 / 闲置判定（纯函数） |
+| `data/Prefs.ets` | `sync_interval_min` ↔ `'syncIntervalMin'`；`LAST_BG_KV='last_background_at'` |
+| `entryability/EntryAbility.ets` | `coldStart` 跳过冷启动那次 `onForeground`；`onBackground` 记时间（只在真实库）；`checkIdleRestart` → `restartToken++` |
+| `pages/Index.ets` | `activeMin` 计时（`onPageShow`/`onPageHide`）；`runCalendarSync/doCalendarSync`；`restartAfterIdle` 重放启动流程；`refreshMissedTodos`；页头第三行手动同步；`SyncToast` Builder；`TodoInbox` 传 `reloadToken` |
+| `view/SettingsPage.ets` | 「日历同步」卡片 + `pickSyncInterval` |
+| `view/TodoInbox.ets` | `@Prop @Watch('onReloadRequested') reloadToken` |
+| `tools/domain-check/run.sh` / `test.ts` | 拷贝 `SyncCadence.ets`；+27 条断言 |
+| `README.md` | 页头同步按钮、切页补生成、设置页「日历同步」行 + 两条新 FAQ；版本号 v1.5.0 |
+| `AppScope/app.json5` / `entry/oh-package.json5` | `versionName 1.5.0` / `versionCode 1005000` |

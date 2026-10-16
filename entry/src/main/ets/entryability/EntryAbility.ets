@@ -1,15 +1,27 @@
-import { AbilityConstant, UIAbility, Want } from '@kit.AbilityKit';
+import { AbilityConstant, UIAbility, Want, common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { rememberAbilityContext } from '../util/Ctx';
+import { Db } from '../data/Db';
+import { LAST_BG_KV, SYNC_INTERVAL_KEY, loadSyncInterval } from '../data/Prefs';
+import { shouldRestartAfterIdle } from '../domain/SyncCadence';
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'ClassOUT';
+/** 页面用 `@StorageLink` 订阅它（字面量），自增一次 = 请页面重放一次启动流程 */
+const RESTART_TOKEN_KEY: string = 'restartToken';
 
 export default class EntryAbility extends UIAbility {
+  /**
+   * 冷启动时 `onForeground` 也会被调一次 —— 那一次不该算"闲置太久回来"
+   * （冷启动本来就要整套初始化 + 重排日历）。所以第一次跳过。
+   */
+  private coldStart: boolean = true;
+
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     // 先把 context 存下来：后面所有页面取数据库连接都要用它
     rememberAbilityContext(this.context);
+    this.coldStart = true;
     hilog.info(DOMAIN, TAG, '%{public}s', 'EntryAbility onCreate');
   }
 
@@ -73,9 +85,57 @@ export default class EntryAbility extends UIAbility {
 
   onForeground(): void {
     hilog.info(DOMAIN, TAG, '%{public}s', 'EntryAbility onForeground');
+    if (this.coldStart) {
+      // 冷启动这一次不算"闲置回来"：页面自己会跑完整的 init（含重排日历）
+      this.coldStart = false;
+      return;
+    }
+    this.checkIdleRestart();
   }
 
   onBackground(): void {
     hilog.info(DOMAIN, TAG, '%{public}s', 'EntryAbility onBackground');
+    // 记下"进入后台的时刻"—— 回到前台时用它算闲置了多久。
+    // ⚠️ 写的是**真实库**的 kv；演练沙箱期间不该覆盖它（`Db.currentName()` 判断）。
+    if (Db.currentName() !== 'classout.db') {
+      return;
+    }
+    Db.setKv(this.context, LAST_BG_KV, `${Date.now()}`).catch((e: Object): void => {
+      hilog.warn(DOMAIN, TAG, 'record background time failed: %{public}s', JSON.stringify(e));
+    });
+  }
+
+  /**
+   * 用户 2026-10-16：「让应用在未使用超过 n min 后下次点开必定重新启动应用」。
+   *
+   * 这台机器的 SDK 里 `UIAbilityContext` **没有 restart**（只有 terminateSelf），
+   * 而且真把进程杀掉会让用户"点了图标却回到桌面"。所以走**页面重放启动流程**：
+   * 自增一个 AppStorage 计数，`Index` 收到后把界面切回加载页、重跑 init
+   *（补生成待办 + 重排日历）再播一遍就绪过场 —— 用户看到的就是"重新启动"。
+   */
+  private checkIdleRestart(): void {
+    this.doCheckIdleRestart().catch((e: Object): void => {
+      hilog.warn(DOMAIN, TAG, 'idle restart check failed: %{public}s', JSON.stringify(e));
+    });
+  }
+
+  private async doCheckIdleRestart(): Promise<void> {
+    const ctx: common.UIAbilityContext = this.context;
+    const raw: string = await Db.getKv(ctx, LAST_BG_KV);
+    if (raw.length === 0) {
+      return;
+    }
+    const last: number = parseInt(raw, 10);
+    const idleMs: number = Date.now() - (isNaN(last) ? 0 : last);
+    // 间隔优先用内存里那份（设置页改完立刻就生效），没有就现读库
+    const cached: number | undefined = AppStorage.get<number>(SYNC_INTERVAL_KEY);
+    const interval: number = cached === undefined ? await loadSyncInterval(ctx) : cached;
+    if (!shouldRestartAfterIdle(idleMs, interval)) {
+      return;
+    }
+    hilog.info(DOMAIN, TAG, 'idle %{public}d ms > %{public}d min, asking page to restart',
+      idleMs, interval);
+    const token: number | undefined = AppStorage.get<number>(RESTART_TOKEN_KEY);
+    AppStorage.setOrCreate(RESTART_TOKEN_KEY, (token === undefined ? 0 : token) + 1);
   }
 }

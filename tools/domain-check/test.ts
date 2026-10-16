@@ -18,6 +18,8 @@ import { CATEGORY_NAME_MAX, CategoryOption, LEGACY_OTHER, addCustomCategory,
 import { GuideTab, guideStepAt, guideStepCount, guideTabsValid, guideTextsNonEmpty,
   isLastGuideStep, nextGuideStep, prevGuideStep } from './Guide';
 import { PrivacySection, privacySections, privacyUpdatedAt } from './Privacy';
+import { SYNC_INTERVAL_CHOICES, SYNC_INTERVAL_DEFAULT, SYNC_INTERVAL_MAX, SYNC_INTERVAL_MIN,
+  isSyncBoundary, normalizeSyncInterval, shouldRestartAfterIdle } from './SyncCadence';
 import { maskAll, maskFromText, maskToText, maskHas } from './WeekMask';
 import { countdownText, formatDateTime, minToHHmm, parseDate, parseDateTime } from './DateUtil';
 import { computeDdl, renderTitle } from './TodoGenerator';
@@ -1389,6 +1391,39 @@ check('正文点名了日历权限的用途',
   `${privacySections().some((s: PrivacySection): boolean => s.body.indexOf('日历') >= 0)}`, 'true');
 check('正文里还留着待填的邮箱占位（上架前必须换成真邮箱）',
   `${privacySections().some((s: PrivacySection): boolean => s.body.indexOf('<在这里填你的邮箱>') >= 0)}`, 'true');
+
+// ---------- 日历同步节奏 / 闲置重启（用户 2026-10-16）----------
+console.log('【日历同步节奏：n 的整数倍 / 闲置超时】');
+
+check('默认 10 分钟', `${SYNC_INTERVAL_DEFAULT}`, '10');
+check('档位是 5/10/15/30/60', SYNC_INTERVAL_CHOICES.join(','), '5,10,15,30,60');
+check('坏值（0）→ 默认值', `${normalizeSyncInterval(0)}`, '10');
+check('坏值（NaN）→ 默认值', `${normalizeSyncInterval(Number.NaN)}`, '10');
+check('坏值（负数）→ 默认值', `${normalizeSyncInterval(-5)}`, '10');
+check('小数会被取整', `${normalizeSyncInterval(7.6)}`, '8');
+check('太小被夹到下限', `${normalizeSyncInterval(-100)}`, '10');
+check('超过下限一点点保留', `${normalizeSyncInterval(1)}`, `${SYNC_INTERVAL_MIN}`);
+check('太大被夹到上限', `${normalizeSyncInterval(9999)}`, `${SYNC_INTERVAL_MAX}`);
+
+check('第 0 分钟不同步（刚打开就弹很怪）', `${isSyncBoundary(0, 10)}`, 'false');
+check('第 10 分钟同步（n）', `${isSyncBoundary(10, 10)}`, 'true');
+check('第 20 分钟同步（2n）', `${isSyncBoundary(20, 10)}`, 'true');
+check('第 30 分钟同步（3n）', `${isSyncBoundary(30, 10)}`, 'true');
+check('第 9 分钟不同步', `${isSyncBoundary(9, 10)}`, 'false');
+check('第 11 分钟不同步', `${isSyncBoundary(11, 10)}`, 'false');
+check('换成 n=5：第 5/10/15 都同步',
+  `${isSyncBoundary(5, 5) && isSyncBoundary(10, 5) && isSyncBoundary(15, 5)}`, 'true');
+check('换成 n=5：第 6 分钟不同步', `${isSyncBoundary(6, 5)}`, 'false');
+
+check('闲置 0ms 不重启', `${shouldRestartAfterIdle(0, 10)}`, 'false');
+check('刚好等于 n 分钟**不**重启（用户说"超过"）',
+  `${shouldRestartAfterIdle(10 * 60 * 1000, 10)}`, 'false');
+check('超过 n 分钟就重启',
+  `${shouldRestartAfterIdle(10 * 60 * 1000 + 1, 10)}`, 'true');
+check('闲置很久当然重启',
+  `${shouldRestartAfterIdle(6 * 60 * 60 * 1000, 10)}`, 'true');
+check('时钟回拨（负数）不重启', `${shouldRestartAfterIdle(-1000, 10)}`, 'false');
+check('n=5 时 10 分钟就该重启', `${shouldRestartAfterIdle(10 * 60 * 1000, 5)}`, 'true');
 
 // ---------- 汇总 ----------
 console.log('');

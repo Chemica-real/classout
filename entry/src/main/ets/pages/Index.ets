@@ -22,9 +22,11 @@ import { BOOT_EXTRA_CAP_MS, BOOT_STEP_MS, DUR_BALL_DWELL, DUR_COLLAPSE, DUR_EXPA
   DUR_SPRAY, TYPE_MS, collapseCurve, curveOrLinear, dur, expandCurve, isMotionOn,
   loadMotionSetting, motionCurve } from '../view/Motion';
 import { WallpaperRepo } from '../data/WallpaperRepo';
-import { MOTTO_DEFAULT, NOTE_EXPANDED_KEY, PLAN_END_KEY, PLAN_START_KEY, TODO_CATEGORIES_KEY,
-  loadCustomCategories, loadMotto, loadNoteExpanded, loadPlanWindow } from '../data/Prefs';
+import { MOTTO_DEFAULT, NOTE_EXPANDED_KEY, PLAN_END_KEY, PLAN_START_KEY, SYNC_INTERVAL_KEY,
+  TODO_CATEGORIES_KEY, loadCustomCategories, loadMotto, loadNoteExpanded, loadPlanWindow,
+  loadSyncInterval } from '../data/Prefs';
 import { TimeWindow } from '../domain/PlanMath';
+import { SYNC_INTERVAL_DEFAULT, isSyncBoundary } from '../domain/SyncCadence';
 import { serializeCustomCategories } from '../domain/Categories';
 import { GuideStep, guideStepAt, guideStepCount, isLastGuideStep, nextGuideStep,
   prevGuideStep } from '../domain/Guide';
@@ -192,6 +194,28 @@ struct Index {
   @State guidePrompt: boolean = false;
   /** 正在切库/灌演示数据（挡一下输入，免得中途点进半截状态） */
   @State guideBusy: boolean = false;
+
+  // ---------------- 日历同步节奏（用户 2026-10-16）----------------
+  /**
+   * `n`（分钟）：连续使用到 n 的整数倍就自动同步一次；闲置超过 n 回到前台就重新启动。
+   * 设置页可改，默认 10。
+   */
+  @StorageLink('syncIntervalMin') syncIntervalMin: number = SYNC_INTERVAL_DEFAULT;
+  /**
+   * `EntryAbility` 判定"闲置太久、该重启动"时自增它；
+   * `@Watch` 收到就重放一遍启动流程（见 `restartAfterIdle`）。
+   */
+  @StorageLink('restartToken') @Watch('onRestartRequested') restartToken: number = 0;
+  /** 「正在与日历同步」提示条开着吗 */
+  @State syncing: boolean = false;
+  /** 提示条里的点阵动画开着吗（关掉动画时保持静止） */
+  @State syncPulse: boolean = false;
+  /** 连续使用了多少分钟（每分钟 +1；进后台就停） */
+  private activeMin: number = 0;
+  /** 上面那个计时器（-1 = 没在跑） */
+  private useTimer: number = -1;
+  /** 切到「待办」时补生成完，用它让 TodoInbox 重新读库 */
+  @State todoReloadToken: number = 0;
 
   // ---------------- 动画相关状态（见 view/Motion.ets）----------------
   /** 打字机：已经"打"出来的那部分启动文案 */
@@ -397,6 +421,8 @@ struct Index {
     AppStorage.setOrCreate(TODO_CATEGORIES_KEY, serializeCustomCategories(await loadCustomCategories(ctx)));
     // 备注区是单行还是大文本框：用户要求记住（待办编辑窗与计划编辑窗共用）
     AppStorage.setOrCreate(NOTE_EXPANDED_KEY, await loadNoteExpanded(ctx));
+    // 日历同步/闲置重启的间隔 n（分钟）
+    AppStorage.setOrCreate(SYNC_INTERVAL_KEY, await loadSyncInterval(ctx));
     // 动画总开关：AppStorage 是内存态，每次冷启动都要从 kv 读回来
     await loadMotionSetting(ctx);
     this.bootStep = 0;
@@ -703,6 +729,140 @@ struct Index {
       return;
     }
     this.setGuideStep(nextGuideStep(this.guideStep));
+  }
+
+  // ---------------- 日历同步 / 闲置重启 / 切页补生成（用户 2026-10-16）----------------
+
+  /** 页面显示（含从后台回来）：开始累计"连续使用时间" */
+  onPageShow(): void {
+    this.startUseTicker();
+  }
+
+  /** 页面隐藏（切后台 / 锁屏）：停止累计 —— 只有"真的在用"才该触发自动同步 */
+  onPageHide(): void {
+    this.stopUseTicker();
+  }
+
+  private startUseTicker(): void {
+    if (this.useTimer >= 0) {
+      return;
+    }
+    // 每分钟 +1；到 n 的整数倍就同步一次（n = 设置里的间隔）
+    this.useTimer = setInterval((): void => {
+      this.activeMin++;
+      if (isSyncBoundary(this.activeMin, this.syncIntervalMin)) {
+        this.runCalendarSync(false);
+      }
+    }, 60000);
+  }
+
+  private stopUseTicker(): void {
+    if (this.useTimer >= 0) {
+      clearInterval(this.useTimer);
+      this.useTimer = -1;
+    }
+  }
+
+  /**
+   * 与系统日历同步一次（把上课 / 截止提醒重排一遍）。
+   *
+   * `manual = true` 来自页头的「立即与日历同步」；`false` 是"连续使用到 n 的整数倍"自动触发。
+   * ⚠️ **演练沙箱期间绝不同步** —— 那会把演示课写进用户的系统日历（真实数据被污染）。
+   */
+  private runCalendarSync(manual: boolean): void {
+    if (this.syncing || this.guideActive || this.semester.id === 0) {
+      return;
+    }
+    this.doCalendarSync(manual).catch((e: Object): void => {
+      this.syncing = false;
+      this.syncPulse = false;
+      hilog.error(DOMAIN, TAG, 'calendar sync failed: %{public}s', JSON.stringify(e));
+    });
+  }
+
+  private async doCalendarSync(manual: boolean): Promise<void> {
+    const ctx: common.UIAbilityContext = this.context();
+    this.syncing = true;
+    this.syncPulse = this.motionOn;
+    const startedAt: number = Date.now();
+    try {
+      const plan: ReminderPlan = await syncReminders(ctx, this.semester);
+      hilog.info(DOMAIN, TAG, 'calendar sync (%{public}s): %{public}s',
+        manual ? 'manual' : 'auto', JSON.stringify(plan));
+    } finally {
+      // 同步很快时动画会一闪而过，至少让它亮 1.2 秒
+      const wait: number = 1200 - (Date.now() - startedAt);
+      if (wait > 0) {
+        await new Promise<void>((resolve: () => void): void => {
+          setTimeout(resolve, wait);
+        });
+      }
+      this.syncing = false;
+      this.syncPulse = false;
+    }
+  }
+
+  /** `EntryAbility` 判定"闲置太久"→ 重放启动流程（用户看到的 = 重新启动） */
+  private onRestartRequested(): void {
+    this.restartAfterIdle();
+  }
+
+  private restartAfterIdle(): void {
+    // 正在启动 / 在切库 / 还在播过场 —— 都别插队
+    if (this.loading || this.guideBusy || this.bootExit > 0) {
+      return;
+    }
+    // 演练沙箱里不重启：会把用户从演练里踢出去，而且 init 会跑到沙箱库上
+    if (this.guideActive) {
+      hilog.info(DOMAIN, TAG, '%{public}s', 'idle restart skipped: guide active');
+      return;
+    }
+    hilog.info(DOMAIN, TAG, '%{public}s', 'idle restart: replay boot sequence');
+    this.stopUseTicker();
+    this.activeMin = 0;
+    this.guidePrompt = false;
+    this.syncing = false;
+    this.syncPulse = false;
+    this.sessionSheet = false;
+    this.adjustSheet = false;
+    this.extraSheet = false;
+    this.showManager = false;
+    this.pageModalOpen = false;
+    this.tab = 0;
+    this.statusText = '正在重新启动…';
+    this.typedStatus = '';
+    this.bootStep = 0;
+    this.bootExtra = 0;
+    this.bootExit = 0;
+    this.loading = true;
+    // ⚠️ 计时器要**重新开**：`onPageShow` 不会因为这次重放而再触发一次
+    // （页面一直是"显示中"），只停不开的话，这一整个前台会话都不会再自动同步。
+    this.startUseTicker();
+    this.init().catch((e: Object): void => {
+      this.loading = false;
+      hilog.error(DOMAIN, TAG, 'replay init failed: %{public}s', JSON.stringify(e));
+    });
+  }
+
+  /**
+   * 用户：「每次切换到待办列时，立即补生成下课列表，确保不会有遗漏」。
+   * 生成完自增 `todoReloadToken` 让待办页重读库 —— 它是按 `tab` 条件渲染的，
+   * 刚挂载时列表还是旧的，补生成出来的新条目要靠这个刷新才会出现。
+   */
+  private refreshMissedTodos(): void {
+    this.doRefreshMissedTodos().catch((e: Object): void => {
+      hilog.warn(DOMAIN, TAG, 'refresh missed todos failed: %{public}s', JSON.stringify(e));
+    });
+  }
+
+  private async doRefreshMissedTodos(): Promise<void> {
+    if (this.semester.id === 0) {
+      return;
+    }
+    const ctx: common.UIAbilityContext = this.context();
+    const outcome: GenerationOutcome = await generateMissedTodos(ctx, this.semester);
+    hilog.info(DOMAIN, TAG, 'todo tab: backfilled %{public}d todos', outcome.created);
+    this.todoReloadToken = this.todoReloadToken + 1;
   }
 
   private sectionHeight(section: number): number {
@@ -1085,9 +1245,6 @@ struct Index {
       .width('100%')
 
       Row() {
-        Text('本地生成 · 无需联网')
-          .fontSize(11)
-          .fontColor('#8FC9A0')
         Blank()
         Text('＋补课')
           .fontSize(12)
@@ -1120,6 +1277,22 @@ struct Index {
       }
       .width('100%')
       .padding({ top: 8 })
+
+      // 第三行：左边还是那句"离线"声明，右边是**手动同步日历**（用户 2026-10-16 要求）。
+      // 点它 = 走和"用到 n 分钟自动同步"完全相同的那套：页面上方弹出同步提示 + 真的重排。
+      Row() {
+        Text('本地生成 · 无需联网')
+          .fontSize(11)
+          .fontColor('#8FC9A0')
+        Blank()
+        Text('⟳ 立即与日历同步')
+          .fontSize(12)
+          .fontColor('#8FC9A0')
+          .padding({ left: 8, right: 2, top: 2, bottom: 2 })
+          .onClick((): void => this.runCalendarSync(true))
+      }
+      .width('100%')
+      .padding({ top: 6 })
     }
     .width('100%')
     .padding({ left: 16, right: 16, top: 12, bottom: 10 })
@@ -1298,7 +1471,13 @@ struct Index {
     .onClick((): void => {
       // ⚠️ 切标签**不做任何过渡**：用户实测反馈"切菜单的动画太丑太鸡肋"。
       // 页面直接换掉最干净 —— 别在这里加淡入/位移/扫光。
+      const was: number = this.tab;
       this.tab = index;
+      // 用户 2026-10-16：「每次切换到待办列时，立即补生成下课列表，确保不会有遗漏」。
+      // 补生成是异步的，完成后自增 token 让待办页重读库（见 refreshMissedTodos）。
+      if (index === 1 && was !== 1) {
+        this.refreshMissedTodos();
+      }
     })
   }
 
@@ -1959,6 +2138,57 @@ struct Index {
     .backgroundColor('rgba(12,18,28,0.55)')
   }
 
+  /**
+   * 「正在与日历同步」提示条 —— **在页面靠上方**弹出（用户 2026-10-16）。
+   *
+   * 动画沿用首页那套 **Ubuntu 开机点阵**（5 个点依次亮起、循环）：
+   * 只动 opacity / scale，关掉动画时保持"半亮"的静止样子。
+   * `HitTestMode.None`：它只是提示，绝不吞点击。
+   */
+  @Builder
+  SyncToast() {
+    Column() {
+      Column() {
+        Row() {
+          ForEach([0, 1, 2, 3, 4], (i: number) => {
+            Column()
+              .width(8)
+              .height(8)
+              .borderRadius(4)
+              .backgroundColor('#7FA8FF')
+              .opacity(this.syncPulse ? 1 : (this.motionOn ? 0.18 : 0.55))
+              .scale({ x: this.syncPulse ? 1.18 : 0.85, y: this.syncPulse ? 1.18 : 0.85 })
+              .animation({
+                duration: dur(660),
+                curve: Curve.EaseInOut,
+                iterations: -1,
+                playMode: PlayMode.Alternate,
+                delay: dur(i * 140)
+              })
+              .margin({ right: i < 4 ? 9 : 0 })
+          }, (i: number) => `sync-dot-${i}`)
+        }
+        .justifyContent(FlexAlign.Center)
+
+        Text('正在与系统日历同步…')
+          .fontSize(12)
+          .fontColor('#F2F5FA')
+          .margin({ top: 8 })
+        Text('把上课与截止提醒重排一遍，避免漏提醒')
+          .fontSize(10)
+          .fontColor('#8B97AC')
+          .margin({ top: 2 })
+      }
+      .padding(14)
+      .glassSheet()
+    }
+    .width('100%')
+    .height('100%')
+    .padding({ left: FLOAT_SIDE, right: FLOAT_SIDE, top: this.topInset() + FLOAT_GAP })
+    .justifyContent(FlexAlign.Start)
+    .hitTestBehavior(HitTestMode.None)
+  }
+
   /** 切库/灌演示数据时挡一下（那一瞬间数据是半截的） */
   @Builder
   GuideBusyLayer() {
@@ -2023,6 +2253,8 @@ struct Index {
                 semesterId: this.semester.id,
                 topInset: this.topInset(),
                 bottomInset: this.bottomInset(),
+                // 切到「待办」时 Index 会先补生成下课待办，完成后自增它让这里重读库
+                reloadToken: this.todoReloadToken,
                 openTodoId: this.pendingTodoId,
                 onOpenTodoConsumed: (): void => {
                   this.pendingTodoId = 0;
@@ -2082,6 +2314,11 @@ struct Index {
 
       if (!this.pageModalOpen) {
         this.FloatingBars()
+      }
+
+      // 「正在与日历同步」提示条：靠上方浮着（不吞点击，几秒后自己消失）
+      if (this.syncing) {
+        this.SyncToast()
       }
 
       // ---- 加载页 + 就绪过场层（见 playBootExit）----

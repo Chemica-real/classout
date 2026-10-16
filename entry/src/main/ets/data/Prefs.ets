@@ -3,6 +3,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { Db } from './Db';
 import { DEFAULT_WINDOW, TimeWindow, formatWindow, normalizeWindow, parseWindow } from '../domain/PlanMath';
 import { parseCustomCategories, serializeCustomCategories } from '../domain/Categories';
+import { SYNC_INTERVAL_DEFAULT, normalizeSyncInterval } from '../domain/SyncCadence';
 
 /**
  * 首页标语（ClassOUT 字标下面那一行）。
@@ -146,6 +147,41 @@ export async function savePlanWindow(context: common.Context,
     await Db.setKv(context, PLAN_WINDOW_KV, formatWindow(n));
   } catch (e) {
     hilog.warn(0x0000, 'ClassOUT', 'save plan window failed: %{public}s', JSON.stringify(e));
+  }
+  return n;
+}
+
+// ---------------- 日历同步节奏 / 闲置重启 ----------------
+
+/**
+ * 用户 2026-10-16：一个 `n`（分钟）管两件事 ——
+ * ① 连续使用到 n 的整数倍时自动与日历同步一次；② 闲置超过 n 后回到前台就重新启动。
+ * 默认 10 分钟，设置页可选 5/10/15/30/60。
+ *
+ * ⚠️ `@StorageLink` 的键名必须写字面量 `'syncIntervalMin'`。
+ */
+export const SYNC_INTERVAL_KEY: string = 'syncIntervalMin';
+export const SYNC_INTERVAL_KV: string = 'sync_interval_min';
+/** 上次进入后台的时刻（毫秒时间戳，存真实库 kv） */
+export const LAST_BG_KV: string = 'last_background_at';
+
+export async function loadSyncInterval(context: common.Context): Promise<number> {
+  try {
+    const raw: string = await Db.getKv(context, SYNC_INTERVAL_KV);
+    return normalizeSyncInterval(raw.length > 0 ? parseInt(raw, 10) : SYNC_INTERVAL_DEFAULT);
+  } catch (e) {
+    hilog.warn(0x0000, 'ClassOUT', 'load sync interval failed: %{public}s', JSON.stringify(e));
+    return SYNC_INTERVAL_DEFAULT;
+  }
+}
+
+export async function saveSyncInterval(context: common.Context, min: number): Promise<number> {
+  const n: number = normalizeSyncInterval(min);
+  AppStorage.setOrCreate(SYNC_INTERVAL_KEY, n);
+  try {
+    await Db.setKv(context, SYNC_INTERVAL_KV, `${n}`);
+  } catch (e) {
+    hilog.warn(0x0000, 'ClassOUT', 'save sync interval failed: %{public}s', JSON.stringify(e));
   }
   return n;
 }
