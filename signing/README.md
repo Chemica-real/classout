@@ -78,7 +78,7 @@ cd ..
 | **API 版本** | **26**（对应 HarmonyOS 7）|
 | 软件版本 | `7.0.0.109(SP6C00E105R5P3)` |
 | OpenHarmony | `7.0.0.105` |
-| UDID | `<UDID>` |
+| UDID | 本机 `./hdc.sh list targets` / `bm get --udid` 现查（**别写进仓库**，这是公网仓库）|
 | hdc 连接 | ✅ 正常（`./hdc.sh list targets` 能看到）|
 
 > 注意：因为 API 26，代理提醒上限是 **64 条**（API ≤25 才是 30）。我们的预算按 60 排。

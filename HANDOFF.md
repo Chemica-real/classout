@@ -201,14 +201,12 @@ git check-ignore -v signing/local.env signing/classout.p12      # 应各自打�
 |---|---|
 | 型号 | `PSN-AL00`（nova 15）|
 | 系统 | HarmonyOS `7.0.0.109(SP6C00E105R5P3)`，**API 26**，OpenHarmony 7.0.0.105 |
-| UDID | `<UDID>` |
-| 设备序列号 | `<设备序列号>` |
+| UDID / 设备序列号 | **不入库**（这是**公网仓库**！）：本机用 `./hdc.sh list targets` 现查；调试 Profile 里绑的就是那两台 |
 | 包名 | `com.chemica.classout` |
 | 证书 | 用户实名调试证书，**有效期到 2027-10-13**（证书链：华为根 CA → 开发者关系 CA → 用户）|
 | Profile | 调试型，`device-ids` 里是**两台设备的 UDID**（见 §23.8），`acls.allowed-acls: []`（空的，见 §6）|
 
-**第二台真机**：`ALN-AL10`（HUAWEI），序列号 `<设备序列号>`，
-UDID `<UDID>` ——
+**第二台真机**：`ALN-AL10`（HUAWEI），型号而已，序列号/UDID **不写进来**（见上）——
 2026-10-14 已加进调试 Profile 并装机成功，过程与坑见 **§23.8**。
 
 **调试签名的应用只在「开发者模式」开着时能跑**；鸿蒙手机没有 `.hap` 安装器，装包只能靠 `hdc`。
@@ -804,6 +802,21 @@ cp /tmp/pm.bak entry/src/main/ets/domain/PlanMath.ets
   那一行的「撤销」（那行 `撤销` 只有 12vp、紧挨着文字、且**无确认**）。已如实告知用户，
   并建议：① 需要就一分钟重建；② 定期用「备份与恢复 → 导出备份」留一份。
 - 下一任可以做的加固：给「撤销」加一次确认（用户尚未拍板，别擅自加）。
+
+### 9.2 ⚠️ 隐私：这个仓库是**公开**的，而里面还留着用户的真实课表和老师姓名
+
+- 2026-10-16 我核了一遍：`gitee.com/the-person-on-the-tree/classout` **匿名可访问**（HTTP 200），
+  而 `tools/domain-check/SeedData.ts` 里有**用户真实课表的 12 门课**（含老师姓名与教室：
+  课甲 / 课乙 / 课丙 / 课丁 / 课戊 / 课己 / 课庚 / 课程辛 / 课壬 + 两门习题课），
+  `HANDOFF.md` §9 也列了同样的内容。
+- 设备序列号 / UDID 我**已经从 HEAD 里删掉**（`HANDOFF.md` §3、`signing/README.md`），
+  但**历史提交（含 v1.0.0…v1.5.0 的 tag）里还在** —— 清历史要重写 + 强推，太危险，
+  所以没动（`v1.0.0` 更是明令不许移动）。
+- 已告知用户，给了两条路：① 把 Gitee 仓库**设为私有**（最省事、也最彻底，历史一起藏起来）；
+  ② 把 `SeedData.ts` / `HANDOFF` 里的课表脱敏成「课程A / 老师甲 / 教室1」再提交
+  （注意 `test.ts` 里若引用了具体课名要一起改；但历史仍可见，所以只算治标）。
+- **给下一任**：往这个仓库写任何东西之前，先问一句"这算不算用户的个人信息"。
+  序列号、UDID、真实课表、老师姓名、截图里的壁纸/课表，都算。
 
 ---
 
@@ -2386,8 +2399,7 @@ fatal: 无法读取远程仓库。
 2026-10-14：用户把另一台手机插上电脑，要在这台上也装 ClassOUT。**这条流程以前只写在
 §22.5 的 A 里、从没真走过**，现在完整走通了一遍，记下来当模板。
 
-**新设备**：`ALN-AL10`（HUAWEI），序列号 `<设备序列号>`，
-UDID `<UDID>`。
+**新设备**：`ALN-AL10`（HUAWEI）。（序列号/UDID 见 `./hdc.sh list targets`；**别写进仓库**。）
 
 **先做了个诊断**（省得瞎猜）：直接拿现有的签名包装，报
 
@@ -2428,7 +2440,7 @@ strings signing/*.p7b | grep -o '"device-ids":\[[^]]*\]'      # 排除 verify-*.
 真出现两台一起插的情况，要么先拔掉一台，要么手工装：
 
 ```bash
-./hdc.sh -t <设备序列号> install -r entry/build/default/outputs/default/entry-default-signed.hap
+./hdc.sh -t <那台设备的序列号> install -r entry/build/default/outputs/default/entry-default-signed.hap
 ```
 
 ---
@@ -2774,7 +2786,7 @@ git tag -a v1.1.0 -m "…" && git push origin master && git push origin v1.1.0
 ```bash
 ./tools/domain-check/run.sh     # 447 项全绿（422 → 447：+时间窗半小时/存取、补课+换教室合并、ddl 夹终点）
 LANG=zh_CN.UTF-8 ./build.sh clean && LANG=zh_CN.UTF-8 ./build.sh assembleHap   # ERROR: 0 / 警告 6 条
-./sign-and-install.sh --install # 装机成功（本机连的是 <设备序列号>）
+./sign-and-install.sh --install # 装机成功（连的是用户那台 nova 15）
 ```
 
 变异测试（都确认会 FAIL，再恢复全绿）：
