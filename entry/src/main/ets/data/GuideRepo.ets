@@ -36,7 +36,7 @@ interface DemoCourseSpec {
  */
 const DEMO_COURSES: DemoCourseSpec[] = [
   {
-    name: '高等数学', shortName: '高数', teacher: '王老师', location: '教学楼101', colorIndex: 2,
+    name: '高等数学', shortName: '高数', teacher: '王老师', location: '明理101', colorIndex: 2,
     rules: [[1, 1, 2, 0], [3, 3, 4, 0], [3, 10, 11, 1]]
   },
   {
@@ -48,7 +48,7 @@ const DEMO_COURSES: DemoCourseSpec[] = [
     rules: [[4, 7, 8, 0]]
   },
   {
-    name: '线性代数', shortName: '线代', teacher: '刘老师', location: '教学楼408', colorIndex: 0,
+    name: '线性代数', shortName: '线代', teacher: '刘老师', location: '明理408', colorIndex: 0,
     rules: [[5, 3, 4, 0]]
   }
 ];

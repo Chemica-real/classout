@@ -10,7 +10,8 @@ ClassOUT 是一款**纯离线鸿蒙原生（ArkTS）「课表 + 待办 + 计划�
 已成功签名并**安装在用户的真机（华为 nova 15）上运行**，启动无崩溃、种子课表渲染正确、
 自动生成待办跑通、提醒已落入系统日历。
 
-**当前状态：v1.5.0（上架准备中，**尚未提交审核**）**。
+**当前状态：v1.5.0（上架准备中，**尚未提交审核**）**。⚠️ 本地 git 历史**已重写**
+（清 UDID + 真实课表，见 **§35**），**还没强推** —— 远端仍是旧历史，等用户点头。
 健康度：干净构建 `ERROR: 0`、警告 6 条（均为刻意保留）、离线断言 **524 项全绿**、
 工作区干净。已推的 tag：`v1.4.0`（`v1.0.0` 那次错位与强推见 §22.7 / §23.7，**v1.0.0 保持不动**）。
 最新提交用 `git log -1` 看。
@@ -3209,7 +3210,7 @@ README 从 v1.0.0 时代那版重写成 11 节，补齐了这一路加的东西�
 设置页九张卡片、隐私与备份、11 条 FAQ、许可证（**图标已改成自绘，那条"图标来自《明日方舟》"
 的声明随之作废**）、给开发者。
 
-**截图（8 张，全在 `docs/manual/`）全部重拍**，做法值得记：
+**截图（8 张，全在 `docs/manual/`）全部重拍**，做法值得记（后来又加了第 9 张，见 §35.6）：
 
 | 目的 | 做法 |
 |---|---|
@@ -3461,3 +3462,104 @@ W ClassOUT: agent reminder unavailable, falling back to system calendar
 | `tools/domain-check/run.sh` / `test.ts` | 拷贝 `SyncCadence.ets`；+27 条断言 |
 | `README.md` | 页头同步按钮、切页补生成、设置页「日历同步」行 + 两条新 FAQ；版本号 v1.5.0 |
 | `AppScope/app.json5` / `entry/oh-package.json5` | `versionName 1.5.0` / `versionCode 1005000` |
+
+
+## 35. 2026-10-17 隐私清除（**重写 git 历史**）+ README 截图刷新
+
+用户拍板：**可以重写整个仓库**，把历史里每一个含 UDID 的提交都改掉；顺带把真实课表也一起清。
+（原话："可不可以重构整个 git 仓库，把历史中每一个含有 UDID 的节点删了/更改，我自己的课表其实无所谓"。）
+
+### 35.1 侦察：泄漏面到底有多大（先查再动手）
+
+| 项 | 结果 |
+|---|---|
+| 公网可见？ | ✅ 是。`https://gitee.com/the-person-on-the-tree/classout` 匿名 HTTP 200，HANDOFF 都能直接翻 |
+| 历史里的 UDID | **只有 2 个**（用户 + 同学），40+ 位十六进制串全库扫一遍没有第三个 |
+| 历史里的序列号 | 2 个（本机 + 同学那台），出现在初始提交 `693177b`、`95c8785` 等少数几个提交 |
+| 提交信息里有没有 | ❌ 没有（`git log --format=%B | grep`） |
+| 密钥类文件 | ✅ **从来没提交过**：`signing/local.env`（口令）、`classout.p12`（私钥库）、`ClassOUT.cer`（实名证书）、`*.p7b` 全是 0 个提交 —— 只有 `.example` 和 README 入库 |
+| 历史里的图片 | 只有 `docs/manual/*.jpg` + 图标，没有别的个人截图文件 |
+| 真实课表 | `tools/domain-check/SeedData.ts`（12 门课 + 老师姓名 + 教室）、`HANDOFF.md` / `TESTING.md` / `PLAN_REDESIGN.md`、`GuideRepo.ets`（演练演示数据里混进了两个**真实教室**） |
+
+### 35.2 ★ 做法：`git filter-branch --tree-filter`（本机没有 git-filter-repo）
+
+```bash
+# 1) 先做一份完整镜像备份（14 MB）—— 这是后悔药，重写全程别删
+git clone --mirror . /home/chemica/ChemicaWorkspace/ClassOUT-history-backup-20261017-0001.git
+# 2) 重写（71 个提交，约 1 分钟）
+FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch --force \
+  --tree-filter '/tmp/tree-scrub2.sh' --tag-name-filter cat -- --branches --tags
+```
+
+`--tree-filter` 的脚本干两件事：① 命中敏感串的文本文件跑 `sed -i -f /tmp/scrub.sed`；
+② 历史里的 `docs/manual/*.jpg` **一律换成当前这套中性版**（旧版可能拍到真机桌面/壁纸）。
+
+> ### ⚠️⚠️ 这一轮最大的坑：`--tree-filter` 的脚本不能用 `#!/bin/sh` + `read -d`
+> 这个系统 `/bin/sh` 是 **dash**，`read` **不支持 `-d`**。第一版脚本写成
+> `git ls-files -z | while IFS= read -r -d '' f` → 每行都报 `read: Illegal option -d`，
+> **循环体一次都没进**，于是"重写成功"但文字一个都没改（只有图片被换掉，所以 SHA 变了、
+> 看起来像成功了）。教训：
+> 1. 脚本写 `#!/bin/bash`（或干脆别用 `read -d`）；
+> 2. **别信 exit 0** —— 要看"改了多少"（我在脚本里 `echo` 命中文件名到 `/tmp/scrub-hits.log`，
+>    并且在**临时克隆**里先试一遍：`git clone --mirror` 到 `/tmp/scratch2` 试跑，确认 0 残留再动真仓库）；
+> 3. 收尾必查：`git diff <重写前 HEAD> HEAD` 必须**为空**（内容一个字都不该变），
+>    再逐提交扫一遍敏感串。
+
+### 35.3 替换映射（都写进 `/tmp/scrub.sed`）
+
+| 类别 | 映射 |
+|---|---|
+| 设备 | 2 个设备序列号 → `<设备序列号>`；2 个 64 位 UDID（用户那台 + 同学那台）→ `<UDID>` |
+| 课名 | 9 门正课 + 3 门习题课 → **课程甲 / 课程乙 / 课程丙 / 课程丁 / 课程戊 / 课程己 / 课程庚 / 课程辛 / 课程壬**（＋「课程X习题课」），简称另成一套：**课甲 / 课乙 / 课丙 / 课丁 / 课戊 / 课己 / 课庚 / 课壬** |
+| 老师 | 12 个姓名 → **老师甲 … 老师丑** |
+| 教室 | 8 个具体房间（三个教学楼）→ **教学楼101/109/203/309/406/407/408**；一个体育馆名 → **体育馆**；`MOOC` → **在线** |
+
+> **长串一定要排在前面**（带「习题课」的长名要排在它对应的短名之前，「XX传习」要排在「XX」之前），
+> 否则会被短串先切掉一半。课名/简称分开映射（`课程甲` / `课甲`）是为了**保持"名称≠简称"这个不变量**，
+> 不然两边都变成同一个串，断言里那些"名称与简称不同"的语义就没了。
+
+### 35.4 验证（三件事都做了才敢说"洗掉了"）
+
+```bash
+git diff <重写前 HEAD> HEAD          # 必须为空：重写只动历史，HEAD 内容一字不变
+git rev-list master | while read c; do git grep -I -h -o -E '<所有敏感串>' $c -- .; done | sort -u
+./tools/domain-check/run.sh          # 524 项全绿（课名两边一起换，所以断言不受影响）
+```
+
+结果：全历史 blob 级扫描只剩 `理教101` / `理教202` —— 那是 `test.ts` 里**自己编的**
+换教室测试值（不是用户的房间），保留。工作区干净，`git status` 空。
+
+### 35.5 ⚠️ 状态：**重写只在本地，还没推**
+
+用户要求"先本地重写，等我看过再推"。所以现在：
+
+- 本地 `master` + 6 个 tag 都已重写（`v1.0.0 → e0dd7079`、`v1.5.0 → fe8cfb3c` 等），
+  **远端还是旧的**（旧 SHA 仍然公网可见，包括那 2 个 UDID）。
+- 后悔药有两份：镜像备份 `/home/chemica/ChemicaWorkspace/ClassOUT-history-backup-20261017-0001.git`
+  和本地的 `.git/refs/original/*`。**推之前别删这两个。**
+- 得到用户同意后要**强推**：`git push --force origin master` + `git push --force --tags origin`
+  （6 个 tag 的对象都得换，包括 `v1.0.0` —— 注意：传下来的"v1.0.0 不许移动"那条规矩，
+  在"重写历史"这个决定下**已经不适用**了，用户是知情的）。
+- 推完还要知道：Gitee 侧旧对象可能过一段时间才回收；**之前克隆过的人手上仍有旧历史**。
+
+### 35.6 README 截图刷新（01 重拍 + 09 新增）
+
+起因：页头多了第三行「⟳ 立即与日历同步」，`01-timetable.jpg` 过时了；设置页的
+「日历同步」卡片也该有一张图。做法沿用 §32.4，但**补丁比上次少**：
+
+| 需要补的 | 怎么补 | 说明 |
+|---|---|---|
+| 不挂引导条 | `bottomInset()` 里 `const guide = 0`；渲染处 `if (false) { this.GuideBar() }` | 否则每张图底部压一条 |
+| 不用用户的壁纸 | `AppStorage.setOrCreate('wallpaper', '')`（`init` 与 `reloadPrefsFromDb` 各一处） | ⚠️ **必须打这个补丁**：进沙箱时 `doStartGuide()` **不**调 `reloadPrefsFromDb()`，所以壁纸/标语/自定义类型还是**真实库**那份（这是取舍，不是 bug；`exitGuide()` 才重读） |
+| 标语 / 自定义类型 | **不用补** | 上面那份"真实库的偏好"在截图里没入镜（09 只拍到提醒/日历同步/不可排时段） |
+
+顺手改了个**真源码**：`GuideRepo.ets` 的演示教室从 `教学楼101/408`（6 字，在课表格子里被截成
+「教学…」）改成 `明理101/408`（5 字，整格显示）。
+
+- 产物：`docs/manual/01-timetable.jpg`（重拍，含页头同步按钮 + 中性教室名）、
+  新 `docs/manual/09-sync.jpg`（设置页的提醒 + 日历同步卡片）；
+  README §7 表格后加了一行引用它。其余 7 张没动（`05-manager` 之类不拍教室名，不脏）。
+- 补丁**全部还原**并用 `git diff --stat` 确认过（只剩 `GuideRepo.ets` 那 2 行真改动），
+  然后重新构建 + 装机，手机上现在是**干净构建**。
+- 沙箱退出用 `aa force-stop` + 重启（冷启动 `GuideRepo.cleanupDemoFile` 兜底删沙箱，
+  日志 `demo sandbox db deleted: classout_demo.db`），确认回到真实库（`大一上 / 第 6 周`）。
