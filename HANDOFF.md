@@ -3541,7 +3541,8 @@ GIT_SSH_COMMAND="ssh -F /dev/null" git push --force --tags origin
 
 - 结果：`master 739f15d → 4ce297f (forced update)`，6 个 tag 全部 forced update
   （`v1.0.0 → e0dd7079`、`v1.1.0 → 1ac9575`、`v1.2.0 → 0ec2494`、`v1.3.0 → b50e292`、
-  `v1.4.0 → 40b33ff`、`v1.5.0 → fe8cfb3`）。
+  `v1.4.0 → 40b33ff`；`v1.5.0` 随后**又往前挪了一次**到"当轮最后一个提交"，
+  好让 tag 里也带上重拍后的截图与最终文档 —— 具体 SHA 用 `git rev-parse v1.5.0` 现查）。
   注意：传下来的"v1.0.0 不许移动"那条规矩，在"重写历史"这个决定下**已经作废**，用户是知情的。
 - **远端侧验证**（别只看 push 的 exit code）：重新 `git clone --mirror` 一份到 `/tmp`，
   对它 `git rev-list --all` 逐提交逐 blob 扫一遍敏感串 → **零命中**，`master = 4ce297f`、73 个提交。
@@ -3551,6 +3552,11 @@ GIT_SSH_COMMAND="ssh -F /dev/null" git push --force --tags origin
   `git rev-list --all` 只剩 73 个提交、全 refs 扫描零命中、`git fsck` 干净。
 - **后悔药只剩一份**：镜像备份 `/home/chemica/ChemicaWorkspace/ClassOUT-history-backup-20261017-0001.git`
   （14 MB，**没删**）。用户确认没问题后可以自己删掉。
+- ⚠️ **一个已知的、故意不处理的残留**：`v1.0.0`…`v1.4.0` 这些**历史 tag 里的截图**，
+  课表格子上仍然印着两个真实教室号（二进制图片，`sed` 改不了；重写时是把历史图片换成
+  "重写那一刻的中性一套"，而那一套的 `01-timetable.jpg` 还没重拍）。用户明确说过
+  "我自己的课表其实无所谓"，而且那只是两个房间号、不含姓名 —— 要清就得**再重写一次 + 再强推一次**，
+  代价大于收益，所以留着。**最新提交里的 `01-timetable.jpg` / `09-sync.jpg` 都是干净的。**
 - ⚠️ 仍然要知道的两件事：① Gitee 侧**旧对象可能要过一段时间才被回收**，
   在那之前旧 SHA 直链理论上还能打开；② **之前克隆过这个仓库的人，手上仍然有旧历史**
   （公开仓库没法远程"召回"，这是重写历史的固有代价）。真想彻底安心就把仓库设为私有。
