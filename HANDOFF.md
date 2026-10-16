@@ -10,8 +10,9 @@ ClassOUT 是一款**纯离线鸿蒙原生（ArkTS）「课表 + 待办 + 计划�
 已成功签名并**安装在用户的真机（华为 nova 15）上运行**，启动无崩溃、种子课表渲染正确、
 自动生成待办跑通、提醒已落入系统日历。
 
-**当前状态：v1.5.0（上架准备中，**尚未提交审核**）**。⚠️ 本地 git 历史**已重写**
-（清 UDID + 真实课表，见 **§35**），**还没强推** —— 远端仍是旧历史，等用户点头。
+**当前状态：v1.5.0（上架准备中，**尚未提交审核**）**。⚠️ git 历史**已重写并强推**
+（清掉 UDID + 真实课表，见 **§35**）—— 远端、tag、本地都是新 SHAs，旧 SHA 只在
+`ClassOUT-history-backup-*.git` 那份镜像备份里。
 健康度：干净构建 `ERROR: 0`、警告 6 条（均为刻意保留）、离线断言 **524 项全绿**、
 工作区干净。已推的 tag：`v1.4.0`（`v1.0.0` 那次错位与强推见 §22.7 / §23.7，**v1.0.0 保持不动**）。
 最新提交用 `git log -1` 看。
@@ -3529,18 +3530,30 @@ git rev-list master | while read c; do git grep -I -h -o -E '<所有敏感串>' 
 结果：全历史 blob 级扫描只剩 `理教101` / `理教202` —— 那是 `test.ts` 里**自己编的**
 换教室测试值（不是用户的房间），保留。工作区干净，`git status` 空。
 
-### 35.5 ⚠️ 状态：**重写只在本地，还没推**
+### 35.5 ✅ 状态：**已经强推，远端也验干净了**（2026-10-17 00:2x）
 
-用户要求"先本地重写，等我看过再推"。所以现在：
+用户先要求"先本地重写，等我看过再推"，看过之后点头"推"。于是：
 
-- 本地 `master` + 6 个 tag 都已重写（`v1.0.0 → e0dd7079`、`v1.5.0 → fe8cfb3c` 等），
-  **远端还是旧的**（旧 SHA 仍然公网可见，包括那 2 个 UDID）。
-- 后悔药有两份：镜像备份 `/home/chemica/ChemicaWorkspace/ClassOUT-history-backup-20261017-0001.git`
-  和本地的 `.git/refs/original/*`。**推之前别删这两个。**
-- 得到用户同意后要**强推**：`git push --force origin master` + `git push --force --tags origin`
-  （6 个 tag 的对象都得换，包括 `v1.0.0` —— 注意：传下来的"v1.0.0 不许移动"那条规矩，
-  在"重写历史"这个决定下**已经不适用**了，用户是知情的）。
-- 推完还要知道：Gitee 侧旧对象可能过一段时间才回收；**之前克隆过的人手上仍有旧历史**。
+```bash
+GIT_SSH_COMMAND="ssh -F /dev/null" git push --force origin master
+GIT_SSH_COMMAND="ssh -F /dev/null" git push --force --tags origin
+```
+
+- 结果：`master 739f15d → 4ce297f (forced update)`，6 个 tag 全部 forced update
+  （`v1.0.0 → e0dd7079`、`v1.1.0 → 1ac9575`、`v1.2.0 → 0ec2494`、`v1.3.0 → b50e292`、
+  `v1.4.0 → 40b33ff`、`v1.5.0 → fe8cfb3`）。
+  注意：传下来的"v1.0.0 不许移动"那条规矩，在"重写历史"这个决定下**已经作废**，用户是知情的。
+- **远端侧验证**（别只看 push 的 exit code）：重新 `git clone --mirror` 一份到 `/tmp`，
+  对它 `git rev-list --all` 逐提交逐 blob 扫一遍敏感串 → **零命中**，`master = 4ce297f`、73 个提交。
+  验完删掉那份临时克隆。
+- 本地收尾：`rm -rf .git/refs/original` + `git reflog expire --expire=now --all`
+  + `git gc --prune=now` → `.git` 从 21 MB 缩到 **2.8 MB**（旧对象真的没了），
+  `git rev-list --all` 只剩 73 个提交、全 refs 扫描零命中、`git fsck` 干净。
+- **后悔药只剩一份**：镜像备份 `/home/chemica/ChemicaWorkspace/ClassOUT-history-backup-20261017-0001.git`
+  （14 MB，**没删**）。用户确认没问题后可以自己删掉。
+- ⚠️ 仍然要知道的两件事：① Gitee 侧**旧对象可能要过一段时间才被回收**，
+  在那之前旧 SHA 直链理论上还能打开；② **之前克隆过这个仓库的人，手上仍然有旧历史**
+  （公开仓库没法远程"召回"，这是重写历史的固有代价）。真想彻底安心就把仓库设为私有。
 
 ### 35.6 README 截图刷新（01 重拍 + 09 新增）
 
