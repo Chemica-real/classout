@@ -2,7 +2,7 @@ import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { storedAbilityContext } from '../util/Ctx';
 import { Course, COURSE_COLORS, CourseSession, PlanBlock, RestWindow, Semester, SessionOverride,
-  SessionRule, SectionTime, Todo, TodoSource, TodoStatus, VirtualLesson } from '../model/Types';
+  SessionRule, SectionTime, Todo, TodoCategory, TodoSource, TodoStatus, VirtualLesson } from '../model/Types';
 import { TimetableRepo } from '../data/TimetableRepo';
 import { TodoRepo } from '../data/TodoRepo';
 import { sessionsOnDate } from '../domain/Timetable';
@@ -29,6 +29,7 @@ import { GLASS_BLUR, GLASS_EDGE_SHELF, GLASS_EDGE_SOFT, GLASS_EDGE_STRONG, GLASS
   GLASS_RADIUS_SHELF, GLASS_SHADOW_ROW, GLASS_SHADOW_SHELF, GLASS_SHADOW_SHEET, GLASS_TINT_PANEL,
   GLASS_TINT_ROW, GLASS_TINT_SHELF, GLASS_TINT_SHEET } from './Glass';
 import { DRAWER_W, FLOAT_GAP, FLOAT_SIDE, H_COLHEAD, H_DAYBAR } from './Float';
+import { saveNoteExpanded } from '../data/Prefs';
 import { DUR_DRAWER, DUR_TRAY, curveOrLinear, drawerCurve, dur, loadTrayOpen, motionCurve,
   persistTrayOpen } from './Motion';
 
@@ -154,8 +155,19 @@ export struct PlanDayView {
    * 计划页自己不造第二份待办编辑窗 —— 编辑入口只该有一处（见 TodoInbox）。
    */
   onOpenTodo: (id: number) => void = (): void => {};
-  /** 当前展开的截止分组（分钟数）；-1 = 没有展开任何一组 */
-  @State ddlOpenMinute: number = -1;
+  /**
+   * 当前展开的截止分组，键是 `` `${日期}|${分钟}` ``（`''` = 没展开）。
+   *
+   * ⚠️ 原来只存一个"分钟数"，因为只画当前查看日那一列；用户 2026-10-16 要求
+   * 三日视图里**截止要显示到它自己那一天**，于是每一列都能有同一分钟的一组，
+   * 光靠分钟数分不清是哪一列的了，必须带上日期。
+   */
+  @State ddlOpenKey: string = '';
+  /**
+   * 备注是"单行输入框"还是"大文本框"—— **全局记忆**（用户 2026-10-16：
+   * 「是单行文本还是大文本框需要记忆」）。同一个键在待办编辑窗与计划编辑窗共用。
+   */
+  @StorageLink('noteExpanded') noteExpanded: boolean = false;
   /**
    * 本页那叠浮窗（日期栏 [+ 三日列头]）量出来的总高度；**0 = 还没量到**。
    * 没量到时用 `topBarsBlockH()` 按名义高度估一个，免得第一帧内容顶到屏幕上边。
@@ -671,6 +683,27 @@ export struct PlanDayView {
       return l === undefined ? '虚拟课时' : this.lessonTitle(l);
     }
     return this.todoTitle(b.todoId);
+  }
+
+  /** 这个块对应的待办是不是考试（考试不显示"截止"，见编辑器里的注释） */
+  private blockIsExam(b: PlanBlock): boolean {
+    const t: Todo | undefined = this.todoOf(b.todoId);
+    return t !== undefined && t.category === TodoCategory.Exam;
+  }
+
+  /** 这个块对应待办的备注（没有就返回空串） */
+  private blockNote(b: PlanBlock): string {
+    const t: Todo | undefined = this.todoOf(b.todoId);
+    return t === undefined ? '' : t.note;
+  }
+
+  /** 折叠 / 展开备注；状态写进 kv，下次打开还是这个样子 */
+  private toggleNoteExpanded(): void {
+    const next: boolean = !this.noteExpanded;
+    this.noteExpanded = next;
+    saveNoteExpanded(this.context(), next).catch((e: Object): void => {
+      hilog.warn(DOMAIN, TAG, 'save noteExpanded failed: %{public}s', JSON.stringify(e));
+    });
   }
 
   private blockCourseId(b: PlanBlock): number {
@@ -1987,65 +2020,70 @@ export struct PlanDayView {
   }
 
   /**
-   * 截止标记：**同一时刻的多条合成一行**。
+   * 截止标记：**同一时刻的多条合成一行**，并且**按列画** —— 哪一天的事就画在哪一列。
    *
-   * ★ 用户实测反馈：「截止时间的渲染会重合重叠的，可以设置点击以展开所有在此时截止的事项」。
-   *   原来是"一条待办一行、各自绝对定位" —— 而 23:59 这种默认档位常常一次压着好几条，
-   *   几行像素级叠在一起，看着只有一条。
-   *   现在按分钟分组：只有一条就照旧显示标题，多条显示「⚑ N 项截止」，
-   *   **点一下在网格上浮出完整列表**（点其中一条 → 跳到待办页打开它）。
+   * ★ 用户 2026-10-14：「截止时间的渲染会重合重叠的，可以设置点击以展开所有在此时截止的事项」
+   *   → 按分钟分组；只有一条就显示标题，多条显示「⚑ N 项截止」，点一下用浮层展开列表。
+   *
+   * ★ 用户 2026-10-16：「三日图的截止与今日图咋都是一样宽？三日图不应该截止具体显示到
+   *   某一天的地方吗」→ 原实现**只画当前查看日**，宽度用 `CONTENT_W`（整条内容区）、
+   *   x 固定 `AXIS_W`，于是在三日视图里横跨三列、另外两天看不到自己的截止。
+   *   现在每一列各画自己那天的分组，宽度/位置走列几何（`colWidthOf` / `colXOf`）。
    */
   @Builder
   DdlMarkers() {
     Stack({ alignContent: Alignment.TopStart }) {
-      ForEach(this.ddlGroups(), (g: DdlGroup) => {
-        Row() {
-          Text(g.todos.length > 1
-            ? `⚑ ${g.todos.length} 项截止`
-            : `⚑ ${g.todos[0].title} 截止`)
-            .fontSize(LAYOUT.tray)
-            .fontColor('#FF8A8A')
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-            .layoutWeight(1)
-        }
-        .width(CONTENT_W)
-        .padding({ left: 6, top: 1, bottom: 1 })
-        .backgroundColor(this.ddlOpenMinute === g.minute
-          ? 'rgba(214,69,69,0.45)' : 'rgba(214,69,69,0.18)')
-        .borderRadius(4)
-        .position({ x: AXIS_W, y: this.yOf(g.minute) })
-        .onClick((): void => {
-          // 再点同一条 = 收起（否则用户没有"关掉"的直觉）
-          this.ddlOpenMinute = this.ddlOpenMinute === g.minute ? -1 : g.minute;
-        })
-        // ★ 展开的截止列表挂到 **ArkUI 的浮层（overlay）**上，而不是画在页面里。
-        //   用户实测反馈：「显示截止的弹窗应当在最上层吧」——
-        //   画在页面内容层的话，页头 / 日期栏 / 待安排货架 / 导航栏（Index 的浮窗层）
-        //   全都压在它上面。项目里另一个办法是 `Index.pageModalOpen` 把浮窗层改画到内容层
-        //   之下，但那是给**带全屏遮罩的编辑窗**用的：截止面板没有遮罩，用那招会让页头
-        //   被网格线和块直接盖住，看着像坏了。浮层是独立一层，天生在所有页面内容之上。
-        .bindPopup(this.ddlOpenMinute === g.minute, {
-          builder: this.DdlExpandPanel(),
-          placement: Placement.Bottom,
-          // ⚠️ 浮层**不会**继承页面的深色底：不给颜色的话 ArkUI 用系统默认材质，
-          //    在这套深色主题里会渲染成一块浅灰白板，白字直接读不出来（真机截到过）。
-          //    所以这里显式给深色底 + 关掉系统模糊材质，圆角也显式给。
-          popupColor: DDL_PANEL_BG,
-          backgroundBlurStyle: BlurStyle.NONE,
-          maskColor: Color.Transparent,
-          enableArrow: false,
-          radius: GLASS_RADIUS,
-          autoCancel: true,
-          width: DDL_PANEL_W,
-          onStateChange: (e: PopupStateChangeParam): void => {
-            // 点面板外面被系统关掉时，把状态也收回来（否则再点同一条会"关不上"）
-            if (!e.isVisible && this.ddlOpenMinute === g.minute) {
-              this.ddlOpenMinute = -1;
-            }
+      ForEach(this.colDates, (cd: string, ci: number) => {
+        ForEach(this.ddlGroupsOf(cd), (g: DdlGroup) => {
+          Row() {
+            Text(g.todos.length > 1
+              ? `⚑ ${g.todos.length} 项截止`
+              : `⚑ ${g.todos[0].title} 截止`)
+              .fontSize(LAYOUT.tray)
+              .fontColor('#FF8A8A')
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+              .layoutWeight(1)
           }
-        })
-      }, (g: DdlGroup) => `ddlg-${g.minute}-${g.todos.length}-${g.todos[0].id}`)
+          .width(this.colWidthOf(ci))
+          .padding({ left: 6, top: 1, bottom: 1 })
+          .backgroundColor(this.ddlOpenKey === this.ddlKeyOf(cd, g.minute)
+            ? 'rgba(214,69,69,0.45)' : 'rgba(214,69,69,0.18)')
+          .borderRadius(4)
+          .position({ x: this.colXOf(ci), y: this.yOf(g.minute) })
+          .onClick((): void => {
+            // 再点同一条 = 收起（否则用户没有"关掉"的直觉）
+            const k: string = this.ddlKeyOf(cd, g.minute);
+            this.ddlOpenKey = this.ddlOpenKey === k ? '' : k;
+          })
+          // ★ 展开的截止列表挂到 **ArkUI 的浮层（overlay）**上，而不是画在页面里。
+          //   用户实测反馈：「显示截止的弹窗应当在最上层吧」——
+          //   画在页面内容层的话，页头 / 日期栏 / 待安排货架 / 导航栏（Index 的浮窗层）
+          //   全都压在它上面。项目里另一个办法是 `Index.pageModalOpen` 把浮窗层改画到内容层
+          //   之下，但那是给**带全屏遮罩的编辑窗**用的：截止面板没有遮罩，用那招会让页头
+          //   被网格线和块直接盖住，看着像坏了。浮层是独立一层，天生在所有页面内容之上。
+          .bindPopup(this.ddlOpenKey === this.ddlKeyOf(cd, g.minute), {
+            builder: this.DdlExpandPanel(),
+            placement: Placement.Bottom,
+            // ⚠️ 浮层**不会**继承页面的深色底：不给颜色的话 ArkUI 用系统默认材质，
+            //    在这套深色主题里会渲染成一块浅灰白板，白字直接读不出来（真机截到过）。
+            //    所以这里显式给深色底 + 关掉系统模糊材质，圆角也显式给。
+            popupColor: DDL_PANEL_BG,
+            backgroundBlurStyle: BlurStyle.NONE,
+            maskColor: Color.Transparent,
+            enableArrow: false,
+            radius: GLASS_RADIUS,
+            autoCancel: true,
+            width: DDL_PANEL_W,
+            onStateChange: (e: PopupStateChangeParam): void => {
+              // 点面板外面被系统关掉时，把状态也收回来（否则再点同一条会"关不上"）
+              if (!e.isVisible && this.ddlOpenKey === this.ddlKeyOf(cd, g.minute)) {
+                this.ddlOpenKey = '';
+              }
+            }
+          })
+        }, (g: DdlGroup) => `ddlg-${cd}-${g.minute}-${g.todos.length}-${g.todos[0].id}`)
+      }, (cd: string) => `ddlcol-${cd}`)
     }
     .width('100%')
     .height(this.gridH())
@@ -2057,7 +2095,7 @@ export struct PlanDayView {
   DdlExpandPanel() {
     Column() {
       Row() {
-        Text(`${minToHHmm(this.ddlOpenMinute)} 截止 · ${this.ddlGroupTodos().length} 项`)
+        Text(this.ddlOpenTitle())
           .fontSize(LAYOUT.cardSub)
           .fontColor('#FF8A8A')
           .layoutWeight(1)
@@ -2066,7 +2104,7 @@ export struct PlanDayView {
           .fontColor('#A9B5C9')
           .padding({ left: 10 })
           .onClick((): void => {
-            this.ddlOpenMinute = -1;
+            this.ddlOpenKey = '';
           })
       }
       .width('100%')
@@ -2074,7 +2112,7 @@ export struct PlanDayView {
 
       Scroll() {
         Column() {
-          ForEach(this.ddlGroupTodos(), (t: Todo) => {
+          ForEach(this.ddlOpenTodos(), (t: Todo) => {
             Row() {
               if (t.courseId > 0) {
                 Text(this.courseShort(t.courseId))
@@ -2100,7 +2138,7 @@ export struct PlanDayView {
             .padding({ top: 5, bottom: 5 })
             .onClick((): void => {
               // 收起并跳到待办页 —— 那里才有真正的待办编辑窗（一处入口，不重复造）
-              this.ddlOpenMinute = -1;
+              this.ddlOpenKey = '';
               this.onOpenTodo(t.id);
             })
           }, (t: Todo) => `ddlx-${t.id}-${t.title}-${t.status}`)
@@ -2117,22 +2155,43 @@ export struct PlanDayView {
     .borderRadius(GLASS_RADIUS)
   }
 
-  /** 当前展开的那一分钟上的所有待办（升序按标题，顺序稳定） */
-  private ddlGroupTodos(): Todo[] {
-    for (const g of this.ddlGroups()) {
-      if (g.minute === this.ddlOpenMinute) {
+  /** 截止分组的 key：`` `${日期}|${分钟}` `` */
+  private ddlKeyOf(date: string, minute: number): string {
+    return `${date}|${minute}`;
+  }
+
+  /**
+   * 某一天（也就是某一列）的截止分组。
+   * 实现走 `domain/PlanMath.ddlGroupsOn`（纯函数、有离线断言）—— 渲染与"展开"读同一份，
+   * 两边各算一次迟早会算出不一致的分组。
+   */
+  private ddlGroupsOf(date: string): DdlGroup[] {
+    return ddlGroupsOn(this.todos, date, this.ax().startMin, this.ax().endMin);
+  }
+
+  /** 当前展开的那一组里的待办（key 解不出来就是空） */
+  private ddlOpenTodos(): Todo[] {
+    const parts: string[] = this.ddlOpenKey.split('|');
+    if (parts.length !== 2) {
+      return [];
+    }
+    const minute: number = parseInt(parts[1], 10);
+    for (const g of this.ddlGroupsOf(parts[0])) {
+      if (g.minute === minute) {
         return g.todos;
       }
     }
     return [];
   }
 
-  /**
-   * 当天的截止事项**按分钟分组**。实现搬去了 `domain/PlanMath.ddlGroupsOn`（纯函数、有离线断言）——
-   * 渲染与"展开"都读这一份，两边各算一次迟早会算出不一致的分组。
-   */
-  private ddlGroups(): DdlGroup[] {
-    return ddlGroupsOn(this.todos, this.date, this.ax().startMin, this.ax().endMin);
+  /** 浮层标题：三日视图里带上日期，否则三列同一时刻分不清是哪天的 */
+  private ddlOpenTitle(): string {
+    const parts: string[] = this.ddlOpenKey.split('|');
+    if (parts.length !== 2) {
+      return '';
+    }
+    const prefix: string = this.viewCols > COLS_DAY ? `${parts[0].substring(5)} ` : '';
+    return `${prefix}${minToHHmm(parseInt(parts[1], 10))} 截止 · ${this.ddlOpenTodos().length} 项`;
   }
 
   @Builder
@@ -2519,6 +2578,10 @@ export struct PlanDayView {
         }
 
         if (b.todoId > 0) {
+          // ⚠️ **考试不显示"截止"**（用户 2026-10-16：「考试无需显示截止」）。
+          //    考试的 `ddl` 里存的是**开始时刻**（见 Types.Todo.endAt），把它当截止来改
+          //    会把考试时间搞乱；考试的时间在待办页用「开始 / 结束」两组选择器改。
+          if (!this.blockIsExam(b)) {
           Text('截止时间')
             .fontSize(LAYOUT.tray)
             .fontColor('#94A0B5')
@@ -2566,6 +2629,51 @@ export struct PlanDayView {
             .fontSize(LAYOUT.cardSub)
             .fontColor('#9BA7BD')
             .margin({ top: 4 })
+          }
+
+          // 备注：只读展示（用户 2026-10-16 要求「在计划区查看的时候要显示正确」）。
+          // 折叠/展开跟随**同一个记忆开关**（`noteExpanded`），和待办编辑窗里那个是同一个键。
+          if (this.blockNote(b).length > 0) {
+            Text('备注')
+              .fontSize(LAYOUT.tray)
+              .fontColor('#94A0B5')
+              .margin({ top: 12, bottom: 6 })
+            if (this.noteExpanded) {
+              Scroll() {
+                Text(this.blockNote(b))
+                  .fontSize(LAYOUT.cardSub)
+                  .fontColor('#C3CDDE')
+                  .width('100%')
+              }
+              .constraintSize({ maxHeight: 140 })
+              .width('100%')
+              .padding(8)
+              .backgroundColor('rgba(255,255,255,0.06)')
+              .borderRadius(8)
+              .scrollBar(BarState.Off)
+              .align(Alignment.TopStart)
+            } else {
+              Text(this.blockNote(b))
+                .fontSize(LAYOUT.cardSub)
+                .fontColor('#C3CDDE')
+                .maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+                .width('100%')
+                .padding(8)
+                .backgroundColor('rgba(255,255,255,0.06)')
+                .borderRadius(8)
+            }
+            Row() {
+              Blank()
+              Text(this.noteExpanded ? '收起 ▴' : '展开 ▾')
+                .fontSize(LAYOUT.compact)
+                .fontColor('#7FA8FF')
+                .padding({ left: 10, top: 2, bottom: 2 })
+                .onClick((): void => this.toggleNoteExpanded())
+            }
+            .width('100%')
+            .margin({ top: 2 })
+          }
 
           if (this.editorOtherBlocks().length > 0) {
             Text('这个待办还排在别的时段')
@@ -2585,7 +2693,10 @@ export struct PlanDayView {
           // 用户 2026-10-14 拍定：托盘里排过一次就消失，那"一天两块 / 多天分散"就得靠这里 ——
           // 拆完把其中一块拖到别的天即可（跨天拖拽本来就有）。
           // 只对**待办块**开放：课程灰带是规则、虚拟课时是"某一讲"，拆开没有语义。
-          if (b.todoId > 0 && halveMinutes(b.endMin - b.startMin).length === 2) {
+          // ⚠️ 考试块也不给「对半分」：它是一段**固定时间**（`syncExamBlock` 全权维护，
+          //    保存考试时会先删旧块再按时间范围重建），拆开没有语义、还会留一个残块。
+          if (b.todoId > 0 && !this.blockIsExam(b)
+            && halveMinutes(b.endMin - b.startMin).length === 2) {
             Button(`对半分（${halveMinutes(b.endMin - b.startMin)[0]} + ${halveMinutes(b.endMin - b.startMin)[1]} 分钟）`)
               .backgroundColor('rgba(46,107,230,0.22)')
               .fontColor('#7FA8FF')

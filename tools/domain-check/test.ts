@@ -1250,6 +1250,23 @@ check('晚于时间轴终点 → 夹到终点（时间窗可改，不夹会画�
   `${ddlGroupsOn([dt(9, 'X', '2026-10-15 23:59', 'active')], '2026-10-15', 420, 1320)[0].minute}`, '1320');
 check('   └ 早于起点仍夹到起点',
   `${ddlGroupsOn([dt(9, 'X', '2026-10-15 02:00', 'active')], '2026-10-15', 420, 1320)[0].minute}`, '420');
+
+// 「考试不显示截止」（用户 2026-10-16）：考试的 ddl 存的是**开始时刻**，不该当截止。
+function dtExam(id: number, title: string, ddl: string): Todo {
+  const t: Todo = dt(id, title, ddl, 'active');
+  t.category = TodoCategory.Exam;
+  return t;
+}
+check('考试不进截止分组（它的 ddl 是开始时刻）',
+  `${ddlGroupsOn([dtExam(9, '期中考试', '2026-10-15 09:00')], '2026-10-15', 420).length}`, '0');
+check('   └ 和普通作业压在同一分钟时只算作业那条',
+  `${ddlGroupsOn([dtExam(9, '期中考试', '2026-10-15 23:59'), dt(8, '作业', '2026-10-15 23:59', 'active')],
+    '2026-10-15', 420)[0].todos.length}`, '1');
+check('考试也不进每日简报的"今天截止"',
+  buildBriefing('2026-10-15', [], [dtExam(9, '期中考试', '2026-10-15 09:00')]), '今天没有课。');
+check('   └ 简报只报普通待办的截止',
+  buildBriefing('2026-10-15', [], [dtExam(9, '期中考试', '2026-10-15 09:00'),
+    dt(8, '高数作业', '2026-10-15 23:59', 'active')]), '今天没有课。 ｜ 今天截止：高数作业 23:59');
 check('ddlMinuteOf：23:59 → 1439', `${ddlMinuteOf('2026-10-15 23:59')}`, '1439');
 check('ddlMinuteOf：00:07 → 7（非 5 倍数也照算）', `${ddlMinuteOf('2026-10-15 00:07')}`, '7');
 check('ddlMinuteOf：没有时刻 → -1', `${ddlMinuteOf('2026-10-15')}`, '-1');

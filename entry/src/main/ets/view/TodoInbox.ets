@@ -12,7 +12,7 @@ import { ExamRange, Validation, examRangeOf, normalizeEstimate, validateEstimate
 import { CATEGORY_NAME_MAX, CategoryOption, CategoryVerdict, addCustomCategory,
   allCategoryOptions, categoryLabel, parseCustomCategories,
   validateCategoryName } from '../domain/Categories';
-import { saveCustomCategories } from '../data/Prefs';
+import { saveCustomCategories, saveNoteExpanded } from '../data/Prefs';
 import { ChipButton } from './ChipButton';
 import { BackHandler, backStack } from '../util/BackStack';
 import { GLASS_BLUR, GLASS_EDGE_SOFT, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_ROW,
@@ -128,6 +128,8 @@ export struct TodoInbox {
    * 在编辑窗里「＋新建类型」新建的**就是全局的**，回到设置页能看到、也能删（用户 2026-10-15）。
    */
   @StorageLink('todoCategories') catRaw: string = '';
+  /** 备注区是单行输入框还是大文本框 —— 全局记忆（用户 2026-10-16） */
+  @StorageLink('noteExpanded') noteExpanded: boolean = false;
   /** 「＋新建类型」展开的输入行 */
   @State catCreating: boolean = false;
   @State catDraft: string = '';
@@ -701,6 +703,18 @@ export struct TodoInbox {
   }
 
   /**
+   * 折叠 / 展开备注输入框。状态**写进 kv 记住**（用户 2026-10-16），
+   * 并且和计划页的块编辑窗共用同一个键 —— 两边永远一致。
+   */
+  private toggleNoteExpanded(): void {
+    const next: boolean = !this.noteExpanded;
+    this.noteExpanded = next;
+    saveNoteExpanded(this.context(), next).catch((e: Object): void => {
+      hilog.warn(DOMAIN, TAG, 'save noteExpanded failed: %{public}s', JSON.stringify(e));
+    });
+  }
+
+  /**
    * 在待办卡片上新建一个类型 —— **这是全局新建**：写进 kv + AppStorage，
    * 设置页那份会立刻跟着变（用户 2026-10-15 明确要求）。
    */
@@ -1198,22 +1212,52 @@ export struct TodoInbox {
 
         // 备注：**所有类型都能写**（用户要求「待办可写备注」）。
         // 考试时它就是原来的「考场 / 座位」—— 同一个 `note` 字段，只是标签随类型变。
-        Text(this.editCategory === TodoCategory.Exam ? '考场 / 座位' : '备注')
-          .fontSize(12)
-          .fontColor('#94A0B5')
-          .width('100%')
-          .margin({ top: 6, bottom: 6 })
-        TextInput({
-          text: this.editNote,
-          placeholder: this.editCategory === TodoCategory.Exam
-            ? '教学楼 101 · 12 号座' : '可选，随便记点什么'
-        })
-          .fontColor('#F2F5FA')
-          .placeholderColor('#8B97AC')
-          .caretColor('#7FA8FF')
-          .onChange((v: string): void => {
-            this.editNote = v;
+        //
+        // ★ 用户 2026-10-16：「备注区可以展开（默认单行文本输入框，但下有展开箭头，
+        //   点击展开成大文本框（可以上下滚动的，避免把整个属性界面撑满）），
+        //   是单行文本还是大文本框需要**记忆**」。
+        Row() {
+          Text(this.editCategory === TodoCategory.Exam ? '考场 / 座位' : '备注')
+            .fontSize(12)
+            .fontColor('#94A0B5')
+            .layoutWeight(1)
+          Text(this.noteExpanded ? '收起 ▴' : '展开 ▾')
+            .fontSize(11)
+            .fontColor('#7FA8FF')
+            .padding({ left: 10, top: 2, bottom: 2 })
+            .onClick((): void => this.toggleNoteExpanded())
+        }
+        .width('100%')
+        .margin({ top: 6, bottom: 6 })
+
+        if (this.noteExpanded) {
+          // 大文本框：固定高度 + **内部滚动**，不会把整个属性面板撑满
+          TextArea({
+            text: this.editNote,
+            placeholder: this.editCategory === TodoCategory.Exam
+              ? '教学楼 101 · 12 号座' : '可选，随便记点什么'
           })
+            .fontColor('#F2F5FA')
+            .placeholderColor('#8B97AC')
+            .caretColor('#7FA8FF')
+            .height(150)
+            .width('100%')
+            .onChange((v: string): void => {
+              this.editNote = v;
+            })
+        } else {
+          TextInput({
+            text: this.editNote,
+            placeholder: this.editCategory === TodoCategory.Exam
+              ? '教学楼 101 · 12 号座' : '可选，随便记点什么'
+          })
+            .fontColor('#F2F5FA')
+            .placeholderColor('#8B97AC')
+            .caretColor('#7FA8FF')
+            .onChange((v: string): void => {
+              this.editNote = v;
+            })
+        }
 
         if (this.editCategory === TodoCategory.Exam) {
           // 考试 = 一段**固定时间**（用户 2026-10-14）：开始 + 结束各滚一次系统选择器。

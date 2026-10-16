@@ -1,4 +1,4 @@
-import { CourseSession, Todo } from '../model/Types';
+import { CourseSession, Todo, TodoCategory } from '../model/Types';
 import { minToHHmm } from '../util/DateUtil';
 
 /**
@@ -23,6 +23,11 @@ export function buildBriefing(dateStr: string, sessions: CourseSession[], todos:
 
   const dueToday: string[] = [];
   for (const t of todos) {
+    // 考试不算"今天截止"：它的 ddl 存的是**开始时刻**（用户 2026-10-16：「考试无需显示截止」）。
+    // 考试有自己的倒计时与卡片，简报里再报一次"截止"只会误导。
+    if (t.category === TodoCategory.Exam) {
+      continue;
+    }
     if (t.ddl.length >= 10 && t.ddl.substring(0, 10) === dateStr) {
       const hhmm: string = t.ddl.length >= 16 ? t.ddl.substring(11, 16) : '';
       dueToday.push(`${t.title} ${hhmm}`);

@@ -22,8 +22,8 @@ import { BOOT_EXTRA_CAP_MS, BOOT_STEP_MS, DUR_BALL_DWELL, DUR_COLLAPSE, DUR_EXPA
   DUR_SPRAY, TYPE_MS, collapseCurve, curveOrLinear, dur, expandCurve, isMotionOn,
   loadMotionSetting, motionCurve } from '../view/Motion';
 import { WallpaperRepo } from '../data/WallpaperRepo';
-import { MOTTO_DEFAULT, PLAN_END_KEY, PLAN_START_KEY, TODO_CATEGORIES_KEY, loadCustomCategories,
-  loadMotto, loadPlanWindow } from '../data/Prefs';
+import { MOTTO_DEFAULT, NOTE_EXPANDED_KEY, PLAN_END_KEY, PLAN_START_KEY, TODO_CATEGORIES_KEY,
+  loadCustomCategories, loadMotto, loadNoteExpanded, loadPlanWindow } from '../data/Prefs';
 import { TimeWindow } from '../domain/PlanMath';
 import { serializeCustomCategories } from '../domain/Categories';
 import { GuideStep, guideStepAt, guideStepCount, isLastGuideStep, nextGuideStep,
@@ -395,6 +395,8 @@ struct Index {
     AppStorage.setOrCreate(PLAN_END_KEY, planWin.endMin);
     // 自定义待办类型：设置页与待办编辑窗共用这一份（存 '\n' 分隔的字符串）
     AppStorage.setOrCreate(TODO_CATEGORIES_KEY, serializeCustomCategories(await loadCustomCategories(ctx)));
+    // 备注区是单行还是大文本框：用户要求记住（待办编辑窗与计划编辑窗共用）
+    AppStorage.setOrCreate(NOTE_EXPANDED_KEY, await loadNoteExpanded(ctx));
     // 动画总开关：AppStorage 是内存态，每次冷启动都要从 kv 读回来
     await loadMotionSetting(ctx);
     this.bootStep = 0;

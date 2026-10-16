@@ -150,6 +150,35 @@ export async function savePlanWindow(context: common.Context,
   return n;
 }
 
+// ---------------- 备注输入框：单行 / 大文本 ----------------
+
+/**
+ * 备注区是"单行输入框"还是"展开后的大文本框"（用户 2026-10-16：
+ * 「是单行文本还是大文本框需要记忆，在待办区新建/查看，在计划区查看的时候要显示正确」）。
+ *
+ * ⚠️ `@StorageLink` 的键名必须写字面量 `'noteExpanded'`。
+ */
+export const NOTE_EXPANDED_KEY: string = 'noteExpanded';
+export const NOTE_EXPANDED_KV: string = 'note_expanded';
+
+export async function loadNoteExpanded(context: common.Context): Promise<boolean> {
+  try {
+    return (await Db.getKv(context, NOTE_EXPANDED_KV)) === '1';
+  } catch (e) {
+    hilog.warn(0x0000, 'ClassOUT', 'load note expanded failed: %{public}s', JSON.stringify(e));
+    return false;
+  }
+}
+
+export async function saveNoteExpanded(context: common.Context, on: boolean): Promise<void> {
+  AppStorage.setOrCreate(NOTE_EXPANDED_KEY, on);
+  try {
+    await Db.setKv(context, NOTE_EXPANDED_KV, on ? '1' : '0');
+  } catch (e) {
+    hilog.warn(0x0000, 'ClassOUT', 'save note expanded failed: %{public}s', JSON.stringify(e));
+  }
+}
+
 // ---------------- 待办类型（自定义 category） ----------------
 
 /**

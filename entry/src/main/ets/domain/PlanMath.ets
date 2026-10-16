@@ -7,7 +7,7 @@
  * 约定：1 分钟 = 1 vp，所以 y 坐标和分钟数只差一个时间窗起点的偏移。
  */
 
-import { PlanBlock, Todo, TodoStatus } from '../model/Types';
+import { PlanBlock, Todo, TodoCategory, TodoStatus } from '../model/Types';
 
 function clamp(v: number, lo: number, hi: number): number {
   if (v < lo) {
@@ -600,6 +600,12 @@ export function ddlGroupsOn(todos: Todo[], date: string, axisStartMin: number,
   const buckets: Map<number, Todo[]> = new Map<number, Todo[]>();
   for (const t of todos) {
     if (t.status === TodoStatus.Done || t.status === TodoStatus.Archived) {
+      continue;
+    }
+    // ⚠️ **「考试」不算截止**（用户 2026-10-16：「考试无需显示截止」）。
+    //    考试的 `ddl` 存的是它的**开始时刻**（见 Types.Todo.endAt 的注释 —— 这样倒计时与
+    //    提醒都不用改），拿它当截止会在网格上标出「⚑ 某某考试 截止」，语义是错的。
+    if (t.category === TodoCategory.Exam) {
       continue;
     }
     if (t.ddl.substring(0, 10) !== date) {
