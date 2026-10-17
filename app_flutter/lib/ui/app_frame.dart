@@ -309,13 +309,23 @@ class MeasureSize extends StatefulWidget {
 
 class _MeasureSizeState extends State<MeasureSize> {
   @override
+  void initState() {
+    super.initState();
+    // ⚠️ 首帧**不会有** SizeChangedLayoutNotification（尺寸从"无"到"有"不算变更），
+    // 所以这里主动量一次，否则第一次布局会按估算值留白、内容和浮窗叠在一起。
+    WidgetsBinding.instance.addPostFrameCallback((_) => _report());
+  }
+
+  void _report() {
+    final s = context.size;
+    if (s != null && mounted) widget.onSize(s);
+  }
+
+  @override
   Widget build(BuildContext context) {
     return NotificationListener<SizeChangedLayoutNotification>(
       onNotification: (n) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          final s = context.size;
-          if (s != null && mounted) widget.onSize(s);
-        });
+        WidgetsBinding.instance.addPostFrameCallback((_) => _report());
         return true;
       },
       child: SizeChangedLayoutNotifier(child: widget.child),

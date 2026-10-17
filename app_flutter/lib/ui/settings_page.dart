@@ -54,6 +54,9 @@ class _SettingsPageState extends State<SettingsPage> {
   late final AppSettings _s = widget.settings;
   late List<RestWindow> _rest = _effectiveRest();
 
+  /// 「设置」标题条实测高度（悬浮浮窗：内容从它下面滑过）
+  double _barH = 56;
+
   List<RestWindow> _effectiveRest() {
     if (widget.bundle.restWindows.isNotEmpty)
       return List.of(widget.bundle.restWindows);
@@ -104,26 +107,12 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return Stack(
       children: [
-        // 设置页自己的标题条（鸿蒙端 SettingsPage 内部浮动的那一条）
-        Glass(
-          margin: const EdgeInsets.fromLTRB(
-              floatSide, floatTop, floatSide, floatGap),
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-          child: Row(
-            children: const [
-              Text('设置',
-                  style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: inkPrimary)),
-            ],
-          ),
-        ),
-        Expanded(
+        // 内容从悬浮标题条下面滑过；底部给悬浮导航栏让位
+        Positioned.fill(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 20 + tabBarInset),
+            padding: EdgeInsets.fromLTRB(16, _barH, 16, 20 + tabBarInset),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -397,6 +386,33 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                 ),
               ],
+            ),
+          ),
+        ),
+        // 设置页自己的标题条（鸿蒙端 SettingsPage 内部浮动的那一条）
+        Positioned(
+          left: 0,
+          right: 0,
+          top: 0,
+          child: MeasureSize(
+            onSize: (size) {
+              if ((size.height - _barH).abs() > 0.5) {
+                setState(() => _barH = size.height);
+              }
+            },
+            child: Glass(
+              margin: const EdgeInsets.fromLTRB(
+                  floatSide, floatTop, floatSide, floatGap),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              child: Row(
+                children: const [
+                  Text('设置',
+                      style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: inkPrimary)),
+                ],
+              ),
             ),
           ),
         ),

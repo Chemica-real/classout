@@ -24,17 +24,32 @@ Future<void> _pump(WidgetTester tester, MemoryRepo repo) async {
   await tester.pumpAndSettle();
 }
 
+
+/// 顶部是**悬浮**标题条：ensureVisible 之后目标可能正好压在它下面，点不到。
+/// 这里再按 ScrollPosition 把内容往下挪一点，确保目标在标题条下面。
+Future<void> _tapUnderBar(WidgetTester tester, Finder target) async {
+  await tester.ensureVisible(target);
+  await tester.pumpAndSettle();
+  final pos = tester
+      .state<ScrollableState>(find.byType(Scrollable).first)
+      .position;
+  for (var i = 0; i < 6; i++) {
+    final rect = tester.getRect(target);
+    if (rect.top > 90) break;
+    pos.jumpTo((pos.pixels - 60).clamp(0.0, pos.maxScrollExtent));
+    await tester.pumpAndSettle();
+  }
+  await tester.tap(target);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('同步节奏改完写进 kv', (tester) async {
     final repo = MemoryRepo();
     await _pump(tester, repo);
     expect(find.text('设置'), findsWidgets);
 
-    final sync15 = find.byKey(const ValueKey('sync-15'));
-    await tester.ensureVisible(sync15);
-    await tester.pumpAndSettle();
-    await tester.tap(sync15);
-    await tester.pumpAndSettle();
+    await _tapUnderBar(tester, find.byKey(const ValueKey('sync-15')));
     expect(await repo.getKv('sync_interval_min'), '15');
   });
 
@@ -43,11 +58,7 @@ void main() {
     await _pump(tester, repo);
 
     // 默认 07:00–24:00，点"开始时间 +"→ 07:30
-    final plus = find.byIcon(Icons.add).first;
-    await tester.ensureVisible(plus); // 设置页变长了，目标可能在屏幕外
-    await tester.pumpAndSettle();
-    await tester.tap(plus);
-    await tester.pumpAndSettle();
+    await _tapUnderBar(tester, find.byIcon(Icons.add).first);
 
     final saved = parseWindow((await repo.getKv('plan_window'))!);
     expect(saved.startMin, 7 * 60 + 30);

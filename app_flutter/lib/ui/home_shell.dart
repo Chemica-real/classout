@@ -343,58 +343,49 @@ class _HomeShellState extends State<HomeShell> {
                       onSettingsChanged: _applySettings,
                       onResyncReminders: _resyncReminders,
                       onImport: _import)
-                  : _tab == 2
-                      // 计划页有自己的日期条，暂时仍用纵向排布
-                      ? Column(
-                          children: [
-                            _header(bundle),
-                            Expanded(
-                              child: PlanPage(
-                                  bundle: bundle,
-                                  onChanged: _apply,
-                                  window: _settings.planWindow,
-                                  restWindows: bundle.restWindows),
-                            ),
-                          ],
-                        )
-                      // 课表 / 待办：页头是**悬浮浮窗**，内容从它下面滑过
-                      : Stack(
-                          children: [
-                            Positioned.fill(
-                              child: switch (_tab) {
-                                0 => TimetablePage(
+                  // 课表 / 待办 / 计划：页头都是**悬浮浮窗**，内容从它下面滑过
+                  // （计划页自己的日期条由 PlanPage 叠在页头下面）
+                  : Stack(
+                      children: [
+                        Positioned.fill(
+                          child: switch (_tab) {
+                            0 => TimetablePage(
+                                bundle: bundle,
+                                week: _week,
+                                topInset: _headerH,
+                                onOpenSession: (s) => showSessionSheet(context,
                                     bundle: bundle,
-                                    week: _week,
-                                    topInset: _headerH,
-                                    onOpenSession: (s) => showSessionSheet(
-                                        context,
-                                        bundle: bundle,
-                                        session: s,
-                                        onChanged: _apply),
-                                  ),
-                                _ => TodoPage(
-                                    bundle: bundle,
-                                    onChanged: _apply,
-                                    topInset: _headerH,
-                                    customCategories:
-                                        _settings.customCategories),
-                              },
-                            ),
-                            Positioned(
-                              left: 0,
-                              right: 0,
-                              top: 0,
-                              child: MeasureSize(
-                                onSize: (size) {
-                                  if ((size.height - _headerH).abs() > 0.5) {
-                                    setState(() => _headerH = size.height);
-                                  }
-                                },
-                                child: _header(bundle),
+                                    session: s,
+                                    onChanged: _apply),
                               ),
-                            ),
-                          ],
+                            1 => TodoPage(
+                                bundle: bundle,
+                                onChanged: _apply,
+                                topInset: _headerH,
+                                customCategories: _settings.customCategories),
+                            _ => PlanPage(
+                                bundle: bundle,
+                                onChanged: _apply,
+                                topInset: _headerH,
+                                window: _settings.planWindow,
+                                restWindows: bundle.restWindows),
+                          },
                         ),
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          top: 0,
+                          child: MeasureSize(
+                            onSize: (size) {
+                              if ((size.height - _headerH).abs() > 0.5) {
+                                setState(() => _headerH = size.height);
+                              }
+                            },
+                            child: _header(bundle),
+                          ),
+                        ),
+                      ],
+                    ),
             ),
           ),
           // 同步中：顶部一条玻璃提示（鸿蒙端也是"页面上方弹出同步提示"）

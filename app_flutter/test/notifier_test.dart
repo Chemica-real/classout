@@ -125,6 +125,15 @@ void main() {
     final btn = find.text('立即重排提醒');
     await tester.ensureVisible(btn);
     await tester.pumpAndSettle();
+    // 顶部是悬浮标题条：目标被它压住时点不到，按 ScrollPosition 往下挪一点
+    final pos = tester
+        .state<ScrollableState>(find.byType(Scrollable).first)
+        .position;
+    for (var i = 0; i < 6; i++) {
+      if (tester.getRect(btn).top > 90) break;
+      pos.jumpTo((pos.pixels - 60).clamp(0.0, pos.maxScrollExtent));
+      await tester.pumpAndSettle();
+    }
     await tester.tap(btn);
     await tester.pumpAndSettle();
 

@@ -48,6 +48,26 @@ Future<_Harness> _pump(WidgetTester tester, {DateTime? initialDay}) async {
 PlanBlock _byIdBlock(BackupBundle b, int id) =>
     b.blocks.firstWhere((x) => x.id == id);
 
+
+/// 把块滚到"悬浮日期条下面"再操作。
+///
+/// 日期条现在是浮层（鸿蒙端 DayBarFloat），`ensureVisible` 只保证块在滚动视口里，
+/// 可能正好被日期条盖住 —— 那样拖动会点到日期条上。这里直接调 ScrollPosition
+/// （不用 tester.drag：拖滚动区会先命中块自己的 Listener，把块拖走）。
+Future<void> _revealBlock(WidgetTester tester, Finder block) async {
+  await tester.ensureVisible(block);
+  await tester.pumpAndSettle();
+  final pos = tester
+      .state<ScrollableState>(find.byType(Scrollable).first)
+      .position;
+  for (var i = 0; i < 6; i++) {
+    final rect = tester.getRect(block);
+    if (rect.top > 110) return;
+    pos.jumpTo((pos.pixels - 60).clamp(0.0, pos.maxScrollExtent));
+    await tester.pumpAndSettle();
+  }
+}
+
 void main() {
   testWidgets('页面上有课表灰带和已有的计划块', (tester) async {
     tester.view.physicalSize = const Size(1080, 2400);
@@ -106,8 +126,7 @@ void main() {
     final before = _demo().blocks.firstWhere((b) => b.date == '2026-10-16');
 
     final block = find.byKey(ValueKey('plan-block-${before.id}'));
-    await tester.ensureVisible(block);
-    await tester.pumpAndSettle();
+    await _revealBlock(tester, block);
     // 往下拖 60px = 60 分钟（1 分钟 = 1vp），吸附后仍是 60 的倍数
     await tester.timedDrag(block, const Offset(0, 60), const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
@@ -125,8 +144,7 @@ void main() {
     final before = _demo().blocks.firstWhere((b) => b.date == '2026-10-16');
 
     final blockFinder = find.byKey(ValueKey('plan-block-${before.id}'));
-    await tester.ensureVisible(blockFinder);
-    await tester.pumpAndSettle();
+    await _revealBlock(tester, blockFinder);
     // 从块底边上方 6px 处按下 = 拖底边缩放
     final rect = tester.getRect(blockFinder);
     await tester.timedDragFrom(
@@ -145,8 +163,7 @@ void main() {
     final h = await _pump(tester, initialDay: DateTime(2026, 10, 16));
     final before = _demo().blocks.firstWhere((b) => b.date == '2026-10-16');
     final block = find.byKey(ValueKey('plan-block-${before.id}'));
-    await tester.ensureVisible(block);
-    await tester.pumpAndSettle();
+    await _revealBlock(tester, block);
     // 往上拖很远：moveRange 会夹到时间窗起点
     await tester.timedDrag(block, const Offset(0, -3000), const Duration(milliseconds: 600));
     await tester.pumpAndSettle();

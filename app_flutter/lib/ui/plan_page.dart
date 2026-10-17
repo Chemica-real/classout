@@ -25,6 +25,9 @@ class PlanPage extends StatefulWidget {
   /// 不可排时段：优先用库里的，空则用默认值
   final List<RestWindow> restWindows;
 
+  /// 悬浮页头的高度（计划页自己的日期条叠在它下面）
+  final double topInset;
+
   /// 打开时看哪天 / 是不是三日视图（默认今天、单日）——截图和测试要用
   final DateTime? initialDay;
   final bool initialThreeDay;
@@ -40,6 +43,7 @@ class PlanPage extends StatefulWidget {
     required this.onChanged,
     this.window = defaultWindow,
     this.restWindows = const [],
+    this.topInset = 0,
     this.initialDay,
     this.initialThreeDay = false,
     this.now = DateTime.now,
@@ -58,6 +62,9 @@ class _PlanPageState extends State<PlanPage> {
 
   /// 待安排托盘是否展开（鸿蒙端 TraySummonBar ↔ TodoPool）
   bool _trayOpen = false;
+
+  /// 日期条实测高度（首帧用估算值）
+  double _dayBarH = 68;
 
   // ---- 拖动 / 缩放（见 domain/plan_math.dart 的 moveRange / resizeRange / edgeScroll*）----
   final ScrollController _scroll = ScrollController();
@@ -350,18 +357,13 @@ class _PlanPageState extends State<PlanPage> {
   @override
   Widget build(BuildContext context) {
     final days = _days;
-    return Column(
+    // 日期条是**悬浮浮窗**（鸿蒙端 DayBarFloat）：内容从它下面滑过，所以滚动区顶部留
+    // 页头 + 日期条的空；底部留导航栏 + 待安排托盘的空。
+    final dayBarBlock = widget.topInset + _dayBarH;
+    final trayBlock = tabBarInset + (_trayOpen ? 176 : 62);
+    return Stack(
       children: [
-        _DayBar(
-          day: _day,
-          threeDay: _threeDay,
-          onPrev: () => _shift(_threeDay ? -3 : -1),
-          onNext: () => _shift(_threeDay ? 3 : 1),
-          onToday: _jumpToday,
-          onDay: () => setState(() => _threeDay = false),
-          onThreeDay: () => setState(() => _threeDay = true),
-        ),
-        Expanded(
+        Positioned.fill(
           child: SingleChildScrollView(
             controller: _scroll,
             // 拖块期间锁住滚动：不锁的话外层滚动视图会抢走竖直拖动，
@@ -370,7 +372,7 @@ class _PlanPageState extends State<PlanPage> {
             physics: _dragId != 0
                 ? const NeverScrollableScrollPhysics()
                 : const ClampingScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(10, 0, 10, 8 + tabBarInset),
+            padding: EdgeInsets.fromLTRB(10, dayBarBlock, 10, trayBlock),
             child: Column(
               children: [
                 _DayTitles(days: days, axisW: _axisW),
@@ -403,15 +405,43 @@ class _PlanPageState extends State<PlanPage> {
             ),
           ),
         ),
-        _Tray(
-          pool: _pool,
-          courses: {for (final c in widget.bundle.courses) c.id: c},
-          selectedId: _selectedTodoId,
-          open: _trayOpen,
-          onToggle: () => setState(() => _trayOpen = !_trayOpen),
-          onSelect: (id) =>
-              setState(() => _selectedTodoId = _selectedTodoId == id ? 0 : id),
-          onPlace: _placeFromPool,
+        // 日期条：叠在悬浮页头下面
+        Positioned(
+          left: 0,
+          right: 0,
+          top: widget.topInset,
+          child: MeasureSize(
+            onSize: (size) {
+              if ((size.height - _dayBarH).abs() > 0.5) {
+                setState(() => _dayBarH = size.height);
+              }
+            },
+            child: _DayBar(
+              day: _day,
+              threeDay: _threeDay,
+              onPrev: () => _shift(_threeDay ? -3 : -1),
+              onNext: () => _shift(_threeDay ? 3 : 1),
+              onToday: _jumpToday,
+              onDay: () => setState(() => _threeDay = false),
+              onThreeDay: () => setState(() => _threeDay = true),
+            ),
+          ),
+        ),
+        // 待安排托盘：浮在导航栏之上
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: tabBarInset,
+          child: _Tray(
+            pool: _pool,
+            courses: {for (final c in widget.bundle.courses) c.id: c},
+            selectedId: _selectedTodoId,
+            open: _trayOpen,
+            onToggle: () => setState(() => _trayOpen = !_trayOpen),
+            onSelect: (id) => setState(
+                () => _selectedTodoId = _selectedTodoId == id ? 0 : id),
+            onPlace: _placeFromPool,
+          ),
         ),
       ],
     );
@@ -507,12 +537,19 @@ class _DayBar extends StatelessWidget {
           Expanded(
             child: Column(
               children: [
-                Text('${day.month} 月 ${day.day} 日 周$wd',
-                    style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                        color: inkPrimary)),
+                // 窄屏放不下时等比缩小，不折行（鸿蒙端一行放得下）
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text('${day.month} 月 ${day.day} 日 周$wd',
+                      maxLines: 1,
+                      softWrap: false,
+                      style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                          color: inkPrimary)),
+                ),
                 Text(relativeDayText(day, today()),
+                    maxLines: 1,
                     style: const TextStyle(
                         fontSize: 12, color: Color(0xFF94A0B5))),
               ],
@@ -1172,8 +1209,7 @@ class _Tray extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
-          floatSide, 0, floatSide, tabBarInset + floatGap),
+      padding: const EdgeInsets.fromLTRB(floatSide, 0, floatSide, floatGap),
       child: GlassShelf(
         padding: EdgeInsets.zero,
         child: open ? _expanded(context) : _collapsed(),

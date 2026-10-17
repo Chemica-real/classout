@@ -4706,3 +4706,44 @@ iOS 侧这次改动**还需 CI 复核**（`DynamicLibrary.process()` + 插件同
 - `flutter test`：**706 passed**（golden 重出：托盘与导航栏位置都按新 inset 调整）
 - **真机（OPPO A97）**：课表页往上滑 → 行号/课程块真的从页头玻璃下面滑过、底部课程块从导航栏下面
   滑出（两张截图核对）；待办页托盘浮在导航栏之上
+
+## 61. 2026-10-17 安卓版：计划页与设置页也改成浮窗层（四页统一）
+
+上一轮把课表/待办的页头与导航栏浮起来了；这轮把计划页、设置页补齐，四个页面现在都是
+「内容铺满整屏、浮窗压在内容上」的结构。
+
+### 61.1 计划页
+
+`PlanPage` 改写成一个 `Stack`：
+
+- `Positioned.fill` 滚动区（网格 + 三日列头），padding top = `topInset + _dayBarH`、bottom = `tabBarInset + 托盘高度`
+- `Positioned(top: topInset)` 日期条（`DayBarFloat`，`MeasureSize` 实测高度）
+- `Positioned(bottom: tabBarInset)` 待安排托盘（收起/展开两种高度）
+
+`HomeShell` 里计划页也走「页头悬浮」分支（原来单独留了个 `Column` 分支，已删）。
+日期条此前在宽 360vp 下会把 `10 月 18 日 周日` 折成两行（"周" / "日"）——这次用
+`FittedBox(scaleDown)` 强制一行（上一轮改过但没生效，这次补上并真机确认）。
+
+### 61.2 设置页
+
+`SettingsPage` 同样改成 `Stack`：「设置」标题条 `Positioned(top:0)` + 内容 `SingleChildScrollView`
+（padding top = 实测的标题条高度）。
+
+### 61.3 `MeasureSize` 的一个坑（已修）
+
+`SizeChangedLayoutNotifier` **首帧不会触发**（尺寸从"无"到"有"不算变更），于是第一次布局会按
+估算值留白，内容与浮窗叠在一起（计划页截图里三日列头压在日期条下面就是这么来的）。
+修法：`initState` 里 `addPostFrameCallback` 主动量一次。
+
+### 61.4 测试改动
+
+浮窗化之后，`ensureVisible` 只保证元素在滚动视口里，**可能正好压在浮层下面**（点不到）。
+- `plan_page_test`：新增 `_revealBlock()` —— 直接调 `ScrollPosition.jumpTo` 把块挪到日期条下面
+  （不能用 `tester.drag` 滚：会先命中块自己的 `Listener`，把块拖走）；3 条拖动用例改用它
+- `settings_page_test` / `notifier_test`：新增 `_tapUnderBar()`，同理把目标挪到标题条下面再点
+
+### 61.5 验证
+
+- `flutter test`：**706 passed**；golden 全部重出（计划页三日列头不再被日期条压住）
+- **真机（OPPO A97）**：计划页（页头 + 日期条 + 托盘 + 导航栏四条浮窗同时存在，网格从它们下面过）、
+  设置页（标题条浮起、日历同步卡从导航栏后面露出）截图核对
