@@ -53,7 +53,7 @@ Future<void> showBlockEditor(
     context: context,
     barrierDismissible: true,
     barrierLabel: '关闭块编辑',
-    barrierColor: const Color(0x730C1220),
+    barrierColor: const Color(0x730C121C),
     transitionDuration: dur(durDrawer),
     pageBuilder: (ctx, _, __) => _Host(
       ctx: ctx,

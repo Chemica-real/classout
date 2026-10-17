@@ -37,7 +37,7 @@ Future<TodoEditorResult?> showTodoEditor(
     context: context,
     barrierDismissible: true,
     barrierLabel: '关闭编辑器',
-    barrierColor: const Color(0x730C1220), // rgba(12,18,28,0.45)
+    barrierColor: const Color(0x730C121C), // rgba(12,18,28,0.45)
     transitionDuration: dur(durDrawer),
     pageBuilder: (ctx, _, __) => _DrawerHost(
       ctx: ctx,

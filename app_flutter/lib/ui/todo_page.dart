@@ -857,7 +857,7 @@ class _ExamCard extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(width: 8),
+            // 鸿蒙这里没有额外间距（左侧 Column 是 layoutWeight，右侧按内容宽）
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
