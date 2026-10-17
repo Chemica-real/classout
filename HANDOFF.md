@@ -4062,3 +4062,44 @@ for (const t of todos) {
   `reminder plan: {...}` 里 `ddl` 计数比之前少 1（原来那条考试的"截止"）。
 - Dart 端早就是对的（`domain/reminders.dart` 里 `if (t.category == TodoCategory.exam) continue;`），
   这次是把鸿蒙端补齐 —— **两端现在一致**。
+
+
+## 46. 2026-10-17 iOS 模拟器验收的 CI（`.github/workflows/ios-sim.yml`）
+
+### 46.1 为什么这么干
+
+开发机是 Linux：`flutter build ios` 跑不了、iOS 模拟器也跑不了。而「iOS 到底能不能跑起来」
+必须在一个**真 macOS + 真 Xcode** 上验。GitHub Actions 的 macOS runner 免费
+（public 仓库不限时长；**private 仓库按 10 倍计费**），所以这是最便宜的路。
+
+### 46.2 工作流做了什么
+
+`runs-on: macos-14`，`working-directory: app_flutter`：
+
+1. `flutter pub get` → `flutter analyze` → `flutter test`（593 条，macOS 上 sqlite3 用系统
+   `libsqlite3.dylib`，与 iOS 同一套默认加载逻辑，所以 db_test 在这里也能真跑）
+2. `flutter build ios --simulator --no-codesign --debug` —— 模拟器版**不需要签名**，
+   也就**不需要 Apple 开发者账号**
+3. 从 `xcrun simctl list devices available` 里取第一个 iPhone 模拟器（**不写死机型**，
+   因为 runner 预装的机型号会变），`simctl boot` → `bootstatus -b` → `install` →
+   `launch com.chemica.classout` → 等 12s 截图 → 再等 6s 截第二张
+4. 失败也抓 `log show --predicate 'process == "Runner"'` 里的 error/sqlite 关键字
+5. 两张截图作为 artifact 上传
+
+### 46.3 它能验 / 不能验
+
+| 能验 | 不能验 |
+|---|---|
+| iOS 能否构建（含 CocoaPods 拉 path_provider / flutter_local_notifications） | 真机性能与耗电 |
+| 启动是否崩溃、`openRepo()`（SQLite）在 iOS 上能否打开 | 锁屏/免打扰/后台唤醒 |
+| 界面渲染（iOS 有苹方，中文应正常）与安全区 | 上架签名、TestFlight |
+| 通知**排期代码路径**是否至少不抛异常 | 通知是否真的在锁屏弹出 |
+
+### 46.4 ⚠️ 状态：**写好了但还没跑过**
+
+- 仓库在 Gitee，**Gitee 没有 macOS runner**，所以必须先镜像到 GitHub（public）才跑得起来。
+- 我这边无法执行 GitHub Actions，所以这个工作流是**未执行**状态；跑过之后
+  把截图 artifact 拿到就能确认「iOS 能启动 + 界面正常」。
+- 镜像命令写在 `app_flutter/README.md` 的「怎么验 iOS」一节。
+- 如果 CI 里 App 启动失败：先看是不是 `sqlite3` 打不开（截图会显示"读数据出错：…"，
+  那是 `openRepo()` 抛的异常被 FutureBuilder 捕获后显示出来的），再看 CocoaPods 日志。

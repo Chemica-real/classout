@@ -1,0 +1,84 @@
+# iOS 模拟器验收（不需要 Mac、不需要 Apple 开发者账号、不需要 iPhone）
+#
+# 为什么有用：开发机是 Linux，既不能 flutter build ios，也不能跑 iOS 模拟器。
+# GitHub Actions 的 macOS runner 免费（public 仓库不限时长），能在真 macOS + 真 Xcode 上：
+#   1. 编译 iOS 模拟器版（不需要签名）
+#   2. 装进模拟器并真的启动
+#   3. 截图当证据（artifact 下载）
+# 能验：iOS 能否构建、启动是否崩溃、SQLite 能否打开（模拟器自带 libsqlite3）、界面渲染（含中文）。
+# 不能验：真机性能、锁屏/免打扰、上架签名与 TestFlight。
+#
+# 用法：把仓库镜像到 GitHub（public）→ push 自动跑，或在 Actions 页面 Run workflow。
+
+name: iOS 模拟器验收
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'app_flutter/**'
+      - 'shared/**'
+      - '.github/workflows/ios-sim.yml'
+  workflow_dispatch:
+
+jobs:
+  ios-simulator:
+    runs-on: macos-14
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: app_flutter
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 装 Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: 依赖
+        run: flutter pub get
+
+      - name: 静态检查
+        run: flutter analyze
+
+      - name: 单元测试
+        run: flutter test
+
+      - name: 编译 iOS 模拟器版（不需要签名）
+        run: flutter build ios --simulator --no-codesign --debug
+
+      - name: 启动模拟器、安装、运行、截图
+        run: |
+          set -euo pipefail
+          UDID=$(xcrun simctl list devices available | grep -E "iPhone" | head -1 | sed -E 's/.*\(([0-9A-Fa-f-]{36})\).*/\1/')
+          if [ -z "$UDID" ]; then echo "找不到可用 iPhone 模拟器"; exit 1; fi
+          echo "模拟器 $UDID"
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          APP=build/ios/iphonesimulator/Runner.app
+          ls -d "$APP"
+          xcrun simctl install "$UDID" "$APP"
+          xcrun simctl launch "$UDID" com.chemica.classout
+          sleep 12
+          xcrun simctl io "$UDID" screenshot shot-1.png
+          sleep 6
+          xcrun simctl io "$UDID" screenshot shot-2.png
+
+      - name: 抓 App 日志（看有没有崩溃/SQLite 报错）
+        if: always()
+        run: |
+          UDID=$(xcrun simctl list devices available | grep -E "iPhone" | head -1 | sed -E 's/.*\(([0-9A-Fa-f-]{36})\).*/\1/')
+          xcrun simctl spawn "$UDID" log show --last 3m --predicate 'process == "Runner"' 2>/dev/null \
+            | grep -iE "error|exception|fatal|sqlite|ClassOUT" | tail -80 || true
+
+      - name: 上传截图
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-simulator-shots
+          path: |
+            app_flutter/shot-1.png
+            app_flutter/shot-2.png
+          if-no-files-found: warn
