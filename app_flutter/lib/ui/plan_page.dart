@@ -807,6 +807,7 @@ class _DayTitles extends StatelessWidget {
                           '周${weekdayCn[weekdayOf(days[i]) - 1]}',
                           style: TextStyle(
                               fontSize: 14,
+                              height: 1.1,
                               fontWeight: i == center
                                   ? FontWeight.w500
                                   : FontWeight.normal,
@@ -816,7 +817,9 @@ class _DayTitles extends StatelessWidget {
                       if (formatDate(days[i]) == now)
                         const Text('今天',
                             style: TextStyle(
-                                fontSize: 12, color: Color(0xFF7FA8FF))),
+                                fontSize: 12,
+                                height: 1.1,
+                                color: Color(0xFF7FA8FF))),
                     ],
                   ),
                 ),
