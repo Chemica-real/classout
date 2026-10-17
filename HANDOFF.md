@@ -5214,3 +5214,15 @@ extras: Bundle[{STRIPPED=1}]
 > 仍然没有，再去「应用启动管理」里允许 ClassOUT 自启动/后台活动。
 
 `flutter test`：**863 passed**（这次只改文案，没动逻辑）。
+
+### 75.3 补充：自动化复查的局限（同轮实测）
+
+用户在真机上确认"到点有通知"之后，我又用 `adb` 做了一次自动复查（`zen_mode=0` 免打扰已关）：
+
+- `dumpsys alarm` 显示排期闹钟**到点触发**（同一进程 4 次 wakeup）
+- `dumpsys notification --noredact` 里仍只看到立刻弹的那条（id=9000），**看不到 9001**
+- 应用日志里 `schedule #9001 at …` 正常
+
+结论：**`dumpsys` 的 NotificationRecord 不适合用来判定"用户是否看到通知"**（ColorOS 会把
+横幅/通知栏条目收起或延迟，record 也可能被系统移走）。**以真机观感为准**——用户已确认能收到。
+以后写验证脚本时，别把"dumpsys 里没有 record"直接当成"没弹通知"。
