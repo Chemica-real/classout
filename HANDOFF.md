@@ -10,7 +10,7 @@ ClassOUT 是一款**纯离线鸿蒙原生（ArkTS）「课表 + 待办 + 计划�
 已成功签名并**安装在用户的真机（华为 nova 15）上运行**，启动无崩溃、种子课表渲染正确、
 自动生成待办跑通、提醒已落入系统日历。
 
-**当前状态：v1.5.0（鸿蒙端，上架准备中，**尚未提交审核**）**；**iOS/Android 版（Dart+Flutter）
+**当前状态：v1.5.1（鸿蒙端，上架准备中，**尚未提交审核**）**；**iOS/Android 版（Dart+Flutter）
 正在开发中**，**iOS/Android 版目标 ①–⑤ 全部实现**（规则层 + 数据层 + 四标签页 + 原生接线 + 通知提醒，
 **593 条测试**），见 **§36–§43**。
 ⚠️ 仍然缺的都是**只能靠真机/CI** 的东西：通知权限弹窗/锁屏/免打扰、iOS 上
@@ -4038,3 +4038,27 @@ for (const t of todos) {              // ← 没有排除 category === 'exam'
 **环境小记**：`pip install fonttools` 在国内直连 PyPI 会被 reset，用
 `-i https://pypi.tuna.tsinghua.edu.cn/simple` 就好了；且 Debian 的 Python 有 PEP 668
 保护，得开 `venv`（我用的是 `/tmp/fontenv`）。
+
+
+## 45. 2026-10-17 v1.5.1：修掉提醒里的「考试即将截止」（§41.2 那个 bug）
+
+用户点头后修的。**一行 + 导入 + 注释**：
+
+```ts
+for (const t of todos) {
+  // ⚠️ 考试不排「即将截止」：考试的 ddl 存的是它的**开始时刻**，
+  //    用户 2026-10-16 说「考试无需显示截止」，当时改了三处 UI，漏了提醒这里。
+  //    考试的提醒交给它的计划块（syncExamBlock 建块 → "该做「XX」了"）。
+  if (t.category === TodoCategory.Exam) { continue; }
+  const due: Date | undefined = ddlDate(t.ddl);
+  ...
+```
+
+- 文件：`entry/src/main/ets/domain/ReminderScheduler.ets`（导入里补 `TodoCategory`）。
+- 验证：`./tools/domain-check/run.sh` **524 项全绿**；干净构建 `ERROR: 0 / 警告 6 条`。
+- 版本：`1.5.1`（`versionCode 1005001`），README/HANDOFF 同步。
+- ⚠️ **还没装机**：构建时手机没连（`hdc list targets` 为空）。插上 USB 后跑
+  `./sign-and-install.sh --install` 即可；装完看日志应看到
+  `reminder plan: {...}` 里 `ddl` 计数比之前少 1（原来那条考试的"截止"）。
+- Dart 端早就是对的（`domain/reminders.dart` 里 `if (t.category == TodoCategory.exam) continue;`），
+  这次是把鸿蒙端补齐 —— **两端现在一致**。

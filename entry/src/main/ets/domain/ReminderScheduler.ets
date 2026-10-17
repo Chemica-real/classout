@@ -3,7 +3,7 @@ import { reminderAgentManager } from '@kit.BackgroundTasksKit';
 import { notificationManager } from '@kit.NotificationKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { Course, CourseSession, PlanBlock, Semester, SessionOverride, SessionRule, SectionTime,
-  Todo, TodoStatus, VirtualLesson } from '../model/Types';
+  Todo, TodoCategory, TodoStatus, VirtualLesson } from '../model/Types';
 import { TimetableRepo } from '../data/TimetableRepo';
 import { TodoRepo } from '../data/TodoRepo';
 import { Db } from '../data/Db';
@@ -221,6 +221,13 @@ export async function syncReminders(context: common.UIAbilityContext,
 
   // ---------- 作业截止提醒：前一天 20:00；若已过则退化为截止前 2 小时 ----------
   for (const t of todos) {
+    // ⚠️ **考试不排「即将截止」**：考试的 ddl 存的是它的**开始时刻**（见 Types.Todo.endAt），
+    //    排成"XX 即将截止"语义就错了。用户 2026-10-16 的原话是「考试无需显示截止」，
+    //    当时改了计划网格的 ⚑ 标记、计划块属性面板、每日简报三处，**漏了这里**。
+    //    考试的提醒交给它的计划块（syncExamBlock 会建块 → "该做「XX」了"）。
+    if (t.category === TodoCategory.Exam) {
+      continue;
+    }
     const due: Date | undefined = ddlDate(t.ddl);
     if (due === undefined || due.getTime() <= now.getTime()) {
       continue;
