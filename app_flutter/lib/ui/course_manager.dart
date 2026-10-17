@@ -15,6 +15,7 @@ import 'package:flutter/services.dart';
 import '../data/backup.dart';
 import '../data/backup_export.dart';
 import '../domain/dates.dart';
+import '../domain/week_mask.dart';
 import '../model/types.dart';
 import 'app_frame.dart';
 import 'theme.dart';
@@ -703,6 +704,7 @@ class _CourseEditorState extends State<_CourseEditor> {
                       for (final r in _rules)
                         _row(
                           '周${names[r.weekday - 1]} · 第 ${r.startSection}-${r.endSection} 节'
+                          ' · ${maskToText(r.weeksMask)} 周'
                           '${r.location.isNotEmpty ? ' · ${r.location}' : ''}'
                           '${r.isQuiz ? ' · 习题课' : ''}',
                           onEdit: () => _editRule(r),
@@ -917,11 +919,15 @@ class _RuleDialogState extends State<_RuleDialog> {
   late int _end = widget.existing?.endSection ?? 2;
   late final TextEditingController _location =
       TextEditingController(text: widget.existing?.location ?? '');
+  late final TextEditingController _weeks = TextEditingController(
+      text: maskToText(widget.existing?.weeksMask ??
+          maskAll(widget.b.semester?.totalWeeks ?? 16)));
   late bool _quiz = widget.existing?.isQuiz ?? false;
 
   @override
   void dispose() {
     _location.dispose();
+    _weeks.dispose();
     super.dispose();
   }
 
@@ -935,8 +941,8 @@ class _RuleDialogState extends State<_RuleDialog> {
       weekday: _weekday,
       startSection: _start,
       endSection: _end < _start ? _start : _end,
-      weeksMask:
-          widget.existing?.weeksMask ?? '1' * (b.semester?.totalWeeks ?? 16),
+      // 周次按用户填的文本解析（支持 1-16 / 1-16单 / 2-16双 / 1-8,10-16…）
+      weeksMask: maskFromText(_weeks.text, b.semester?.totalWeeks ?? 16),
       location: _location.text.trim(),
       isQuiz: _quiz,
     );
@@ -1007,6 +1013,20 @@ class _RuleDialogState extends State<_RuleDialog> {
                           setState(() => _end = i < _start ? _start : i),
                     ),
                 ],
+              ),
+              const _Label('周次（如 1-16 / 1-16单 / 2-16双 / 1-8,10-16）'),
+              TextField(
+                controller: _weeks,
+                style: const TextStyle(fontSize: 13, color: inkPrimary),
+                decoration: const InputDecoration(
+                  isDense: true,
+                  hintText: '1-16',
+                  hintStyle: TextStyle(fontSize: 13, color: Color(0xFF8B97AC)),
+                  enabledBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: Color(0x24FFFFFF))),
+                  focusedBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: accentBlue)),
+                ),
               ),
               const SizedBox(height: 8),
               TextField(

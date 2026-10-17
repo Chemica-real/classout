@@ -5257,3 +5257,25 @@ fixtures 与单测里跑，**界面层根本没接线** —— 也就是鸿蒙�
   `paused` 事件在这台 ColorOS 上时有时无（同一套命令两次结果不同），
   导致 `idle` 起不来。这条留给手动（把 App 放后台 6 分钟再点开）确认。
 - `flutter test`：**863 passed**
+
+## 77. 2026-10-17 安卓版：课程管理的「周次」可编辑（1-16 / 单双周 / 多段）
+
+对照 `CourseManager.ets` 时发现一个真缺口：鸿蒙端编辑**上课时段**时可以填「周次」
+（`1-16`、`1-16单`、`2-16双`、`1-8,10-16`……，见 `WeekMask.ets` 的 `maskFromText/maskToText`），
+安卓版之前**永远写全 1**（`'1' * totalWeeks`），也就是没法设"只上前 8 周"。
+
+### 77.1 补齐
+
+1. `lib/domain/week_mask.dart`：补 `maskFromText` / `maskToText`，与 `WeekMask.ets` 逐行对齐
+   （支持括号、顿号/分号、单双周、多段；解析不出来 → 全 1，宁可全上不静默丢课）
+2. `fixtures`：`timetable.json` 加 **16 条**对拍（10 个文本 → 掩码、6 个掩码 → 文本）
+3. 课程管理的时段弹窗：新增「周次」输入框（默认显示当前掩码的文本，如 `1-16`），
+   保存时按文本解析；时段列表也会显示 `… · 1-8 周`
+
+### 77.2 验证
+
+- `./tools/sync-contract.sh`：524 断言全绿、fixtures **766 条**
+- `flutter test`：**880 passed**（新增 fixtures 16 条 + `course_manager_test` 1 条：
+  填 `1-8` → 存成 `1111111100000000`）
+- 单测里踩到一个"堆叠弹窗"的坑：课程编辑抽屉底下还开着，`find.byType(TextField).first`
+  会拿到抽屉里的输入框 —— 必须 `find.descendant(of: find.byType(Dialog).last, …)`

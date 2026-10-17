@@ -1710,6 +1710,128 @@
    "expect": false
   },
   {
+   "fn": "maskFromText",
+   "args": [
+    "",
+    16
+   ],
+   "expect": "1111111111111111"
+  },
+  {
+   "fn": "maskFromText",
+   "args": [
+    "1-16",
+    16
+   ],
+   "expect": "1111111111111111"
+  },
+  {
+   "fn": "maskFromText",
+   "args": [
+    "1-16单",
+    16
+   ],
+   "expect": "1010101010101010"
+  },
+  {
+   "fn": "maskFromText",
+   "args": [
+    "2-16双",
+    16
+   ],
+   "expect": "0101010101010101"
+  },
+  {
+   "fn": "maskFromText",
+   "args": [
+    "5",
+    16
+   ],
+   "expect": "0000100000000000"
+  },
+  {
+   "fn": "maskFromText",
+   "args": [
+    "1-15(单)",
+    16
+   ],
+   "expect": "1010101010101010"
+  },
+  {
+   "fn": "maskFromText",
+   "args": [
+    "1-8,10-16",
+    16
+   ],
+   "expect": "1111111101111111"
+  },
+  {
+   "fn": "maskFromText",
+   "args": [
+    "乱写",
+    16
+   ],
+   "expect": "1111111111111111"
+  },
+  {
+   "fn": "maskFromText",
+   "args": [
+    "0-20",
+    16
+   ],
+   "expect": "1111111111111111"
+  },
+  {
+   "fn": "maskFromText",
+   "args": [
+    "3-1",
+    16
+   ],
+   "expect": "1110000000000000"
+  },
+  {
+   "fn": "maskToText",
+   "args": [
+    "1111111111111111"
+   ],
+   "expect": "1-16"
+  },
+  {
+   "fn": "maskToText",
+   "args": [
+    "1111111100000000"
+   ],
+   "expect": "1-8"
+  },
+  {
+   "fn": "maskToText",
+   "args": [
+    "1010101010101010"
+   ],
+   "expect": "1、3、5、7、9、11、13、15"
+  },
+  {
+   "fn": "maskToText",
+   "args": [
+    "0000000000000000"
+   ],
+   "expect": "不上课"
+  },
+  {
+   "fn": "maskToText",
+   "args": [
+    "1000000000000001"
+   ],
+   "expect": "1、16"
+  },
+  {
+   "fn": "maskToText",
+   "args": [
+    "1"
+   ],
+   "expect": "1"
+  },
+  {
    "fn": "sectionMinutes",
    "args": [
     [

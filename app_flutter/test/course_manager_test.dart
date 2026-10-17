@@ -106,6 +106,29 @@ void main() {
     expect(before.courses.length - 1, saved.courses.length);
   });
 
+  testWidgets('时段规则的「周次」按文本解析（1-8 → 前 8 周）', (tester) async {
+    final repo = await _pump(tester);
+    await _tapVisible(tester, find.byKey(const ValueKey('course-4')));
+    await _tapVisible(tester, find.text('+ 添加时段'));
+    expect(find.text('添加上课时段'), findsOneWidget);
+
+    // 时段弹窗里只有两个输入框：周次（第一个）与地点
+    // ⚠️ 必须限定在最上层 Dialog 里：下面还开着课程编辑抽屉，它也有 TextField
+    final weeks = find
+        .descendant(of: find.byType(Dialog).last, matching: find.byType(TextField))
+        .first;
+    await tester.ensureVisible(weeks);
+    await tester.pumpAndSettle();
+    await tester.enterText(weeks, '1-8');
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.widgetWithText(FilledButton, '保存').last);
+    await _tapVisible(tester, find.widgetWithText(FilledButton, '保存').last);
+
+    final saved = (await repo.load())!;
+    final rule = saved.rules.lastWhere((r) => r.courseId == 4);
+    expect(rule.weeksMask, '1111111100000000');
+  });
+
   testWidgets('清空本学期课程需要二次确认，且只删课程/时段/模板', (tester) async {
     final repo = await _pump(tester);
     // 先给一门课加个模板，验证模板会一起被清

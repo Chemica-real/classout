@@ -92,6 +92,11 @@ List<SectionTime> _times(List<dynamic> raw) =>
 /// 按 fn 名派发到本端实现，返回值统一成 JSON 可比的形状
 Object? _call(String fn, List<dynamic> a) {
   switch (fn) {
+    // ---- WeekMask 文本互转（课程管理的「周次」输入框）----
+    case 'maskFromText':
+      return maskFromText(a[0] as String, _n(a[1]));
+    case 'maskToText':
+      return maskToText(a[0] as String);
     // ---- TodoGenerator 纯规则（下课自动生成待办）----
     case 'renderTitle':
       return renderTitle(a[0] as String, _sessionFromJson(a[1]), _n(a[2]), _n(a[3]));

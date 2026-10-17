@@ -254,6 +254,13 @@ for (const m of [['1000000000000000', 1], ['1000000000000000', 2], ['11111111000
                  ['1111111100000000', 9], ['', 1], ['1', 1], ['1', 2]]) {
   add('maskHas', [m[0], m[1]], WM.maskHas(m[0], m[1]), 'timetable');
 }
+for (const t of ['', '1-16', '1-16单', '2-16双', '5', '1-15(单)', '1-8,10-16', '乱写', '0-20', '3-1']) {
+  add('maskFromText', [t, 16], WM.maskFromText(t, 16), 'timetable');
+}
+for (const m of ['1111111111111111', '1111111100000000', '1010101010101010',
+                 '0000000000000000', '1000000000000001', '1']) {
+  add('maskToText', [m], WM.maskToText(m), 'timetable');
+}
 for (const se of [[1, 2], [5, 6], [12, 12], [9, 10]]) {
   add('sectionMinutes', [schedTimes, se[0], se[1]],
     TB.sectionMinutes(TB.buildSectionMap(schedTimes), se[0], se[1]), 'timetable');
