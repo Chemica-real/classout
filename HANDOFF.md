@@ -12,8 +12,8 @@ ClassOUT 是一款**纯离线**的「课表 + 待办 + 计划」三合一 App，
 |---|---|---|
 | 版本 | v1.5.1（上架准备中，未提审） | 0.2.0（Android 已装真机 OPPO A97） |
 | 页面 | 课表 / 待办 / 计划 / 设置 + 启动加载页 + 悬浮浮窗 | **同样四页 + 启动页 + 浮窗（§52–§68 逐页复刻）** |
-| 测试 | 离线断言 524 项（`tools/domain-check`） | **725 条 `flutter test`** |
-| 差异基准 | 本目录 `docs/manual/01..09.jpg`（真机截图） | `app_flutter/tool/goldens/*.png` 对照上面九张 |
+| 测试 | 离线断言 524 项（`tools/domain-check`） | **779 条 `flutter test`**（含 666 条三端 fixture 逐条对拍） |
+| 差异基准 | 本目录 `docs/manual/01..09.jpg`（真机截图） | `app_flutter/tool/goldens/*.png` 对照上面九张 + `shared/fixtures/`（666 条规则用例） |
 
 **安卓版与鸿蒙版的 1:1 复刻已经完成**：主题 token 抄自 ArkTS（§52）、六个页面重做、
 悬浮页头/导航/日期条/托盘（§60–61）、启动过场（§59）、单周调整（§55）、课程管理+模板+学期
@@ -5075,3 +5075,32 @@ scale 识别器和 tap/longPress 抢同一个手势竞技场，两指分开时�
 
 ⚠️ **本轮真机验证没做成**：手机已从 USB 断开（`adb devices` 为空），
 所以这一片只有「测试 + golden」证据；等设备接回来再补一次真机点按。
+
+## 72. 2026-10-17 三端契约：把「新手演练步骤脚本」也纳入 fixtures（666 条）
+
+目标 ③ 要求"domain 规则继续用 shared/fixtures 对齐"。这轮把上一轮新增的
+`domain/Guide.ets` 也接进管线，并**当场抓出一处文案漂移**。
+
+### 72.1 接线（三处小改）
+
+1. `tools/domain-check/run.sh`：多拷一份 `domain/Guide.ets`（它本来就只依赖 model/DateUtil，
+   是纯的），编进 `.work/dist/Guide.js`
+2. `tools/fixtures/gen.js`：新增 `guide` 模块 50 条用例——
+   `guideStepCount`、`guideStepAt(i)`（越界取首/末）、`guideIsLast/Next/Prev(i)`（含越界）、
+   以及每步 `title → tab` 的映射；`SOURCE` 里登记 `entry/src/main/ets/domain/Guide.ets`
+3. `app_flutter/test/fixtures_test.dart`：加 `guide*` 六个 fn 的派发，比较 `{title, body, tab}`
+
+### 72.2 立刻抓到的漂移（已修）
+
+第一次跑 `flutter test test/fixtures_test.dart` 就红在 `guideStepAt([3])`：
+安卓版第 4 步的正文被我上一轮**简写**过（少了「（类型那一排最后的「＋ 新建类型」可以加一个
+自己的类型）」这半句），而鸿蒙端是完整版。fixtures 一比就露馅 —— 这正是它存在的意义。
+已把 Dart 文案改回与 ArkTS 逐字一致。
+
+### 72.3 验证
+
+- `./tools/sync-contract.sh`：domain-check **524 项全绿** → schema 19 条 DDL → fixtures
+  **666 条**（新增 `guide.json` 50 条）
+- `flutter test`：**779 passed**（666 条 fixture 逐条对拍 + 其余单测/组件测）
+- 注：`TodoGenerator` 仍是"只 Dart 侧有测试"——它依赖 Repo/DB，不是纯函数，
+  要进 fixture 得先像 Guide 那样把规则抽成纯模块（记在 §69.3 的待办里）

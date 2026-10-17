@@ -58,7 +58,8 @@ List<GuideStep> guideSteps() => const [
       ),
       GuideStep(
         title: '新建一条待办',
-        body: '点底部「＋ 新建待办」：写标题、选类型、写备注、挑截止时间，最后保存。',
+        body: '点底部「＋ 新建待办」：写标题、选类型（类型那一排最后的「＋ 新建类型」'
+            '可以加一个自己的类型）、写备注、挑截止时间，最后保存。',
         tab: GuideTab.todo,
       ),
       GuideStep(

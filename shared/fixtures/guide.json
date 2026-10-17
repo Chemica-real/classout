@@ -1,0 +1,391 @@
+{
+ "module": "guide",
+ "note": "由 tools/fixtures/gen.js 从鸿蒙端实现生成（等价性基准，不是正确性证明）；iOS/Android 必须逐条一致。",
+ "generatedFrom": "entry/src/main/ets/domain/Guide.ets",
+ "cases": [
+  {
+   "fn": "guideStepAt",
+   "args": [
+    -1
+   ],
+   "expect": {
+    "title": "这是你的课表",
+    "body": "演练里已经放好 4 门演示课。点任意一节课的色块，会弹出「换教室 / 调课 / 停课」——随便改成什么样都行，动的只是演练数据。",
+    "tab": 0
+   }
+  },
+  {
+   "fn": "guideStepAt",
+   "args": [
+    0
+   ],
+   "expect": {
+    "title": "这是你的课表",
+    "body": "演练里已经放好 4 门演示课。点任意一节课的色块，会弹出「换教室 / 调课 / 停课」——随便改成什么样都行，动的只是演练数据。",
+    "tab": 0
+   }
+  },
+  {
+   "fn": "guideStepAt",
+   "args": [
+    1
+   ],
+   "expect": {
+    "title": "改一节试试",
+    "body": "在弹出的面板里把「换教室」那一栏改个地点、点「换到这儿」，课表上的地点当场就变了。（这就是平时改教室的地方。）",
+    "tab": 0
+   }
+  },
+  {
+   "fn": "guideStepAt",
+   "args": [
+    2
+   ],
+   "expect": {
+    "title": "待办：打勾完成",
+    "body": "切到「待办」。演示待办已经在列表里，点最左边的圆圈就把一条标记完成 ——它会去最下面的「已完成」区，还能恢复或删除。",
+    "tab": 1
+   }
+  },
+  {
+   "fn": "guideStepAt",
+   "args": [
+    3
+   ],
+   "expect": {
+    "title": "新建一条待办",
+    "body": "点底部「＋ 新建待办」：写标题、选类型（类型那一排最后的「＋ 新建类型」可以加一个自己的类型）、写备注、挑截止时间，最后保存。",
+    "tab": 1
+   }
+  },
+  {
+   "fn": "guideStepAt",
+   "args": [
+    4
+   ],
+   "expect": {
+    "title": "计划：把待办排进时间",
+    "body": "切到「计划」。底部「待安排」点开，先点一条待办选中，再点网格上的空白处就排上了；排好后还能拖动、双指缩放改时长。",
+    "tab": 2
+   }
+  },
+  {
+   "fn": "guideStepAt",
+   "args": [
+    5
+   ],
+   "expect": {
+    "title": "设置",
+    "body": "最后一站：背景、首页标语、待办类型、不可排时段、计划页时间范围都在这一页。想看哪个点哪个，改坏了也不要紧。",
+    "tab": 3
+   }
+  },
+  {
+   "fn": "guideStepAt",
+   "args": [
+    6
+   ],
+   "expect": {
+    "title": "演练结束",
+    "body": "点下面的「完成演练」：演练数据会整份删掉，回到你自己的课表 ——刚才的每一步都是真实操作，只是做在了沙箱里。",
+    "tab": 3
+   }
+  },
+  {
+   "fn": "guideStepAt",
+   "args": [
+    7
+   ],
+   "expect": {
+    "title": "演练结束",
+    "body": "点下面的「完成演练」：演练数据会整份删掉，回到你自己的课表 ——刚才的每一步都是真实操作，只是做在了沙箱里。",
+    "tab": 3
+   }
+  },
+  {
+   "fn": "guideStepCount",
+   "args": [],
+   "expect": 7
+  },
+  {
+   "fn": "guideIsLast",
+   "args": [
+    -2
+   ],
+   "expect": false
+  },
+  {
+   "fn": "guideNext",
+   "args": [
+    -2
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "guidePrev",
+   "args": [
+    -2
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "guideIsLast",
+   "args": [
+    -1
+   ],
+   "expect": false
+  },
+  {
+   "fn": "guideNext",
+   "args": [
+    -1
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "guidePrev",
+   "args": [
+    -1
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "guideIsLast",
+   "args": [
+    0
+   ],
+   "expect": false
+  },
+  {
+   "fn": "guideNext",
+   "args": [
+    0
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "guidePrev",
+   "args": [
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "guideIsLast",
+   "args": [
+    1
+   ],
+   "expect": false
+  },
+  {
+   "fn": "guideNext",
+   "args": [
+    1
+   ],
+   "expect": 2
+  },
+  {
+   "fn": "guidePrev",
+   "args": [
+    1
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "guideIsLast",
+   "args": [
+    2
+   ],
+   "expect": false
+  },
+  {
+   "fn": "guideNext",
+   "args": [
+    2
+   ],
+   "expect": 3
+  },
+  {
+   "fn": "guidePrev",
+   "args": [
+    2
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "guideIsLast",
+   "args": [
+    3
+   ],
+   "expect": false
+  },
+  {
+   "fn": "guideNext",
+   "args": [
+    3
+   ],
+   "expect": 4
+  },
+  {
+   "fn": "guidePrev",
+   "args": [
+    3
+   ],
+   "expect": 2
+  },
+  {
+   "fn": "guideIsLast",
+   "args": [
+    4
+   ],
+   "expect": false
+  },
+  {
+   "fn": "guideNext",
+   "args": [
+    4
+   ],
+   "expect": 5
+  },
+  {
+   "fn": "guidePrev",
+   "args": [
+    4
+   ],
+   "expect": 3
+  },
+  {
+   "fn": "guideIsLast",
+   "args": [
+    5
+   ],
+   "expect": false
+  },
+  {
+   "fn": "guideNext",
+   "args": [
+    5
+   ],
+   "expect": 6
+  },
+  {
+   "fn": "guidePrev",
+   "args": [
+    5
+   ],
+   "expect": 4
+  },
+  {
+   "fn": "guideIsLast",
+   "args": [
+    6
+   ],
+   "expect": true
+  },
+  {
+   "fn": "guideNext",
+   "args": [
+    6
+   ],
+   "expect": 6
+  },
+  {
+   "fn": "guidePrev",
+   "args": [
+    6
+   ],
+   "expect": 5
+  },
+  {
+   "fn": "guideIsLast",
+   "args": [
+    7
+   ],
+   "expect": true
+  },
+  {
+   "fn": "guideNext",
+   "args": [
+    7
+   ],
+   "expect": 6
+  },
+  {
+   "fn": "guidePrev",
+   "args": [
+    7
+   ],
+   "expect": 6
+  },
+  {
+   "fn": "guideIsLast",
+   "args": [
+    8
+   ],
+   "expect": true
+  },
+  {
+   "fn": "guideNext",
+   "args": [
+    8
+   ],
+   "expect": 6
+  },
+  {
+   "fn": "guidePrev",
+   "args": [
+    8
+   ],
+   "expect": 7
+  },
+  {
+   "fn": "guideStepTab",
+   "args": [
+    "这是你的课表"
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "guideStepTab",
+   "args": [
+    "改一节试试"
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "guideStepTab",
+   "args": [
+    "待办：打勾完成"
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "guideStepTab",
+   "args": [
+    "新建一条待办"
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "guideStepTab",
+   "args": [
+    "计划：把待办排进时间"
+   ],
+   "expect": 2
+  },
+  {
+   "fn": "guideStepTab",
+   "args": [
+    "设置"
+   ],
+   "expect": 3
+  },
+  {
+   "fn": "guideStepTab",
+   "args": [
+    "演练结束"
+   ],
+   "expect": 3
+  }
+ ]
+}

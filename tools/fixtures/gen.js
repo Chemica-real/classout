@@ -324,6 +324,7 @@ for (const d of ['2026-10-12', '2026-10-13', '2026-10-14', '2026-10-15',
 
 // ================= Categories（待办类型）=================
 const CT = require(path.join(DIST, 'Categories.js'));
+const GD = require(path.join(DIST, 'Guide.js'));
 {
   const customs = [[], ['学校琐事'], ['学校琐事', '个人', '社交']];
   for (const c of customs) {
@@ -352,6 +353,21 @@ const CT = require(path.join(DIST, 'Categories.js'));
   }
 }
 
+// ---------------- 新手演练步骤脚本（domain/Guide.ets） ----------------
+// 文案也是产品的一部分：三端必须逐步一致，所以把整份脚本冻进 fixture。
+for (let i = -1; i <= GD.guideStepCount(); i++) {
+  add('guideStepAt', [i], GD.guideStepAt(i), 'guide');
+}
+add('guideStepCount', [], GD.guideStepCount(), 'guide');
+for (let i = -2; i <= GD.guideStepCount() + 1; i++) {
+  add('guideIsLast', [i], GD.isLastGuideStep(i), 'guide');
+  add('guideNext', [i], GD.nextGuideStep(i), 'guide');
+  add('guidePrev', [i], GD.prevGuideStep(i), 'guide');
+}
+for (const s of GD.guideSteps()) {
+  add('guideStepTab', [s.title], s.tab, 'guide');
+}
+
 const SOURCE = {
   plan_math: 'entry/src/main/ets/domain/PlanMath.ets',
   sync_cadence: 'entry/src/main/ets/domain/SyncCadence.ets',
@@ -359,7 +375,8 @@ const SOURCE = {
   timetable: 'entry/src/main/ets/domain/Timetable.ets',
   dates: 'entry/src/main/ets/util/DateUtil.ets',
   categories: 'entry/src/main/ets/domain/Categories.ets',
-  briefing: 'entry/src/main/ets/domain/Briefing.ets'
+  briefing: 'entry/src/main/ets/domain/Briefing.ets',
+  guide: 'entry/src/main/ets/domain/Guide.ets'
 };
 fs.mkdirSync(OUT, { recursive: true });
 for (const mod of Object.keys(SOURCE)) {
@@ -378,3 +395,4 @@ for (const mod of Object.keys(SOURCE)) {
 const stale = path.join(OUT, 'plan_math_old.json');
 if (fs.existsSync(stale)) fs.unlinkSync(stale);
 console.log('合计 ' + cases.length + ' 条');
+

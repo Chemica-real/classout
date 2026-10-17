@@ -13,6 +13,7 @@ import 'package:classout/domain/plan_math.dart';
 import 'package:classout/domain/briefing.dart';
 import 'package:classout/domain/categories.dart';
 import 'package:classout/domain/dates.dart';
+import 'package:classout/domain/guide.dart';
 import 'package:classout/domain/sync_cadence.dart';
 import 'package:classout/domain/timetable.dart';
 import 'package:classout/domain/week_mask.dart';
@@ -80,6 +81,23 @@ bool _b(Object? v) => v as bool;
 /// 按 fn 名派发到本端实现，返回值统一成 JSON 可比的形状
 Object? _call(String fn, List<dynamic> a) {
   switch (fn) {
+    // ---- Guide（新手演练步骤脚本：文案也是产品的一部分）----
+    case 'guideStepCount':
+      return guideStepCount();
+    case 'guideStepAt':
+      final st = guideStepAt(_n(a[0]));
+      return {'title': st.title, 'body': st.body, 'tab': st.tab};
+    case 'guideIsLast':
+      return isLastGuideStep(_n(a[0]));
+    case 'guideNext':
+      return nextGuideStep(_n(a[0]));
+    case 'guidePrev':
+      return prevGuideStep(_n(a[0]));
+    case 'guideStepTab':
+      for (final st in guideSteps()) {
+        if (st.title == a[0]) return st.tab;
+      }
+      return -1;
     // ---- PlanMath ----
     case 'snap':
       return snap(_n(a[0]));
