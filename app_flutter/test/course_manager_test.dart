@@ -106,6 +106,38 @@ void main() {
     expect(before.courses.length - 1, saved.courses.length);
   });
 
+  testWidgets('清空本学期课程需要二次确认，且只删课程/时段/模板', (tester) async {
+    final repo = await _pump(tester);
+    // 先给一门课加个模板，验证模板会一起被清
+    await _tapVisible(tester, find.byKey(const ValueKey('course-4')));
+    await _tapVisible(tester, find.text('+ 添加模板'));
+    await _tapVisible(tester, find.widgetWithText(FilledButton, '保存').last);
+    await _tapVisible(tester, find.widgetWithText(FilledButton, '保存').last);
+
+    final withTemplate = (await repo.load())!;
+    expect(withTemplate.templates.length, 1);
+
+    // 第一次点只是"进入确认态"
+    await _tapVisible(tester, find.text('清空本学期课程'));
+    expect((await repo.load())!.courses.length, 4, reason: '第一次点不能真删');
+
+    await _tapVisible(tester, find.text('确认清空本学期课程'));
+    final saved = (await repo.load())!;
+    expect(saved.courses, isEmpty);
+    expect(saved.rules, isEmpty);
+    expect(saved.templates, isEmpty);
+    // 待办与计划块不动
+    expect(saved.todos.length, withTemplate.todos.length);
+    expect(saved.blocks.length, withTemplate.blocks.length);
+  });
+
+  testWidgets('诊断信息显示各表条数', (tester) async {
+    await _pump(tester);
+    expect(find.text('诊断信息'), findsOneWidget);
+    expect(find.textContaining('课程 4'), findsWidgets);
+    expect(find.textContaining('待办 6'), findsWidgets);
+  });
+
   testWidgets('新建学期（不复制）→ 学期 +1，当前学期不变', (tester) async {
     final repo = await _pump(tester);
     await _tapVisible(tester, find.text('+ 新建学期'));

@@ -85,6 +85,9 @@ class _ManagerState extends State<_Manager> {
   /// 上次「导出备份」写出来的文件路径（同一次打开里一直显示，方便复制）
   String? _exportPath;
 
+  /// 「清空本学期课程」的二次确认状态
+  bool _confirmClear = false;
+
   void _apply(BackupBundle next) {
     setState(() => _b = next);
     widget.onChanged(next);
@@ -174,6 +177,7 @@ class _ManagerState extends State<_Manager> {
                         for (final c in _b.courses) _courseCard(c),
                         const SizedBox(height: 6),
                         _backupCard(),
+                        _diagnoseCard(),
                       ],
                     ),
                   ),
@@ -320,6 +324,70 @@ class _ManagerState extends State<_Manager> {
     );
   }
 
+  /// 诊断信息（鸿蒙端「备份与恢复」子页里那块）：一眼看清各表条数
+  Widget _diagnoseCard() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(top: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: glassEdgeSoft),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('诊断信息',
+              style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: inkPrimary)),
+          const SizedBox(height: 6),
+          Text(backupSummary(_b),
+              style: const TextStyle(
+                  fontSize: 11, height: 1.5, color: Color(0xFF8B97AC))),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              _PillAction(text: '刷新', onTap: () => setState(() {})),
+              const SizedBox(width: 8),
+              _PillAction(
+                text: _confirmClear ? '确认清空本学期课程' : '清空本学期课程',
+                danger: true,
+                onTap: _clearSemesterCourses,
+              ),
+            ],
+          ),
+          if (_confirmClear)
+            const Padding(
+              padding: EdgeInsets.only(top: 6),
+              child: Text('会删掉本学期的课程、时段规则与待办模板；待办与计划块不动。',
+                  style: TextStyle(fontSize: 11, color: Color(0xFFE8B25C))),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// 清空本学期课程（二次确认；对应鸿蒙端「清空本学期课程」）
+  void _clearSemesterCourses() {
+    if (!_confirmClear) {
+      setState(() => _confirmClear = true);
+      return;
+    }
+    final semId = _b.semester?.id ?? 0;
+    final doomed =
+        _b.courses.where((c) => c.semesterId == semId).map((c) => c.id).toSet();
+    setState(() => _confirmClear = false);
+    _apply(_with(
+      _b,
+      courses: _b.courses.where((c) => !doomed.contains(c.id)).toList(),
+      rules: _b.rules.where((r) => !doomed.contains(r.courseId)).toList(),
+      templates:
+          _b.templates.where((t) => !doomed.contains(t.courseId)).toList(),
+    ));
+  }
+
   Future<void> _export() async {
     try {
       final path = await writeBackupFile(backupToJson(_b));
@@ -423,7 +491,11 @@ class _ManagerState extends State<_Manager> {
 class _PillAction extends StatelessWidget {
   final String text;
   final VoidCallback onTap;
-  const _PillAction({required this.text, required this.onTap});
+
+  /// 危险动作（红字红底）
+  final bool danger;
+  const _PillAction(
+      {required this.text, required this.onTap, this.danger = false});
 
   @override
   Widget build(BuildContext context) {
