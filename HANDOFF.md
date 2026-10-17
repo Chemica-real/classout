@@ -12,7 +12,7 @@ ClassOUT 是一款**纯离线鸿蒙原生（ArkTS）「课表 + 待办 + 计划�
 
 **当前状态：v1.5.1（鸿蒙端，上架准备中，**尚未提交审核**）**；**iOS/Android 版（Dart+Flutter）
 正在开发中**，**iOS/Android 版目标 ①–⑤ 全部实现**（规则层 + 数据层 + 四标签页 + 原生接线 + 通知提醒，
-**683 条测试**，含 web/iPad 的「从文件导入」、计划页拖动/缩放**），见 **§36–§43、§49、§50**；**iOS 已在 GitHub Actions 的模拟器上自动验证**
+**683 条测试**，含 web/iPad 的「从文件导入」、计划页拖动/缩放）**；**Android 已在真机（OPPO A97）上跑通**（§51）），见 **§36–§43、§49、§50**；**iOS 已在 GitHub Actions 的模拟器上自动验证**
 （§47：#1–#9 里 7 次绿，含 `db opened` + `loaded:` 自检）；**Android APK 也已能打包**
 （§48，模拟器运行验证降级为手动）。
 ⚠️ 仍然缺的都是**只能靠真机/CI** 的东西：通知权限弹窗/锁屏/免打扰、iOS 上
@@ -4315,3 +4315,65 @@ final bytes = await files.first.readAsBytes();        // 也有 readAsByteStream
 `hdc list targets` 一直是 `[Empty]`（手机没插 USB）。v1.5.1 的包已经构建好、tag 也推了
 （§45），**只差插线跑 `./sign-and-install.sh --install`**。装完看日志里
 `reminder plan: {...}` 的 `ddl` 计数比之前少 1 即可确认「考试即将截止」那条没了。
+
+
+## 51. 2026-10-17 ★ 真机（OPPO A97 5G / PFTM10）验证：发现并修掉 Android 上打不开数据库
+
+用户拿了一台安卓机（**Android 14 / API 34 / arm64-v8a / 1080×2408**），插上这台 Linux
+（`adb devices` 直接是 `device`，不用 udev 规则，用户在 `plugdev` 组）：
+`7D7PAQ9PORLR79Z9  product:PFTM10`。本机顺手装好了 Android SDK 36 + build-tools 36 +
+**NDK 28.2.13676358（2.2 GB）**，`flutter build apk --debug` 本地约 9 分钟。
+
+### 51.1 真机一行日志就把问题暴露了
+
+装上第一版（没有 `sqlite3_flutter_libs`）启动：
+
+```
+[ClassOUT] boot error: Failed to load dynamic library
+  '/data/data/com.chemica.classout/lib/libsqlite3.so': dlopen failed: not found
+```
+
+- **iOS 靠系统 `libsqlite3.dylib` 能开，Android 不行**：`package:sqlite3` 的默认加载先看
+  **App 自己的 lib 目录**，而那里没有库（我们为了 iOS 移除过插件，§48.2）。
+- 试②：改成显式 dlopen 系统的 `/system/lib64/libsqlite3.so` → 库能加载，但
+  `Failed to lookup symbol 'sqlite3_libversion_number'` —— **Android 系统库不导出完整 API**，
+  这条路彻底走不通。
+- 试③（最终方案）：**装回 `sqlite3_flutter_libs ^0.5.0`**（Android 得到打包进来的
+  `libsqlite3.so`），**同时在 iOS 上把 `package:sqlite3` 的重写为
+  `DynamicLibrary.process()`**（用插件静态链接进 Runner 的那份，不再 dlopen 系统 dylib）：
+
+```dart
+if (Platform.isIOS) {
+  open.overrideFor(OperatingSystem.iOS, () => DynamicLibrary.process());
+}
+// Android 不用覆盖：插件的 libsqlite3.so 就在 App 的 lib 目录，正好是默认路径
+```
+
+真机重装后日志变成：
+
+```
+[ClassOUT] db opened
+[ClassOUT] demo bundle ok: courses=4
+[ClassOUT] loaded: courses=4 todos=6 rules=6
+```
+
+**Android 的 SQLite 通了**（截图为证：计划页/课表页在真机上渲染正常）。
+iOS 侧这次改动**还需 CI 复核**（`DynamicLibrary.process()` + 插件同时存在是否稳）。
+
+### 51.2 顺带修掉一条"看时间才会挂"的测试
+
+`⚡找空档` 那条测试原来依赖**真实时钟**：它从"当前时刻"往后找空档，而默认不可排时段里有
+「睡觉 23:30–24:00」—— 于是**白天跑是绿的、23:25 之后跑必挂**（我这次就是半夜跑的）。
+修法：`PlanPage` 加 `final DateTime Function() now`（默认 `DateTime.now`），测试注入
+`DateTime(2026,10,17,14,0)`。**凡是依赖"现在"的逻辑，都要留一个可注入的时钟。**
+
+### 51.3 现在的真机状态
+
+| 项 | 结果 |
+|---|---|
+| 安装（`adb install -r`，debug 包 154 MB） | ✅ Success（ColorOS 没拦） |
+| 启动 | ✅ 进程存活、无崩溃 |
+| SQLite | ✅ `db opened` + `loaded:` |
+| UI | ✅ 中文/玻璃卡片/四标签正常（另存了真机截图） |
+| 通知 | ⏳ 没测（下一步用「设置 → 立即重排提醒」+ 锁屏看） |
+| 热重载 | ⏳ `flutter run -d 7D7PAQ9PORLR79Z9` 现在可行（NDK/SDK 都齐了） |

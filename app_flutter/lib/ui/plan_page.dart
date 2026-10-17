@@ -27,6 +27,12 @@ class PlanPage extends StatefulWidget {
   /// 打开时看哪天 / 是不是三日视图（默认今天、单日）——截图和测试要用
   final DateTime? initialDay;
   final bool initialThreeDay;
+
+  /// 取"现在"的方式。默认 `DateTime.now`，测试可以注入固定时钟。
+  /// ⚠️ 为什么需要它：⚡找空档的起点是"今天就从当前时刻开始找"，
+  /// 用真实时钟的话，同一条测试白天过、半夜挂（23:25 之后直到 24:00 都被
+  /// "睡觉 23:30–24:00" 挡住）—— 实测踩过一次。
+  final DateTime Function() now;
   const PlanPage({
     super.key,
     required this.bundle,
@@ -35,6 +41,7 @@ class PlanPage extends StatefulWidget {
     this.restWindows = const [],
     this.initialDay,
     this.initialThreeDay = false,
+    this.now = DateTime.now,
   });
 
   @override
@@ -146,7 +153,7 @@ class _PlanPageState extends State<PlanPage> {
   @override
   void initState() {
     super.initState();
-    _day = widget.initialDay ?? today();
+    _day = widget.initialDay ?? DateTime(widget.now().year, widget.now().month, widget.now().day);
     _threeDay = widget.initialThreeDay;
   }
 
@@ -245,9 +252,9 @@ class _PlanPageState extends State<PlanPage> {
     final rest = <List<int>>[
       for (final w in _restRanges()) [w[0], w[1]],
     ];
-    final from = day == today()
-        ? (DateTime.now().hour * 60 + DateTime.now().minute)
-        : _axis.startMin;
+    final now = widget.now();
+    final isToday = formatDate(day) == formatDate(now);
+    final from = isToday ? (now.hour * 60 + now.minute) : _axis.startMin;
     final slot = findFreeSlot(_axis, busy, rest, todo.estimateMin, from);
     if (slot < 0) {
       ScaffoldMessenger.of(context).showSnackBar(

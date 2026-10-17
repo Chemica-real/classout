@@ -21,6 +21,9 @@ class _Harness {
   BackupBundle get current => last ?? _demo();
 }
 
+/// 固定时钟：避免"半夜跑测试就挂"（见 plan_page.dart 里 now 的注释）
+DateTime _fixedNow() => DateTime(2026, 10, 17, 14, 0);
+
 Future<_Harness> _pump(WidgetTester tester, {DateTime? initialDay}) async {
   tester.view.physicalSize = const Size(1080, 2400);
   tester.view.devicePixelRatio = 3.0;
@@ -33,6 +36,7 @@ Future<_Harness> _pump(WidgetTester tester, {DateTime? initialDay}) async {
           bundle: h.current,
           onChanged: (next) => setState(() => h.last = next),
           initialDay: initialDay,
+          now: _fixedNow,
         ),
       ),
     ),
@@ -56,6 +60,7 @@ void main() {
           onChanged: (_) {},
           // 固定看 2026-10-16（周五）：有「线代」课 + 一个计划块
           initialDay: DateTime(2026, 10, 16),
+          now: _fixedNow,
         ),
       ),
     ));
