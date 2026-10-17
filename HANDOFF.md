@@ -5741,3 +5741,13 @@ Semantics 会带 clickable 与盒子），再按真实 px 点。真机复核结�
 > 已记在这里，等黑名单进 `shared/` 契约再补。
 
 - `test/block_editor_test.dart`：+1 条（两段式删除 → 待办与其所有块一起没）。**927 passed**。
+
+---
+
+## 90. golden 基线重出（本轮 7 张）
+
+`flutter test --update-goldens tool/screenshot_test.dart` 重出了课表 / 待办 / 计划 / 设置 /
+课程管理 / 演练引导条 / 待办编辑窗 7 张基线（底部导航、设置卡、托盘点阵、编辑窗布局都变了）。
+
+⚠️ 编辑窗与引导条 golden 里的 `✕`/`▴`/`▾` 会渲染成**方框**：golden 环境的字体没有这几个字形，
+真机上正常（真机截图已确认）。看 golden 时别把它当回归。
