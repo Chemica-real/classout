@@ -42,11 +42,16 @@ class AppFrame extends StatefulWidget {
 
 class _AppFrameState extends State<AppFrame>
     with SingleTickerProviderStateMixin {
-  /// 光晕漂移（鸿蒙端：Alternate + 无限，只动 translate/opacity；这里是 9 秒一来一回）
+  /// 光晕漂移（鸿蒙 `DUR_ORBIT = 22000`：Alternate + 无限，只动 translate/opacity；
+  /// 曲线 `cubicBezier(0.42, 0, 0.58, 1)` —— 极慢，肉眼是"背景在缓缓流动"）
   late final AnimationController _orbit = AnimationController(
     vsync: this,
-    duration: const Duration(seconds: 9),
+    duration: const Duration(milliseconds: 22000),
   );
+
+  /// 鸿蒙 `curves.cubicBezierCurve(0.42, 0, 0.58, 1)`
+  late final Animation<double> _orbitCurved = CurvedAnimation(
+      parent: _orbit, curve: const Cubic(0.42, 0.0, 0.58, 1.0));
 
   @override
   void initState() {
@@ -91,29 +96,38 @@ class _AppFrameState extends State<AppFrame>
             Positioned.fill(
               child: IgnorePointer(
                 child: AnimatedBuilder(
-                  animation: _orbit,
+                  animation: _orbitCurved,
                   builder: (context, _) {
-                    final t = _orbit.value;
+                    final t = _orbitCurved.value;
+                    // 位置与位移照鸿蒙 `PageBackground`：
+                    //   粉：top 60 / right -40，漂移 translate(-46, +64)，透明度 ×0.65
+                    //   青：bottom 100 / left -30，漂移 translate(+54, -48)，透明度 ×1.25
                     return Stack(
                       children: [
                         Positioned(
-                          top: 60 - 0 + 64 * t,
-                          right: -40 + 46 * t,
-                          child: _Glow(
-                            size: 280,
-                            color: glowPink,
-                            opacity: glowPinkOpacity * (1 - 0.35 * t),
-                            blur: glowPinkBlur,
+                          top: 60,
+                          right: -40,
+                          child: Transform.translate(
+                            offset: Offset(-46 * t, 64 * t),
+                            child: _Glow(
+                              size: 280,
+                              color: glowPink,
+                              opacity: glowPinkOpacity * (1 - 0.35 * t),
+                              blur: glowPinkBlur,
+                            ),
                           ),
                         ),
                         Positioned(
-                          bottom: 100 - 48 * t,
-                          left: -30 + 54 * t,
-                          child: _Glow(
-                            size: 200,
-                            color: glowCyan,
-                            opacity: glowCyanOpacity * (1 + 0.25 * t),
-                            blur: glowCyanBlur,
+                          bottom: 100,
+                          left: -30,
+                          child: Transform.translate(
+                            offset: Offset(54 * t, -48 * t),
+                            child: _Glow(
+                              size: 200,
+                              color: glowCyan,
+                              opacity: glowCyanOpacity * (1 + 0.25 * t),
+                              blur: glowCyanBlur,
+                            ),
                           ),
                         ),
                       ],
