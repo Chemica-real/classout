@@ -23,13 +23,13 @@
 | `pages/Index.ets` → 课表（`WeekHeaderRow` / `Grid` / `SessionBlock` / `TabBar`） | `lib/ui/timetable_page.dart` + `lib/ui/app_frame.dart` | 周条、时间轴、7 列、课程块；**底部导航与课表/待办页头都是悬浮浮层**（`tabBarInset` / `topInset`，内容从下面滑过） |
 | `pages/Index.ets` → `PageBackground`（`Glass.ets`） | `app_frame.dart`（渐变 + 光晕 + 壁纸） | 壁纸数据来自 `data/wallpaper.dart` |
 | `pages/Index.ets` → `LoadingScreen()` + `playBootExit()` | `lib/ui/boot_screen.dart` | 启动加载页：网格底纹 / 双圆环 + 雷达 / ClassOUT 字标 + 标语 / 5 步清单 + 打字机 + 五点 / 浓缩成球 + 喷射 + 白球扩张 |
-| `view/TodoInbox.ets` | `lib/ui/todo_page.dart` | 四段列表、卡片、底部双按钮托盘 |
+| `view/TodoInbox.ets` | `lib/ui/todo_page.dart` | 四段列表、卡片；底部双按钮托盘是**浮层**（`Stack` + `Positioned` + `MeasureSize`，列表从它下面滑过）；待确认卡片的删除走**碎裂掉出**（`SHARD_DX/DY/ROT` 四块 16×16，`DUR_SHARD=320`，播完再收起高度） |
 | `view/TodoInbox.ets` → `EditorPanel()` | `lib/ui/todo_editor.dart` | 右侧 84% 抽屉（标题 + ✕ + 可滚表单） |
-| `view/PlanDayView.ets`（`DayBarFloat` / `ColHeadRow` / `HourLines` / `RestBands` / `ClassBlock` / `PlanBlockView` / `DdlMarkers` / `TodoPool`） | `lib/ui/plan_page.dart` | 日/三日、时间轴、课表灰带、斜纹不可排带、计划块、截止标记、待安排托盘；**日期条与托盘都是悬浮浮层**（`topInset` / `tabBarInset`） |
-| `view/SettingsPage.ets`（`WallpaperCard`/`MottoCard`/`MotionCard`/`ReminderCard`/…） | `lib/ui/settings_page.dart` | 10 张玻璃卡 |
+| `view/PlanDayView.ets`（`DayBarFloat` / `ColHeadRow` / `HourLines` / `RestBands` / `ClassBlock` / `PlanBlockView` / `DdlMarkers` / `TodoPool`） | `lib/ui/plan_page.dart` | 日/三日、时间轴、课表灰带、斜纹不可排带、计划块、截止标记（**挂在标记下方的无遮罩浮层**，等价 `bindPopup`）、待安排托盘（高度实测）；日期条与托盘都是悬浮浮层（`topInset` / `tabBarInset`），内容 padding 含 `DDL_MARK_ALLOW=36` |
+| `view/SettingsPage.ets`（`WallpaperCard`/`MottoCard`/`MotionCard`/`ReminderCard`/…） | `lib/ui/settings_page.dart` | 10 张玻璃卡；内容 padding 与鸿蒙同式（`12 + 标题条 + FLOAT_GAP` / `30 + bottomInset`） |
 | `view/PlanDayView.ets` → `BlockEditor()` | `lib/ui/block_editor.dart` | 计划块属性面板：右侧抽屉（日期 ‹›/开始时间 ±/时长 ±/截止/备注/其他块/对半分/标记完成/移除） |
-| `domain/Guide.ets` + `view/GuideBar.ets` + `data/GuideRepo.ets` | `lib/domain/guide.dart` + `lib/ui/guide_bar.dart` | 新手演练：步骤脚本（7 步，各自标签页）+ 引导条 + 沙箱（真实数据存 kv `sandbox_backup` → 换演练数据 → 退出还原）；首次启动询问 `guide_prompted` |
-| `view/CourseManager.ets` | `lib/ui/course_manager.dart` | 课程管理浮层：学期区块（列表 / 设为当前 / 新建学期，可复制课表）、节次摘要、课程卡、课程编辑抽屉（颜色/开关/时段规则/待办模板/删除课程）、备份与恢复、诊断信息、清空本学期课程（二次确认） |
+| `domain/Guide.ets` + `view/GuideBar.ets` + `data/GuideRepo.ets` | `lib/domain/guide.dart` + `lib/ui/guide_bar.dart` | 新手演练：步骤脚本（7 步，各自标签页）+ 引导条 + 沙箱（真实数据存 kv `sandbox_backup`，**整张 kv 快照存 `sandbox_prefs`** → 换演练数据 → 退出/冷启动整份还原）；首次启动询问 `guide_prompted`；退出回课表页且不弹提示条 |
+| `view/CourseManager.ets` | `lib/ui/course_manager.dart` | **整页换内容**（`_mode = list / semester / sections / backup / course`）：全宽玻璃顶栏（关闭 / ‹ 返回）+ 全屏 `backdropBlur` 薄纱；列表三张入口卡 + 课程卡；学期设置（所有学期 / 新建内联表单）、上课节次时间、备份与恢复（路径块常驻、琥珀色「从备份文件恢复…」）、课程编辑（颜色/开关/时段规则/待办模板/删除课程） |
 | `view/ChipButton.ets` | `_Choice`/`_Chip`/`_ChipButton`（各页面内） | 选中 = `#2E6BE6` 底 + 白字 |
 | `data/Prefs.ets`（`MOTTO_*`、`mottoUnits`、`clampMottoUnits`、`cleanMotto`） | `lib/domain/motto.dart` | 标语：按显示宽度 32（汉字 2 / 半角 1） |
 | `domain/Privacy.ets` | `lib/domain/privacy.dart` + `lib/ui/privacy_page.dart` | 隐私说明（上架材料）：9 节正文、更新日期；设置页「关于 → 隐私说明」打开 |
@@ -47,13 +47,14 @@
 | ArkTS | Dart | 说明 |
 |---|---|---|
 | `Index.BootLayer` / `bootIn` / `playBootExit` | `lib/ui/boot_screen.dart` ✅ | 启动：打字机 + 步骤清单 + 浓缩成球 + 喷射 + 白球扩张 |
-| `TodoInbox` 碎裂（`SHARD_*`） | 待做 | 确认待办时的碎片动画 |
+| `TodoInbox` 碎裂（`SHARD_*`） | `todo_page.dart`（`_PendingCardState`）✅ | 确认删除待办：四块碎片飞散旋转 + 本体缩到 0.86 淡出（`DUR_SHARD=320`）→ 高度收起（`DUR_ITEM=240`）→ 才落库；动效关掉时直接删 |
 | `PlanDayView` 长按选中 → 拖动、双指缩放 | 两步拖 ✅ + 双指缩放 ✅（`_Block`：长按手势 + 外层 `Listener` 数手指） | 轻点开属性面板；长按 400ms 才拖；两指间距比例 → 改时长 |
-| `SettingsPage` toast | `SnackBar` | 鸿蒙端 `showToast`，这边统一 SnackBar |
+| `SettingsPage` toast | `lib/ui/inline_toast.dart`（`InlineToastMixin`） | 鸿蒙端 `showToast` 是**内容顶部一行蓝字**（2.2 秒），不是 SnackBar（SnackBar 会盖住悬浮导航栏） |
 
-## 四、还缺的（按 HANDOFF §52.3 的优先级）
+## 四、还没对齐的（截至 HANDOFF §117）
 
-1. 课程管理：课程/时段/模板 ✅、学期管理（新建/复制/设为当前）✅、备份导出 ✅
-2. 计划页：待安排货架展开、按列截止标记 + 浮层、长按选中两步模型、双指缩放
-3. 单周调整（停课/换教室/调课/补课/撤销）、课程管理与模板、备份导出
-4. 启动加载页、页头/导航栏真正做成悬浮层
+1. **鸿蒙机双机同屏最后一遍复核** —— 鸿蒙机自 2026-10-18 02:30 起锁屏（没有 PIN），
+   解锁后按 HANDOFF §84.3 跑一遍四页；这是唯一还挡在"1:1 完成"前面的。
+2. 双指缩放：逻辑有单测 + fixtures，真机多指手测待做（`adb input` 只能单指）。
+3. 玻璃浮窗滚动时偶发重影（Impeller + BackdropFilter 瞬态，HANDOFF §111）。
+4. 备份入口形态、版本号、提醒诊断：都是**平台性差异**（HANDOFF §117.2）。

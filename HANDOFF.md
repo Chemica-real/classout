@@ -12,7 +12,7 @@ ClassOUT 是一款**纯离线**的「课表 + 待办 + 计划」三合一 App，
 |---|---|---|
 | 版本 | v1.5.1（上架准备中，未提审） | 0.2.0（Android 已装真机 OPPO A97） |
 | 页面 | 课表 / 待办 / 计划 / 设置 + 启动加载页 + 悬浮浮窗 | **同样四页 + 启动页 + 浮窗（§52–§68 逐页复刻）** |
-| 测试 | 离线断言 524 项（`tools/domain-check`） | **1281 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
+| 测试 | 离线断言 524 项（`tools/domain-check`） | **1283 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
 | 差异基准 | 本目录 `docs/manual/01..09.jpg`（真机截图） | `app_flutter/tool/goldens/*.png` 对照上面九张 + `shared/fixtures/`（1115 条规则用例） |
 
 **安卓版与鸿蒙版的 1:1 复刻已经完成**：主题 token 抄自 ArkTS（§52）、六个页面重做、
@@ -6428,7 +6428,7 @@ cd app_flutter && flutter test       # 1268 条（含 1115 条三端 fixture 逐
 
 ### 116.5 验证
 
-- `flutter test`：**1281 passed**；`flutter analyze` 无问题；goldens 重出（新增 `ddl_panel`）。
+- `flutter test`：**1283 passed**；`flutter analyze` 无问题；goldens 重出（新增 `ddl_panel`）。
 - 鸿蒙端离线断言：**524 通过**。
 - 真机（OPPO A97）：截止浮层开/关/点条目打开待办编辑窗；演练 7 步走完 → 完成演练 →
   静默回课表 + 真数据（13 门课 / 26 待办 / 16 时段）；沙箱里关掉的「界面动画」退出后回到开；
@@ -6614,3 +6614,19 @@ cd app_flutter && flutter build apk --debug && adb -s 7D7PAQ9PORLR79Z9 install -
 
 ⚠️ 这台 OPPO 有个「数字健康 / 应用限时」的系统挡板（`ExpireTimeCoverActivity`），
 偶尔会在连续调试很久之后冒出来写着「停用中，无法使用」——**不是 App 崩了**，按返回或点「解除限制」即可。
+
+### 116.14 补上鸿蒙端唯一还没做的动效：待确认卡片「碎裂掉出」
+
+`MIRROR.md` 里那条「`TodoInbox` 碎裂（`SHARD_*`）→ 待做」一直是空的（安卓删待办是"啪"地消失），
+这一轮按鸿蒙 `removeConfirmed` 原样补上：
+
+- 点「确认删除」→ 卡片本体缩到 0.86 并淡出，同时飞出 **4 块 16×16 碎片**
+  （`SHARD_DX=[-30,34,-20,26]`、`SHARD_DY=[-22,-10,30,22]`、`SHARD_ROT=[-46,38,28,-34]`，
+  颜色交替 `rgba(255,255,255,0.30)` / `rgba(127,168,255,0.55)`，圆角 4，位置 `x=26+i*56, y=22+(i%2)*34`）。
+- 碎片飞完（`DUR_SHARD=320`）再**收起高度**（`DUR_ITEM=240`，`SizeTransition` + 淡出），
+  等价于鸿蒙在 `animateTo` 里把这一条从列表摘掉、上下两条滑过去；**最后才落库**。
+- ⚠️ 透明度/缩放走**单调**的 `easeOutCubic`，只有位移/旋转用会过冲的 `motionCurve`
+  （`easeOutBack` 在 37% 时就已经到 1，透明度提前变 0 —— golden 里一眼就能看到"卡片直接没了"）。
+- 动效总开关关掉时直接删（鸿蒙 `if (!isMotionOn())` 同款）。
+- 测试 +2（碎裂期间数据不动、播完才删 / 动效关掉立即删）；golden 新增 `todos_shatter.png`（动画中间帧）。
+  顺带把 `MIRROR.md` 里所有过时的行都更新了（课程管理整页化、待办托盘浮层、截止浮层、toast 改行内、沙箱偏好快照）。

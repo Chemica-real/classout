@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:classout/data/backup.dart';
 import 'package:classout/model/types.dart';
 import 'package:classout/ui/todo_page.dart';
+import 'package:classout/ui/theme.dart';
 
 BackupBundle _demo() =>
     BackupBundle.decode(File('assets/demo_backup.json').readAsStringSync());
@@ -15,6 +16,74 @@ BackupBundle _demo() =>
 Todo _byId(BackupBundle b, int id) => b.todos.firstWhere((t) => t.id == id);
 
 void main() {
+  tearDown(() => motionOn = true);
+
+  testWidgets('待确认卡片：删除先碎裂、播完才真删（鸿蒙 removeConfirmed 的顺序）',
+      (tester) async {
+    motionOn = true;
+    BackupBundle? last;
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: StatefulBuilder(
+          builder: (context, setState) => TodoPage(
+            bundle: last ?? _demo(),
+            onChanged: (next) => setState(() => last = next),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('第 3 周作业'), findsOneWidget);
+
+    // 「删除」在已完成行里也有一个 → 限定在待确认那张卡里点
+    final pendingCard = find
+        .ancestor(of: find.text('第 3 周作业'), matching: find.byType(Container))
+        .first;
+    await tester.tap(find.descendant(of: pendingCard, matching: find.text('删除')));
+    await tester.pump();
+    await tester.tap(find.text('确认删除'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+    // 还在动画里：数据没动（鸿蒙是"播完才落库"）
+    expect(last, isNull, reason: '碎裂播放期间不应该已经删掉');
+    // 播完 → 真删
+    await tester.pumpAndSettle();
+    expect(last, isNotNull);
+    expect(last!.todos.any((t) => t.title == '第 3 周作业'), isFalse);
+  });
+
+  testWidgets('动画总开关关掉 → 删除不再碎裂，直接删', (tester) async {
+    motionOn = false;
+    BackupBundle? last;
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: StatefulBuilder(
+          builder: (context, setState) => TodoPage(
+            bundle: last ?? _demo(),
+            onChanged: (next) => setState(() => last = next),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    // 「删除」在已完成行里也有一个 → 限定在待确认那张卡里点
+    final pendingCard = find
+        .ancestor(of: find.text('第 3 周作业'), matching: find.byType(Container))
+        .first;
+    await tester.tap(find.descendant(of: pendingCard, matching: find.text('删除')));
+    await tester.pump();
+    await tester.tap(find.text('确认删除'));
+    await tester.pump();
+    expect(last, isNotNull, reason: '关掉动效时应当立刻删掉');
+    expect(last!.todos.any((t) => t.title == '第 3 周作业'), isFalse);
+  });
+
   testWidgets('四段都画出来了', (tester) async {
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 3.0;

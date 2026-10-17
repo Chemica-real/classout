@@ -8,6 +8,8 @@
 // 底部固定一条玻璃托盘：「+ 新建待办」（2 份宽，蓝）/「+ 考试」（1 份宽，金）。
 // 页头（学期名 / 周次 / 补课 / 管理课程 / 同步）由外壳统一提供，见 course_header.dart。
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../data/backup.dart';
@@ -512,7 +514,12 @@ class _RowCard extends StatelessWidget {
 
 // ---------------- 三种卡片 ----------------
 
-class _PendingCard extends StatelessWidget {
+/// 鸿蒙 `PendingCard` 的碎裂参数（`SHARD_DX/DY/ROT`，四个碎片）
+const List<double> _shardDx = [-30, 34, -20, 26];
+const List<double> _shardDy = [-22, -10, 30, 22];
+const List<double> _shardRot = [-46, 38, 28, -34];
+
+class _PendingCard extends StatefulWidget {
   final Todo t;
   final Course? course;
   final String categoryText;
@@ -536,16 +543,60 @@ class _PendingCard extends StatelessWidget {
   });
 
   @override
+  State<_PendingCard> createState() => _PendingCardState();
+}
+
+class _PendingCardState extends State<_PendingCard>
+    with TickerProviderStateMixin {
+  /// 「删除时碎裂掉出」（鸿蒙 `removeConfirmed`）：**先碎裂、再收掉高度、最后才真删**
+  late final AnimationController _shake =
+      AnimationController(vsync: this, duration: dur(durShard));
+
+  /// 碎裂之后那一下"高度收起来"（鸿蒙是在 `animateTo(DUR_ITEM)` 里把这一条
+  /// 从列表里摘掉，上下两条跟着滑过去；这里用收起高度做出同样的观感）
+  late final AnimationController _collapse =
+      AnimationController(vsync: this, duration: dur(durItem));
+
+  bool _shatter = false;
+  bool _collapsing = false;
+
+  @override
+  void dispose() {
+    _shake.dispose();
+    _collapse.dispose();
+    super.dispose();
+  }
+
+  void _confirmDelete() {
+    if (!motionOn) {
+      // 动画关掉：跳过碎裂，直接删（鸿蒙 `if (!isMotionOn())` 同款）
+      widget.onDeleteConfirmed();
+      return;
+    }
+    setState(() => _shatter = true);
+    _shake.forward(from: 0).whenComplete(() {
+      if (!mounted) return;
+      setState(() => _collapsing = true);
+      _collapse.forward(from: 0).whenComplete(() {
+        if (mounted) widget.onDeleteConfirmed();
+      });
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return _RowCard(
+    final t = widget.t;
+    final course = widget.course;
+    final body = _RowCard(
       border: glassEdgeSoft,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              if (course != null) _CourseChip(course: course!, fontSize: 11),
-              if (categoryText.isNotEmpty) _CategoryChip(categoryText),
+              if (course != null) _CourseChip(course: course, fontSize: 11),
+              if (widget.categoryText.isNotEmpty)
+                _CategoryChip(widget.categoryText),
               Expanded(
                 child: Text(t.title,
                     maxLines: 1,
@@ -576,26 +627,91 @@ class _PendingCard extends StatelessWidget {
                       style:
                           const TextStyle(fontSize: 12, color: inkSecondary)),
                 ),
-                if (confirming) ...[
+                if (widget.confirming) ...[
                   _SmallButton(
-                      text: '确认删除', color: dangerRed, onTap: onDeleteConfirmed),
+                      text: '确认删除',
+                      color: dangerRed,
+                      onTap: _confirmDelete),
                   _SmallButton(
                       text: '取消',
                       color: const Color(0xFFA9B5C9),
-                      onTap: onCancelDelete),
+                      onTap: widget.onCancelDelete),
                 ] else ...[
-                  _SmallButton(text: '删除', color: dangerRed, onTap: onDelete),
+                  _SmallButton(
+                      text: '删除', color: dangerRed, onTap: widget.onDelete),
                   _SmallButton(
                       text: '编辑',
                       color: const Color(0xFFA9B5C9),
-                      onTap: onEdit),
-                  _SmallButton(text: '确认', color: accentBlue, onTap: onConfirm),
+                      onTap: widget.onEdit),
+                  _SmallButton(
+                      text: '确认', color: accentBlue, onTap: widget.onConfirm),
                 ],
               ],
             ),
           ),
         ],
       ),
+    );
+
+    if (_collapsing) {
+      // 高度收起来：下面的卡片跟着往上滑（等价于鸿蒙"带动画地从列表里摘掉"）
+      return SizeTransition(
+        sizeFactor: Tween<double>(begin: 1, end: 0)
+            .animate(CurvedAnimation(parent: _collapse, curve: Curves.easeOutCubic)),
+        alignment: Alignment.topCenter,
+        child: FadeTransition(
+          opacity: Tween<double>(begin: 1, end: 0).animate(_collapse),
+          child: body,
+        ),
+      );
+    }
+    if (!_shatter) return body;
+    // 碎片：四个 16×16 小块，从卡片里飞散、旋转、淡出（鸿蒙 `SHARD_*` 同款参数）
+    return AnimatedBuilder(
+      animation: _shake,
+      builder: (_, __) {
+        // ⚠️ 卡片本体与碎片透明度走**单调**的 easeOutCubic（`motionCurve` 是 easeOutBack，
+        //    37% 的时候就已经过冲到 1，透明度提前变 0，看上去像"直接没了"）；
+        //    只有碎片的位移/旋转用那条会过冲的曲线，飞出去才有一点"甩"的劲。
+        final op = Curves.easeOutCubic.transform(_shake.value);
+        final fly = curveOr(motionCurve).transform(_shake.value);
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            // 卡片本体缩掉淡出（碎片在外面飞）
+            Opacity(
+              opacity: 1 - op,
+              child: Transform.scale(scale: 1 - 0.14 * op, child: body),
+            ),
+            for (var i = 0; i < 4; i++)
+              Positioned(
+                left: 26 + i * 56.0,
+                top: 22 + (i % 2) * 34.0,
+                child: IgnorePointer(
+                  child: Transform.translate(
+                    offset: Offset(_shardDx[i] * fly, _shardDy[i] * fly),
+                    child: Transform.rotate(
+                      angle: _shardRot[i] * op * math.pi / 180,
+                      child: Opacity(
+                        opacity: 1 - op,
+                        child: Container(
+                          width: 16,
+                          height: 16,
+                          decoration: BoxDecoration(
+                            color: i.isEven
+                                ? const Color(0x4DFFFFFF)
+                                : const Color(0x8C7FA8FF),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }

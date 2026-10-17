@@ -341,6 +341,36 @@ void main() {
     await _capture(tester, 'course_editor');
   });
 
+  testWidgets('待确认卡片「碎裂掉出」动画中间帧截图', (tester) async {
+    final family = await _loadFonts();
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+          brightness: Brightness.dark, useMaterial3: true, fontFamily: family),
+      home: Scaffold(
+        body: AppFrame(
+          tab: 1,
+          onTab: (_) {},
+          child: TodoPage(bundle: demo, onChanged: (_) {}),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    // 待确认那张卡：删除 → 确认删除 → 停在碎裂动画中间
+    final card = find
+        .ancestor(of: find.text('第 3 周作业'), matching: find.byType(Container))
+        .first;
+    await tester.tap(find.descendant(of: card, matching: find.text('删除')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确认删除'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 90));
+    await _capture(tester, 'todos_shatter');
+  });
+
   testWidgets('待办编辑器（右侧抽屉）截图', (tester) async {
     final family = await _loadFonts();
     tester.view.physicalSize = const Size(1080, 2400);
