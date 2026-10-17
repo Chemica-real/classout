@@ -294,8 +294,9 @@ class _SettingsPageState extends State<SettingsPage>
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: const Text('保存提醒设置',
+                    // 鸿蒙是默认 Button（16）
                     style: TextStyle(
-                        fontSize: 14,
+                        fontSize: 16,
                         fontWeight: FontWeight.w500,
                         color: Colors.white)),
               ),

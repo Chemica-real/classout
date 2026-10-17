@@ -709,11 +709,12 @@ class _EditorBodyState extends State<_EditorBody> {
                 style:
                     const TextStyle(fontSize: 13, color: Color(0xFFF2F5FA))),
           ),
+          // 鸿蒙这颗是**默认 Button**（没写 height → 40 高），只是字号写成 12
           _Pill(
             text: '选择…',
             background: const Color(0x24FFFFFF),
             foreground: const Color(0xFF7FA8FF),
-            height: 32,
+            fontSize: 12,
             onTap: pick,
           ),
         ],
@@ -877,6 +878,10 @@ class _Pill extends StatelessWidget {
   final Color foreground;
   final VoidCallback onTap;
   final double height;
+
+  /// 字号：默认按高度推（40 高 = 鸿蒙默认 Button 16；32 及以下 = 12）。
+  /// 鸿蒙「选择…」那种 40 高但显式写了 `fontSize(12)` 的，用这个参数覆盖。
+  final double? fontSize;
   const _Pill({
     super.key,
     required this.text,
@@ -884,6 +889,7 @@ class _Pill extends StatelessWidget {
     required this.foreground,
     required this.onTap,
     this.height = 40,
+    this.fontSize,
   });
 
   @override
@@ -902,7 +908,7 @@ class _Pill extends StatelessWidget {
         child: Text(text,
             style: TextStyle(
                 // 鸿蒙：整宽「取消 / 保存 / 删除」是默认 Button（16），小胶囊（32 高）用 12
-                fontSize: height >= 36 ? 16 : 12,
+                fontSize: fontSize ?? (height >= 36 ? 16 : 12),
                 fontWeight: FontWeight.w500,
                 color: foreground)),
       ),
