@@ -12,7 +12,7 @@ ClassOUT 是一款**纯离线**的「课表 + 待办 + 计划」三合一 App，
 |---|---|---|
 | 版本 | v1.5.1（上架准备中，未提审） | 0.2.0（Android 已装真机 OPPO A97） |
 | 页面 | 课表 / 待办 / 计划 / 设置 + 启动加载页 + 悬浮浮窗 | **同样四页 + 启动页 + 浮窗（§52–§68 逐页复刻）** |
-| 测试 | 离线断言 524 项（`tools/domain-check`） | **927 条 `flutter test`**（含 775 条三端 fixture 逐条对拍） |
+| 测试 | 离线断言 524 项（`tools/domain-check`） | **930 条 `flutter test`**（含 775 条三端 fixture 逐条对拍） |
 | 差异基准 | 本目录 `docs/manual/01..09.jpg`（真机截图） | `app_flutter/tool/goldens/*.png` 对照上面九张 + `shared/fixtures/`（775 条规则用例） |
 
 **安卓版与鸿蒙版的 1:1 复刻已经完成**：主题 token 抄自 ArkTS（§52）、六个页面重做、
@@ -5751,3 +5751,25 @@ Semantics 会带 clickable 与盒子），再按真实 px 点。真机复核结�
 
 ⚠️ 编辑窗与引导条 golden 里的 `✕`/`▴`/`▾` 会渲染成**方框**：golden 环境的字体没有这几个字形，
 真机上正常（真机截图已确认）。看 golden 时别把它当回归。
+
+---
+
+## 91. 课程管理：补上「上课节次时间」子页（鸿蒙 `SectionsView`）
+
+安卓的课程管理里「上课节次时间」原来只是一行**只读摘要**（"12 节：08:00 起…"），
+用户没有任何地方改作息 —— 而鸿蒙改这里会立刻影响课表格子的排布（机动节还画得矮一点）。
+
+新文件 `lib/ui/section_times_editor.dart`（鸿蒙 `CourseManager → SectionsView`）：
+
+- 顶栏「‹ 返回 + 上课节次时间」，说明「改这里会立刻影响课表格子的排布…第 9、12 节是机动节次」；
+- 表头「节 / 开始 / 结束 / 机动 」，一行一节：两个 `HH:mm` 输入框 + 机动开关 + 「删」；
+  输入不是合法 `HH:mm` 时不写入（同 ArkTS 的 `v.length === 5 && !isNaN(m)`）；
+- 底部「+ 加一节」「恢复北大默认 12 节」（并排等宽），最后整宽「保存节次时间」；
+- 「恢复默认」用的是新加的 `domain/timetable.dart → pkuSectionTimes()`（与 `PKU_SECTION_TIMES`
+  逐条同值：第 9、12 节机动；`domain/dates.dart` 新加 `hhmmToMin()`）。
+
+课程管理里的摘要行改成鸿蒙的文案 **「12 节 · 可随意改」** 并可点开这个子页；
+保存后把当前学期的节次整段替换（别的学期的节次不动）。
+
+- `test/section_times_test.dart`（新，3 条）：改开始时间、恢复默认 + 加一节、`pkuSectionTimes` 数值。
+- **930 passed**。

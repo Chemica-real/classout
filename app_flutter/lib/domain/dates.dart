@@ -31,6 +31,16 @@ int weekdayOf(DateTime d) => d.weekday; // Dart: 周一=1 … 周日=7
 /// 分钟数 → 'HH:mm'
 String minToHHmm(int min) => '${_pad2((min ~/ 60))}:${_pad2(min % 60)}';
 
+/// 'HH:mm' → 分钟数（解析不出来返回 null；与 ArkTS `hhmmToMin` 的 NaN 对应）
+int? hhmmToMin(String s) {
+  final m = RegExp(r'^(\d{1,2}):(\d{2})$').firstMatch(s.trim());
+  if (m == null) return null;
+  final h = int.parse(m.group(1)!);
+  final mi = int.parse(m.group(2)!);
+  if (h > 23 || mi > 59) return null;
+  return h * 60 + mi;
+}
+
 // ---------------- 文案（与鸿蒙端逐字一致）----------------
 
 /// 相对今天的自然语言：今天 / 明天 / 后天 / N 天后 / 逾期 N 天

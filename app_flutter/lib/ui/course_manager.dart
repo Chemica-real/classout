@@ -18,6 +18,7 @@ import '../domain/dates.dart';
 import '../domain/week_mask.dart';
 import '../model/types.dart';
 import 'app_frame.dart';
+import 'section_times_editor.dart';
 import 'theme.dart';
 
 /// 复制一份 bundle，只换 courses / rules / templates
@@ -156,9 +157,8 @@ class _ManagerState extends State<_Manager> {
                         _semesterSection(),
                         _summary(
                           '上课节次时间',
-                          '${_b.sectionTimes.length} 节：'
-                              '${_b.sectionTimes.isEmpty ? '—' : '${minToHHmm(_b.sectionTimes.first.startMin)} 起，'
-                                  '第 ${_b.sectionTimes.last.section} 节 ${minToHHmm(_b.sectionTimes.last.endMin)} 止'}',
+                          '${_b.sectionTimes.length} 节 · 可随意改',
+                          onTap: _openSections,
                         ),
                         const SizedBox(height: 10),
                         Row(
@@ -199,19 +199,37 @@ class _ManagerState extends State<_Manager> {
     );
   }
 
-  Widget _summary(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label,
-              style: const TextStyle(fontSize: 12, color: Color(0xFF94A0B5))),
-          const SizedBox(height: 2),
-          Text(value, style: const TextStyle(fontSize: 13, color: inkPrimary)),
-        ],
+  Widget _summary(String label, String value, {VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label,
+                style: const TextStyle(fontSize: 12, color: Color(0xFF94A0B5))),
+            const SizedBox(height: 2),
+            Text(value, style: const TextStyle(fontSize: 13, color: inkPrimary)),
+          ],
+        ),
       ),
     );
+  }
+
+  /// 「上课节次时间」子页（鸿蒙端 SectionsView）：改完立刻影响课表格子排布
+  Future<void> _openSections() async {
+    final sem = _b.semester;
+    if (sem == null) return;
+    final rows = _b.sectionTimes.where((s) => s.semesterId == sem.id).toList();
+    final next = await showSectionTimesEditor(context,
+        semesterId: sem.id, sections: rows);
+    if (next == null || !mounted) return;
+    _apply(_with(_b, sectionTimes: [
+      ..._b.sectionTimes.where((s) => s.semesterId != sem.id),
+      ...next,
+    ]));
   }
 
   Widget _courseCard(Course c) {

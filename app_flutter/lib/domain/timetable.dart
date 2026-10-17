@@ -214,3 +214,28 @@ RoomMergePlan mergeRoomOverrides(List<SessionOverride> overrides) {
   }
   return RoomMergePlan(list, deleteIds);
 }
+
+/// 北大校本部一天 12 节的作息（鸿蒙端 `PKU_SECTION_TIMES`）：第 9、12 节是机动节次。
+List<SectionTime> pkuSectionTimes(int semesterId) => [
+      for (final t in const [
+        [1, 8 * 60, 8 * 60 + 50, 0],
+        [2, 9 * 60, 9 * 60 + 50, 0],
+        [3, 10 * 60 + 10, 11 * 60, 0],
+        [4, 11 * 60 + 10, 12 * 60, 0],
+        [5, 13 * 60, 13 * 60 + 50, 0],
+        [6, 14 * 60, 14 * 60 + 50, 0],
+        [7, 15 * 60 + 10, 16 * 60, 0],
+        [8, 16 * 60 + 10, 17 * 60, 0],
+        [9, 17 * 60 + 10, 18 * 60, 1],
+        [10, 18 * 60 + 40, 19 * 60 + 30, 0],
+        [11, 19 * 60 + 40, 20 * 60 + 30, 0],
+        [12, 20 * 60 + 40, 21 * 60 + 30, 1],
+      ])
+        SectionTime(
+          semesterId: semesterId,
+          section: t[0],
+          startMin: t[1],
+          endMin: t[2],
+          flexible: t[3] != 0,
+        ),
+    ];
