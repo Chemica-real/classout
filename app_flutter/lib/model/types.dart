@@ -125,6 +125,10 @@ class PlanBlock implements PlanBlockLike {
 }
 
 int _int(Object? v, [int fallback = 0]) {
+  // ⚠️ 备份规范里布尔写 1/0，但 fixtures 是 JS 生成的、会给 true/false。
+  //    这里一并接受，否则 `autoTodoEnabled: true` 会被读成 0（真踩过：
+  //    课时生成器在 fixtures 里返回空数组）。
+  if (v is bool) return v ? 1 : 0;
   if (v is num) return v.toInt();
   if (v is String) return int.tryParse(v) ?? fallback;
   return fallback;

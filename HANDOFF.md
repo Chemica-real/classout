@@ -5406,3 +5406,30 @@ fixtures 与单测里跑，**界面层根本没接线** —— 也就是鸿蒙�
 
 ① 两台机同一页各截一张 → ② 列差异（间距/字号/颜色/层级/文案/交互）→
 ③ 改 Flutter → ④ 装安卓再截 → ⑤ 差异清零 → 写 HANDOFF + 推 origin/github。
+
+## 83. 2026-10-18 三端契约补完：虚拟课时生成也进 fixtures（775 条），并修 `_int` 的布尔坑
+
+§81 留下的"`generateForLesson` 没进 fixtures"这轮补上：
+
+- ArkTS `TodoGenRules.ets` 新增两个纯函数：
+  `lessonSessionFor(course, date, startMin, endMin, location)`（伪造课时 session）、
+  `planSessionTodos(sem, courses, rules, times, templates, s, existingKeys, existingForCourse)`
+  （算出"该生成哪些待办"，返回 `key/title/ddl/estimateMin/category/submitChannel`）
+- `TodoGenerator.ets` 改成**使用**这两个纯函数（`planSessionTodos` + 已有 `planSessionTodos` 驱动
+  `generateForSession`；`generateForLesson` 复用 `lessonSessionFor`）；`TodoRepo` 新增
+  `listGenerationKeys()`（一次取全量去重键，比逐条查库快）
+- `gen.js` 加 9 条 `todo_gen` 用例（3 个课时 × 两张 key 状态），fixtures 总数 **775**
+- `assembleHap` **BUILD SUCCESSFUL**；domain-check **524 全绿**
+
+### 83.1 fixtures 抓到的第二个坑（`_int` 不认布尔）
+
+`planSessionTodos` 在 Dart 侧第一次跑返回 `[]`：因为 fixtures 是 JS 生成的，
+`autoTodoEnabled: true` / `enabled: true` 是**布尔**，而 Dart 的 `_int()` 只认 num/String，
+boolean → 0 → 课程被当成"关了自动生成"。
+
+修法：`_int` 接受 bool（`true→1 / false→0`）。备份规范本身仍要求 1/0（§58 那条坑），
+但**解析器**宽容一点没有坏处：fixtures、人写的 JSON、旧版本数据都能读。
+
+### 83.2 验证
+
+- `flutter test`：**897 passed**（fixtures 775 条逐条对拍）
