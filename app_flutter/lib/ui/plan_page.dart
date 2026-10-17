@@ -103,6 +103,10 @@ class _PlanPageState extends State<PlanPage> {
   /// 拖的是底边（缩放）还是整块（移动）
   bool _dragResize = false;
 
+  /// 拖拽目标列（-1 = 不跨天 / 缩放中）；跨天松手时按它改日期
+  int _dragCol = -1;
+
+
   /// 手指按下时的窗口 y
   double _dragTouchStartY = 0;
 
@@ -140,20 +144,30 @@ class _PlanPageState extends State<PlanPage> {
     return off & box.size;
   }
 
-  void _startDrag(PlanBlock b, bool resize, double globalY) {
-    // 两步模型：只有**已选中**的块才能开始拖（否则想滚时间轴的人一按就误拖）
-    if (b.id != _selectedBlockId) return;
+  /// 全局 x 落在第几列（用鸿蒙 PlanLayout 的同一套列几何）
+  int _colOfGlobal(double x) {
+    final rect = _gridRect();
+    if (rect == null) return -1;
+    return planColumnAtX(rect.width, _days.length, x - rect.left);
+  }
+
+  void _startDrag(PlanBlock b, bool resize, Offset pos) {
+    // 两步模型（domain `canBeginDrag`）：只有已选中的块才能开始拖
+    if (!canBeginDrag(_selectedBlockId, b.id)) return;
     setState(() {
       _dragId = b.id;
       _dragResize = resize;
-      _dragTouchStartY = globalY;
+      _dragTouchStartY = pos.dy;
+      _dragCol = resize ? -1 : _colOfGlobal(pos.dx);
       _dragScrollStart = _scroll.hasClients ? _scroll.offset : 0;
       _dragDeltaMin = 0;
     });
   }
 
-  void _updateDrag(double globalY) {
+  void _updateDrag(Offset pos) {
     if (_dragId == 0) return;
+    final globalY = pos.dy;
+    if (!_dragResize) _dragCol = _colOfGlobal(pos.dx);
     // 贴边自动滚动：手指在上下 edgeZone 内就把视图推一推
     const edgeZone = 56.0;
     const maxStep = 14.0;
@@ -182,12 +196,20 @@ class _PlanPageState extends State<PlanPage> {
     final id = _dragId;
     final resize = _dragResize;
     final delta = _dragDeltaMin;
+    final col = _dragCol;
     setState(() {
       _dragId = 0;
       _dragDeltaMin = 0;
+      _dragCol = -1;
     });
-    if (id == 0 || delta == 0) return;
+    if (id == 0) return;
     final b = widget.bundle.blocks.firstWhere((x) => x.id == id);
+    // 跨天：松手时落在别的列 → 改日期（缩放不跨天）
+    final days = _days;
+    final targetDate = (!resize && col >= 0 && col < days.length)
+        ? formatDate(days[col])
+        : b.date;
+    if (delta == 0 && targetDate == b.date) return;
     final range = resize
         ? resizeRange(_axis, b.startMin, b.endMin, delta)
         : moveRange(_axis, b.startMin, b.endMin, delta);
@@ -200,7 +222,7 @@ class _PlanPageState extends State<PlanPage> {
             id: x.id,
             todoId: x.todoId,
             lessonId: x.lessonId,
-            date: x.date,
+            date: targetDate,
             startMin: range[0],
             endMin: range[1],
             done: x.done,
@@ -895,18 +917,24 @@ class _DayTitles extends StatelessWidget {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text(
-                          '${days[i].month}/${days[i].day} '
-                          '周${weekdayCn[weekdayOf(days[i]) - 1]}',
-                          style: TextStyle(
-                              fontSize: 14,
-                              height: 1.1,
-                              fontWeight: i == center
-                                  ? FontWeight.w500
-                                  : FontWeight.normal,
-                              color: i == center
-                                  ? inkPrimary
-                                  : const Color(0xFFA9B5C9))),
+                      // 三列时列宽只有 ~105vp：等比缩小，绝不折行（折行会撑破 34 高）
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                            '${days[i].month}/${days[i].day} '
+                            '周${weekdayCn[weekdayOf(days[i]) - 1]}',
+                            maxLines: 1,
+                            softWrap: false,
+                            style: TextStyle(
+                                fontSize: 14,
+                                height: 1.1,
+                                fontWeight: i == center
+                                    ? FontWeight.w500
+                                    : FontWeight.normal,
+                                color: i == center
+                                    ? inkPrimary
+                                    : const Color(0xFFA9B5C9))),
+                      ),
                       if (formatDate(days[i]) == now)
                         const Text('今天',
                             style: TextStyle(
@@ -951,8 +979,8 @@ class _Grid extends StatelessWidget {
   final int dragId;
   final bool dragResize;
   final int dragDeltaMin;
-  final void Function(PlanBlock, bool resize, double globalY) onDragStart;
-  final void Function(double globalY) onDragUpdate;
+  final void Function(PlanBlock, bool resize, Offset pos) onDragStart;
+  final void Function(Offset pos) onDragUpdate;
   final VoidCallback onDragEnd;
   final void Function(PlanBlock b, int pointer, Offset position, bool down)
       onPointer;
@@ -1067,8 +1095,8 @@ class _DayColumn extends StatelessWidget {
   final int dragId;
   final bool dragResize;
   final int dragDeltaMin;
-  final void Function(PlanBlock, bool resize, double globalY) onDragStart;
-  final void Function(double globalY) onDragUpdate;
+  final void Function(PlanBlock, bool resize, Offset pos) onDragStart;
+  final void Function(Offset pos) onDragUpdate;
   final VoidCallback onDragEnd;
   final void Function(PlanBlock b, int pointer, Offset position, bool down)
       onPointer;
@@ -1340,8 +1368,8 @@ class _Block extends StatelessWidget {
       onPointer;
   final VoidCallback onTap;
   final VoidCallback onToggleDone;
-  final void Function(PlanBlock, bool resize, double globalY) onDragStart;
-  final void Function(double globalY) onDragUpdate;
+  final void Function(PlanBlock, bool resize, Offset pos) onDragStart;
+  final void Function(Offset pos) onDragUpdate;
   final VoidCallback onDragEnd;
 
   const _Block({
@@ -1504,9 +1532,9 @@ class _Block extends StatelessWidget {
             final bh = box?.size.height ?? 0;
             // 按在底部 18vp 内 = 拖底边改时长，否则整块平移
             onDragStart(
-                block, e.localPosition.dy > bh - 18, e.globalPosition.dy);
+                block, e.localPosition.dy > bh - 18, e.globalPosition);
           },
-          onLongPressMoveUpdate: (e) => onDragUpdate(e.globalPosition.dy),
+          onLongPressMoveUpdate: (e) => onDragUpdate(e.globalPosition),
           onLongPressEnd: (_) => onDragEnd(),
           onLongPressCancel: onDragEnd,
           child: Opacity(

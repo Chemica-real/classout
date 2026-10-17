@@ -24,7 +24,8 @@ class _Harness {
 /// 固定时钟：避免"半夜跑测试就挂"（见 plan_page.dart 里 now 的注释）
 DateTime _fixedNow() => DateTime(2026, 10, 17, 14, 0);
 
-Future<_Harness> _pump(WidgetTester tester, {DateTime? initialDay}) async {
+Future<_Harness> _pump(WidgetTester tester,
+    {DateTime? initialDay, bool threeDay = false}) async {
   tester.view.physicalSize = const Size(1080, 2400);
   tester.view.devicePixelRatio = 3.0;
   addTearDown(tester.view.reset);
@@ -36,6 +37,7 @@ Future<_Harness> _pump(WidgetTester tester, {DateTime? initialDay}) async {
           bundle: h.current,
           onChanged: (next) => setState(() => h.last = next),
           initialDay: initialDay,
+          initialThreeDay: threeDay,
           now: _fixedNow,
         ),
       ),
@@ -502,5 +504,27 @@ void main() {
     await tester.pumpAndSettle();
     expect(h.last, isNotNull);
     expect(_byIdBlock(h.last!, before.id).done, isTrue);
+  });
+
+  testWidgets('三日视图：把块横向拖到旁边一列 → 日期改成那一天（跨天拖拽）',
+      (tester) async {
+    final h = await _pump(tester,
+        initialDay: DateTime(2026, 10, 16), threeDay: true);
+    final before = _demo().blocks.firstWhere((b) => b.date == '2026-10-16');
+    final block = find.byKey(ValueKey('plan-block-${before.id}'));
+    await _revealBlock(tester, block);
+    await _selectBlock(tester, block);
+
+    final c16 = tester.getCenter(find.byKey(const ValueKey('plan-day-2026-10-16')));
+    final c17 = tester.getCenter(find.byKey(const ValueKey('plan-day-2026-10-17')));
+    await _longPressDrag(
+        tester, block, Offset(c17.dx - c16.dx, 0));
+    await tester.pumpAndSettle();
+
+    final b = h.last;
+    expect(b, isNotNull, reason: '跨天拖拽应该写回数据');
+    final after = _byIdBlock(b!, before.id);
+    expect(after.date, '2026-10-17');
+    expect(after.startMin, before.startMin, reason: '跨天只改日期、不改时间');
   });
 }

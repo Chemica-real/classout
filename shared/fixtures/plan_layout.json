@@ -1,0 +1,3013 @@
+{
+ "module": "plan_layout",
+ "note": "由 tools/fixtures/gen.js 从鸿蒙端实现生成（等价性基准，不是正确性证明）；iOS/Android 必须逐条一致。",
+ "generatedFrom": "entry/src/main/ets/domain/PlanLayout.ets",
+ "cases": [
+  {
+   "fn": "contentWidth",
+   "args": [
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "columnWidth",
+   "args": [
+    0,
+    1
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "columnX",
+   "args": [
+    0,
+    1,
+    0
+   ],
+   "expect": 46
+  },
+  {
+   "fn": "columnX",
+   "args": [
+    0,
+    1,
+    1
+   ],
+   "expect": 46
+  },
+  {
+   "fn": "columnX",
+   "args": [
+    0,
+    1,
+    2
+   ],
+   "expect": 46
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    0,
+    1,
+    0
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    0,
+    1,
+    0,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    0,
+    1,
+    0,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    0,
+    1,
+    20
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    0,
+    1,
+    20,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    0,
+    1,
+    20,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    0,
+    1,
+    40
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    0,
+    1,
+    40,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    0,
+    1,
+    40,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    0,
+    1,
+    60
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    0,
+    1,
+    60,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    0,
+    1,
+    60,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    0,
+    1,
+    200
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    0,
+    1,
+    200,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    0,
+    1,
+    200,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    0,
+    1,
+    400
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    0,
+    1,
+    400,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    0,
+    1,
+    400,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    0,
+    1,
+    1080
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    0,
+    1,
+    1080,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    0,
+    1,
+    1080,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    0,
+    1,
+    -5
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    0,
+    1,
+    -5,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    0,
+    1,
+    -5,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnWidth",
+   "args": [
+    0,
+    3
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "columnX",
+   "args": [
+    0,
+    3,
+    0
+   ],
+   "expect": 46
+  },
+  {
+   "fn": "columnX",
+   "args": [
+    0,
+    3,
+    1
+   ],
+   "expect": 46
+  },
+  {
+   "fn": "columnX",
+   "args": [
+    0,
+    3,
+    2
+   ],
+   "expect": 46
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    0,
+    3,
+    0
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    0,
+    3,
+    0,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    0,
+    3,
+    0,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    0,
+    3,
+    20
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    0,
+    3,
+    20,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    0,
+    3,
+    20,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    0,
+    3,
+    40
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    0,
+    3,
+    40,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    0,
+    3,
+    40,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    0,
+    3,
+    60
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    0,
+    3,
+    60,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    0,
+    3,
+    60,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    0,
+    3,
+    200
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    0,
+    3,
+    200,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    0,
+    3,
+    200,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    0,
+    3,
+    400
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    0,
+    3,
+    400,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    0,
+    3,
+    400,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    0,
+    3,
+    1080
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    0,
+    3,
+    1080,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    0,
+    3,
+    1080,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    0,
+    3,
+    -5
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    0,
+    3,
+    -5,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    0,
+    3,
+    -5,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "contentWidth",
+   "args": [
+    100
+   ],
+   "expect": 54
+  },
+  {
+   "fn": "columnWidth",
+   "args": [
+    100,
+    1
+   ],
+   "expect": 54
+  },
+  {
+   "fn": "columnX",
+   "args": [
+    100,
+    1,
+    0
+   ],
+   "expect": 46
+  },
+  {
+   "fn": "columnX",
+   "args": [
+    100,
+    1,
+    1
+   ],
+   "expect": 100
+  },
+  {
+   "fn": "columnX",
+   "args": [
+    100,
+    1,
+    2
+   ],
+   "expect": 154
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    100,
+    1,
+    0
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    100,
+    1,
+    0,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    100,
+    1,
+    0,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    100,
+    1,
+    20
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    100,
+    1,
+    20,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    100,
+    1,
+    20,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    100,
+    1,
+    40
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    100,
+    1,
+    40,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    100,
+    1,
+    40,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    100,
+    1,
+    60
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    100,
+    1,
+    60,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    100,
+    1,
+    60,
+    1
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    100,
+    1,
+    200
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    100,
+    1,
+    200,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    100,
+    1,
+    200,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    100,
+    1,
+    400
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    100,
+    1,
+    400,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    100,
+    1,
+    400,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    100,
+    1,
+    1080
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    100,
+    1,
+    1080,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    100,
+    1,
+    1080,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    100,
+    1,
+    -5
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    100,
+    1,
+    -5,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    100,
+    1,
+    -5,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnWidth",
+   "args": [
+    100,
+    3
+   ],
+   "expect": 18
+  },
+  {
+   "fn": "columnX",
+   "args": [
+    100,
+    3,
+    0
+   ],
+   "expect": 46
+  },
+  {
+   "fn": "columnX",
+   "args": [
+    100,
+    3,
+    1
+   ],
+   "expect": 64
+  },
+  {
+   "fn": "columnX",
+   "args": [
+    100,
+    3,
+    2
+   ],
+   "expect": 82
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    100,
+    3,
+    0
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    100,
+    3,
+    0,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    100,
+    3,
+    0,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    100,
+    3,
+    20
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    100,
+    3,
+    20,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    100,
+    3,
+    20,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    100,
+    3,
+    40
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    100,
+    3,
+    40,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    100,
+    3,
+    40,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    100,
+    3,
+    60
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    100,
+    3,
+    60,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    100,
+    3,
+    60,
+    1
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    100,
+    3,
+    200
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    100,
+    3,
+    200,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    100,
+    3,
+    200,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    100,
+    3,
+    400
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    100,
+    3,
+    400,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    100,
+    3,
+    400,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    100,
+    3,
+    1080
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    100,
+    3,
+    1080,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    100,
+    3,
+    1080,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    100,
+    3,
+    -5
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    100,
+    3,
+    -5,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    100,
+    3,
+    -5,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "contentWidth",
+   "args": [
+    360
+   ],
+   "expect": 314
+  },
+  {
+   "fn": "columnWidth",
+   "args": [
+    360,
+    1
+   ],
+   "expect": 314
+  },
+  {
+   "fn": "columnX",
+   "args": [
+    360,
+    1,
+    0
+   ],
+   "expect": 46
+  },
+  {
+   "fn": "columnX",
+   "args": [
+    360,
+    1,
+    1
+   ],
+   "expect": 360
+  },
+  {
+   "fn": "columnX",
+   "args": [
+    360,
+    1,
+    2
+   ],
+   "expect": 674
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    360,
+    1,
+    0
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    360,
+    1,
+    0,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    360,
+    1,
+    0,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    360,
+    1,
+    20
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    360,
+    1,
+    20,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    360,
+    1,
+    20,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    360,
+    1,
+    40
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    360,
+    1,
+    40,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    360,
+    1,
+    40,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    360,
+    1,
+    60
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    360,
+    1,
+    60,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    360,
+    1,
+    60,
+    1
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    360,
+    1,
+    200
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    360,
+    1,
+    200,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    360,
+    1,
+    200,
+    1
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    360,
+    1,
+    400
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    360,
+    1,
+    400,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    360,
+    1,
+    400,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    360,
+    1,
+    1080
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    360,
+    1,
+    1080,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    360,
+    1,
+    1080,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    360,
+    1,
+    -5
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    360,
+    1,
+    -5,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    360,
+    1,
+    -5,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnWidth",
+   "args": [
+    360,
+    3
+   ],
+   "expect": 104.66666666666667
+  },
+  {
+   "fn": "columnX",
+   "args": [
+    360,
+    3,
+    0
+   ],
+   "expect": 46
+  },
+  {
+   "fn": "columnX",
+   "args": [
+    360,
+    3,
+    1
+   ],
+   "expect": 150.66666666666669
+  },
+  {
+   "fn": "columnX",
+   "args": [
+    360,
+    3,
+    2
+   ],
+   "expect": 255.33333333333334
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    360,
+    3,
+    0
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    360,
+    3,
+    0,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    360,
+    3,
+    0,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    360,
+    3,
+    20
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    360,
+    3,
+    20,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    360,
+    3,
+    20,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    360,
+    3,
+    40
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    360,
+    3,
+    40,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    360,
+    3,
+    40,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    360,
+    3,
+    60
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    360,
+    3,
+    60,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    360,
+    3,
+    60,
+    1
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    360,
+    3,
+    200
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    360,
+    3,
+    200,
+    0
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    360,
+    3,
+    200,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    360,
+    3,
+    400
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    360,
+    3,
+    400,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    360,
+    3,
+    400,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    360,
+    3,
+    1080
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    360,
+    3,
+    1080,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    360,
+    3,
+    1080,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    360,
+    3,
+    -5
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    360,
+    3,
+    -5,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    360,
+    3,
+    -5,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "contentWidth",
+   "args": [
+    400
+   ],
+   "expect": 354
+  },
+  {
+   "fn": "columnWidth",
+   "args": [
+    400,
+    1
+   ],
+   "expect": 354
+  },
+  {
+   "fn": "columnX",
+   "args": [
+    400,
+    1,
+    0
+   ],
+   "expect": 46
+  },
+  {
+   "fn": "columnX",
+   "args": [
+    400,
+    1,
+    1
+   ],
+   "expect": 400
+  },
+  {
+   "fn": "columnX",
+   "args": [
+    400,
+    1,
+    2
+   ],
+   "expect": 754
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    400,
+    1,
+    0
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    400,
+    1,
+    0,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    400,
+    1,
+    0,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    400,
+    1,
+    20
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    400,
+    1,
+    20,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    400,
+    1,
+    20,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    400,
+    1,
+    40
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    400,
+    1,
+    40,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    400,
+    1,
+    40,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    400,
+    1,
+    60
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    400,
+    1,
+    60,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    400,
+    1,
+    60,
+    1
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    400,
+    1,
+    200
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    400,
+    1,
+    200,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    400,
+    1,
+    200,
+    1
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    400,
+    1,
+    400
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    400,
+    1,
+    400,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    400,
+    1,
+    400,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    400,
+    1,
+    1080
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    400,
+    1,
+    1080,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    400,
+    1,
+    1080,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    400,
+    1,
+    -5
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    400,
+    1,
+    -5,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    400,
+    1,
+    -5,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnWidth",
+   "args": [
+    400,
+    3
+   ],
+   "expect": 118
+  },
+  {
+   "fn": "columnX",
+   "args": [
+    400,
+    3,
+    0
+   ],
+   "expect": 46
+  },
+  {
+   "fn": "columnX",
+   "args": [
+    400,
+    3,
+    1
+   ],
+   "expect": 164
+  },
+  {
+   "fn": "columnX",
+   "args": [
+    400,
+    3,
+    2
+   ],
+   "expect": 282
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    400,
+    3,
+    0
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    400,
+    3,
+    0,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    400,
+    3,
+    0,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    400,
+    3,
+    20
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    400,
+    3,
+    20,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    400,
+    3,
+    20,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    400,
+    3,
+    40
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    400,
+    3,
+    40,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    400,
+    3,
+    40,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    400,
+    3,
+    60
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    400,
+    3,
+    60,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    400,
+    3,
+    60,
+    1
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    400,
+    3,
+    200
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    400,
+    3,
+    200,
+    0
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    400,
+    3,
+    200,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    400,
+    3,
+    400
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    400,
+    3,
+    400,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    400,
+    3,
+    400,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    400,
+    3,
+    1080
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    400,
+    3,
+    1080,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    400,
+    3,
+    1080,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    400,
+    3,
+    -5
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    400,
+    3,
+    -5,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    400,
+    3,
+    -5,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "contentWidth",
+   "args": [
+    1080
+   ],
+   "expect": 1034
+  },
+  {
+   "fn": "columnWidth",
+   "args": [
+    1080,
+    1
+   ],
+   "expect": 1034
+  },
+  {
+   "fn": "columnX",
+   "args": [
+    1080,
+    1,
+    0
+   ],
+   "expect": 46
+  },
+  {
+   "fn": "columnX",
+   "args": [
+    1080,
+    1,
+    1
+   ],
+   "expect": 1080
+  },
+  {
+   "fn": "columnX",
+   "args": [
+    1080,
+    1,
+    2
+   ],
+   "expect": 2114
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    1080,
+    1,
+    0
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    1080,
+    1,
+    0,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    1080,
+    1,
+    0,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    1080,
+    1,
+    20
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    1080,
+    1,
+    20,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    1080,
+    1,
+    20,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    1080,
+    1,
+    40
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    1080,
+    1,
+    40,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    1080,
+    1,
+    40,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    1080,
+    1,
+    60
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    1080,
+    1,
+    60,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    1080,
+    1,
+    60,
+    1
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    1080,
+    1,
+    200
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    1080,
+    1,
+    200,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    1080,
+    1,
+    200,
+    1
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    1080,
+    1,
+    400
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    1080,
+    1,
+    400,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    1080,
+    1,
+    400,
+    1
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    1080,
+    1,
+    1080
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    1080,
+    1,
+    1080,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    1080,
+    1,
+    1080,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    1080,
+    1,
+    -5
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    1080,
+    1,
+    -5,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    1080,
+    1,
+    -5,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnWidth",
+   "args": [
+    1080,
+    3
+   ],
+   "expect": 344.6666666666667
+  },
+  {
+   "fn": "columnX",
+   "args": [
+    1080,
+    3,
+    0
+   ],
+   "expect": 46
+  },
+  {
+   "fn": "columnX",
+   "args": [
+    1080,
+    3,
+    1
+   ],
+   "expect": 390.6666666666667
+  },
+  {
+   "fn": "columnX",
+   "args": [
+    1080,
+    3,
+    2
+   ],
+   "expect": 735.3333333333334
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    1080,
+    3,
+    0
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    1080,
+    3,
+    0,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    1080,
+    3,
+    0,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    1080,
+    3,
+    20
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    1080,
+    3,
+    20,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    1080,
+    3,
+    20,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    1080,
+    3,
+    40
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    1080,
+    3,
+    40,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    1080,
+    3,
+    40,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    1080,
+    3,
+    60
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    1080,
+    3,
+    60,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    1080,
+    3,
+    60,
+    1
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    1080,
+    3,
+    200
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    1080,
+    3,
+    200,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    1080,
+    3,
+    200,
+    1
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    1080,
+    3,
+    400
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    1080,
+    3,
+    400,
+    0
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    1080,
+    3,
+    400,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    1080,
+    3,
+    1080
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    1080,
+    3,
+    1080,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    1080,
+    3,
+    1080,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "columnAtX",
+   "args": [
+    1080,
+    3,
+    -5
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    1080,
+    3,
+    -5,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "dropColumnOrFallback",
+   "args": [
+    1080,
+    3,
+    -5,
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "centerIndex",
+   "args": [
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "compactThreshold",
+   "args": [],
+   "expect": 34
+  },
+  {
+   "fn": "compactMinH",
+   "args": [],
+   "expect": 14
+  },
+  {
+   "fn": "centerIndex",
+   "args": [
+    1
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "compactThreshold",
+   "args": [],
+   "expect": 34
+  },
+  {
+   "fn": "compactMinH",
+   "args": [],
+   "expect": 14
+  },
+  {
+   "fn": "centerIndex",
+   "args": [
+    2
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "compactThreshold",
+   "args": [],
+   "expect": 34
+  },
+  {
+   "fn": "compactMinH",
+   "args": [],
+   "expect": 14
+  },
+  {
+   "fn": "centerIndex",
+   "args": [
+    3
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "compactThreshold",
+   "args": [],
+   "expect": 34
+  },
+  {
+   "fn": "compactMinH",
+   "args": [],
+   "expect": 14
+  },
+  {
+   "fn": "centerIndex",
+   "args": [
+    4
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "compactThreshold",
+   "args": [],
+   "expect": 34
+  },
+  {
+   "fn": "compactMinH",
+   "args": [],
+   "expect": 14
+  },
+  {
+   "fn": "dayDates",
+   "args": [
+    "2026-10-16",
+    1
+   ],
+   "expect": [
+    "2026-10-16"
+   ]
+  },
+  {
+   "fn": "dayDates",
+   "args": [
+    "2026-10-16",
+    2
+   ],
+   "expect": [
+    "2026-10-16",
+    "2026-10-17"
+   ]
+  },
+  {
+   "fn": "dayDates",
+   "args": [
+    "2026-10-16",
+    3
+   ],
+   "expect": [
+    "2026-10-15",
+    "2026-10-16",
+    "2026-10-17"
+   ]
+  },
+  {
+   "fn": "columnHeaderText",
+   "args": [
+    "2026-10-16"
+   ],
+   "expect": "10/16 周五"
+  },
+  {
+   "fn": "dayDates",
+   "args": [
+    "2026-12-31",
+    1
+   ],
+   "expect": [
+    "2026-12-31"
+   ]
+  },
+  {
+   "fn": "dayDates",
+   "args": [
+    "2026-12-31",
+    2
+   ],
+   "expect": [
+    "2026-12-31",
+    "2027-01-01"
+   ]
+  },
+  {
+   "fn": "dayDates",
+   "args": [
+    "2026-12-31",
+    3
+   ],
+   "expect": [
+    "2026-12-30",
+    "2026-12-31",
+    "2027-01-01"
+   ]
+  },
+  {
+   "fn": "columnHeaderText",
+   "args": [
+    "2026-12-31"
+   ],
+   "expect": "12/31 周四"
+  },
+  {
+   "fn": "dayDates",
+   "args": [
+    "2026-01-01",
+    1
+   ],
+   "expect": [
+    "2026-01-01"
+   ]
+  },
+  {
+   "fn": "dayDates",
+   "args": [
+    "2026-01-01",
+    2
+   ],
+   "expect": [
+    "2026-01-01",
+    "2026-01-02"
+   ]
+  },
+  {
+   "fn": "dayDates",
+   "args": [
+    "2026-01-01",
+    3
+   ],
+   "expect": [
+    "2025-12-31",
+    "2026-01-01",
+    "2026-01-02"
+   ]
+  },
+  {
+   "fn": "columnHeaderText",
+   "args": [
+    "2026-01-01"
+   ],
+   "expect": "1/1 周四"
+  },
+  {
+   "fn": "tapAction",
+   "args": [
+    0,
+    0
+   ],
+   "expect": "open"
+  },
+  {
+   "fn": "canBeginDrag",
+   "args": [
+    0,
+    0
+   ],
+   "expect": false
+  },
+  {
+   "fn": "tapAction",
+   "args": [
+    0,
+    7
+   ],
+   "expect": "select"
+  },
+  {
+   "fn": "canBeginDrag",
+   "args": [
+    0,
+    7
+   ],
+   "expect": false
+  },
+  {
+   "fn": "tapAction",
+   "args": [
+    0,
+    9
+   ],
+   "expect": "select"
+  },
+  {
+   "fn": "canBeginDrag",
+   "args": [
+    0,
+    9
+   ],
+   "expect": false
+  },
+  {
+   "fn": "tapAction",
+   "args": [
+    7,
+    0
+   ],
+   "expect": "select"
+  },
+  {
+   "fn": "canBeginDrag",
+   "args": [
+    7,
+    0
+   ],
+   "expect": false
+  },
+  {
+   "fn": "tapAction",
+   "args": [
+    7,
+    7
+   ],
+   "expect": "open"
+  },
+  {
+   "fn": "canBeginDrag",
+   "args": [
+    7,
+    7
+   ],
+   "expect": true
+  },
+  {
+   "fn": "tapAction",
+   "args": [
+    7,
+    9
+   ],
+   "expect": "select"
+  },
+  {
+   "fn": "canBeginDrag",
+   "args": [
+    7,
+    9
+   ],
+   "expect": false
+  }
+ ]
+}

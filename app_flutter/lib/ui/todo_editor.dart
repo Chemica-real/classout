@@ -592,7 +592,8 @@ class _EditorBodyState extends State<_EditorBody> {
                   ],
                 ],
                 if (widget.courses.isNotEmpty) ...[
-                  _Label('所属课程'),
+                  // 鸿蒙这里漏了 width('100%')，文字被 Column 默认居中 —— 真机图如此，照抄
+                  const Center(child: _Label('所属课程')),
                   Wrap(
                     spacing: 8,
                     runSpacing: 6,

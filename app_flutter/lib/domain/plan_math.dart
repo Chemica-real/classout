@@ -9,6 +9,7 @@
 //    测试里 snap(-8) 这类用例就是在盯这个。
 
 import '../model/types.dart';
+import 'dates.dart';
 import 'js_compat.dart';
 
 // ---------------- 常量 ----------------
@@ -379,3 +380,74 @@ int edgeScrollStep(int depth, int edgeZone, int maxStep) {
 /// 块不再跟手" —— 自动滚动时块朝反方向多跑一倍。这条断言（fixtures）盯着符号。
 int dragOffsetWithScroll(int touchDeltaY, int scrollDeltaY) =>
     touchDeltaY + scrollDeltaY;
+
+// ---------------- 列几何（从 PlanLayout.ets 逐值移植；fixtures: plan_layout.json） ----------------
+
+/// 时间轴宽度（vp）：刻度文字 40 + 与网格线之间的间隙 6
+const double planLayoutAxisW = 46;
+
+/// 内容区总宽 = 视口宽 − 时间轴（夹到 0，绝不返回负数）
+double planContentWidth(num viewportW) {
+  final w = viewportW - planLayoutAxisW;
+  return w > 0 ? w.toDouble() : 0;
+}
+
+/// 每列宽（列数非正 → 0）
+double planColumnWidth(num viewportW, int count) {
+  if (count <= 0) return 0;
+  return planContentWidth(viewportW) / count;
+}
+
+/// 第 index 列的左边缘 x（含时间轴偏移）
+double planColumnX(num viewportW, int count, int index) =>
+    planLayoutAxisW + planColumnWidth(viewportW, count) * index;
+
+/// 命中第几列；-1 = 落在时间轴上或网格外
+int planColumnAtX(num viewportW, int count, num x) {
+  if (count <= 0) return -1;
+  final w = planColumnWidth(viewportW, count);
+  if (w <= 0) return -1;
+  final i = ((x - planLayoutAxisW) / w).floor();
+  if (i < 0 || i >= count) return -1;
+  return i;
+}
+
+/// 跨天拖拽的落点列（命中不到就用 fallback）
+int planDropColumnOrFallback(
+        num viewportW, int count, num x, int fallback) =>
+    () {
+      final i = planColumnAtX(viewportW, count, x);
+      return i < 0 ? fallback : i;
+    }();
+
+/// 当前查看日为中心的三天（count=3 → [前一天, 当前, 后一天]）
+List<String> planDayDates(String currentDate, int count) {
+  if (count <= 0) return const [];
+  final center = (count - 1) ~/ 2;
+  final base = parseDate(currentDate);
+  return [for (var i = 0; i < count; i++) formatDate(addDays(base, i - center))];
+}
+
+/// 中间列下标
+int planCenterIndex(int count) => count <= 0 ? 0 : (count - 1) ~/ 2;
+
+/// 列头文字：'10/14 周三'
+String planColumnHeaderText(String date) {
+  final d = parseDate(date);
+  return '${d.month}/${d.day} 周${weekdayCn[weekdayOf(d) - 1]}';
+}
+
+/// 单击块的结果
+const String tapOpen = 'open';
+const String tapSelect = 'select';
+
+String tapAction(int selectedBlockId, int blockId) =>
+    selectedBlockId == blockId ? tapOpen : tapSelect;
+
+/// 两步模型：只有已选中的块才放行长按拖拽
+bool canBeginDrag(int selectedBlockId, int blockId) =>
+    blockId != 0 && selectedBlockId == blockId;
+
+/// 紧凑排版阈值 / 最小高（与 PlanLayout 同值）
+double compactThresholdH() => 34;
+double compactMinH() => 14;

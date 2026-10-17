@@ -12,7 +12,7 @@ ClassOUT 是一款**纯离线**的「课表 + 待办 + 计划」三合一 App，
 |---|---|---|
 | 版本 | v1.5.1（上架准备中，未提审） | 0.2.0（Android 已装真机 OPPO A97） |
 | 页面 | 课表 / 待办 / 计划 / 设置 + 启动加载页 + 悬浮浮窗 | **同样四页 + 启动页 + 浮窗（§52–§68 逐页复刻）** |
-| 测试 | 离线断言 524 项（`tools/domain-check`） | **936 条 `flutter test`**（含 775 条三端 fixture 逐条对拍） |
+| 测试 | 离线断言 524 项（`tools/domain-check`） | **1261 条 `flutter test`**（含 775 条三端 fixture 逐条对拍） |
 | 差异基准 | 本目录 `docs/manual/01..09.jpg`（真机截图） | `app_flutter/tool/goldens/*.png` 对照上面九张 + `shared/fixtures/`（775 条规则用例） |
 
 **安卓版与鸿蒙版的 1:1 复刻已经完成**：主题 token 抄自 ArkTS（§52）、六个页面重做、
@@ -6106,3 +6106,42 @@ Material 关闭图标。连同下面几处一起对齐：
 「线代 / 三教408」就是居中）。安卓原来 12 号、左对齐。已改 14 号 + 居中（地点 11 号也居中）。
 
 - `flutter test`：**936 passed**；golden 重出；真机截图确认标语输入行不再有浅色胶囊。
+
+---
+
+## 105. 计划页跨天拖拽 + 列几何进三端 fixtures
+
+鸿蒙的三日视图支持把块**横向拖到另一天**（`dragColIndex` + `dropColumnOrFallback`），
+安卓之前只能上下拖。这轮补齐，并顺手把 `PlanLayout.ets` 的列几何与两步模型判据变成三端契约。
+
+### 105.1 新 fixtures：`shared/fixtures/plan_layout.json`（324 条）
+
+`tools/fixtures/gen.js` 里注册了 `plan_layout` 模块，从编译后的 `PlanLayout.js` 直接算：
+
+- `contentWidth` / `columnWidth` / `columnX` / `columnAtX` / `dropColumnOrFallback`
+  （视口宽 0/100/360/400/1080 × 列数 1/3 × 各种 x，含越界与轴内点击）；
+- `dayDates` / `centerIndex` / `columnHeaderText` / `compactThreshold` / `compactMinH`；
+- `tapAction` / `canBeginDrag`（两步模型的判据）。
+
+全量 fixtures：791 → **1115 条**；`flutter test` 里逐条对拍后总数 **1261 条全绿**。
+
+### 105.2 Dart 侧移植（`lib/domain/plan_math.dart`）
+
+`planContentWidth` / `planColumnWidth` / `planColumnX` / `planColumnAtX` /
+`planDropColumnOrFallback` / `planDayDates` / `planCenterIndex` / `planColumnHeaderText` /
+`tapAction` / `canBeginDrag` / `compactThresholdH` / `compactMinH`，逐值与 ArkTS 一致。
+
+### 105.3 跨天拖拽
+
+- 拖拽的回调从"只给 y"改成**给整个窗口坐标**（`Offset`），拖动过程中用 `planColumnAtX`
+  算出目标列（`_dragCol`）；
+- 松手时：不是缩放、且落点列有效、且与原来不同 → **改日期**；时间范围照旧走 `moveRange`；
+  缩放**不跨天**（与鸿蒙一致）。
+- 拖拽起点仍要求"块已选中"（`canBeginDrag`），横向移动不会误伤选中/托盘状态。
+
+### 105.4 顺带修掉的坑
+
+三日视图的列头在 360vp 宽的测试视口里会折行，把 34 高的列头撑破 9px（真机窄屏也可能出现）。
+列头文字改成 `FittedBox(scaleDown) + maxLines: 1`，等比缩小而不是折行。
+
+- 测试：+1 条（三日视图把块拖到右边一列 → 日期改为那天、时间不变）。

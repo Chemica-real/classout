@@ -239,6 +239,31 @@ Object? _call(String fn, List<dynamic> a) {
           .toJson();
     case 'normalizeRestEnd':
       return normalizeRestEnd(_n(a[0]), _n(a[1]));
+    case 'contentWidth':
+      return planContentWidth(_num(a[0]));
+    case 'columnWidth':
+      return planColumnWidth(_num(a[0]), _n(a[1]));
+    case 'columnX':
+      return planColumnX(_num(a[0]), _n(a[1]), _n(a[2]));
+    case 'columnAtX':
+      return planColumnAtX(_num(a[0]), _n(a[1]), _num(a[2]));
+    case 'dropColumnOrFallback':
+      return planDropColumnOrFallback(
+          _num(a[0]), _n(a[1]), _num(a[2]), _n(a[3]));
+    case 'dayDates':
+      return planDayDates(a[0] as String, _n(a[1]));
+    case 'centerIndex':
+      return planCenterIndex(_n(a[0]));
+    case 'columnHeaderText':
+      return planColumnHeaderText(a[0] as String);
+    case 'tapAction':
+      return tapAction(_n(a[0]), _n(a[1]));
+    case 'canBeginDrag':
+      return canBeginDrag(_n(a[0]), _n(a[1]));
+    case 'compactThreshold':
+      return compactThresholdH();
+    case 'compactMinH':
+      return compactMinH();
     case 'totalBlockMinutes':
       return totalBlockMinutes(_blocks(a[0]), _n(a[1]));
 

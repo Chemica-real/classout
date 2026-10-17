@@ -119,6 +119,38 @@ for (const ms of [0, 1000, 299999, 300000, 300001, 600000, 3600000, -5]) {
   for (const n of [5, 10]) add('shouldRestartAfterIdle', [ms, n], SC.shouldRestartAfterIdle(ms, n), 'sync_cadence');
 }
 
+// ================= PlanLayout（列几何 / 两步模型） =================
+const PL = require(path.join(DIST, 'PlanLayout.js'));
+for (const w of [0, 100, 360, 400, 1080]) {
+  add('contentWidth', [w], PL.contentWidth(w), 'plan_layout');
+  for (const n of [1, 3]) {
+    add('columnWidth', [w, n], PL.columnWidth(w, n), 'plan_layout');
+    for (const i of [0, 1, 2]) {
+      add('columnX', [w, n, i], PL.columnX(w, n, i), 'plan_layout');
+    }
+    for (const x of [0, 20, 40, 60, 200, 400, 1080, -5]) {
+      add('columnAtX', [w, n, x], PL.columnAtX(w, n, x), 'plan_layout');
+      add('dropColumnOrFallback', [w, n, x, 0], PL.dropColumnOrFallback(w, n, x, 0), 'plan_layout');
+      add('dropColumnOrFallback', [w, n, x, 1], PL.dropColumnOrFallback(w, n, x, 1), 'plan_layout');
+    }
+  }
+}
+for (const n of [0, 1, 2, 3, 4]) {
+  add('centerIndex', [n], PL.centerIndex(n), 'plan_layout');
+  add('compactThreshold', [], PL.compactThreshold(), 'plan_layout');
+  add('compactMinH', [], PL.compactMinH(), 'plan_layout');
+}
+for (const c of ['2026-10-16', '2026-12-31', '2026-01-01']) {
+  for (const n of [1, 2, 3]) add('dayDates', [c, n], PL.dayDates(c, n), 'plan_layout');
+  add('columnHeaderText', [c], PL.columnHeaderText(c), 'plan_layout');
+}
+for (const sel of [0, 7]) {
+  for (const id of [0, 7, 9]) {
+    add('tapAction', [sel, id], PL.tapAction(sel, id), 'plan_layout');
+    add('canBeginDrag', [sel, id], PL.canBeginDrag(sel, id), 'plan_layout');
+  }
+}
+
 // ================= Validate =================
 const VD = require(path.join(DIST, 'Validate.js'));
 for (const v of [-5, 0, 3, 5, 7, 10, 15, 20, 45, 600]) {
@@ -505,7 +537,8 @@ const SOURCE = {
   categories: 'entry/src/main/ets/domain/Categories.ets',
   briefing: 'entry/src/main/ets/domain/Briefing.ets',
   guide: 'entry/src/main/ets/domain/Guide.ets',
-  todo_gen: 'entry/src/main/ets/domain/TodoGenRules.ets'
+  todo_gen: 'entry/src/main/ets/domain/TodoGenRules.ets',
+  plan_layout: 'entry/src/main/ets/domain/PlanLayout.ets'
 };
 fs.mkdirSync(OUT, { recursive: true });
 for (const mod of Object.keys(SOURCE)) {
