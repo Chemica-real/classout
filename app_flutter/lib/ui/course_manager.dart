@@ -1135,7 +1135,7 @@ class _RuleDialogState extends State<_RuleDialog> {
             children: [
               Text(widget.existing == null ? '添加上课时段' : '修改上课时段',
                   style: const TextStyle(
-                      fontSize: 16,
+                      fontSize: 17,
                       fontWeight: FontWeight.w500,
                       color: inkPrimary)),
               const _Label('星期'),
@@ -1182,19 +1182,7 @@ class _RuleDialogState extends State<_RuleDialog> {
                 ],
               ),
               const _Label('周次（支持 1-16 / 1-8,10-16 / 1-16单 / 2-16双）'),
-              TextField(
-                controller: _weeks,
-                style: const TextStyle(fontSize: 13, color: inkPrimary),
-                decoration: const InputDecoration(
-                  isDense: true,
-                  hintText: '1-16',
-                  hintStyle: TextStyle(fontSize: 13, color: Color(0xFF8B97AC)),
-                  enabledBorder: UnderlineInputBorder(
-                      borderSide: BorderSide(color: Color(0x24FFFFFF))),
-                  focusedBorder: UnderlineInputBorder(
-                      borderSide: BorderSide(color: accentBlue)),
-                ),
-              ),
+              _dialogInput(_weeks, '1-16'),
               const SizedBox(height: 8),
               Row(
                 children: [
@@ -1357,7 +1345,7 @@ class _TemplateDialogState extends State<_TemplateDialog> {
             children: [
               Text(widget.existing == null ? '添加生成模板' : '编辑生成模板',
                   style: const TextStyle(
-                      fontSize: 16,
+                      fontSize: 17,
                       fontWeight: FontWeight.w500,
                       color: inkPrimary)),
               const SizedBox(height: 4),
@@ -1365,23 +1353,13 @@ class _TemplateDialogState extends State<_TemplateDialog> {
                   '变量：%C 课程全名 / %c 简称 / %D 布置日期 / %d 完整日期 / %W 周 / %T 节次 / %N 第几次 / %R 教室',
                   style: TextStyle(fontSize: 10, color: Color(0xFF8B97AC))),
               const SizedBox(height: 8),
-              TextField(
-                controller: _title,
-                style: const TextStyle(fontSize: 14, color: inkPrimary),
-                decoration: const InputDecoration(
-                  labelText: '标题模板',
-                  labelStyle: TextStyle(fontSize: 11, color: Color(0xFF94A0B5)),
-                  hintText: '例如：%c 第 %N 次作业',
-                  hintStyle: TextStyle(fontSize: 13, color: Color(0xFF8B97AC)),
-                  enabledBorder: UnderlineInputBorder(
-                      borderSide: BorderSide(color: Color(0x24FFFFFF))),
-                  focusedBorder: UnderlineInputBorder(
-                      borderSide: BorderSide(color: accentBlue)),
-                ),
-                onChanged: (_) {
-                  if (_error != null) setState(() => _error = null);
-                },
-              ),
+              const Text('标题模板',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF94A0B5))),
+              const SizedBox(height: 4),
+              _dialogInput(_title, '例如：%c 第 %N 次作业',
+                  onChanged: (_) {
+                if (_error != null) setState(() => _error = null);
+              }),
               if (_error != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
@@ -1515,6 +1493,32 @@ class _TemplateDialogState extends State<_TemplateDialog> {
       ),
     );
   }
+}
+
+/// 弹窗里的胶囊输入框（鸿蒙裸 `TextInput`：高 40、圆角 20）
+Widget _dialogInput(TextEditingController c, String hint,
+    {ValueChanged<String>? onChanged}) {
+  return Container(
+    height: 40,
+    padding: const EdgeInsets.symmetric(horizontal: 12),
+    alignment: Alignment.centerLeft,
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: 0.10),
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: TextField(
+      controller: c,
+      style: const TextStyle(fontSize: 14, color: inkPrimary),
+      cursorColor: accentBlue,
+      onChanged: onChanged,
+      decoration: InputDecoration(
+        isDense: true,
+        border: InputBorder.none,
+        hintText: hint,
+        hintStyle: const TextStyle(fontSize: 14, color: Color(0xFF8B97AC)),
+      ),
+    ),
+  );
 }
 
 class _Chip extends StatelessWidget {
