@@ -36,6 +36,9 @@ class SettingsPage extends StatefulWidget {
   /// 立即重排提醒（由外壳注入：它才知道仓库与通知实现）；返回给用户看的结果文案
   final Future<String> Function()? onResyncReminders;
 
+  /// 重新走一遍新手演练（沙箱 + 引导条）
+  final Future<void> Function()? onStartGuide;
+
   const SettingsPage({
     super.key,
     required this.bundle,
@@ -44,6 +47,7 @@ class SettingsPage extends StatefulWidget {
     required this.onSettingsChanged,
     this.onResyncReminders,
     this.onImport,
+    this.onStartGuide,
   });
 
   @override

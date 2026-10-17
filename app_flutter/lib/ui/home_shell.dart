@@ -2,12 +2,15 @@
 // 数据仓库是注入的，所以 web 用内存版、原生用 SQLite 版都能跑同一套 UI。
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 
 import '../data/backup.dart';
+import '../data/backup_export.dart';
 import '../data/repo.dart';
 import '../data/settings.dart';
 import '../domain/reminders.dart';
 import '../domain/dates.dart';
+import '../domain/guide.dart';
 import '../domain/motto.dart';
 import '../domain/timetable.dart';
 import '../domain/todo_generator.dart';
@@ -22,6 +25,7 @@ import 'plan_page.dart';
 import 'settings_page.dart';
 import 'boot_screen.dart';
 import 'course_header.dart';
+import 'guide_bar.dart';
 import 'course_manager.dart';
 import 'session_sheet.dart';
 import 'theme.dart' as theme;
@@ -70,6 +74,11 @@ class _HomeShellState extends State<HomeShell> {
   /// 悬浮页头的实测高度（课表/待办页据此在滚动内容顶部留白）
   double _headerH = 134;
 
+  /// 新手演练：是否在沙箱里、走到第几步、这次运行里问过没有
+  bool _sandbox = false;
+  int _guideStep = 0;
+  bool _guidePromptShown = false;
+
   /// 当前周次（页头 ‹ › 改它；课表页照着画）
   int _week = 1;
   late final ReminderNotifier _notifier = widget.notifier ?? FlutterNotifier();
@@ -77,15 +86,18 @@ class _HomeShellState extends State<HomeShell> {
   @override
   void initState() {
     super.initState();
-    _reload();
+    _reload(boot: true);
   }
 
-  Future<void> _reload() async {
+  /// [boot] = 是否重播启动过场（只有冷启动那一次；导入/演练/补生成之后只静默重读）
+  Future<void> _reload({bool boot = false}) async {
     setState(() {
       _loading = true;
-      _bootStep = 0;
-      _bootReady = false;
-      _bootVisible = true;
+      if (boot) {
+        _bootStep = 0;
+        _bootReady = false;
+        _bootVisible = true;
+      }
     });
     try {
       final settings = await AppSettings.load(widget.repo);
@@ -111,6 +123,9 @@ class _HomeShellState extends State<HomeShell> {
           _week = weekOfDate(sem, DateTime.now()).clamp(1, sem.totalWeeks);
         }
       });
+      // 首次启动问一句要不要走一遍新手演练。
+      // 有启动页时**等过场播完再问**（否则对话框会压在加载页上，鸿蒙端也是进应用后才问）。
+      if (!ambientMotion) await _maybePromptGuide();
       // 打开 App 时静默补生成「已经下课」的待办（鸿蒙端 generateMissedTodos）
       if (data != null) {
         setState(() => _bootStep = 2);
@@ -200,6 +215,113 @@ class _HomeShellState extends State<HomeShell> {
         .length;
   }
 
+  /// 首次启动的「要不要走一遍演练」——非模态选择的弹窗，选完记 kv（只问一次）
+  Future<void> _maybePromptGuide() async {
+    if (!guidePromptEnabled || _sandbox || _guidePromptShown) return;
+    _guidePromptShown = true;
+    final v = await widget.repo.getKv(guidePromptedKey);
+    if (v != null && v.isNotEmpty) return;
+    if (!mounted) return;
+    final start = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => Dialog(
+        backgroundColor: const Color(0xF20C101A),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(glassRadius)),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('先走一遍演练？',
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                      color: inkPrimary)),
+              const SizedBox(height: 6),
+              const Text(
+                  '演练用的是 4 门演示课，怎么点都不会动到你自己的数据；'
+                  '退出时演练数据整份删掉。',
+                  style: TextStyle(
+                      fontSize: 12, height: 1.45, color: Color(0xFFC3CDDE))),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  const Spacer(),
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(false),
+                    style: TextButton.styleFrom(
+                        foregroundColor: const Color(0xFFA9B5C9)),
+                    child: const Text('先自己用用', style: TextStyle(fontSize: 12)),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: () => Navigator.of(ctx).pop(true),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF2E6BE6),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18)),
+                    ),
+                    child: const Text('开始演练', style: TextStyle(fontSize: 12)),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await widget.repo.setKv(guidePromptedKey, '1');
+    if (start == true) await _startGuide();
+  }
+
+  /// 进入沙箱：真实数据整份存进 kv（库表不动 kv），换成演练数据
+  Future<void> _startGuide() async {
+    final current = _bundle;
+    if (current != null) {
+      await widget.repo.setKv(sandboxBackupKey, backupToJson(current));
+    }
+    final demo = BackupBundle.decode(
+        await rootBundle.loadString('assets/demo_backup.json'));
+    await widget.repo.replaceAll(demo);
+    if (!mounted) return;
+    setState(() {
+      _sandbox = true;
+      _guideStep = 0;
+      _tab = guideStepAt(0).tab;
+    });
+    await _reload();
+  }
+
+  /// 退出沙箱：还原 kv 里的真实数据并删掉那份备份
+  Future<void> _exitGuide({required bool completed}) async {
+    final raw = await widget.repo.getKv(sandboxBackupKey) ?? '';
+    if (!mounted) return;
+    setState(() => _sandbox = false);
+    if (raw.isEmpty) {
+      await _reload();
+      return;
+    }
+    final real = BackupBundle.decode(raw);
+    await widget.repo.replaceAll(real);
+    await widget.repo.setKv(sandboxBackupKey, '');
+    if (!mounted) return;
+    await _reload();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(completed ? '演练结束，已回到你自己的课表' : '已退出演练')));
+  }
+
+  void _goToStep(int index) {
+    setState(() {
+      _guideStep = index.clamp(0, guideStepCount() - 1);
+      _tab = guideStepAt(_guideStep).tab;
+    });
+  }
+
   /// 下课自动生成待办：把 last_gen_date 到现在之间已经下课的课时，
   /// 按课程模板生成「待确认」待办（去重键 course|date|template，见 domain/todo_generator.dart）
   Future<void> _generateMissed(BackupBundle data) async {
@@ -268,6 +390,34 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
+    final app = _buildWithBoot(context);
+    if (!_sandbox) return app;
+    // 演练引导条：浮在导航栏上方（鸿蒙端 GuideBar 也是这样压在内容上）
+    return Stack(
+      children: [
+        Positioned.fill(child: app),
+        Positioned(
+          left: floatSide,
+          right: floatSide,
+          bottom: tabBarInset + floatGap,
+          child: GuideBar(
+            step: _guideStep,
+            onPrev: () => _goToStep(prevGuideStep(_guideStep)),
+            onNext: () {
+              if (isLastGuideStep(_guideStep)) {
+                _exitGuide(completed: true);
+              } else {
+                _goToStep(nextGuideStep(_guideStep));
+              }
+            },
+            onExit: () => _exitGuide(completed: false),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildWithBoot(BuildContext context) {
     // 测试/截图（ambientMotion=false）不播启动流程：直接给应用本体
     if (!ambientMotion) return _buildApp(context);
     return Stack(
@@ -281,7 +431,9 @@ class _HomeShellState extends State<HomeShell> {
               ready: _bootReady,
               onReveal: () {}, // 应用本体一直挂在下层，扩张时自然露出
               onDone: () {
-                if (mounted) setState(() => _bootVisible = false);
+                if (!mounted) return;
+                setState(() => _bootVisible = false);
+                _maybePromptGuide();
               },
             ),
           ),
@@ -342,7 +494,11 @@ class _HomeShellState extends State<HomeShell> {
                       settings: _settings,
                       onSettingsChanged: _applySettings,
                       onResyncReminders: _resyncReminders,
-                      onImport: _import)
+                      onImport: _import,
+                      onStartGuide: () async {
+                        Navigator.of(context).maybePop();
+                        await _startGuide();
+                      })
                   // 课表 / 待办 / 计划：页头都是**悬浮浮窗**，内容从它下面滑过
                   // （计划页自己的日期条由 PlanPage 叠在页头下面）
                   : Stack(
