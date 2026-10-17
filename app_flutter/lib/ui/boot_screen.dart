@@ -75,8 +75,10 @@ class _BootScreenState extends State<BootScreen> with TickerProviderStateMixin {
       AnimationController(vsync: this, duration: const Duration(seconds: 16));
   late final AnimationController _pulse = AnimationController(
       vsync: this, duration: const Duration(milliseconds: 2400));
-  late final AnimationController _sprayCtrl =
-      AnimationController(vsync: this, duration: dur(durSpray));
+  /// 喷射：每颗粒子 `duration DUR_SPRAY + delay i*46ms`（鸿蒙 `ForEach` 里 `.delay(i * 46)`），
+  /// 所以整段时间 = 1100 + 46*11
+  late final AnimationController _sprayCtrl = AnimationController(
+      vsync: this, duration: dur(durSpray + 46 * (_sprayR.length - 1)));
 
   /// 打字机状态行
   String _typed = '';
@@ -378,8 +380,11 @@ class _BootScreenState extends State<BootScreen> with TickerProviderStateMixin {
     );
   }
 
-  /// 12 颗粒子（鸿蒙端 SPRAY_*：角度均分、半径查表）
-  Widget _spray(double t) {
+  /// 12 颗粒子（鸿蒙 `SPRAY_*`）：角度均分、半径查表；大小 `4 + (i%3)*2`、
+  /// 白色 + 一圈柔光；每颗粒子延迟 `i*46ms`，用 `DUR_SPRAY` 从"小球还在中心"
+  /// 飞散到查询半径，同时放大 0.4→1.35、透明度 1→0（`easeOut`）。
+  Widget _spray(double v) {
+    const total = durSpray + 46 * 11; // 与控制器时长一致
     return SizedBox(
       width: 160,
       height: 160,
@@ -387,22 +392,36 @@ class _BootScreenState extends State<BootScreen> with TickerProviderStateMixin {
         alignment: Alignment.center,
         children: [
           for (var i = 0; i < _sprayR.length; i++)
-            Transform.translate(
-              offset: Offset(
-                math.cos(i / _sprayR.length * 2 * math.pi) * _sprayR[i] * t,
-                math.sin(i / _sprayR.length * 2 * math.pi) * _sprayR[i] * t,
-              ),
-              child: Container(
-                width: 5,
-                height: 5,
-                decoration: BoxDecoration(
-                  color: i.isEven
-                      ? const Color(0x8CFFFFFF)
-                      : const Color(0x8C7FA8FF),
-                  shape: BoxShape.circle,
+            Builder(builder: (_) {
+              final tp = ((v * total - i * 46) / durSpray).clamp(0.0, 1.0);
+              final e = Curves.easeOut.transform(tp);
+              return Transform.translate(
+                offset: Offset(
+                  math.cos(i / _sprayR.length * 2 * math.pi) * _sprayR[i] * e,
+                  math.sin(i / _sprayR.length * 2 * math.pi) * _sprayR[i] * e,
                 ),
-              ),
-            ),
+                child: Transform.scale(
+                  scale: 0.4 + (1.35 - 0.4) * e,
+                  child: Opacity(
+                    opacity: 1 - e,
+                    child: Container(
+                      width: (4 + (i % 3) * 2).toDouble(),
+                      height: (4 + (i % 3) * 2).toDouble(),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.white.withValues(alpha: 0.85),
+                            blurRadius: 8,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }),
         ],
       ),
     );

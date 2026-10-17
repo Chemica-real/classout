@@ -6848,3 +6848,15 @@ golden 总数 19 → **23**；`flutter test` **1293 passed**。
 `Positioned(初始位置) + Transform.translate(±偏移 × t)`，时长 22s、曲线 cubic。
 
 - `flutter test` **1302 passed**；golden 重出（渐变底的光晕位置与鸿蒙一致）。
+
+### 116.28 启动过场的喷射粒子按鸿蒙 `SPRAY_*` 逐项对齐
+
+鸿蒙 12 颗粒子的细节（`Index.Spray` + `Motion.SPRAY_R`）：大小 `4 + (i%3)*2`（4/6/8）、
+**纯白 + 一圈白色柔光**（`shadow` 半径 8 / 白 0.85）、每颗延迟 `i*46ms`、
+`DUR_SPRAY=1100` 内从球心飞到查表半径，同时 `scale 0.4 → 1.35`、`opacity 1 → 0`（easeOut）。
+
+安卓原来是一排固定 5px、半透明的点，**没有延迟、缩放、淡出**，看上去像"一圈小点一起出现"。
+现在：控制器时长改成 `1100 + 46*11`，每颗粒子按自己的延迟算进度 `((t*total - i*46)/1100)`，
+上面四项（大小/柔光/延迟/缩放淡出）都照鸿蒙。
+
+- `flutter test` **1302 passed**；`boot.png` 等 golden 重出。
