@@ -40,12 +40,19 @@ Future<void> _openImport(WidgetTester tester) async {
 }
 
 Future<void> _gotoTimetable(WidgetTester tester) async {
-  // 导入成功的 SnackBar 会盖住底部标签栏，先等它自己消失
-  await tester.pump(const Duration(seconds: 5));
+  // 鸿蒙恢复完**留在「备份与恢复」页**并显示一行蓝框（不弹提示条），
+  // 所以要先按「‹ 返回」把这一页关掉，再退一层「管理课程」，才点得到底部标签栏
+  for (var i = 0; i < 2; i++) {
+    final back = find.text('‹ 返回');
+    if (back.evaluate().isEmpty) break;
+    await tester.tap(back.last, warnIfMissed: false);
+    await tester.pumpAndSettle();
+  }
+  await tester.pump(const Duration(seconds: 1));
   await tester.pumpAndSettle();
   final t = find.text('课表');
   if (t.evaluate().isNotEmpty) {
-    await tester.tap(t.last);
+    await tester.tap(t.last, warnIfMissed: false);
     await tester.pumpAndSettle();
   }
 }
@@ -70,6 +77,25 @@ void main() {
     await _gotoTimetable(tester);
     expect(find.text('导入学期'), findsOneWidget);
     expect(find.text('演示学期'), findsNothing);
+  });
+
+  testWidgets('恢复成功：留在「备份与恢复」页，并在页内显示「已从备份恢复：…」蓝框', (tester) async {
+    final demo = BackupBundle.decode(_demoJson());
+    await _pump(tester, MemoryRepo(demo));
+    await _openImport(tester);
+    await tester.enterText(
+        find.descendant(
+            of: find.byType(AlertDialog), matching: find.byType(TextField)),
+        _demoJson().replaceAll('演示学期', '恢复学期'));
+    await tester.tap(find.widgetWithText(FilledButton, '导入'));
+    await tester.pumpAndSettle();
+
+    // 鸿蒙 BackupView：`backupNote = '已从备份恢复：\n' + backupSummary(bundle)`
+    expect(find.text('备份与恢复'), findsWidgets, reason: '不应该关掉这一页');
+    expect(find.textContaining('已从备份恢复：'), findsOneWidget);
+    expect(find.textContaining('恢复学期'), findsWidgets, reason: '蓝框里应该有摘要');
+    // 也没有多出来的 SnackBar
+    expect(find.byType(SnackBar), findsNothing);
   });
 
   testWidgets('粘贴垃圾 → 报错且不关窗、不改数据', (tester) async {

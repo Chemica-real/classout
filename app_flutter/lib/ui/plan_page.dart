@@ -5,13 +5,13 @@
 // 等交互打磨时接上）、属性面板里的改时间、三日视图的横向拖拽。
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
 import '../data/backup.dart';
 import '../domain/dates.dart';
 import '../domain/plan_math.dart';
-import '../domain/todo_list.dart';
 import '../domain/timetable.dart';
 import '../model/types.dart';
 import 'app_frame.dart';
@@ -21,6 +21,10 @@ import 'palette.dart';
 
 /// 三日视图列头高度（鸿蒙 `H_COLHEAD = 34`）
 const double colHeadH = 34;
+
+/// 截止标记会从网格底边往下挂出自己的一整行，滚动内容底部要给这点余量，
+/// 否则滑到底时它会被悬浮的待安排托盘盖掉半截（鸿蒙 `DDL_MARK_ALLOW = 36`）
+const double ddlMarkAllow = 36;
 
 class PlanPage extends StatefulWidget {
   final BackupBundle bundle;
@@ -427,7 +431,9 @@ class _PlanPageState extends State<PlanPage> {
     // 日期条是**悬浮浮窗**（鸿蒙端 DayBarFloat）：内容从它下面滑过，所以滚动区顶部留
     // 页头 + 日期条的空；底部留导航栏 + 待安排托盘的空。
     final dayBarBlock = widget.topInset + _dayBarH;
-    final trayBlock = tabBarInset + (_trayOpen ? 176 : 62);
+    // ⚠️ 末尾那 36 是鸿蒙 `DDL_MARK_ALLOW`：截止标记挂在网格底边**往下**一行，
+    // 不留这点余量的话，滑到底时它的下半截会被悬浮的待安排托盘盖住。
+    final trayBlock = tabBarInset + (_trayOpen ? 176 : 62) + ddlMarkAllow;
     return Stack(
       children: [
         Positioned.fill(
@@ -481,6 +487,11 @@ class _PlanPageState extends State<PlanPage> {
                         ? ''
                         : (c.shortName.isNotEmpty ? c.shortName : c.name);
                   },
+                  courseColorOf: (id) => courseColor(widget.bundle.courses
+                          .where((x) => x.id == id)
+                          .firstOrNull
+                          ?.colorIndex ??
+                      7),
                   dragId: _dragId,
                   dragResize: _dragResize,
                   dragDeltaMin: _dragDeltaMin,
@@ -981,6 +992,9 @@ class _Grid extends StatelessWidget {
   /// 课程 id → 简称（块的副文字/紧凑标题用）
   final String Function(int) courseLabelOf;
 
+  /// 课程 id → 颜色（截止面板里的课程小胶囊用，鸿蒙 `colorOf`）
+  final Color Function(int) courseColorOf;
+
   /// 截止面板点一条 → 打开待办编辑窗
   final Future<void> Function(int todoId)? onOpenTodo;
 
@@ -1015,6 +1029,7 @@ class _Grid extends StatelessWidget {
     required this.onToggleDone,
     required this.selectedBlockId,
     required this.courseLabelOf,
+    required this.courseColorOf,
     required this.onOpenTodo,
     required this.dragId,
     required this.dragResize,
@@ -1088,6 +1103,7 @@ class _Grid extends StatelessWidget {
                         onToggleDone: onToggleDone,
                         selectedBlockId: selectedBlockId,
                         courseLabelOf: courseLabelOf,
+                        courseColorOf: courseColorOf,
                         onOpenTodo: onOpenTodo,
                       ),
                     ),
@@ -1127,6 +1143,7 @@ class _DayColumn extends StatelessWidget {
   final void Function(PlanBlock) onToggleDone;
   final int selectedBlockId;
   final String Function(int) courseLabelOf;
+  final Color Function(int) courseColorOf;
   final Future<void> Function(int todoId)? onOpenTodo;
 
   const _DayColumn({
@@ -1155,6 +1172,7 @@ class _DayColumn extends StatelessWidget {
     required this.onToggleDone,
     required this.selectedBlockId,
     required this.courseLabelOf,
+    required this.courseColorOf,
     this.onOpenTodo,
   });
 
@@ -1222,12 +1240,18 @@ class _DayColumn extends StatelessWidget {
             // 截止标记
             for (final g in ddls)
               _DdlMark(
+                key: ValueKey('ddl-${formatDate(day)}-${g.minute}'),
                 top: (g.minute - axis.startMin).toDouble(),
                 label: g.todos.length > 1
                     ? '⚑ ${g.todos.length} 项截止'
                     : '⚑ ${g.todos.first.title} 截止',
-                onTap: () =>
-                    _showDdlList(context, g, onOpenTodo: onOpenTodo),
+                group: g,
+                day: formatDate(day),
+                // 三日视图才给标题加 MM-DD 前缀（鸿蒙 `viewCols > COLS_DAY`）
+                datePrefix: !singleDay,
+                courseLabelOf: courseLabelOf,
+                courseColorOf: courseColorOf,
+                onOpenTodo: onOpenTodo,
               ),
           ],
         ),
@@ -1572,31 +1596,156 @@ class _Block extends StatelessWidget {
   }
 }
 
-class _DdlMark extends StatelessWidget {
+/// 截止标记（鸿蒙 `DdlMarkers` 里那一条「⚑ … 截止」）。
+///
+/// 点开 = **挂在标记下方的浮层**（鸿蒙 `bindPopup`：placement Bottom、无箭头、宽度 300、
+/// 无遮罩、点外面自动收起）。原来这里是 `showDialog`，遮罩会把整页压暗 —— 双机截图对比时
+/// 一眼就看出来不是同一个东西。
+class _DdlMark extends StatefulWidget {
   final double top;
   final String label;
-  final VoidCallback onTap;
-  const _DdlMark({required this.top, required this.label, required this.onTap});
+  final DdlGroup group;
+  final String day;
+
+  /// 三日视图才在标题前加 `MM-DD `（鸿蒙 `viewCols > COLS_DAY`）
+  final bool datePrefix;
+  final String Function(int) courseLabelOf;
+  final Color Function(int) courseColorOf;
+  final Future<void> Function(int todoId)? onOpenTodo;
+
+  const _DdlMark({
+    super.key,
+    required this.top,
+    required this.label,
+    required this.group,
+    required this.day,
+    required this.datePrefix,
+    required this.courseLabelOf,
+    required this.courseColorOf,
+    this.onOpenTodo,
+  });
+
+  @override
+  State<_DdlMark> createState() => _DdlMarkState();
+}
+
+class _DdlMarkState extends State<_DdlMark> {
+  /// 同一时间只开一个 —— 鸿蒙那边只有一个 `ddlOpenKey`，开另一个就等于关这个
+  static _DdlMarkState? _openOne;
+
+  final GlobalKey _anchor = GlobalKey();
+  OverlayEntry? _entry;
+
+  bool get _open => _entry != null;
+
+  @override
+  void dispose() {
+    _entry?.remove();
+    _entry = null;
+    if (_openOne == this) _openOne = null;
+    super.dispose();
+  }
+
+  void _toggle() => _open ? _close() : _openPanel();
+
+  void _close() {
+    _entry?.remove();
+    _entry = null;
+    if (_openOne == this) _openOne = null;
+    if (mounted) setState(() {});
+  }
+
+  void _openPanel() {
+    _openOne?._close();
+    _openOne = this;
+    final overlay = Overlay.of(context);
+    final box = _anchor.currentContext?.findRenderObject() as RenderBox?;
+    final overlayBox = overlay.context.findRenderObject() as RenderBox?;
+    final screen = overlayBox?.size ?? MediaQuery.of(context).size;
+    final rect = box == null
+        ? Rect.fromLTWH(floatSide, 120, screen.width - floatSide * 2, 18)
+        : box.localToGlobal(Offset.zero) & box.size;
+    // 鸿蒙 `DDL_PANEL_W = 300`
+    final w = math.min(300.0, screen.width - 16);
+    final left = (rect.left - 1)
+        .clamp(8.0, math.max(8.0, screen.width - w - 8))
+        .toDouble();
+    // 先按"标记下方"放；底下放不下就翻到标记上方（面板最高约 240）
+    const panelH = 240.0;
+    var top = rect.bottom + 4;
+    if (top + panelH > screen.height - 8) {
+      top = (rect.top - 8 - panelH)
+          .clamp(8.0, math.max(8.0, screen.height - 8 - panelH))
+          .toDouble();
+    }
+    final entry = OverlayEntry(
+      builder: (ctx) => Stack(
+        children: [
+          // 透明层只负责"点外面关掉"：鸿蒙的 maskColor 是透明的，没有遮罩色
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _close,
+              child: const SizedBox.expand(),
+            ),
+          ),
+          Positioned(
+            left: left,
+            top: top,
+            width: w,
+            // Overlay 里的内容不在 Material 之下 → 拿不到主题字体（会渲染成方块字），
+            // 所以自己包一层透明 Material（和引导条截图同样的坑）
+            child: Material(
+              type: MaterialType.transparency,
+              child: _DdlPanel(
+                title: widget.datePrefix
+                    ? '${widget.day.length > 5 ? widget.day.substring(5) : widget.day} '
+                        '${minToHHmm(widget.group.minute)} 截止 · '
+                        '${widget.group.todos.length} 项'
+                    : '${minToHHmm(widget.group.minute)} 截止 · '
+                        '${widget.group.todos.length} 项',
+                group: widget.group,
+                courseLabelOf: widget.courseLabelOf,
+                courseColorOf: widget.courseColorOf,
+                onClose: _close,
+                onOpenTodo: widget.onOpenTodo == null
+                    ? null
+                    : (id) {
+                        _close();
+                        unawaited(widget.onOpenTodo!(id));
+                      },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    _entry = entry;
+    overlay.insert(entry);
+    setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
     return Positioned(
-      top: top,
+      top: widget.top,
       left: 1,
       right: 1,
       child: GestureDetector(
-        onTap: onTap,
+        key: _anchor,
+        onTap: _toggle,
         behavior: HitTestBehavior.opaque,
         child: Container(
-          padding: const EdgeInsets.fromLTRB(6, 1, 4, 1),
+          // 鸿蒙 DdlMarkers 只有左/上/下内边距（右侧不缩进）
+          padding: const EdgeInsets.fromLTRB(6, 1, 0, 1),
           decoration: BoxDecoration(
-            color: const Color(0x2ED64545), // rgba(214,69,69,0.18)
+            // 展开时加深一档（鸿蒙：0.18 → 0.45）
+            color: _open ? const Color(0x73D64545) : const Color(0x2ED64545),
             borderRadius: BorderRadius.circular(4),
           ),
-          child: Text(label,
+          child: Text(widget.label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              // 鸿蒙 LAYOUT.tray = 14
               style: const TextStyle(fontSize: 14, color: Color(0xFFFF8A8A))),
         ),
       ),
@@ -1604,69 +1753,116 @@ class _DdlMark extends StatelessWidget {
   }
 }
 
-/// 截止标记的展开列表（鸿蒙端是 bindPopup 浮层；这里用深色弹窗，效果一致）
-/// 点条目 = 打开那条待办的编辑窗（由外壳注入 `onOpenTodo`）。
-Future<void> _showDdlList(
-  BuildContext context,
-  DdlGroup g, {
-  Future<void> Function(int todoId)? onOpenTodo,
-}) {
-  return showDialog<void>(
-    context: context,
-    builder: (ctx) => Dialog(
-      backgroundColor: const Color(0xE60C101A),
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(glassRadius)),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('${minToHHmm(g.minute)} 截止 · ${g.todos.length} 项',
-                style: const TextStyle(fontSize: 12, color: Color(0xFFFF8A8A))),
-            const SizedBox(height: 6),
-            for (final t in g.todos)
+/// 截止浮层的内容（鸿蒙 `DdlExpandPanel` 逐项照抄）：标题 + ✕ / 每条待办 / 可滚动，最高 180。
+class _DdlPanel extends StatelessWidget {
+  final String title;
+  final DdlGroup group;
+  final String Function(int) courseLabelOf;
+  final Color Function(int) courseColorOf;
+  final VoidCallback onClose;
+  final void Function(int todoId)? onOpenTodo;
+
+  const _DdlPanel({
+    required this.title,
+    required this.group,
+    required this.courseLabelOf,
+    required this.courseColorOf,
+    required this.onClose,
+    this.onOpenTodo,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        // 鸿蒙 DDL_PANEL_BG = rgba(12,16,26,0.90)，圆角 GLASS_RADIUS、1px 强描边
+        color: const Color(0xE60C101A),
+        borderRadius: BorderRadius.circular(glassRadius),
+        border: Border.all(color: glassEdgeStrong),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 12, color: Color(0xFFFF8A8A))),
+              ),
               GestureDetector(
-                onTap: onOpenTodo == null
-                    ? null
-                    : () async {
-                        final nav = Navigator.of(ctx);
-                        nav.pop();
-                        await onOpenTodo(t.id);
-                      },
+                onTap: onClose,
                 behavior: HitTestBehavior.opaque,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 5),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(t.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                fontSize: 14, color: inkPrimary)),
-                      ),
-                      Text(ddlText(t.ddl),
-                          style: const TextStyle(
-                              fontSize: 11, color: Color(0xFF9BA7BD))),
-                    ],
-                  ),
+                child: const Padding(
+                  padding: EdgeInsets.only(left: 10),
+                  child: Text('✕',
+                      style:
+                          TextStyle(fontSize: 12, color: Color(0xFFA9B5C9))),
                 ),
               ),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                style: TextButton.styleFrom(foregroundColor: accentBlue),
-                child: const Text('知道了', style: TextStyle(fontSize: 12)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 180),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final t in group.todos)
+                    GestureDetector(
+                      onTap: onOpenTodo == null
+                          ? null
+                          : () => onOpenTodo!(t.id),
+                      behavior: HitTestBehavior.opaque,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 5),
+                        child: Row(
+                          children: [
+                            if (t.courseId > 0) ...[
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 4),
+                                decoration: BoxDecoration(
+                                  color: courseColorOf(t.courseId),
+                                  borderRadius: BorderRadius.circular(3),
+                                ),
+                                child: Text(courseLabelOf(t.courseId),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                        fontSize: 10,
+                                        color: Color(0xFFEAF0FA))),
+                              ),
+                              const SizedBox(width: 5),
+                            ],
+                            Expanded(
+                              child: Text(t.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      fontSize: 14, color: inkPrimary)),
+                            ),
+                            const SizedBox(width: 6),
+                            const Text('›',
+                                style: TextStyle(
+                                    fontSize: 12, color: Color(0xFF7FA8FF))),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
-    ),
-  );
+    );
+  }
 }
 
 // ---------------- 待安排托盘 ----------------

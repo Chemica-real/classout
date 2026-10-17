@@ -2,6 +2,7 @@
 // 数据仓库是注入的，所以 web 用内存版、原生用 SQLite 版都能跑同一套 UI。
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
@@ -157,7 +158,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       }
     });
     try {
-      final settings = await AppSettings.load(widget.repo);
+      var settings = await AppSettings.load(widget.repo);
       // 演练沙箱的"安全网"：鸿蒙端演练用的是**另一个库文件**，App 被杀也只是丢沙箱；
       // 安卓是整份替换同一个库，所以冷启动时必须先把 kv 里的真实备份还原回去。
       // 否则（演练中被杀/被更新覆盖）用户再打开就是演示数据，而且没有"退出演练"可点。
@@ -172,6 +173,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           debugPrint('[ClassOUT] sandbox restore failed: $e');
         }
         await widget.repo.setKv(sandboxBackupKey, '');
+        // 偏好也一起还原（沙箱里可能改过标语/时间范围/类型）
+        final prefs = await widget.repo.getKv(sandboxPrefsKey) ?? '';
+        if (prefs.isNotEmpty) await _restorePrefs(prefs);
+        settings = await AppSettings.load(widget.repo);
       }
       var data = await widget.repo.load();
       if (data == null && widget.fallback != null) {
@@ -407,12 +412,48 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     if (start == true) await _startGuide();
   }
 
+  /// 进沙箱前把整张 kv 表记下来（退出/冷启动时整份还回去）
+  ///
+  /// 鸿蒙端沙箱是**另一个 .db 文件**，演练里改的偏好天然不串；安卓两端共用一个库，
+  /// 不记这一份的话，演练里改的标语 / 时间范围 / 待办类型会留在真实设置里。
+  Future<void> _snapshotPrefs() async {
+    final kv = await widget.repo.dumpKv();
+    kv.remove(sandboxBackupKey);
+    kv.remove(sandboxPrefsKey);
+    await widget.repo.setKv(sandboxPrefsKey, jsonEncode(kv));
+  }
+
+  /// 把 kv 整份还原成进沙箱前的样子：快照里有的写回，
+  /// 沙箱期间**新写**的键删掉（鸿蒙那边它们本来就在另一个库里）
+  Future<void> _restorePrefs(String raw) async {
+    Map<String, String> snap;
+    try {
+      snap = (jsonDecode(raw) as Map).map((k, v) => MapEntry('$k', '$v'));
+    } catch (e) {
+      debugPrint('[ClassOUT] sandbox prefs restore failed: $e');
+      return;
+    }
+    const keep = <String>{sandboxBackupKey, sandboxPrefsKey, guidePromptedKey};
+    final now = await widget.repo.dumpKv();
+    for (final k in now.keys) {
+      if (!keep.contains(k) && !snap.containsKey(k)) {
+        await widget.repo.removeKv(k);
+      }
+    }
+    for (final e in snap.entries) {
+      await widget.repo.setKv(e.key, e.value);
+    }
+    await widget.repo.removeKv(sandboxPrefsKey);
+    debugPrint('[ClassOUT] restored prefs from sandbox snapshot');
+  }
+
   /// 进入沙箱：真实数据整份存进 kv（库表不动 kv），换成演练数据
   Future<void> _startGuide() async {
     final current = _bundle;
     if (current != null) {
       await widget.repo.setKv(sandboxBackupKey, backupToJson(current));
     }
+    await _snapshotPrefs();
     // 演练沙箱按"今天"现造（鸿蒙 `GuideRepo.seedDemoData` 同款），不是固定日期的演示备份
     final demo = buildDemoSandbox();
     await widget.repo.replaceAll(demo);
@@ -425,11 +466,17 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     await _reload();
   }
 
-  /// 退出沙箱：还原 kv 里的真实数据并删掉那份备份
-  Future<void> _exitGuide({required bool completed}) async {
+  /// 退出沙箱：还原 kv 里的真实数据与偏好，并**回到课表页**
+  /// （鸿蒙 `doExitGuide` 里 `this.tab = 0` 是刻意的：让待办/计划/设置重新挂载、重读真库）
+  Future<void> _exitGuide() async {
     final raw = await widget.repo.getKv(sandboxBackupKey) ?? '';
+    final prefs = await widget.repo.getKv(sandboxPrefsKey) ?? '';
     if (!mounted) return;
-    setState(() => _sandbox = false);
+    setState(() {
+      _sandbox = false;
+      _tab = 0;
+    });
+    if (prefs.isNotEmpty) await _restorePrefs(prefs);
     if (raw.isEmpty) {
       await _reload();
       return;
@@ -439,9 +486,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     await widget.repo.setKv(sandboxBackupKey, '');
     if (!mounted) return;
     await _reload();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(completed ? '演练结束，已回到你自己的课表' : '已退出演练')));
+    // 鸿蒙 `doExitGuide` 是**静默**的（只写 hilog）：不弹提示条，界面直接换回真数据。
+    // 这里原来会弹一条 SnackBar（"演练结束…"），两端截图一比就多出一条。
   }
 
   void _goToStep(int index) {
@@ -522,10 +568,11 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     setState(() => _syncing = true);
     // 让「正在与日历同步」至少露一下脸（真机上重排可能几毫秒就完事）
     await Future<void>.delayed(const Duration(milliseconds: 700));
-    final msg = await _resyncReminders();
+    await _resyncReminders();
     if (!mounted) return;
     setState(() => _syncing = false);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    // 鸿蒙 `doCalendarSync` 只把结果写 hilog，界面只有页头那条「正在与日历同步」；
+    // 原来这里还弹一条完成 SnackBar，是与鸿蒙多出来的东西（§112 同款问题）。
   }
 
   Future<void> _applySettings(AppSettings next) async {
@@ -533,15 +580,16 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     await next.save(widget.repo);
   }
 
-  Future<void> _import() async {
+  /// 导入：弹导入框 → 整份覆盖 → 刷新。
+  ///
+  /// 返回导入的那份数据，让「备份与恢复」子页像鸿蒙 `BackupView` 一样
+  /// 在页内显示一行「已从备份恢复：…」（不弹提示条、也不关页）。
+  Future<BackupBundle?> _import() async {
     final bundle = await showImportDialog(context, picker: widget.backupPicker);
-    if (bundle == null) return;
+    if (bundle == null) return null;
     await widget.repo.replaceAll(bundle);
     await _reload();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('已导入：${bundle.semester?.name ?? ''}')),
-    );
+    return bundle;
   }
 
   @override
@@ -561,12 +609,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             onPrev: () => _goToStep(prevGuideStep(_guideStep)),
             onNext: () {
               if (isLastGuideStep(_guideStep)) {
-                _exitGuide(completed: true);
+                _exitGuide();
               } else {
                 _goToStep(nextGuideStep(_guideStep));
               }
             },
-            onExit: () => _exitGuide(completed: false),
+            onExit: _exitGuide,
           ),
         ),
       ],

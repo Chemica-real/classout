@@ -189,6 +189,37 @@ void main() {
     );
   });
 
+  testWidgets('计划页截止浮层截图（鸿蒙 bindPopup：挂在标记下方、无遮罩）', (tester) async {
+    final family = await _loadFonts();
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+          brightness: Brightness.dark, useMaterial3: true, fontFamily: family),
+      home: Scaffold(
+        body: AppFrame(
+          tab: 2,
+          onTab: (_) {},
+          child: PlanPage(
+            bundle: demo,
+            onChanged: (_) {},
+            initialDay: DateTime(2026, 10, 17),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    // demo 里 10/17 唯一的截止标记（23:59）
+    final mark = find.byKey(const ValueKey('ddl-2026-10-17-1439'));
+    await tester.ensureVisible(mark);
+    await tester.pumpAndSettle();
+    await tester.tap(mark);
+    await tester.pumpAndSettle();
+    await _capture(tester, 'ddl_panel');
+  });
+
   testWidgets('待办编辑器（右侧抽屉）截图', (tester) async {
     final family = await _loadFonts();
     tester.view.physicalSize = const Size(1080, 2400);

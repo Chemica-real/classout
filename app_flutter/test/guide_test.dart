@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:classout/data/backup.dart';
 import 'package:classout/data/repo.dart';
+import 'package:classout/data/settings.dart';
 import 'package:classout/data/backup_export.dart';
 import 'package:classout/domain/demo_sandbox.dart';
 import 'package:classout/domain/guide.dart';
@@ -98,6 +99,63 @@ void main() {
     expect(restored.semester!.name, mine.semester!.name);
     expect(await repo.getKv(sandboxBackupKey), '');
     expect(find.byType(GuideBar), findsNothing);
+  });
+
+  testWidgets('演练里改的偏好不会留到真库：退出时整份还原，并回到课表页', (tester) async {
+    guidePromptEnabled = true;
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+
+    final repo = MemoryRepo(_demo());
+    await repo.setKv('motto', '真实标语'); // 用户自己的首页标语
+    await tester.pumpWidget(MaterialApp(home: HomeShell(repo: repo)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('开始演练'));
+    await tester.pumpAndSettle();
+
+    // 演练里随手改了标语 + 加了个不存在于真库的键（模拟"沙箱里新写的设置"）
+    await repo.setKv('motto', '演练里改的标语');
+    await repo.setKv('sandbox_only_key', 'x');
+    expect((await AppSettings.load(repo)).motto, '演练里改的标语');
+
+    // 走到最后一步并完成演练
+    for (var i = 0; i < 6; i++) {
+      await tester.tap(find.text('下一步'));
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(find.text('完成演练'));
+    await tester.pumpAndSettle();
+
+    // ① 偏好整份回到进沙箱前（鸿蒙沙箱是另一个 db 文件，安卓靠这份快照对齐）
+    expect((await AppSettings.load(repo)).motto, '真实标语');
+    expect(await repo.getKv('sandbox_only_key'), isNull, reason: '沙箱里新写的键要删掉');
+    expect(await repo.getKv(sandboxPrefsKey), isNull);
+    // ② 回到课表页（鸿蒙 doExitGuide 里 this.tab = 0）
+    expect(find.text('管理课程'), findsOneWidget, reason: '应该停在课表页');
+    expect(find.byType(GuideBar), findsNothing);
+  });
+
+  testWidgets('冷启动：沙箱备份 + 偏好快照都还原（演练被杀也不脏真库）', (tester) async {
+    guidePromptEnabled = true;
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+
+    final mine = _demo();
+    final repo = MemoryRepo(buildDemoSandbox(now: DateTime(2026, 10, 16)));
+    await repo.setKv(sandboxBackupKey, backupToJson(mine));
+    await repo.setKv(sandboxPrefsKey, '{"motto":"真实标语"}');
+    await repo.setKv('motto', '演练里改的标语');
+    await repo.setKv('sandbox_only_key', 'x');
+
+    await tester.pumpWidget(MaterialApp(home: HomeShell(repo: repo)));
+    await tester.pumpAndSettle();
+
+    expect((await AppSettings.load(repo)).motto, '真实标语');
+    expect(await repo.getKv('sandbox_only_key'), isNull);
+    expect(await repo.getKv(sandboxPrefsKey), isNull);
+    expect(await repo.getKv(sandboxBackupKey), '');
   });
 
   testWidgets('选「先自己用用」→ 不进沙箱、也记下问过了', (tester) async {

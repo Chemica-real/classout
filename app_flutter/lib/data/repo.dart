@@ -15,6 +15,12 @@ abstract class ClassOutRepo {
   /// 设置项（对应鸿蒙端的 kv 表）
   Future<String?> getKv(String key);
   Future<void> setKv(String key, String value);
+
+  /// 删掉一个设置项（演练沙箱进出时用：沙箱里新写的键要能整份撤掉）
+  Future<void> removeKv(String key);
+
+  /// 整张 kv 表（演练沙箱进沙箱前"整份记住偏好"用）
+  Future<Map<String, String>> dumpKv();
 }
 
 /// 内存实现：给 web 预览和测试用；重启即丢（演示版行为）
@@ -42,4 +48,12 @@ class MemoryRepo implements ClassOutRepo {
   Future<void> setKv(String key, String value) async {
     _kv[key] = value;
   }
+
+  @override
+  Future<void> removeKv(String key) async {
+    _kv.remove(key);
+  }
+
+  @override
+  Future<Map<String, String>> dumpKv() async => Map<String, String>.from(_kv);
 }

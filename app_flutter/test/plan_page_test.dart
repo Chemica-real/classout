@@ -556,4 +556,97 @@ void main() {
     await tester.pumpAndSettle();
     expect(opened, 4, reason: 'demo 里 10/17 截止的是 id=4');
   });
+
+  // ---------------- 截止浮层（鸿蒙 bindPopup：无遮罩、点外面关、再点同一条关） ----------------
+
+  /// demo 里 10/17 只有一条截止（23:59），标记 key 就是它
+  Finder ddlMark() => find.byKey(const ValueKey('ddl-2026-10-17-1439'));
+
+  Future<void> pumpPlan(WidgetTester tester,
+      {Future<void> Function(int)? onOpenTodo}) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: PlanPage(
+          bundle: _demo(),
+          onChanged: (_) {},
+          initialDay: DateTime(2026, 10, 17),
+          now: _fixedNow,
+          onOpenTodo: onOpenTodo,
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    // 23:59 的标记在 1440 高的网格最底下，先滚到视口里（否则点不到）
+    await tester.ensureVisible(ddlMark());
+    await tester.pumpAndSettle();
+    await tester.tap(ddlMark());
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('截止浮层：是挂在标记下的浮层，不是带遮罩的弹窗（单日视图标题不带日期）',
+      (tester) async {
+    await pumpPlan(tester);
+    expect(find.text('23:59 截止 · 1 项'), findsOneWidget);
+    // 鸿蒙 maskColor 透明 → 安卓这边也不该有 Dialog/遮罩
+    expect(find.byType(Dialog), findsNothing);
+    expect(find.text('背 40 个单词'), findsWidgets);
+  });
+
+  testWidgets('截止浮层：再点同一条标记 = 收起（鸿蒙只有一个 ddlOpenKey）',
+      (tester) async {
+    await pumpPlan(tester);
+    expect(find.text('23:59 截止 · 1 项'), findsOneWidget);
+    // 浮层的透明层这时压在最上面（它就是"点外面关掉"那一层），
+    // 所以这一下必然命中它而不是标记本身 —— 鸿蒙的 autoCancel 也是这个效果
+    await tester.tap(ddlMark(), warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(find.text('23:59 截止 · 1 项'), findsNothing);
+  });
+
+  testWidgets('截止浮层：点 ✕ / 点外面都能收起', (tester) async {
+    await pumpPlan(tester);
+    await tester.tap(find.text('✕'));
+    await tester.pumpAndSettle();
+    expect(find.text('23:59 截止 · 1 项'), findsNothing);
+
+    await tester.tap(ddlMark());
+    await tester.pumpAndSettle();
+    expect(find.text('23:59 截止 · 1 项'), findsOneWidget);
+    // 点面板外面（左上角空白）：浮层上的透明层收下这一下
+    await tester.tapAt(const Offset(8, 8));
+    await tester.pumpAndSettle();
+    expect(find.text('23:59 截止 · 1 项'), findsNothing);
+  });
+
+  testWidgets('截止标记展开时底色加深一档（0.18 → 0.45，鸿蒙同款）', (tester) async {
+    Color markColor() => (tester
+            .widget<Container>(find
+                .descendant(of: ddlMark(), matching: find.byType(Container))
+                .first)
+            .decoration as BoxDecoration)
+        .color!;
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: PlanPage(
+          bundle: _demo(),
+          onChanged: (_) {},
+          initialDay: DateTime(2026, 10, 17),
+          now: _fixedNow,
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(ddlMark());
+    await tester.pumpAndSettle();
+    expect(markColor(), const Color(0x2ED64545));
+    await tester.tap(ddlMark());
+    await tester.pumpAndSettle();
+    expect(markColor(), const Color(0x73D64545));
+  });
 }

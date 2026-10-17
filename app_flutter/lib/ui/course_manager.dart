@@ -99,7 +99,7 @@ Future<void> showCourseManager(
   BuildContext context, {
   required BackupBundle bundle,
   required void Function(BackupBundle next) onChanged,
-  Future<void> Function()? onImport,
+  Future<BackupBundle?> Function()? onImport,
 }) {
   return showGeneralDialog<void>(
     context: context,
@@ -126,7 +126,7 @@ class _Manager extends StatefulWidget {
   final void Function(BackupBundle next) onChanged;
 
   /// 「导入备份」入口（鸿蒙端：管理课程 → 备份与恢复 → 从备份恢复）
-  final Future<void> Function()? onImport;
+  final Future<BackupBundle?> Function()? onImport;
   const _Manager(
       {required this.bundle, required this.onChanged, this.onImport});
 
@@ -2220,7 +2220,7 @@ class _NewSemesterFormState extends State<_NewSemesterForm> {
 class _BackupSheet extends StatefulWidget {
   final BackupBundle b;
   final void Function(BackupBundle next) onChanged;
-  final Future<void> Function()? onImport;
+  final Future<BackupBundle?> Function()? onImport;
   const _BackupSheet(
       {required this.b, required this.onChanged, this.onImport});
 
@@ -2232,6 +2232,10 @@ class _BackupSheetState extends State<_BackupSheet>
     with InlineToastMixin {
   late final BackupBundle _b = widget.b;
   String? _exportPath;
+
+  /// 刚恢复过：鸿蒙 `backupNote` —— 在页内显示一行蓝框「已从备份恢复：…」，
+  /// 不是弹提示条、也不关掉这一页
+  String _restored = '';
 
   Future<void> _export() async {
     try {
@@ -2291,6 +2295,22 @@ class _BackupSheetState extends State<_BackupSheet>
                           '恢复则用它整份覆盖当前数据。',
                           style: TextStyle(
                               fontSize: 11, color: Color(0xFF94A0B5))),
+                      if (_restored.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: const Color(0x382E6BE6),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(_restored,
+                              style: const TextStyle(
+                                  fontSize: 12,
+                                  height: 1.5,
+                                  color: Color(0xFF7FA8FF))),
+                        ),
+                      ],
                       const SizedBox(height: 12),
                       _sheetButton('导出备份到文件', _export),
                       if (_exportPath != null) ...[
@@ -2334,9 +2354,11 @@ class _BackupSheetState extends State<_BackupSheet>
                       const SizedBox(height: 16),
                       if (widget.onImport != null)
                         _sheetButton('从备份文件导入…', () async {
-                          final nav = Navigator.of(context);
-                          await widget.onImport!();
-                          if (mounted) nav.pop();
+                          final got = await widget.onImport!();
+                          if (!mounted || got == null) return;
+                          // 鸿蒙恢复完**留在本页**，在顶部显示这行蓝框（backupSummary 同款内容）
+                          setState(() => _restored = '已从备份恢复：\n'
+                              '${backupSummary(got)}');
                         }, secondary: true, key: const ValueKey('manager-import')),
                       const SizedBox(height: 22),
                       Row(

@@ -197,6 +197,19 @@ class SqliteRepo implements ClassOutRepo {
     db.execute('INSERT OR REPLACE INTO kv (k, v) VALUES (?, ?)', [key, value]);
   }
 
+  @override
+  Future<void> removeKv(String key) async {
+    db.execute('DELETE FROM kv WHERE k = ?', [key]);
+  }
+
+  @override
+  Future<Map<String, String>> dumpKv() async {
+    final rs = db.select('SELECT k, v FROM kv');
+    return <String, String>{
+      for (final r in rs) r['k'] as String: r['v'] as String,
+    };
+  }
+
   // ---------------- 内部 ----------------
 
   /// 清库顺序无所谓（schema 没建外键约束），但读的顺序要稳定

@@ -26,6 +26,13 @@ class GuideTab {
 /// kv：沙箱期间真实数据的备份（JSON）；恢复后删除
 const String sandboxBackupKey = 'sandbox_backup';
 
+/// kv：进沙箱**之前**整张 kv 表的快照（JSON `{键: 值}`），退出/冷启动还原后删除。
+///
+/// 为什么要它：鸿蒙端的沙箱是**另一个 .db 文件**，演练里改的标语/时间范围/类型
+/// 天然不会串到真实库；安卓两端共用一个 kv 表，不自己存一份的话，
+/// 演练里随手改的标语会留在真实设置里（真机上就差这一下）。
+const String sandboxPrefsKey = 'sandbox_prefs';
+
 /// kv：首次启动询问过没有
 const String guidePromptedKey = 'guide_prompted';
 
