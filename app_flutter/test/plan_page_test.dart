@@ -178,6 +178,8 @@ void main() {
     expect(after.startMin, before.startMin + 60);
     expect(after.endMin - after.startMin, before.endMin - before.startMin,
         reason: '移动不改变时长');
+    // 鸿蒙松手后的瞬时提示：同天 → 「挪到 HH:MM-HH:MM」
+    expect(find.textContaining('挪到 '), findsOneWidget);
   });
 
   testWidgets('拖底边 → 只改结束时间，开始不变，且不小于 15 分钟', (tester) async {
@@ -358,7 +360,7 @@ void main() {
     }
   });
 
-  testWidgets('托盘：展开后的提示语 / 收起按钮与鸿蒙端同字，⚡ 落块后弹「已排到」',
+  testWidgets('托盘：展开后的提示语 / 收起按钮与鸿蒙端同字，⚡ 落块后弹「已安排」',
       (tester) async {
     final h = await _pump(tester);
     await tester.tap(find.byKey(const ValueKey('tray-toggle')));
@@ -369,10 +371,10 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('pool-find-5')));
     await tester.pump();
     expect(h.last, isNotNull);
-    // 瞬时提示：不占布局的深色胶囊，1.8 秒后自己消失
-    expect(find.textContaining('已排到 '), findsOneWidget);
+    // 瞬时提示：鸿蒙 `doPlace` 的文案带标题与时段，1.8 秒后自己消失
+    expect(find.textContaining('已安排：'), findsOneWidget);
     await tester.pump(const Duration(seconds: 2));
-    expect(find.textContaining('已排到 '), findsNothing);
+    expect(find.textContaining('已安排：'), findsNothing);
   });
 
   testWidgets('虚拟课时卡片：显示「90 分钟」，卡片上的 ⚡ 找空档直接排进网格并弹提示',

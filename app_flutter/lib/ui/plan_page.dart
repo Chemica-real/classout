@@ -224,6 +224,14 @@ class _PlanPageState extends State<PlanPage> {
     final range = resize
         ? resizeRange(_axis, b.startMin, b.endMin, delta)
         : moveRange(_axis, b.startMin, b.endMin, delta);
+    // 鸿蒙松手后的提示：改时长 / 跨天 / 同天挪
+    if (resize) {
+      _showHint('时长改为 ${range[1] - range[0]} 分钟');
+    } else if (targetDate != b.date) {
+      _showHint('改到 $targetDate');
+    } else {
+      _showHint('挪到 ${minToHHmm(range[0])}-${minToHHmm(range[1])}');
+    }
     widget.onChanged(_withBlocks([
       for (final x in widget.bundle.blocks)
         if (x.id != id)
@@ -399,7 +407,9 @@ class _PlanPageState extends State<PlanPage> {
     );
     widget.onChanged(_withBlocks([...widget.bundle.blocks, block]));
     setState(() => _selectedTodoId = 0);
-    _showHint('已排到 ${minToHHmm(startMin)}');
+    // 鸿蒙 `doPlace()` 的提示带标题和时段（比「已排到」多信息）
+    _showHint('已安排：${todo.title}'
+        '（${minToHHmm(startMin)}-${minToHHmm(end)}）');
   }
 
   /// ⚡ 找空档：把课表 + 已排块当 busy、不可排时段当 rest
