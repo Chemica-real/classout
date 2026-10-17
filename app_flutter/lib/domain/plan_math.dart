@@ -267,11 +267,13 @@ List<DdlGroup> ddlGroupsOn(List<Todo> todos, String date, int axisStartMin,
     [int axisEndMin = windowMaxEnd]) {
   final buckets = <int, List<Todo>>{};
   for (final t in todos) {
-    if (t.status == TodoStatus.done || t.status == TodoStatus.archived)
+    if (t.status == TodoStatus.done || t.status == TodoStatus.archived) {
       continue;
+    }
     if (t.category == TodoCategory.exam) continue;
-    if (t.ddl.substring(0, t.ddl.length < 10 ? t.ddl.length : 10) != date)
+    if (t.ddl.substring(0, t.ddl.length < 10 ? t.ddl.length : 10) != date) {
       continue;
+    }
     final raw = ddlMinuteOf(t.ddl);
     if (raw < 0) continue;
     var minute = raw < axisStartMin ? axisStartMin : raw;

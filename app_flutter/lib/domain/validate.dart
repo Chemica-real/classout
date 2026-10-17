@@ -87,8 +87,9 @@ int resizeEndTo(num startMin, num desiredEndMin, num windowEndMin) {
 
 /// 双指缩放：开始时间不动，只按倍率拉长/压短结束时间
 int pinchEnd(num startMin, num baseEndMin, num scale, num windowEndMin) {
-  if (!scale.isFinite || scale <= 0)
+  if (!scale.isFinite || scale <= 0) {
     return resizeEndTo(startMin, baseEndMin, windowEndMin);
+  }
   final rawDur = baseEndMin - startMin;
   final baseDur = rawDur < blockMinMin ? blockMinMin : rawDur;
   return resizeEndTo(startMin, startMin + baseDur * scale, windowEndMin);

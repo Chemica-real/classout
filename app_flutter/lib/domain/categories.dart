@@ -66,8 +66,11 @@ List<String> parseCustomCategories(String raw) {
   final out = <String>[];
   for (final p in raw.split(_sep)) {
     final name = p.trim();
-    if (name.isEmpty || name.length > categoryNameMax || _isReservedName(name))
+    if (name.isEmpty ||
+        name.length > categoryNameMax ||
+        _isReservedName(name)) {
       continue;
+    }
     if (!out.contains(name)) out.add(name);
   }
   return out;
@@ -79,10 +82,12 @@ String serializeCustomCategories(List<String> list) =>
 CategoryVerdict validateCategoryName(String name, List<String> custom) {
   final t = name.trim();
   if (t.isEmpty) return const CategoryVerdict(false, '类型名不能为空');
-  if (t.length > categoryNameMax)
+  if (t.length > categoryNameMax) {
     return const CategoryVerdict(false, '类型名最多 $categoryNameMax 个字');
-  if (_isReservedName(t) || custom.contains(t))
+  }
+  if (_isReservedName(t) || custom.contains(t)) {
     return const CategoryVerdict(false, '这个类型已经有了');
+  }
   if (custom.length >= categoryMaxCount) {
     return const CategoryVerdict(false, '自定义类型最多 $categoryMaxCount 个');
   }
