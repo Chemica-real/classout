@@ -36,6 +36,9 @@ class SettingsPage extends StatefulWidget {
   /// 立即重排提醒（由外壳注入：它才知道仓库与通知实现）；返回给用户看的结果文案
   final Future<String> Function()? onResyncReminders;
 
+  /// 发一条 10 秒后的测试提醒（真机验证通知权限/锁屏用）
+  final Future<String> Function()? onTestReminder;
+
   /// 重新走一遍新手演练（沙箱 + 引导条）
   final Future<void> Function()? onStartGuide;
 
@@ -46,6 +49,7 @@ class SettingsPage extends StatefulWidget {
     required this.settings,
     required this.onSettingsChanged,
     this.onResyncReminders,
+    this.onTestReminder,
     this.onImport,
     this.onStartGuide,
   });
@@ -243,6 +247,21 @@ class _SettingsPageState extends State<SettingsPage> {
                             onTap: () async {
                               final messenger = ScaffoldMessenger.of(context);
                               final msg = await widget.onResyncReminders!();
+                              messenger
+                                  .showSnackBar(SnackBar(content: Text(msg)));
+                            },
+                          ),
+                        ),
+                      if (widget.onTestReminder != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: _LinkAction(
+                            key: const ValueKey('settings-test-reminder'),
+                            icon: Icons.notifications,
+                            text: '试一条提醒（10 秒后）',
+                            onTap: () async {
+                              final messenger = ScaffoldMessenger.of(context);
+                              final msg = await widget.onTestReminder!();
                               messenger
                                   .showSnackBar(SnackBar(content: Text(msg)));
                             },

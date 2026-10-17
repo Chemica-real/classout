@@ -4,6 +4,7 @@
 // ⚠️ 这台 Linux 机器只能保证**编译与调用顺序正确**；权限弹窗、锁屏展示、
 //    免打扰行为必须在真机上验（HANDOFF §42 记了这条）。
 
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
@@ -50,6 +51,14 @@ class FlutterNotifier implements ReminderNotifier {
         AndroidFlutterLocalNotificationsPlugin>();
     if (android != null) {
       final ok = await android.requestNotificationsPermission();
+      // Android 12+ 的「闹钟和提醒」是**另一个**特殊权限：没有它，
+      // exactAllowWhileIdle 会抛 exact_alarms_not_permitted（真机实测）。
+      // 这里顺带请求一次；用户拒绝也不阻断 —— schedule 会退回不精确模式。
+      try {
+        await android.requestExactAlarmsPermission();
+      } catch (_) {
+        // 老系统没有这个权限，忽略
+      }
       return ok ?? false;
     }
     return true; // 其它平台（含桌面/web）交给系统兜底
@@ -74,15 +83,31 @@ class FlutterNotifier implements ReminderNotifier {
       ),
       iOS: DarwinNotificationDetails(),
     );
-    await _plugin.zonedSchedule(
-      id: n.id,
-      scheduledDate: tz.TZDateTime.from(n.at, tz.local),
-      notificationDetails: details,
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      title: n.title,
-      body: n.body,
-      payload: n.kind,
-    );
+    final when = tz.TZDateTime.from(n.at, tz.local);
+    try {
+      await _plugin.zonedSchedule(
+        id: n.id,
+        scheduledDate: when,
+        notificationDetails: details,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        title: n.title,
+        body: n.body,
+        payload: n.kind,
+      );
+    } on PlatformException catch (e) {
+      // 没给「闹钟和提醒」权限时不要整条失败：退回不精确模式，
+      // 系统会在相近时间送达（最多晚几分钟），提醒本身不丢。
+      if (e.code != 'exact_alarms_not_permitted') rethrow;
+      await _plugin.zonedSchedule(
+        id: n.id,
+        scheduledDate: when,
+        notificationDetails: details,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        title: n.title,
+        body: n.body,
+        payload: n.kind,
+      );
+    }
   }
 
   @override

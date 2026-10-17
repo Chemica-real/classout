@@ -4887,3 +4887,47 @@ iOS 侧这次改动**还需 CI 复核**（`DynamicLibrary.process()` + 插件同
 - `test/block_editor_test.dart` 加 1 条（点自定义 → 两个选择器确定 → `ddl` 变成 16 位、时间保持 23:59）
 - `flutter test`：**721 passed**
 - 真机（OPPO A97）：待办编辑抽屉底部「备注　展开 ▸」位置与鸿蒙端一致（截图核对）
+
+## 66. 2026-10-17 提醒链路真机验证：发现并修掉「精确闹钟权限」崩溃，外加「试一条提醒」
+
+功能清单里最后一块没在真机验过的就是提醒/简报。这轮补验证，结果发现一个真问题。
+
+### 66.1 真机发现的问题
+
+设置页点「立即重排提醒」/「试一条提醒」时直接抛：
+
+```
+PlatformException(exact_alarms_not_permitted,
+  Exact alarms are not permitted, null, null)
+```
+
+原因：Android 12+ 用 `exactAllowWhileIdle` 需要**「闹钟和提醒」特殊权限**
+（`SCHEDULE_EXACT_ALARM` 只是"可以申请"，用户还得在系统设置里打开），
+鸿蒙端没有这个概念，所以 iOS/Android 版的提醒代码里根本没处理。
+
+### 66.2 修法（`lib/notify/flutter_notifier.dart`）
+
+1. `ensurePermission()` 里在请求通知权限之后，**顺带请求「闹钟和提醒」**
+   （`requestExactAlarmsPermission()`，会跳到系统那页；老系统没有该方法就忽略异常）
+2. `schedule()` 里 `exactAllowWhileIdle` 抛 `exact_alarms_not_permitted` 时
+   **退回 `inexactAllowWhileIdle`**（可能晚几分钟，但提醒不会整条丢掉）；其它异常照旧抛
+
+### 66.3 新增「试一条提醒（10 秒后）」
+
+设置页「提醒」卡多一个入口（HomeShell `_testReminder()`）：申请权限 → 排一条 10 秒后的
+`PlannedNotification`（`kind='test'`）→ SnackBar 报结果。真机验证/以后用户自查都靠它。
+
+### 66.4 真机验证到哪一步了
+
+| 环节 | 结果 |
+|---|---|
+| 首次请求通知权限 | ✅ 系统弹「允许 classout 向你发送通知？」；之后 `dumpsys package` 显示 `POST_NOTIFICATIONS: granted=true` |
+| 「闹钟和提醒」特殊权限 | ✅ 自动跳到系统页，用户可打开；`SCHEDULE_EXACT_ALARM: granted=false` 时不再崩（走 inexact 降级） |
+| AlarmManager 触发 | ✅ `dumpsys alarm` 三次 `ScheduledNotificationReceiver` 都被唤醒（00:57:01 / 00:57:39 / 00:58:52） |
+| 通知真的出现在通知栏 | ⚠️ **未确认**：`dumpsys notification` 里 `NotificationRecord` 计数为 0，通知栏也没有；`appops POST_NOTIFICATION = allow`、包权限 granted，怀疑 ColorOS 对侧载应用的「通知管理」还有一层开关（也可能需要 App 在前台/需 `flutter run` 观察）。**这条要继续查** |
+
+### 66.5 测试
+
+- 新增 `test/test_reminder_test.dart` 2 条（有权限 → 排一条 ~10 秒后的 test 通知 + 提示；
+  无权限 → 不排 + 提示去开权限），用 `FakeNotifier`
+- `flutter test`：**723 passed**

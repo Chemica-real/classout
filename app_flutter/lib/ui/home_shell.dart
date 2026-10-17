@@ -364,6 +364,24 @@ class _HomeShellState extends State<HomeShell> {
     await widget.repo.replaceAll(_bundle!);
   }
 
+  /// 「试一条提醒」：10 秒后弹一条系统通知（真机验证权限/锁屏/免打扰用）
+  Future<String> _testReminder() async {
+    try {
+      final ok = await _notifier.ensurePermission();
+      if (!ok) return '没有通知权限，去系统设置里开一下';
+      await _notifier.schedule(PlannedNotification(
+        id: 9001,
+        at: DateTime.now().add(const Duration(seconds: 10)),
+        title: 'ClassOUT 测试提醒',
+        body: '看到这条就说明通知排上了（10 秒后弹出）',
+        kind: 'test',
+      ));
+      return '10 秒后弹一条测试提醒';
+    } catch (e) {
+      return '测试提醒失败：$e';
+    }
+  }
+
   Future<void> _manualSync() async {
     if (_syncing) return;
     setState(() => _syncing = true);
@@ -497,6 +515,7 @@ class _HomeShellState extends State<HomeShell> {
                       settings: _settings,
                       onSettingsChanged: _applySettings,
                       onResyncReminders: _resyncReminders,
+                      onTestReminder: _testReminder,
                       onImport: _import,
                       onStartGuide: () async {
                         Navigator.of(context).maybePop();
