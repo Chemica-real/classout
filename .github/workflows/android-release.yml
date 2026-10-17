@@ -51,7 +51,9 @@ jobs:
           set -euo pipefail
           TAG="${GITHUB_REF_NAME:-manual}"
           VERSION=$(grep -m1 '^version:' app_flutter/pubspec.yaml | awk '{print $2}')
-          OUT="ClassOUT-android-${TAG}-v${VERSION%%+*}.apk"
+          # tag 里已经带了 android-v0.2.0，别再拼一遍（第一版拼出过
+          # ClassOUT-android-android-v0.2.0-v0.2.0.apk 这种重复名）
+          OUT="ClassOUT-${TAG}.apk"
           cp app_flutter/build/app/outputs/flutter-apk/app-release.apk "$OUT"
           ls -lh "$OUT"
           echo "file=$OUT" >> "$GITHUB_OUTPUT"
@@ -68,7 +70,7 @@ jobs:
             gh release upload "$TAG" "$FILE" --clobber
           else
             gh release create "$TAG" "$FILE" \
-              --title "ClassOUT Android $TAG" \
+              --title "ClassOUT $TAG（Android 测试版）" \
               --notes-file .github/release-notes-android.md
           fi
           gh release view "$TAG" --json url -q .url
