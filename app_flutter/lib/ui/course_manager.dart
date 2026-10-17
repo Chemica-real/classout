@@ -651,24 +651,23 @@ class _CourseEditorState extends State<_CourseEditor> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // 鸿蒙 CourseView 是子页：左「‹ 返回」、中「新增/编辑课程」
             Row(
               children: [
-                Expanded(
-                  child: Text(_id == 0 ? '新增课程' : '编辑课程',
-                      style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w500,
-                          color: inkPrimary)),
-                ),
                 GestureDetector(
                   onTap: () => Navigator.of(context).pop(),
                   behavior: HitTestBehavior.opaque,
-                  child: const Padding(
-                    padding: EdgeInsets.only(left: 12, bottom: 4),
-                    child:
-                        Icon(Icons.close, size: 18, color: Color(0xFFA9B5C9)),
-                  ),
+                  child: const Text('‹ 返回',
+                      style: TextStyle(fontSize: 15, color: accentBlue)),
                 ),
+                const Spacer(),
+                Text(_id == 0 ? '新增课程' : '编辑课程',
+                    style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        color: inkPrimary)),
+                const Spacer(),
+                const SizedBox(width: 44),
               ],
             ),
             const SizedBox(height: 8),
@@ -677,7 +676,7 @@ class _CourseEditorState extends State<_CourseEditor> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _field(_name, '课程全名', '高等数学'),
+                    _field(_name, '课程名（全称）', '高等数学'),
                     if (_error != null)
                       Padding(
                         padding: const EdgeInsets.only(top: 4),
@@ -685,9 +684,9 @@ class _CourseEditorState extends State<_CourseEditor> {
                             style: const TextStyle(
                                 fontSize: 11, color: Color(0xFFFF8080))),
                       ),
-                    _field(_short, '简称（课表格子里显示）', '高数'),
+                    _field(_short, '简称（显示在课表格子里）', '高数'),
                     _field(_teacher, '教师', '王老师'),
-                    _field(_location, '默认地点', '理教 101'),
+                    _field(_location, '默认地点', '教学楼 101'),
                     const _Label('颜色'),
                     Wrap(
                       spacing: 8,
@@ -715,11 +714,13 @@ class _CourseEditorState extends State<_CourseEditor> {
                       '下课后自动生成待办',
                       _auto,
                       (v) => setState(() => _auto = v),
+                      sub: '关掉它就只保留手填的事项（比如你不去上的课）',
                     ),
                     _switchRow(
                       '虚拟课程（不定时上课）',
                       _virtual,
                       (v) => setState(() => _virtual = v),
+                      sub: '比如 CS106L：没有固定上课时间，是一串等着被排进计划的课时',
                     ),
                     if (_id > 0 && _virtual) ...[
                       const _Label('课时'),
@@ -728,6 +729,12 @@ class _CourseEditorState extends State<_CourseEditor> {
                           '把某一讲排进计划、完成时跟真课下课一样生成待办。',
                           style: TextStyle(
                               fontSize: 11, color: Color(0xFF8B97AC))),
+                      const Padding(
+                        padding: EdgeInsets.only(top: 4),
+                        child: Text('课时排进计划、打勾完成之后，会像真课下课一样按下面的模板生成待办。',
+                            style: TextStyle(
+                                fontSize: 11, color: Color(0xFF7BD69A))),
+                      ),
                       const SizedBox(height: 4),
                       if (_lessons.isEmpty)
                         const Text('还没有课时。加几讲，就能在计划页里排了。',
@@ -765,7 +772,10 @@ class _CourseEditorState extends State<_CourseEditor> {
                       _PillAction(text: '+ 添加课时', onTap: _addLesson),
                     ],
                     if (_id > 0) ...[
-                      const _Label('时段规则'),
+                      _sectionTitle(
+                          _virtual ? '上课时段（虚拟课程可留空）' : '上课时段（${_rules.length}）',
+                          url: '+ 添加时段',
+                          onAdd: () => _editRule(null)),
                       if (_rules.isEmpty)
                         const Text('还没有时段。一周上两次就加两条。',
                             style: TextStyle(
@@ -784,11 +794,9 @@ class _CourseEditorState extends State<_CourseEditor> {
                                     .toList()));
                           },
                         ),
-                      _PillAction(text: '+ 添加时段', onTap: () => _editRule(null)),
-                      const _Label('待办模板'),
-                      const Text('课时排进计划、打勾完成之后，会像真课下课一样按模板生成待办。',
-                          style: TextStyle(
-                              fontSize: 11, color: Color(0xFF8B97AC))),
+                      _sectionTitle('待办生成模板（${_templates.length}）',
+                          url: '+ 添加模板',
+                          onAdd: () => _editTemplate(null)),
                       const SizedBox(height: 4),
                       if (_templates.isEmpty)
                         const Text('没有模板 → 这门课下课不会自动生成待办。',
@@ -806,17 +814,37 @@ class _CourseEditorState extends State<_CourseEditor> {
                                     .toList()));
                           },
                         ),
-                      _PillAction(
-                          text: '+ 添加模板', onTap: () => _editTemplate(null)),
                     ],
                   ],
                 ),
               ),
             ),
             const SizedBox(height: 8),
+            const SizedBox(height: 20),
             Row(
               children: [
-                if (_id > 0)
+                Expanded(
+                  child: GestureDetector(
+                    key: const ValueKey('course-save'),
+                    onTap: _save,
+                    behavior: HitTestBehavior.opaque,
+                    child: Container(
+                      height: 40,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF2E6BE6),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Text('保存课程',
+                          style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.white)),
+                    ),
+                  ),
+                ),
+                if (_id > 0) ...[
+                  const SizedBox(width: 10),
                   GestureDetector(
                     onTap: () {
                       if (_confirmDelete) {
@@ -826,28 +854,33 @@ class _CourseEditorState extends State<_CourseEditor> {
                       }
                     },
                     behavior: HitTestBehavior.opaque,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 10),
+                    child: Container(
+                      height: 40,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: const Color(0x2ED64545),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
                       child: Text(_confirmDelete ? '确认删除课程' : '删除课程',
-                          style:
-                              const TextStyle(fontSize: 13, color: dangerRed)),
+                          style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFFFF8A8A))),
                     ),
                   ),
-                const Spacer(),
-                FilledButton(
-                  onPressed: _save,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF2E6BE6),
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(110, 40),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20)),
-                  ),
-                  child: const Text('保存', style: TextStyle(fontSize: 14)),
-                ),
+                ],
               ],
             ),
+            if (_confirmDelete && _id > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                    '确定删除「${_short.text.isNotEmpty ? _short.text : _name.text}」'
+                    '及其所有时段、模板？',
+                    style: const TextStyle(
+                        fontSize: 11, color: Color(0xFFFF8A8A))),
+              ),
           ],
         ),
       ),
@@ -856,34 +889,85 @@ class _CourseEditorState extends State<_CourseEditor> {
 
   Widget _field(TextEditingController c, String label, String hint) {
     return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: TextField(
-        controller: c,
-        style: const TextStyle(fontSize: 14, color: inkPrimary),
-        cursorColor: accentBlue,
-        decoration: InputDecoration(
-          labelText: label,
-          labelStyle: const TextStyle(fontSize: 11, color: Color(0xFF94A0B5)),
-          hintText: hint,
-          hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF8B97AC)),
-          enabledBorder: const UnderlineInputBorder(
-              borderSide: BorderSide(color: Color(0x24FFFFFF))),
-          focusedBorder: const UnderlineInputBorder(
-              borderSide: BorderSide(color: accentBlue)),
-        ),
-        onChanged: (_) {
-          if (_error != null) setState(() => _error = null);
-        },
+      padding: const EdgeInsets.only(top: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: const TextStyle(fontSize: 12, color: Color(0xFF94A0B5))),
+          const SizedBox(height: 4),
+          Container(
+            height: 40,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            alignment: Alignment.centerLeft,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: TextField(
+              controller: c,
+              style: const TextStyle(fontSize: 14, color: inkPrimary),
+              cursorColor: accentBlue,
+              decoration: InputDecoration(
+                isDense: true,
+                border: InputBorder.none,
+                hintText: hint,
+                hintStyle:
+                    const TextStyle(fontSize: 14, color: Color(0xFF8B97AC)),
+              ),
+              onChanged: (_) {
+                if (_error != null) setState(() => _error = null);
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _switchRow(String text, bool value, ValueChanged<bool> onChanged) {
+  /// 区段标题（鸿蒙：左标题 14 Medium、右「+ 添加…」13 蓝字）
+  Widget _sectionTitle(String title, {required String url, required VoidCallback onAdd}) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 18, bottom: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(title,
+                style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: inkPrimary)),
+          ),
+          GestureDetector(
+            onTap: onAdd,
+            behavior: HitTestBehavior.opaque,
+            child: Text(url,
+                style: const TextStyle(fontSize: 13, color: accentBlue)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _switchRow(String text, bool value, ValueChanged<bool> onChanged,
+      {String? sub}) {
     return Row(
       children: [
         Expanded(
-          child: Text(text,
-              style: const TextStyle(fontSize: 13, color: inkPrimary)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(text,
+                  style: const TextStyle(fontSize: 14, color: inkPrimary)),
+              if (sub != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(sub,
+                      style: const TextStyle(
+                          fontSize: 11, color: Color(0xFF94A0B5))),
+                ),
+            ],
+          ),
         ),
         Switch(
             value: value,

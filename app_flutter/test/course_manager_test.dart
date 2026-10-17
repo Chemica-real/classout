@@ -52,7 +52,7 @@ void main() {
     final short = find.widgetWithText(TextField, '线代');
     await tester.enterText(short, '线代A');
     await tester.pumpAndSettle();
-    await _tapVisible(tester, find.widgetWithText(FilledButton, '保存').last);
+    await _tapVisible(tester, find.byKey(const ValueKey('course-save')));
 
     final saved = (await repo.load())!;
     final course = saved.courses.firstWhere((c) => c.id == 4);
@@ -66,8 +66,9 @@ void main() {
     await _tapVisible(tester, find.byKey(const ValueKey('course-4')));
     await _tapVisible(tester, find.text('+ 添加时段'));
     expect(find.text('添加上课时段'), findsOneWidget);
+    // 第一次「保存」是时段弹窗，第二次才是课程子页
     await _tapVisible(tester, find.widgetWithText(FilledButton, '保存').last);
-    await _tapVisible(tester, find.widgetWithText(FilledButton, '保存').last);
+    await _tapVisible(tester, find.byKey(const ValueKey('course-save')));
 
     final saved = (await repo.load())!;
     expect(saved.rules.length, before + 1);
@@ -85,7 +86,7 @@ void main() {
     await tester.enterText(title, '线代作业 %N');
     await tester.pumpAndSettle();
     await _tapVisible(tester, find.widgetWithText(FilledButton, '保存').last);
-    await _tapVisible(tester, find.widgetWithText(FilledButton, '保存').last);
+    await _tapVisible(tester, find.byKey(const ValueKey('course-save')));
 
     final saved = (await repo.load())!;
     expect(saved.templates.length, 1);
@@ -118,7 +119,7 @@ void main() {
     await _tapVisible(tester, find.text('+ 添加课时'));
     expect(find.textContaining('第 1 讲'), findsWidgets);
 
-    await _tapVisible(tester, find.widgetWithText(FilledButton, '保存').last);
+    await _tapVisible(tester, find.byKey(const ValueKey('course-save')));
     var saved = (await repo.load())!;
     expect(saved.lessons.length, 2);
     expect(saved.lessons.first.courseId, 4);
@@ -127,7 +128,7 @@ void main() {
     // 再进去标记第一讲完成
     await _tapVisible(tester, find.byKey(const ValueKey('course-4')));
     await _tapVisible(tester, find.text('完成').first);
-    await _tapVisible(tester, find.widgetWithText(FilledButton, '保存').last);
+    await _tapVisible(tester, find.byKey(const ValueKey('course-save')));
     saved = (await repo.load())!;
     expect(saved.lessons.where((l) => l.done).length, 1);
 
@@ -155,7 +156,7 @@ void main() {
     await tester.enterText(weeks, '1-8');
     await tester.pumpAndSettle();
     await _tapVisible(tester, find.widgetWithText(FilledButton, '保存').last);
-    await _tapVisible(tester, find.widgetWithText(FilledButton, '保存').last);
+    await _tapVisible(tester, find.byKey(const ValueKey('course-save')));
 
     final saved = (await repo.load())!;
     final rule = saved.rules.lastWhere((r) => r.courseId == 4);
@@ -168,7 +169,7 @@ void main() {
     await _tapVisible(tester, find.byKey(const ValueKey('course-4')));
     await _tapVisible(tester, find.text('+ 添加模板'));
     await _tapVisible(tester, find.widgetWithText(FilledButton, '保存').last);
-    await _tapVisible(tester, find.widgetWithText(FilledButton, '保存').last);
+    await _tapVisible(tester, find.byKey(const ValueKey('course-save')));
 
     final withTemplate = (await repo.load())!;
     expect(withTemplate.templates.length, 1);
