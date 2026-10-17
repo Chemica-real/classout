@@ -4216,6 +4216,9 @@ dependencies { coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
     `api-level` 降到 30、加 `-no-snapshot -gpu swiftshader_indirect`、boot-timeout 900s。
 - **结论**：Android「能不能构建」现在由 CI 守着；「运行时能不能跑」仍然需要**真机**
   （`adb install app-debug.apk`）或以后调通模拟器。
+- ✅ **拆分后首跑绿**（Android #5）：`打包 debug APK` 全部步骤 success，
+  artifact `classout-debug-apk` **72.1 MB**（可下载安装到真机）；
+  `模拟器运行验证` 按设计被 skipped（只手动触发）。
 
 ### 48.4 本机 Android 工具链（顺手装好了）
 
