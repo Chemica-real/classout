@@ -92,6 +92,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
   /// 新手演练：是否在沙箱里、走到第几步、这次运行里问过没有
   bool _sandbox = false;
+
+  /// 切库/换数据时挡一下（鸿蒙 `GuideBusyLayer`）：那一瞬间数据是半截的
+  bool _guideBusy = false;
+
+  /// 忙碌层上那句话：进演练 / 回真实课表
+  bool _guideBusyEntering = false;
   int _guideStep = 0;
   bool _guidePromptShown = false;
 
@@ -489,7 +495,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   }
 
   /// 进入沙箱：真实数据整份存进 kv（库表不动 kv），换成演练数据
-  Future<void> _startGuide() async {
+  Future<void> _startGuide() => _withBusy(true, _startGuideWork);
+
+  Future<void> _startGuideWork() async {
     final current = _bundle;
     if (current != null) {
       await widget.repo.setKv(sandboxBackupKey, backupToJson(current));
@@ -516,7 +524,31 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
   /// 退出沙箱：还原 kv 里的真实数据与偏好，并**回到课表页**
   /// （鸿蒙 `doExitGuide` 里 `this.tab = 0` 是刻意的：让待办/计划/设置重新挂载、重读真库）
-  Future<void> _exitGuide() async {
+  Future<void> _exitGuide() => _withBusy(false, _exitGuideWork);
+
+  /// 鸿蒙 `guideBusy`：切数据那一下整屏挡一下，并至少亮 320ms（真机上数据换得太快会一闪而过）
+  Future<void> _withBusy(bool entering, Future<void> Function() work) async {
+    if (_guideBusy) return;
+    setState(() {
+      _guideBusy = true;
+      _guideBusyEntering = entering;
+    });
+    final started = DateTime.now();
+    // 先让忙碌层**画出来一帧**（否则数据换得太快，它只会在同一帧里出现又消失）
+    await WidgetsBinding.instance.endOfFrame;
+    try {
+      await work();
+    } finally {
+      // 真机上再补到至少 320ms：鸿蒙切库要一两秒，天然能看见；这边太快就一闪而过
+      if (ambientMotion) {
+        final wait = 320 - DateTime.now().difference(started).inMilliseconds;
+        if (wait > 0) await Future<void>.delayed(Duration(milliseconds: wait));
+      }
+      if (mounted) setState(() => _guideBusy = false);
+    }
+  }
+
+  Future<void> _exitGuideWork() async {
     final raw = await widget.repo.getKv(sandboxBackupKey) ?? '';
     final prefs = await widget.repo.getKv(sandboxPrefsKey) ?? '';
     if (!mounted) return;
@@ -647,26 +679,48 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final app = _buildWithBoot(context);
-    if (!_sandbox) return app;
-    // 演练引导条：浮在导航栏上方（鸿蒙端 GuideBar 也是这样压在内容上）
+    final base = !_sandbox
+        ? app
+        // 演练引导条：浮在导航栏上方（鸿蒙端 GuideBar 也是这样压在内容上）
+        : Stack(
+            children: [
+              Positioned.fill(child: app),
+              Positioned(
+                left: floatSide,
+                right: floatSide,
+                bottom: tabBarInset + floatGap,
+                child: GuideBar(
+                  step: _guideStep,
+                  onPrev: () => _goToStep(prevGuideStep(_guideStep)),
+                  onNext: () {
+                    if (isLastGuideStep(_guideStep)) {
+                      _exitGuide();
+                    } else {
+                      _goToStep(nextGuideStep(_guideStep));
+                    }
+                  },
+                  onExit: _exitGuide,
+                ),
+              ),
+            ],
+          );
+    if (!_guideBusy) return base;
+    // 鸿蒙 `GuideBusyLayer`：整屏压暗 + 中间一条玻璃卡片（"正在准备演练…" / "正在恢复你的课表…"）
     return Stack(
       children: [
-        Positioned.fill(child: app),
-        Positioned(
-          left: floatSide,
-          right: floatSide,
-          bottom: tabBarInset + floatGap,
-          child: GuideBar(
-            step: _guideStep,
-            onPrev: () => _goToStep(prevGuideStep(_guideStep)),
-            onNext: () {
-              if (isLastGuideStep(_guideStep)) {
-                _exitGuide();
-              } else {
-                _goToStep(nextGuideStep(_guideStep));
-              }
-            },
-            onExit: _exitGuide,
+        Positioned.fill(child: base),
+        Positioned.fill(
+          child: ColoredBox(
+            color: const Color(0x8C0C121C),
+            child: Center(
+              child: Glass(
+                sheet: true,
+                padding: const EdgeInsets.all(18),
+                child: Text(
+                    _guideBusyEntering ? '正在准备演练…' : '正在恢复你的课表…',
+                    style: const TextStyle(fontSize: 13, color: inkPrimary)),
+              ),
+            ),
           ),
         ),
       ],

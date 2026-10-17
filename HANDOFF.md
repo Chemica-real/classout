@@ -12,7 +12,7 @@ ClassOUT 是一款**纯离线**的「课表 + 待办 + 计划」三合一 App，
 |---|---|---|
 | 版本 | v1.5.1（上架准备中，未提审） | 0.2.0（Android 已装真机 OPPO A97） |
 | 页面 | 课表 / 待办 / 计划 / 设置 + 启动加载页 + 悬浮浮窗 | **同样四页 + 启动页 + 浮窗（§52–§68 逐页复刻）** |
-| 测试 | 离线断言 524 项（`tools/domain-check`） | **1294 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
+| 测试 | 离线断言 524 项（`tools/domain-check`） | **1295 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
 | 差异基准 | 本目录 `docs/manual/01..09.jpg`（真机截图） | `app_flutter/tool/goldens/*.png` 对照上面九张 + `shared/fixtures/`（1115 条规则用例） |
 
 **安卓版与鸿蒙版的 1:1 复刻已经完成**：主题 token 抄自 ArkTS（§52）、六个页面重做、
@@ -6789,3 +6789,20 @@ golden 总数 19 → **23**；`flutter test` **1293 passed**。
   （`03-plan.jpg` 里就是细箭头文字）。
 - `sandbox_plan.png` 里 14:00 那块从**绿色**变回**蓝色**（= 高数的 courseIndex 2），和 `03-plan.jpg` 一致。
 - `flutter test`：**1294 passed**；23 张 golden 重出。
+
+### 116.25 补上进出演练时的「忙碌层」（鸿蒙 `GuideBusyLayer`）
+
+鸿蒙切库时（进沙箱 / 退出回真库）会盖一层 `rgba(12,18,28,0.55)` 的全屏遮罩，
+中间一张玻璃卡片写「正在准备演练…」或「正在恢复你的课表…」（13 号字），挡住那半秒数据是半截的状态。
+安卓一直没这层 —— 点「开始演练」后界面直接换数据，中间没有任何"正在做什么"的反馈。
+
+现在 `HomeShell` 加了 `_guideBusy` / `_guideBusyEntering`：
+- `_startGuide` / `_exitGuide` 都走 `_withBusy(entering, work)`；
+- 先 `await WidgetsBinding.instance.endOfFrame` 保证这一层**至少画出来一帧**（否则数据换得太快，
+  同一帧里出现又消失，用户什么都看不到）；
+- 真机上再补到至少 **320ms**（鸿蒙切库要一两秒，天然能看见）；
+- 文案与样式照鸿蒙：全屏 `0x8C0C121C` 遮罩 + 居中 `Glass(sheet)` + 13 号字。
+
+真机（OPPO A97）实测截到了这张层（「正在准备演练…」），退出演练后 logcat 里
+`restored prefs from sandbox snapshot` + `loaded: courses=13 todos=26 rules=16`，数据与偏好都回来了。
+测试 +1（点「开始演练」后能看到这层、settle 后消失）。`flutter test` **1295 passed**。

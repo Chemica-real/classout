@@ -158,6 +158,32 @@ void main() {
     expect(await repo.getKv(sandboxBackupKey), '');
   });
 
+  testWidgets('切数据那一下有「正在准备演练…」忙碌层（鸿蒙 GuideBusyLayer）',
+      (tester) async {
+    guidePromptEnabled = true;
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+
+    final repo = MemoryRepo(_demo());
+    await tester.pumpWidget(MaterialApp(home: HomeShell(repo: repo)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('开始演练'));
+    // 切数据是异步的：逐帧推进直到忙碌层出现（弹窗要先关掉、再 setKv、再进沙箱）
+    var seen = false;
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 8));
+      if (find.text('正在准备演练…').evaluate().isNotEmpty) {
+        seen = true;
+        break;
+      }
+    }
+    expect(seen, isTrue, reason: '进沙箱时应该先出「正在准备演练…」');
+    await tester.pumpAndSettle();
+    expect(find.text('正在准备演练…'), findsNothing);
+    expect(find.byType(GuideBar), findsOneWidget);
+  });
+
   testWidgets('进沙箱时偏好回到默认值（鸿蒙是一个全新的库）', (tester) async {
     guidePromptEnabled = true;
     tester.view.physicalSize = const Size(1080, 2400);
