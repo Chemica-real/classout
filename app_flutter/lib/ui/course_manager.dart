@@ -252,6 +252,8 @@ class _ManagerState extends State<_Manager> {
                         if (c.location.isNotEmpty) c.location,
                         '$rules 个时段',
                         '$templates 个模板',
+                        if (_b.lessons.any((l) => l.courseId == c.id))
+                          '${_b.lessons.where((l) => l.courseId == c.id).length} 课时',
                         if (c.isVirtual) '虚拟课程',
                         if (!c.autoTodoEnabled) '不自动生成',
                       ].join(' · '),
@@ -388,6 +390,7 @@ class _ManagerState extends State<_Manager> {
       rules: _b.rules.where((r) => !doomed.contains(r.courseId)).toList(),
       templates:
           _b.templates.where((t) => !doomed.contains(t.courseId)).toList(),
+      lessons: _b.lessons.where((l) => !doomed.contains(l.courseId)).toList(),
     ));
   }
 
@@ -566,6 +569,22 @@ class _CourseEditorState extends State<_CourseEditor> {
   List<TodoTemplate> get _templates =>
       _b.templates.where((t) => t.courseId == _id).toList();
 
+  List<VirtualLesson> get _lessons =>
+      _b.lessons.where((l) => l.courseId == _id).toList()
+        ..sort((a, b) => a.seq - b.seq);
+
+  /// 给虚拟课程加一讲（第 N 讲，N = 现有最大讲次 + 1）
+  void _addLesson() {
+    final seq = _lessons.fold<int>(0, (m, l) => l.seq > m ? l.seq : m) + 1;
+    final lesson = VirtualLesson(
+      id: _b.lessons.fold<int>(0, (m, l) => l.id > m ? l.id : m) + 1,
+      courseId: _id,
+      seq: seq,
+      title: '第 $seq 讲',
+    );
+    setState(() => _b = _with(_b, lessons: [..._b.lessons, lesson]));
+  }
+
   void _save() {
     final name = _name.text.trim();
     if (name.isEmpty) {
@@ -593,9 +612,10 @@ class _CourseEditorState extends State<_CourseEditor> {
   void _delete() {
     final rules = _b.rules.where((r) => r.courseId != _id).toList();
     final templates = _b.templates.where((t) => t.courseId != _id).toList();
+    final lessons = _b.lessons.where((l) => l.courseId != _id).toList();
     final courses = _b.courses.where((c) => c.id != _id).toList();
-    Navigator.of(context)
-        .pop(_with(_b, courses: courses, rules: rules, templates: templates));
+    Navigator.of(context).pop(_with(_b,
+        courses: courses, rules: rules, templates: templates, lessons: lessons));
   }
 
   Future<void> _editRule(SessionRule? r) async {
@@ -697,6 +717,49 @@ class _CourseEditorState extends State<_CourseEditor> {
                       _virtual,
                       (v) => setState(() => _virtual = v),
                     ),
+                    if (_id > 0 && _virtual) ...[
+                      const _Label('课时'),
+                      const Text(
+                          '虚拟课程没有固定上课时间，就是这一串课时；'
+                          '把某一讲排进计划、完成时跟真课下课一样生成待办。',
+                          style: TextStyle(
+                              fontSize: 11, color: Color(0xFF8B97AC))),
+                      const SizedBox(height: 4),
+                      if (_lessons.isEmpty)
+                        const Text('还没有课时。加几讲，就能在计划页里排了。',
+                            style: TextStyle(
+                                fontSize: 12, color: Color(0xFF8B97AC))),
+                      for (final l in _lessons)
+                        _row(
+                          '第 ${l.seq} 讲 · ${l.title}${l.done ? ' · 已完成' : ''}',
+                          onEdit: () => setState(() {
+                            final list = _b.lessons
+                                .map((x) => x.id == l.id
+                                    ? VirtualLesson(
+                                        id: x.id,
+                                        courseId: x.courseId,
+                                        seq: x.seq,
+                                        title: x.title,
+                                        done: !x.done,
+                                        doneAt: !x.done
+                                            ? DateTime.now()
+                                                .millisecondsSinceEpoch
+                                            : 0,
+                                      )
+                                    : x)
+                                .toList();
+                            _b = _with(_b, lessons: list);
+                          }),
+                          editLabel: l.done ? '取消完成' : '完成',
+                          onDelete: () {
+                            setState(() => _b = _with(_b,
+                                lessons: _b.lessons
+                                    .where((x) => x.id != l.id)
+                                    .toList()));
+                          },
+                        ),
+                      _PillAction(text: '+ 添加课时', onTap: _addLesson),
+                    ],
                     if (_id > 0) ...[
                       const _Label('时段规则'),
                       if (_rules.isEmpty)
@@ -827,7 +890,9 @@ class _CourseEditorState extends State<_CourseEditor> {
   }
 
   Widget _row(String text,
-      {required VoidCallback onEdit, required VoidCallback onDelete}) {
+      {required VoidCallback onEdit,
+      required VoidCallback onDelete,
+      String editLabel = '改'}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Container(
@@ -845,7 +910,7 @@ class _CourseEditorState extends State<_CourseEditor> {
                   style:
                       const TextStyle(fontSize: 12, color: Color(0xFFC3CDDE))),
             ),
-            _MiniAction(text: '改', color: accentBlue, onTap: onEdit),
+            _MiniAction(text: editLabel, color: accentBlue, onTap: onEdit),
             _MiniAction(text: '删', color: dangerRed, onTap: onDelete),
           ],
         ),

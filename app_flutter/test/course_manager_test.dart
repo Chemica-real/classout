@@ -106,6 +106,36 @@ void main() {
     expect(before.courses.length - 1, saved.courses.length);
   });
 
+  testWidgets('虚拟课程可以加课时、标记完成，删课程时连带清掉', (tester) async {
+    final repo = await _pump(tester);
+    await _tapVisible(tester, find.byKey(const ValueKey('course-4')));
+    // 打开「虚拟课程」开关（编辑抽屉里第二个 Switch）
+    await _tapVisible(tester, find.byType(Switch).last);
+    await _tapVisible(tester, find.text('+ 添加课时'));
+    await _tapVisible(tester, find.text('+ 添加课时'));
+    expect(find.textContaining('第 1 讲'), findsWidgets);
+
+    await _tapVisible(tester, find.widgetWithText(FilledButton, '保存').last);
+    var saved = (await repo.load())!;
+    expect(saved.lessons.length, 2);
+    expect(saved.lessons.first.courseId, 4);
+    expect(saved.lessons.map((l) => l.seq).toList(), [1, 2]);
+
+    // 再进去标记第一讲完成
+    await _tapVisible(tester, find.byKey(const ValueKey('course-4')));
+    await _tapVisible(tester, find.text('完成').first);
+    await _tapVisible(tester, find.widgetWithText(FilledButton, '保存').last);
+    saved = (await repo.load())!;
+    expect(saved.lessons.where((l) => l.done).length, 1);
+
+    // 删除课程 → 课时一起没
+    await _tapVisible(tester, find.byKey(const ValueKey('course-4')));
+    await _tapVisible(tester, find.text('删除课程'));
+    await _tapVisible(tester, find.text('确认删除课程'));
+    saved = (await repo.load())!;
+    expect(saved.lessons, isEmpty);
+  });
+
   testWidgets('时段规则的「周次」按文本解析（1-8 → 前 8 周）', (tester) async {
     final repo = await _pump(tester);
     await _tapVisible(tester, find.byKey(const ValueKey('course-4')));
