@@ -71,6 +71,7 @@ BackupBundle _with(
   List<SessionRule>? rules,
   List<TodoTemplate>? templates,
   List<VirtualLesson>? lessons,
+  List<PlanBlock>? blocks,
 }) =>
     BackupBundle(
       app: b.app,
@@ -82,7 +83,7 @@ BackupBundle _with(
       rules: rules ?? b.rules,
       overrides: b.overrides,
       todos: b.todos,
-      blocks: b.blocks,
+      blocks: blocks ?? b.blocks,
       restWindows: b.restWindows,
       templates: templates ?? b.templates,
       lessons: lessons ?? b.lessons,
@@ -565,6 +566,13 @@ class _CourseEditorState extends State<_CourseEditor> {
   late int _color = widget.existing?.colorIndex ?? 0;
   late bool _auto = widget.existing?.autoTodoEnabled ?? true;
   late bool _virtual = widget.existing?.isVirtual ?? false;
+
+  /// 虚拟课程的课时数（鸿蒙 1–50 的滑条；保存时按这个数增删 lesson）
+  late int _lessonCount = widget.b.lessons
+      .where((l) => l.courseId == (widget.existing?.id ?? 0))
+      .length
+      .clamp(1, 50);
+
   bool _confirmDelete = false;
   String? _error;
 
@@ -588,22 +596,7 @@ class _CourseEditorState extends State<_CourseEditor> {
 
   List<TodoTemplate> get _templates =>
       _b.templates.where((t) => t.courseId == _id).toList();
-
-  List<VirtualLesson> get _lessons =>
-      _b.lessons.where((l) => l.courseId == _id).toList()
-        ..sort((a, b) => a.seq - b.seq);
-
   /// 给虚拟课程加一讲（第 N 讲，N = 现有最大讲次 + 1）
-  void _addLesson() {
-    final seq = _lessons.fold<int>(0, (m, l) => l.seq > m ? l.seq : m) + 1;
-    final lesson = VirtualLesson(
-      id: _b.lessons.fold<int>(0, (m, l) => l.id > m ? l.id : m) + 1,
-      courseId: _id,
-      seq: seq,
-      title: '第 $seq 讲',
-    );
-    setState(() => _b = _with(_b, lessons: [..._b.lessons, lesson]));
-  }
 
   void _save() {
     final name = _name.text.trim();
@@ -626,7 +619,42 @@ class _CourseEditorState extends State<_CourseEditor> {
     final courses = _id > 0
         ? _b.courses.map((c) => c.id == _id ? course : c).toList()
         : [..._b.courses, course];
-    Navigator.of(context).pop(_with(_b, courses: courses));
+
+    // 虚拟课程：按滑条讲数整批同步（鸿蒙 `syncLessonCount`）：
+    //   - 少的补上「第 N 讲」
+    //   - 多的删掉**未完成**的那些（已完成的保留，记录不能悄悄消失）
+    var lessons = _b.lessons;
+    var blocks = _b.blocks;
+    if (_virtual) {
+      final cid = course.id;
+      final mine = lessons.where((l) => l.courseId == cid).toList()
+        ..sort((a, b) => a.seq - b.seq);
+      final removed = mine
+          .where((l) => l.seq > _lessonCount && !l.done)
+          .map((l) => l.id)
+          .toSet();
+      if (removed.isNotEmpty) {
+        lessons = lessons.where((l) => !removed.contains(l.id)).toList();
+        blocks = blocks.where((b) => !removed.contains(b.lessonId)).toList();
+      }
+      final seqs = {
+        for (final l in lessons.where((l) => l.courseId == cid)) l.seq
+      };
+      for (var seq = 1; seq <= _lessonCount; seq++) {
+        if (seqs.contains(seq)) continue;
+        lessons = [
+          ...lessons,
+          VirtualLesson(
+            id: _nextId<VirtualLesson>(lessons, (l) => l.id),
+            courseId: cid,
+            seq: seq,
+            title: '第 $seq 讲',
+          ),
+        ];
+      }
+    }
+    Navigator.of(context)
+        .pop(_with(_b, courses: courses, lessons: lessons, blocks: blocks));
   }
 
   void _delete() {
@@ -737,54 +765,51 @@ class _CourseEditorState extends State<_CourseEditor> {
                       (v) => setState(() => _virtual = v),
                       sub: '比如 CS106L：没有固定上课时间，是一串等着被排进计划的课时',
                     ),
-                    if (_id > 0 && _virtual) ...[
-                      const _Label('课时'),
-                      const Text(
-                          '虚拟课程没有固定上课时间，就是这一串课时；'
-                          '把某一讲排进计划、完成时跟真课下课一样生成待办。',
-                          style: TextStyle(
-                              fontSize: 11, color: Color(0xFF8B97AC))),
-                      const Padding(
-                        padding: EdgeInsets.only(top: 4),
-                        child: Text('课时排进计划、打勾完成之后，会像真课下课一样按下面的模板生成待办。',
-                            style: TextStyle(
-                                fontSize: 11, color: Color(0xFF7BD69A))),
-                      ),
-                      const SizedBox(height: 4),
-                      if (_lessons.isEmpty)
-                        const Text('还没有课时。加几讲，就能在计划页里排了。',
-                            style: TextStyle(
-                                fontSize: 12, color: Color(0xFF8B97AC))),
-                      for (final l in _lessons)
-                        _row(
-                          '第 ${l.seq} 讲 · ${l.title}${l.done ? ' · 已完成' : ''}',
-                          onEdit: () => setState(() {
-                            final list = _b.lessons
-                                .map((x) => x.id == l.id
-                                    ? VirtualLesson(
-                                        id: x.id,
-                                        courseId: x.courseId,
-                                        seq: x.seq,
-                                        title: x.title,
-                                        done: !x.done,
-                                        doneAt: !x.done
-                                            ? DateTime.now()
-                                                .millisecondsSinceEpoch
-                                            : 0,
-                                      )
-                                    : x)
-                                .toList();
-                            _b = _with(_b, lessons: list);
-                          }),
-                          editLabel: l.done ? '取消完成' : '完成',
-                          onDelete: () {
-                            setState(() => _b = _with(_b,
-                                lessons: _b.lessons
-                                    .where((x) => x.id != l.id)
-                                    .toList()));
-                          },
+                    if (_virtual) ...[
+                      // 鸿蒙：讲数只用 1–50 的滑条（用户明确说"不要设计那么多按钮"）
+                      Text('共多少讲（当前 $_lessonCount）',
+                          style: const TextStyle(
+                              fontSize: 12, color: Color(0xFF94A0B5))),
+                      const SizedBox(height: 6),
+                      SliderTheme(
+                        data: SliderTheme.of(context).copyWith(
+                          trackHeight: 4,
+                          thumbShape:
+                              const RoundSliderThumbShape(enabledThumbRadius: 9),
+                          overlayShape:
+                              const RoundSliderOverlayShape(overlayRadius: 16),
                         ),
-                      _PillAction(text: '+ 添加课时', onTap: _addLesson),
+                        child: Slider(
+                          value: _lessonCount.toDouble(),
+                          min: 1,
+                          max: 50,
+                          divisions: 49,
+                          activeColor: const Color(0xFF2E6BE6),
+                          inactiveColor:
+                              Colors.white.withValues(alpha: 0.16),
+                          onChanged: (v) =>
+                              setState(() => _lessonCount = v.round()),
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          const Text('1',
+                              style: TextStyle(
+                                  fontSize: 10, color: Color(0xFF8B97AC))),
+                          const Spacer(),
+                          Text('$_lessonCount 讲',
+                              style: const TextStyle(
+                                  fontSize: 12, color: Color(0xFF7FA8FF))),
+                          const Spacer(),
+                          const Text('50',
+                              style: TextStyle(
+                                  fontSize: 10, color: Color(0xFF8B97AC))),
+                        ],
+                      ),
+                      const Text(
+                          '课时排进计划、打勾完成之后，会像真课下课一样按下面的模板生成待办。',
+                          style: TextStyle(
+                              fontSize: 11, color: Color(0xFF7BD69A))),
                     ],
                     if (_id > 0) ...[
                       _sectionTitle(

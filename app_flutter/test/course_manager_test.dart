@@ -110,27 +110,30 @@ void main() {
     expect(before.courses.length - 1, saved.courses.length);
   });
 
-  testWidgets('虚拟课程可以加课时、标记完成，删课程时连带清掉', (tester) async {
+  testWidgets('虚拟课程：讲数用 1–50 滑条整批同步；删课程时课时一起清掉', (tester) async {
     final repo = await _pump(tester);
     await _tapVisible(tester, find.byKey(const ValueKey('course-4')));
     // 打开「虚拟课程」开关（编辑抽屉里第二个 Switch）
     await _tapVisible(tester, find.byType(Switch).last);
-    await _tapVisible(tester, find.text('+ 添加课时'));
-    await _tapVisible(tester, find.text('+ 添加课时'));
-    expect(find.textContaining('第 1 讲'), findsWidgets);
+    expect(find.textContaining('共多少讲（当前 1）'), findsOneWidget);
 
+    // 滑条拉到 2 讲（直接调 onChanged，避免像素换算带来的不确定性）
+    tester.widget<Slider>(find.byType(Slider).last).onChanged!(2);
+    await tester.pumpAndSettle();
     await _tapVisible(tester, find.byKey(const ValueKey('course-save')));
+
     var saved = (await repo.load())!;
     expect(saved.lessons.length, 2);
     expect(saved.lessons.first.courseId, 4);
     expect(saved.lessons.map((l) => l.seq).toList(), [1, 2]);
 
-    // 再进去标记第一讲完成
+    // 再降回 1 讲：未完成的那一讲被删掉
     await _tapVisible(tester, find.byKey(const ValueKey('course-4')));
-    await _tapVisible(tester, find.text('完成').first);
+    tester.widget<Slider>(find.byType(Slider).last).onChanged!(1);
+    await tester.pumpAndSettle();
     await _tapVisible(tester, find.byKey(const ValueKey('course-save')));
     saved = (await repo.load())!;
-    expect(saved.lessons.where((l) => l.done).length, 1);
+    expect(saved.lessons.length, 1);
 
     // 删除课程 → 课时一起没
     await _tapVisible(tester, find.byKey(const ValueKey('course-4')));
