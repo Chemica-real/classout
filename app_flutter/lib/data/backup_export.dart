@@ -202,15 +202,27 @@ String backupSummary(BackupBundle b) =>
 /// 「诊断信息」块 —— 鸿蒙 `BackupRepo.diagnostics()` 是按表 COUNT(*) 一行一行
 /// 列出来的（`semester: 1` …）。安卓这边数据全在 bundle 里，直接按同名表数出来，
 /// 顺序与鸿蒙一致（`todo_blacklist` 在安卓是 kv，不进备份，故不出现在这一块）。
-String diagnosticsText(BackupBundle b) => [
-      'semester: ${b.semesters.length}',
-      'section_time: ${b.sectionTimes.length}',
-      'course: ${b.courses.length}',
-      'session_rule: ${b.rules.length}',
-      'session_override: ${b.overrides.length}',
-      'todo_template: ${b.templates.length}',
-      'todo: ${b.todos.length}',
-      'virtual_lesson: ${b.lessons.length}',
-      'plan_block: ${b.blocks.length}',
-      'rest_window: ${b.restWindows.length}',
-    ].join('\n');
+String diagnosticsText(BackupBundle b,
+    {int? blacklistCount, String? report}) {
+  final lines = <String>[
+    'semester: ${b.semesters.length}',
+    'section_time: ${b.sectionTimes.length}',
+    'course: ${b.courses.length}',
+    'session_rule: ${b.rules.length}',
+    'session_override: ${b.overrides.length}',
+    'todo_template: ${b.templates.length}',
+    'todo: ${b.todos.length}',
+    // 鸿蒙这一行查的是 `todo_blacklist` 表；安卓把它存在 kv 里（`todo_blacklist`），
+    // 由外壳数好传进来（传 null = 不显示这一行）
+    if (blacklistCount != null) 'todo_blacklist: $blacklistCount',
+    'virtual_lesson: ${b.lessons.length}',
+    'plan_block: ${b.blocks.length}',
+    'rest_window: ${b.restWindows.length}',
+  ];
+  if (report != null && report.isNotEmpty) {
+    lines.add('');
+    lines.add('--- 上次启动报告 ---');
+    lines.add(report);
+  }
+  return lines.join('\n');
+}

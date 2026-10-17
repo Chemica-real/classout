@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 
 import '../data/backup.dart';
 import '../data/blacklist.dart';
+import '../data/run_report.dart';
+import '../data/tray_pref.dart';
 import '../data/backup_export.dart';
 import '../data/note_pref.dart';
 import '../data/repo.dart';
@@ -71,6 +73,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   AppSettings _settings = AppSettings();
   bool _loading = true;
   String? _error;
+
+  /// 本次启动的报告（鸿蒙 kv `last_run_report`）与黑名单条数 → 备份页诊断块
+  String _runReport = '';
+  int? _blacklistCount;
   int _tab = 0;
   bool _syncing = false;
 
@@ -208,6 +214,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       theme.motionOn = settings.motionEnabled;
       // 备注展开状态同理（待办编辑窗与计划块面板共用）
       noteExpanded = await loadNoteExpanded(widget.repo);
+      // 计划页「待安排」托盘的展开状态（鸿蒙 `Motion.loadTrayOpen`）
+      planTrayOpen = await loadPlanTrayOpen(widget.repo);
       if (!mounted) return;
       setState(() {
         _bundle = data;
@@ -226,7 +234,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       // 打开 App 时静默补生成「已经下课」的待办（鸿蒙端 generateMissedTodos）
       if (data != null) {
         setState(() => _bootStep = 2);
-        await _generateMissed(data);
+        final outcome = await _generateMissed(data);
+        // 鸿蒙 `writeRunReport`：把这次启动的关键结果写进 kv，供备份页诊断块显示
+        await _writeRunReport(outcome);
       }
       // 提醒同步这一步没有真实工作（排提醒是用户手动/定时触发的），只让清单走完
       if (!mounted) return;
@@ -264,7 +274,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           if (t.generationKey.isNotEmpty) t.generationKey
       };
       final removed = before.difference(after);
-      if (removed.isNotEmpty) await addToBlacklist(widget.repo, removed);
+      if (removed.isNotEmpty) {
+        final nextBlack = await addToBlacklist(widget.repo, removed);
+        _blacklistCount = nextBlack.length;
+      }
       // ② 万一某条被重新造出来了，但它的键在黑名单里 → 丢掉
       //    （虚拟课时那条生成路径在 block_editor 里，先在这里兜一层，效果与
       //    鸿蒙 `generateForSession` 的 `isBlacklisted` 相同）
@@ -377,7 +390,11 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             bundle: bundle, week: _week, onChanged: _apply),
         onManage: () =>
             showCourseManager(context,
-                bundle: bundle, onChanged: _apply, onImport: _import),
+                bundle: bundle,
+                onChanged: _apply,
+                onImport: _import,
+                report: _runReport,
+                blacklistCount: _blacklistCount),
         onOpenAdjust: () =>
             showAdjustSheet(context, bundle: bundle, onChanged: _apply),
       );
@@ -584,9 +601,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
   /// 下课自动生成待办：把 last_gen_date 到现在之间已经下课的课时，
   /// 按课程模板生成「待确认」待办（去重键 course|date|template，见 domain/todo_generator.dart）
-  Future<void> _generateMissed(BackupBundle data) async {
+  Future<GenerationOutcome?> _generateMissed(BackupBundle data) async {
     final sem = data.semester;
-    if (sem == null || data.templates.isEmpty) return;
+    if (sem == null || data.templates.isEmpty) return null;
     final last = await widget.repo.getKv('last_gen_date') ?? '';
     final black = await loadBlacklist(widget.repo);
     final outcome = generateMissedTodos(
@@ -603,7 +620,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       blacklist: black,
     );
     await widget.repo.setKv('last_gen_date', outcome.lastGenDate);
-    if (outcome.created.isEmpty || !mounted) return;
+    if (outcome.created.isEmpty || !mounted) return outcome;
     setState(() {
       _bundle = BackupBundle(
         app: data.app,
@@ -622,6 +639,62 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       );
     });
     await widget.repo.replaceAll(_bundle!);
+    return outcome;
+  }
+
+  /// 鸿蒙 `Index.writeRunReport()`：启动的关键结果写进 kv，备份页诊断块显示
+  Future<void> _writeRunReport(GenerationOutcome? outcome) async {
+    final data = _bundle;
+    final sem = data?.semester;
+    if (data == null || sem == null) return;
+    try {
+      final now = DateTime.now();
+      String two(int n) => n < 10 ? '0$n' : '$n';
+      final stamp =
+          '${two(now.month)}/${two(now.day)} ${two(now.hour)}:${two(now.minute)}';
+      final plan = planReminders(
+        sem: sem,
+        courses: data.courses,
+        rules: data.rules,
+        times: data.sectionTimes,
+        overrides: data.overrides,
+        todos: data.todos.where((t) => t.status == 'active').toList(),
+        blocks: data.blocks,
+        lessons: data.lessons,
+        settings: _settings.reminderSettings,
+        now: now,
+      );
+      SyncResult? sync;
+      try {
+        sync = await syncNotifications(_notifier, plan);
+      } catch (_) {
+        sync = null;
+      }
+      final lines = <String>[
+        '启动时间: $stamp',
+        '学期: ${sem.name} 起 ${sem.startDate} 共 ${sem.totalWeeks} 周 (id=${sem.id})',
+        '当前周: 第 $_week 周',
+        '课程 ${data.courses.length} · 时段规则 ${data.rules.length} · '
+            '节次 ${data.sectionTimes.length}',
+        if (outcome != null)
+          '本次补生成待办: ${outcome.created.length} 条'
+              '（回看 ${outcome.scannedDays} 天）',
+        '通知权限: ${sync == null || sync.granted ? '已开' : '未开（提醒不会响）'}',
+        '提醒发布: ${plan.published.length} 条 → 上课 ${plan.classes} / '
+            '截止 ${plan.ddl} / 计划块 ${plan.blocks} / 简报 ${plan.briefs}',
+        if (plan.skippedByBudget > 0) '超预算跳过: ${plan.skippedByBudget} 条',
+      ];
+      final text = lines.join('\n');
+      await writeRunReport(widget.repo, text);
+      final black = await loadBlacklist(widget.repo);
+      if (!mounted) return;
+      setState(() {
+        _runReport = text;
+        _blacklistCount = black.length;
+      });
+    } catch (e) {
+      debugPrint('[ClassOUT] writeRunReport failed: $e');
+    }
   }
 
   /// 「试一条提醒」：10 秒后弹一条系统通知（真机验证权限/锁屏/免打扰用）
@@ -849,7 +922,11 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                                 topInset: _headerH,
                                 window: _settings.planWindow,
                                 restWindows: bundle.restWindows,
-                                onOpenTodo: _openTodoById),
+                                onOpenTodo: _openTodoById,
+                                onTrayPref: (open) {
+                                  planTrayOpen = open;
+                                  savePlanTrayOpen(widget.repo, open);
+                                }),
                           },
                         ),
                         Positioned(

@@ -50,10 +50,17 @@ class AppSettings {
         classLeadMin: classLeadMin,
       );
 
-  static const String _kSync = 'sync_interval_min';
-  static const String _kWindow = 'plan_window';
-  static const String _kCats = 'todo_categories';
-  static const String _kMotto = 'motto';
+  // ---- kv 键名（**与鸿蒙端 `data/Prefs.ets` / `ReminderScheduler.ets` 逐字一致**，
+  //      这样同一个库被两端读写时不会"各存一份"。旧键只用于迁移读回）----
+  static const String _kSync = 'syncIntervalMin';
+  static const String _kSyncLegacy = 'sync_interval_min';
+  static const String _kPlanStart = 'planStartMin';
+  static const String _kPlanEnd = 'planEndMin';
+  static const String _kWindowLegacy = 'plan_window';
+  static const String _kCats = 'todoCategories';
+  static const String _kCatsLegacy = 'todo_categories';
+  static const String _kMotto = 'bootMotto';
+  static const String _kMottoLegacy = 'motto';
   static const String _kBriefEnabled = 'brief_enabled';
   static const String _kBriefTime = 'brief_time';
   static const String _kClassLead = 'class_lead';
@@ -62,10 +69,15 @@ class AppSettings {
   static const String _kWallpaperFocus = 'wallpaper_focus';
 
   static Future<AppSettings> load(ClassOutRepo repo) async {
-    final sync = await repo.getKv(_kSync);
-    final win = await repo.getKv(_kWindow);
-    final cats = await repo.getKv(_kCats);
-    final motto = await repo.getKv(_kMotto);
+    final sync =
+        (await repo.getKv(_kSync)) ?? (await repo.getKv(_kSyncLegacy));
+    final winStartRaw = await repo.getKv(_kPlanStart);
+    final winEndRaw = await repo.getKv(_kPlanEnd);
+    final winWin = await repo.getKv(_kWindowLegacy);
+    final cats =
+        (await repo.getKv(_kCats)) ?? (await repo.getKv(_kCatsLegacy));
+    final motto =
+        (await repo.getKv(_kMotto)) ?? (await repo.getKv(_kMottoLegacy));
     final briefEnabledRaw = await repo.getKv(_kBriefEnabled);
     final briefTimeRaw = await repo.getKv(_kBriefTime);
     final leadRaw = await repo.getKv(_kClassLead);
@@ -81,7 +93,7 @@ class AppSettings {
       syncIntervalMin: normalizeSyncInterval(sync == null || sync.isEmpty
           ? syncIntervalDefault
           : (int.tryParse(sync) ?? syncIntervalDefault)),
-      planWindow: win == null || win.isEmpty ? defaultWindow : parseWindow(win),
+      planWindow: _loadWindow(winStartRaw, winEndRaw, winWin),
       customCategories: cats == null ? const [] : parseCustomCategories(cats),
       motto: motto ?? '',
       // 与鸿蒙端一致：读不到 = 默认开
@@ -94,10 +106,27 @@ class AppSettings {
     );
   }
 
+  /// 计划页时间窗：鸿蒙存成两个整数键（`planStartMin` / `planEndMin`），
+  /// 安卓早期存成 `plan_window = "start,end"` —— 后者只用于迁移读回。
+  static TimeWindow _loadWindow(
+      String? startRaw, String? endRaw, String? legacy) {
+    final s = startRaw == null ? null : int.tryParse(startRaw);
+    final e = endRaw == null ? null : int.tryParse(endRaw);
+    if (s != null && e != null) {
+      return normalizeWindow(TimeWindow(s, e));
+    }
+    if (legacy != null && legacy.isNotEmpty) {
+      return parseWindow(legacy);
+    }
+    return defaultWindow;
+  }
+
   Future<void> save(ClassOutRepo repo) async {
     await repo.setKv(_kSync, '$syncIntervalMin');
-    await repo.setKv(_kWindow, formatWindow(planWindow));
+    await repo.setKv(_kPlanStart, '${planWindow.startMin}');
+    await repo.setKv(_kPlanEnd, '${planWindow.endMin}');
     await repo.setKv(_kCats, serializeCustomCategories(customCategories));
+    // 鸿蒙 `Prefs.saveMotto` 存默认标语时写空串（读回时再回落成默认）
     await repo.setKv(_kMotto, motto);
     await repo.setKv(_kBriefEnabled, briefEnabled ? '1' : '0');
     await repo.setKv(_kBriefTime, minToHHmm(briefMin));

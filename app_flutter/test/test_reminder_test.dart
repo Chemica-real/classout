@@ -62,10 +62,12 @@ Future<void> _tapTestReminder(WidgetTester tester) async {
 void main() {
   testWidgets('点「试一条提醒」→ 排一条 10 秒后的通知并提示', (tester) async {
     final notifier = await _openSettings(tester);
+    final before = notifier.scheduled.length; // 启动报告已经排过一批
     await _tapTestReminder(tester);
 
-    expect(notifier.scheduled.length, 1);
-    final n = notifier.scheduled.single;
+    final added = notifier.scheduled.sublist(before);
+    expect(added.length, 1);
+    final n = added.single;
     expect(n.kind, 'test');
     expect(n.title, contains('测试提醒'));
     final delay = n.at.difference(DateTime.now()).inSeconds;

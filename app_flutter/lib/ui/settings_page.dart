@@ -5,6 +5,7 @@
 //  - **数据类**（不可排时段 rest_window 表）→ 跟 bundle 一起整份写回。
 
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../data/backup.dart';
@@ -21,7 +22,6 @@ import 'app_frame.dart';
 import 'inline_toast.dart';
 import 'privacy_page.dart';
 import 'wallpaper_adjust.dart';
-import 'wallpaper_view.dart';
 import 'palette.dart';
 import 'theme.dart' as theme;
 
@@ -1212,7 +1212,10 @@ class _WallpaperCard extends StatelessWidget {
                   const DecoratedBox(
                       decoration: BoxDecoration(gradient: pageGradient)),
                   if (has) ...[
-                    WallpaperImage(path: path, focus: focus),
+                    // 鸿蒙 `WallpaperCard` 的预览是 `Image(...).objectFit(Cover)`：
+                    // **按原图 cover 显示，不带用户设的缩放/位置**（那是整屏背景的事）。
+                    // 原来这里用 `WallpaperImage(focus:)`，预览比实际背景"更放大"。
+                    Image.file(File(path), fit: BoxFit.cover),
                     // WALLPAPER_VEIL = rgba(6,8,16,0.62)
                     const ColoredBox(color: Color(0x9E060810)),
                   ],

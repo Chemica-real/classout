@@ -101,6 +101,9 @@ Future<void> showCourseManager(
   required BackupBundle bundle,
   required void Function(BackupBundle next) onChanged,
   Future<BackupBundle?> Function()? onImport,
+  /// 启动报告（鸿蒙 kv `last_run_report`）与黑名单条数 —— 备份页诊断块用
+  String report = '',
+  int? blacklistCount,
 }) {
   return showGeneralDialog<void>(
     context: context,
@@ -115,7 +118,11 @@ Future<void> showCourseManager(
       child: ColoredBox(
         color: const Color(0x6B080A14), // rgba(8,10,20,0.42) = 鸿蒙 SCRIM_COLOR
         child: _Manager(
-            bundle: bundle, onChanged: onChanged, onImport: onImport),
+            bundle: bundle,
+            onChanged: onChanged,
+            onImport: onImport,
+            report: report,
+            blacklistCount: blacklistCount),
       ),
     ),
     transitionBuilder: (ctx, anim, _, child) {
@@ -136,8 +143,16 @@ class _Manager extends StatefulWidget {
 
   /// 「导入备份」入口（鸿蒙端：管理课程 → 备份与恢复 → 从备份恢复）
   final Future<BackupBundle?> Function()? onImport;
+
+  /// 启动报告 + 黑名单条数（备份页诊断块）
+  final String report;
+  final int? blacklistCount;
   const _Manager(
-      {required this.bundle, required this.onChanged, this.onImport});
+      {required this.bundle,
+      required this.onChanged,
+      this.onImport,
+      this.report = '',
+      this.blacklistCount});
 
   @override
   State<_Manager> createState() => _ManagerState();
@@ -302,6 +317,8 @@ class _ManagerState extends State<_Manager> {
           b: _b,
           onChanged: _apply,
           onImport: widget.onImport,
+          report: widget.report,
+          blacklistCount: widget.blacklistCount,
         );
       default:
         return _listBody();
@@ -2224,8 +2241,14 @@ class _BackupSheet extends StatefulWidget {
   final BackupBundle b;
   final void Function(BackupBundle next) onChanged;
   final Future<BackupBundle?> Function()? onImport;
+  final String report;
+  final int? blacklistCount;
   const _BackupSheet(
-      {required this.b, required this.onChanged, this.onImport});
+      {required this.b,
+      required this.onChanged,
+      this.onImport,
+      this.report = '',
+      this.blacklistCount});
 
   @override
   State<_BackupSheet> createState() => _BackupSheetState();
@@ -2428,7 +2451,10 @@ class _BackupSheetState extends State<_BackupSheet> {
               border: Border.all(color: glassEdgeSoft),
               boxShadow: glassShadowRow,
             ),
-            child: Text(diagnosticsText(_shown),
+            child: Text(
+                diagnosticsText(_shown,
+                    blacklistCount: widget.blacklistCount,
+                    report: widget.report),
                 style: const TextStyle(
                     fontSize: 11, height: 1.5, color: Color(0xFFC3CDDE))),
           ),

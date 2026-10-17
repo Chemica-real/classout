@@ -10,6 +10,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../data/backup.dart';
+import '../data/tray_pref.dart';
 import '../domain/dates.dart';
 import '../domain/plan_math.dart';
 import '../domain/timetable.dart';
@@ -42,6 +43,9 @@ class PlanPage extends StatefulWidget {
   /// 备注展开状态变了（外壳负责写 kv）
   final void Function(bool on)? onNotePref;
 
+  /// 「待安排」托盘的展开状态变了（外壳负责写 kv；鸿蒙 `planTrayOpen`）
+  final void Function(bool open)? onTrayPref;
+
   /// 「截止标记」里点一条待办 → 打开它的编辑窗（鸿蒙 DdlExpandPanel 的行为；
   /// 编辑窗在待办页，由外壳统一提供）
   final Future<void> Function(int todoId)? onOpenTodo;
@@ -63,6 +67,7 @@ class PlanPage extends StatefulWidget {
     this.restWindows = const [],
     this.topInset = 0,
     this.onNotePref,
+    this.onTrayPref,
     this.onOpenTodo,
     this.initialDay,
     this.initialThreeDay = false,
@@ -85,7 +90,8 @@ class _PlanPageState extends State<PlanPage> {
   int _selectedBlockId = 0;
 
   /// 待安排托盘是否展开（鸿蒙端 TraySummonBar ↔ TodoPool）
-  bool _trayOpen = false;
+  /// 托盘展开状态（冷启动从 kv 读回，鸿蒙 `loadTrayOpen`）
+  bool _trayOpen = planTrayOpen;
 
   /// 日期条实测高度（首帧用估算值）
   double _dayBarH = 68;
@@ -263,7 +269,9 @@ class _PlanPageState extends State<PlanPage> {
 
   List<DateTime> get _days {
     if (!_threeDay) return [_day];
-    return [for (var i = 0; i < 3; i++) addDays(_day, i)];
+    // 鸿蒙 `dayDates(date, 3)`：**[前一天, 当天, 后一天]** —— 当天在正中间。
+    // 以前写成 [当天, +1, +2]，当天就落在最左列了（用户实测："今日不是显示在正中间"）。
+    return [for (var i = -1; i <= 1; i++) addDays(_day, i)];
   }
 
   void _shift(int days) => setState(() => _day = addDays(_day, days));
@@ -555,8 +563,9 @@ class _PlanPageState extends State<PlanPage> {
               // 「今天 / 逾期 N 天」也走注入的时钟（截图/测试才能钉在 10/16）
               today: widget.now(),
               threeDay: _threeDay,
-              onPrev: () => _shift(_threeDay ? -3 : -1),
-              onNext: () => _shift(_threeDay ? 3 : 1),
+              // 鸿蒙 DayBarFloat 的 ‹ › 永远只挪 1 天（三日视图也一样，不是"三日一跳"）
+              onPrev: () => _shift(-1),
+              onNext: () => _shift(1),
               onToday: _jumpToday,
               onDay: () => setState(() {
                 _threeDay = false;
@@ -587,7 +596,10 @@ class _PlanPageState extends State<PlanPage> {
               courses: {for (final c in widget.bundle.courses) c.id: c},
               selectedId: _selectedTodoId,
               open: _trayOpen,
-              onToggle: () => setState(() => _trayOpen = !_trayOpen),
+              onToggle: () {
+                setState(() => _trayOpen = !_trayOpen);
+                widget.onTrayPref?.call(_trayOpen);
+              },
               onSelect: (id) {
                 setState(() {
                   _selectedTodoId = _selectedTodoId == id ? 0 : id;

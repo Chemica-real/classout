@@ -291,6 +291,8 @@ void main() {
         onChanged: (_) {},
         initialDay: DateTime(2026, 10, 16),
         initialThreeDay: true,
+        // 固定时钟：不然日期条的「今天 / 逾期 N 天」每天都不一样
+        now: () => DateTime(2026, 10, 16, 12, 0),
       ),
       'plan',
       family,

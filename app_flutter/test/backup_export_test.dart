@@ -169,6 +169,18 @@ void main() {
         '单周覆盖 0 · 休息时段 1');
   });
 
+  test('诊断信息带黑名单行与「上次启动报告」块（鸿蒙 BackupRepo.diagnostics 同款）', () {
+    final text = diagnosticsText(_demo(),
+        blacklistCount: 4, report: '启动时间: 10/18 07:44\n当前周: 第 6 周');
+    expect(text, contains('todo_blacklist: 4'));
+    expect(text, contains('--- 上次启动报告 ---'));
+    expect(text, contains('启动时间: 10/18 07:44'));
+    // 不传就不显示（首启还没有报告时）
+    final plain = diagnosticsText(_demo());
+    expect(plain, isNot(contains('todo_blacklist')));
+    expect(plain, isNot(contains('上次启动报告')));
+  });
+
   test('诊断信息按表一行一行列（鸿蒙 diagnostics 同款）', () {
     final lines = diagnosticsText(_demo()).split('\n');
     expect(lines, contains('semester: 1'));

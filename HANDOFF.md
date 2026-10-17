@@ -12,7 +12,7 @@ ClassOUT 是一款**纯离线**的「课表 + 待办 + 计划」三合一 App，
 |---|---|---|
 | 版本 | v1.5.1（上架准备中，未提审） | 0.2.0（Android 已装真机 OPPO A97） |
 | 页面 | 课表 / 待办 / 计划 / 设置 + 启动加载页 + 悬浮浮窗 | **同样四页 + 启动页 + 浮窗（§52–§68 逐页复刻）** |
-| 测试 | 离线断言 524 项（`tools/domain-check`） | **1318 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
+| 测试 | 离线断言 524 项（`tools/domain-check`） | **1324 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
 | 差异基准 | 本目录 `docs/manual/01..09.jpg`（真机截图） | `app_flutter/tool/goldens/*.png` 对照上面九张 + `shared/fixtures/`（1115 条规则用例） |
 
 **安卓版与鸿蒙版的 1:1 复刻已经完成**：主题 token 抄自 ArkTS（§52）、六个页面重做、
@@ -6320,7 +6320,7 @@ Material 关闭图标。连同下面几处一起对齐：
 ```bash
 ./tools/domain-check/run.sh          # 鸿蒙端离线断言：524 项
 cd app_flutter && flutter analyze    # 0 issue
-cd app_flutter && flutter test       # 1318 条（含 1115 条三端 fixture 逐条对拍）
+cd app_flutter && flutter test       # 1324 条（含 1115 条三端 fixture 逐条对拍）
 ```
 
 ---
@@ -6585,9 +6585,8 @@ cd app_flutter && flutter test       # 1318 条（含 1115 条三端 fixture 逐
 
 ### 117.2 仍然没做/做不了的
 
-1. **鸿蒙机双机同屏最后一遍复核** —— 鸿蒙机从 2026-10-18 02:30 起一直锁屏（没有 PIN）。
-   解锁后按 §84.3 的流程把四页各截一张，和 `app_flutter/tool/goldens/` + 真机截图对照。
-   这是唯一还挡在"1:1 完成"前面的东西。
+1. ~~鸿蒙机双机同屏最后一遍复核~~ —— **2026-10-18 07:34 鸿蒙机解锁，双机同屏做完了第一轮**（§122）：
+   同页截图 → 记差异 → 修 → 重装再截。第二轮还值得做的：编辑窗 / 单周调整 / 补课 / 课程编辑这些子页。
 2. **双指缩放真机手测** —— `adb input` 只能单指、`sendevent` 被 SELinux 拒；逻辑有单测 + fixtures。
 3. **玻璃浮窗滚动时的偶发重影** —— Impeller/BackdropFilter 瞬态（§111），切页即消失，不是布局。
 4. ~~备份入口形态~~ —— **已按鸿蒙改成固定文件 + 内联确认**（§118）：路径常显、恢复直接读
@@ -6603,7 +6602,7 @@ cd app_flutter && flutter test       # 1318 条（含 1115 条三端 fixture 逐
 ```bash
 ./tools/domain-check/run.sh          # 鸿蒙端离线断言：524 项
 cd app_flutter && flutter analyze    # 0 issue
-cd app_flutter && flutter test       # 1318 条（含 1115 条三端 fixture 逐条对拍）
+cd app_flutter && flutter test       # 1324 条（含 1115 条三端 fixture 逐条对拍）
 cd app_flutter && flutter test --update-goldens tool/screenshot_test.dart   # 24 张 golden（1080×2400）
 ```
 
@@ -7212,3 +7211,90 @@ Flutter 要做这个得上 `AnimatedList`/`SliverAnimatedList`，改动面比收
 安卓的抽屉是独立路由 + 全屏遮罩，补了也会被压暗 —— 属于"实现了也看不见"，先记着。
 
 - `flutter test` **1318 passed**；golden 重出。
+
+## 122. 双机同屏第一轮（鸿蒙解锁后，2026-10-18 07:34 起）
+
+流程按用户要求：**同页截图 → 记差异 → 改 Flutter → 重装再截**。两边都是真实数据（大一上，
+13 门课 / 26 条待办），截图只放 `/tmp`，不进仓库。
+
+### 122.1 三日视图两个真 bug（用户当场指出）
+
+| 现象 | 原因 | 修法 |
+|---|---|---|
+| 三日视图**今日不在中间** | `_days` 写成 `[day, day+1, day+2]` | 改成 `[day-1, day, day+1]`（鸿蒙 `dayDates(date,3)` 以当天为中心） |
+| 三日视图 **‹ › 三日一跳** | `onPrev/onNext` 在三日视图里 ±3 | 永远 ±1（鸿蒙 `goDay(±1)`，视图列数不参与） |
+
+- 新测试：三列 key 都渲染 + 中间列 x = 两侧中点；点 › 只进 1 天、三列变成 10/17..10/19。
+- 重装后真机复看：10/17 周六 │ **10/18 周日（今天）** │ 10/19 周一 ✓，› 一次进一天 ✓。
+
+### 122.2 设置页标语"不见了" —— kv 键名写错（真数据迁移救回来了）
+
+安卓把标语存在 kv `motto`，鸿蒙 `Prefs.MOTTO_KEY = 'bootMotto'`。这台机器的库里
+`bootMotto = CHEMICA_SAVES_THE_WORLD`、`motto = ''` —— 所以设置页一直显示默认标语，
+而用户自己写的那句还在库里躺着。
+
+修法（`data/settings.dart`）：读 `bootMotto`，缺失时回落旧键 `motto`；写回也写 `bootMotto`。
+顺带把另外三个键也对齐鸿蒙，旧键一律只在"新键缺失"时兜底：
+
+| 项 | 鸿蒙键 | 安卓旧键 → 新键 |
+|---|---|---|
+| 标语 | `bootMotto` | `motto` → `bootMotto` |
+| 同步节奏 | `syncIntervalMin` | `sync_interval_min` → `syncIntervalMin` |
+| 自定义待办类型 | `todoCategories` | `todo_categories` → `todoCategories` |
+| 计划时间窗 | `planStartMin` + `planEndMin`（两个整数键） | `plan_window = "start,end"` → 两个键 |
+| 备注展开 | `noteExpanded`（`AppStorage`） | `note_expanded` → `noteExpanded` |
+
+真机复看：设置页标语变回 **CHEMICA_SAVES_THE_WORLD**（23/32）✓。
+测试：新键往返 + 旧键兜底 + "新键存在时不被旧键覆盖"。
+
+### 122.3 计划页「待安排」托盘不记状态（鸿蒙 `planTrayOpen`）
+
+鸿蒙切标签/冷启动会记住托盘展开状态（`Motion.loadTrayOpen`），安卓每次进计划页都收起。
+→ 新增 `data/tray_pref.dart`（kv `planTrayOpen`，与鸿蒙同键），`PlanPage` 初始化读内存态、
+切换时回调外壳写库。测试：展开 → 切到课表 → 切回 → 仍展开；冷启动（新 HomeShell）仍展开。
+真机复看 ✓。
+
+### 122.4 设置页壁纸预览：鸿蒙是"原图 cover"，安卓原来带用户缩放
+
+鸿蒙 `WallpaperCard` 的预览是 `Image(...).objectFit(Cover)`（**不套 `wallpaperFocus`**）——
+它只是告诉你"选的是哪张图"；带缩放的是整屏背景。安卓用了 `WallpaperImage(focus:)`，
+预览比实际背景更放大、和鸿蒙对不上。→ 预览改回 `Image.file(fit: BoxFit.cover)`。
+
+### 122.5 备份页诊断块补齐「黑名单行 + 上次启动报告」
+
+鸿蒙诊断块是 11 行表计数 + `--- 上次启动报告 ---` + 8 行启动详情。安卓缺后两样：
+
+- `todo_blacklist: n`：安卓黑名单在 kv（不是表），外壳数好传进管理页；
+- `last_run_report`：新增 `data/run_report.dart`；冷启动在补生成之后按鸿蒙
+  `Index.writeRunReport()` 的口径写一份：
+  `启动时间 / 学期: … 共 N 周 (id=) / 当前周 / 课程·规则·节次 / 本次补生成待办（回看 N 天）/
+   通知权限 / 提醒发布: N 条 → 上课/截止/计划块/简报 / 超预算跳过`。
+  ⚠️ 同时也把**冷启动重排一遍提醒**补上了（鸿蒙启动就会排；安卓以前只在手动/定时同步时排）。
+
+- 备份页诊断块现在和鸿蒙同构；`diagnosticsText(b, {blacklistCount, report})` 有单测。
+
+### 122.6 双机同屏这一轮确认"已经一致"的部分
+
+- **课表**：三条校时线、7 列、课时块位置逐列相差 ≤2px，2 节连排块高 303px（101vp×3）一致；
+  白虚线习题课框、颜色映射（按 `colorIndex`）一致。
+- **待办**：卡片圆角/描边/阴影、课程胶囊 + 类型标签、`○` 与元信息行、托盘 40 高按钮与
+  托盘↔导航栏 33px 缝、导航栏高度、四个标签的选中态——全部一致。
+- **计划**：日期条、时间轴（刻度右边缘 40vp）、不可排斜纹、课程灰带、计划块、待安排条一致；
+  三日列头（中间列高亮 + 「今天」）一致。
+- **设置**：卡片顺序/文案/字号、开关、标语的计数器与按钮、壁纸卡按钮排布一致。
+
+**仍存在的"不一样"（都是平台/字体，不是逻辑）**：
+
+1. 底部安全区：鸿蒙窗口底边在 2412−~100px（导航区 33vp），安卓在 2408−72px → 同一个
+   "距底 10vp"的导航栏在两张截图里相差 ~43px；页面内容按各自安全区排，属于平台差异。
+2. **字体度量**：HarmonyOS Sans 与 Android 系统字体行高/字宽不同 →
+   窄块里的换行不同（如「高数习题」在鸿蒙折 2+2、安卓折 3+1）、部分小字行高差 2–3px。
+   想彻底一致只能内嵌鸿蒙字体（授权/体积问题，没做）。
+3. 数据状态：鸿蒙 15 条待办（无待确认）、安卓 14 条（1 条待确认），是两台机器各自的库存。
+
+### 122.7 顺带修掉的截图不确定因素
+
+`plan.png` 这张 golden 的日期条原来吃真实时钟（"逾期 2 天"每天在变），
+截图生成器里给它注入了固定 `now`（10/16 12:00）→ 现在稳定显示「今天」。
+
+- `flutter test` **1324 passed**；24 张 golden 重出。

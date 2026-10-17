@@ -5,8 +5,11 @@
 
 import 'repo.dart';
 
-/// kv 键（与鸿蒙端一致）
-const String noteExpandedKv = 'note_expanded';
+/// kv 键（与鸿蒙端 `AppStorage('noteExpanded')` 逐字一致）
+const String noteExpandedKv = 'noteExpanded';
+
+/// 安卓早先用过的键（只用于迁移读回）
+const String noteExpandedKvLegacy = 'note_expanded';
 
 /// 内存态（等价于鸿蒙端的 AppStorage('noteExpanded')）
 bool noteExpanded = false;
@@ -14,7 +17,9 @@ bool noteExpanded = false;
 /// 冷启动读回来（读不到 = 收起）
 Future<bool> loadNoteExpanded(ClassOutRepo repo) async {
   try {
-    return (await repo.getKv(noteExpandedKv)) == '1';
+    final v = (await repo.getKv(noteExpandedKv)) ??
+        (await repo.getKv(noteExpandedKvLegacy));
+    return v == '1';
   } catch (_) {
     return false;
   }

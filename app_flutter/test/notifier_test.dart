@@ -31,6 +31,23 @@ ReminderPlanResult _planFor(BackupBundle b, {ReminderSettings? settings}) => pla
     );
 
 void main() {
+  testWidgets('冷启动写入「上次启动报告」（鸿蒙 writeRunReport）', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    final repo = MemoryRepo(_demo());
+    await tester.pumpWidget(MaterialApp(
+      home: HomeShell(repo: repo, notifier: FakeNotifier()),
+    ));
+    await tester.pumpAndSettle();
+    final report = (await repo.getKv('last_run_report')) ?? '';
+    expect(report, contains('启动时间: '));
+    expect(report, contains('学期: 演示学期'));
+    expect(report, contains('当前周: 第 '));
+    expect(report, contains('课程 4 · 时段规则 6 · 节次 12'));
+    expect(report, contains('提醒发布: '));
+  });
+
   group('syncNotifications', () {
     test('先撤销再逐条排，id 从 startId 递增', () async {
       final notifier = FakeNotifier();
@@ -139,10 +156,13 @@ void main() {
     final resync = find.text('立即重排提醒');
     await tester.ensureVisible(resync);
     await tester.pumpAndSettle();
+    // 冷启动的启动报告也会整份重排一次（鸿蒙 writeRunReport 同样会排），
+    // 所以这里以"点按钮前"的计数为基准
+    final beforeCancel = notifier.cancelAllCalls;
     await tester.tap(resync);
     await tester.pumpAndSettle();
 
-    expect(notifier.cancelAllCalls, 1);
+    expect(notifier.cancelAllCalls, beforeCancel + 1);
     expect(notifier.scheduled, isNotEmpty);
     expect(find.textContaining('已排'), findsOneWidget, reason: '应弹出结果提示');
   });

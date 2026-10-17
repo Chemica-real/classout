@@ -108,14 +108,14 @@ void main() {
     addTearDown(tester.view.reset);
 
     final repo = MemoryRepo(_demo());
-    await repo.setKv('motto', '真实标语'); // 用户自己的首页标语
+    await repo.setKv('bootMotto', '真实标语'); // 用户自己的首页标语
     await tester.pumpWidget(MaterialApp(home: HomeShell(repo: repo)));
     await tester.pumpAndSettle();
     await tester.tap(find.text('开始演练'));
     await tester.pumpAndSettle();
 
     // 演练里随手改了标语 + 加了个不存在于真库的键（模拟"沙箱里新写的设置"）
-    await repo.setKv('motto', '演练里改的标语');
+    await repo.setKv('bootMotto', '演练里改的标语');
     await repo.setKv('sandbox_only_key', 'x');
     expect((await AppSettings.load(repo)).motto, '演练里改的标语');
 
@@ -145,8 +145,8 @@ void main() {
     final mine = _demo();
     final repo = MemoryRepo(buildDemoSandbox(now: DateTime(2026, 10, 16)));
     await repo.setKv(sandboxBackupKey, backupToJson(mine));
-    await repo.setKv(sandboxPrefsKey, '{"motto":"真实标语"}');
-    await repo.setKv('motto', '演练里改的标语');
+    await repo.setKv(sandboxPrefsKey, '{"bootMotto":"真实标语"}');
+    await repo.setKv('bootMotto', '演练里改的标语');
     await repo.setKv('sandbox_only_key', 'x');
 
     await tester.pumpWidget(MaterialApp(home: HomeShell(repo: repo)));
@@ -191,9 +191,9 @@ void main() {
     addTearDown(tester.view.reset);
 
     final repo = MemoryRepo(_demo());
-    await repo.setKv('motto', '真实标语');
+    await repo.setKv('bootMotto', '真实标语');
     await repo.setKv('wallpaper_path', '/data/user/0/x/wall.jpg');
-    await repo.setKv('todo_categories', '["我的类型"]');
+    await repo.setKv('todoCategories', '["我的类型"]');
     await tester.pumpWidget(MaterialApp(home: HomeShell(repo: repo)));
     await tester.pumpAndSettle();
     await tester.tap(find.text('开始演练'));

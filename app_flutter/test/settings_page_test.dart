@@ -51,7 +51,7 @@ void main() {
     expect(find.text('设置'), findsWidgets);
 
     await _tapUnderBar(tester, find.byKey(const ValueKey('sync-15')));
-    expect(await repo.getKv('sync_interval_min'), '15');
+    expect(await repo.getKv('syncIntervalMin'), '15');
   });
 
   testWidgets('时间范围加减 30 分钟后规范化并保存', (tester) async {
@@ -61,9 +61,9 @@ void main() {
     // 默认 07:00–24:00，点"上边界 ›"→ 07:30（鸿蒙端 WindowStepRow）
     await _tapUnderBar(tester, find.text('›').first);
 
-    final saved = parseWindow((await repo.getKv('plan_window'))!);
-    expect(saved.startMin, 7 * 60 + 30);
-    expect(saved.endMin, 24 * 60);
+    // 鸿蒙把时间窗存成两个整数键 planStartMin / planEndMin
+    expect(await repo.getKv('planStartMin'), '${7 * 60 + 30}');
+    expect(await repo.getKv('planEndMin'), '${24 * 60}');
   });
 
   testWidgets('新建待办类型 → 出现在 chip 里并写进 kv', (tester) async {
@@ -78,7 +78,7 @@ void main() {
     await _tapUnderBar(tester, find.byKey(const ValueKey('cat-add')));
     await tester.pumpAndSettle();
 
-    expect(await repo.getKv('todo_categories'), '社团');
+    expect(await repo.getKv('todoCategories'), '社团');
     expect(find.text('社团'), findsWidgets);
   });
 
@@ -111,10 +111,41 @@ void main() {
     expect(s.syncIntervalMin, 10);
     expect(s.planWindow, defaultWindow);
     expect(s.customCategories, isEmpty);
-    await repo.setKv('sync_interval_min', '999'); // 越界要夹紧
+    await repo.setKv('syncIntervalMin', '999'); // 越界要夹紧
     expect((await AppSettings.load(repo)).syncIntervalMin, 180);
-    await repo.setKv('sync_interval_min', '乱写'); // 坏值回默认
+    await repo.setKv('syncIntervalMin', '乱写'); // 坏值回默认
     expect((await AppSettings.load(repo)).syncIntervalMin, 10);
+  });
+
+  test('kv 键名与鸿蒙一致：标语 bootMotto / 同步 syncIntervalMin / 类型 todoCategories / 时间窗两个键',
+      () async {
+    final repo = MemoryRepo();
+    final s = await AppSettings.load(repo);
+    s.motto = '化学加油';
+    s.syncIntervalMin = 30;
+    s.planWindow = const TimeWindow(8 * 60, 23 * 60);
+    s.customCategories = ['社团'];
+    await s.save(repo);
+    expect(await repo.getKv('bootMotto'), '化学加油');
+    expect(await repo.getKv('syncIntervalMin'), '30');
+    expect(await repo.getKv('planStartMin'), '${8 * 60}');
+    expect(await repo.getKv('planEndMin'), '${23 * 60}');
+    expect(await repo.getKv('todoCategories'), '社团');
+
+    // 旧键只在"新键缺失"时兜底（安卓早期版本存过 motto / todo_categories / plan_window）
+    final legacy = MemoryRepo();
+    await legacy.setKv('motto', '旧标语');
+    await legacy.setKv('todo_categories', '旧类型');
+    await legacy.setKv('plan_window', '390,1380');
+    final ls = await AppSettings.load(legacy);
+    expect(ls.motto, '旧标语');
+    expect(ls.customCategories, ['旧类型']);
+    expect(ls.planWindow.startMin, 390);
+    expect(ls.planWindow.endMin, 1380);
+
+    // 新键存在时不被旧键覆盖
+    await legacy.setKv('bootMotto', '新标语');
+    expect((await AppSettings.load(legacy)).motto, '新标语');
   });
 
   testWidgets('提醒卡：鸿蒙端同款「保存提醒设置」一次落库（简报开关 / 时间 / 提前量）',
@@ -171,7 +202,7 @@ void main() {
     await tester.pumpAndSettle();
     await _tapUnderBar(tester, find.byKey(const ValueKey('cat-add')));
     expect(find.textContaining('已经有了'), findsOneWidget);
-    expect(await repo.getKv('todo_categories'), isNull, reason: '非法名不能落库');
+    expect(await repo.getKv('todoCategories'), isNull, reason: '非法名不能落库');
   });
 
   testWidgets('关于卡：版本号 / 隐私政策 / MIT 许可（鸿蒙端同字）', (tester) async {

@@ -6,6 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:classout/data/backup.dart';
+import 'package:classout/data/repo.dart';
+import 'package:classout/data/tray_pref.dart';
+import 'package:classout/ui/home_shell.dart';
 import 'package:classout/domain/dates.dart';
 import 'package:classout/domain/plan_math.dart';
 import 'package:classout/domain/timetable.dart';
@@ -521,6 +524,64 @@ void main() {
     await tester.pumpAndSettle();
     expect(h.last, isNotNull);
     expect(_byIdBlock(h.last!, before.id).done, isTrue);
+  });
+
+  testWidgets('托盘展开状态写进 kv（鸿蒙 planTrayOpen），冷启动还在', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    planTrayOpen = false;
+    final repo = MemoryRepo(_demo());
+    await tester.pumpWidget(
+        MaterialApp(home: HomeShell(repo: repo, fallback: _demo())));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('计划').last);
+    await tester.pumpAndSettle();
+    // 默认收起 → 展开 → 写 kv
+    await tester.tap(find.byKey(const ValueKey('tray-toggle')));
+    await tester.pumpAndSettle();
+    expect(await repo.getKv(planTrayOpenKv), '1');
+
+    // 冷启动（新的 HomeShell，同一个库）：进计划页时托盘还是展开的
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(
+        MaterialApp(home: HomeShell(repo: repo, fallback: _demo())));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('计划').last);
+    await tester.pumpAndSettle();
+    expect(find.text('收起 ▾'), findsOneWidget,
+        reason: '鸿蒙 loadTrayOpen：上次展开过，冷启动还是展开');
+  });
+
+  testWidgets('三日视图：当天在正中间（前 / 后各一天）', (tester) async {
+    await _pump(tester, initialDay: DateTime(2026, 10, 16), threeDay: true);
+    // 三列都在，且顺序 = [10/15, 10/16, 10/17]
+    expect(find.byKey(const ValueKey('plan-day-2026-10-15')), findsOneWidget);
+    expect(find.byKey(const ValueKey('plan-day-2026-10-16')), findsOneWidget);
+    expect(find.byKey(const ValueKey('plan-day-2026-10-17')), findsOneWidget);
+    final c15 =
+        tester.getCenter(find.byKey(const ValueKey('plan-day-2026-10-15'))).dx;
+    final c16 =
+        tester.getCenter(find.byKey(const ValueKey('plan-day-2026-10-16'))).dx;
+    final c17 =
+        tester.getCenter(find.byKey(const ValueKey('plan-day-2026-10-17'))).dx;
+    expect(c15 < c16 && c16 < c17, isTrue);
+    expect(c16, closeTo((c15 + c17) / 2, 2),
+        reason: '当天那一列必须在正中间（鸿蒙 dayDates 以当天为中心）');
+  });
+
+  testWidgets('三日视图：‹ › 只挪 1 天，不是三日一跳', (tester) async {
+    await _pump(tester, initialDay: DateTime(2026, 10, 16), threeDay: true);
+    expect(find.text('10 月 16 日 周五'), findsOneWidget);
+    await tester.tap(find.text('›').first);
+    await tester.pumpAndSettle();
+    // 鸿蒙 goDay(1)：只进一天，中间列变成 10/17
+    expect(find.text('10 月 17 日 周六'), findsOneWidget);
+    expect(find.byKey(const ValueKey('plan-day-2026-10-18')), findsOneWidget);
+    await tester.tap(find.text('‹').first);
+    await tester.pumpAndSettle();
+    expect(find.text('10 月 16 日 周五'), findsOneWidget);
   });
 
   testWidgets('三日视图：把块横向拖到旁边一列 → 日期改成那一天（跨天拖拽）',
