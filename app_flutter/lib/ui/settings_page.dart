@@ -144,7 +144,11 @@ class _SettingsPageState extends State<SettingsPage>
         // 内容从悬浮标题条下面滑过；底部给悬浮导航栏让位
         Positioned.fill(
           child: SingleChildScrollView(
-            padding: EdgeInsets.fromLTRB(16, _barH, 16, 20 + tabBarInset),
+            // 鸿蒙：`top: 12 + topInset + titleH + FLOAT_GAP`（设置页 topInset = 0），
+            // `bottom: 30 + bottomInset`。_barH 是"上缝 + 标题条 + 下缝"的实测高度，
+            // 所以这里等价于 `12 + 标题条高 + 下缝`。
+            padding: EdgeInsets.fromLTRB(
+                16, 12 + _barH - floatTop, 16, 30 + tabBarInset - floatGap),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [

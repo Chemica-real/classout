@@ -15,7 +15,6 @@ import '../data/backup.dart';
 import '../domain/dates.dart';
 import '../domain/timetable.dart';
 import '../model/types.dart';
-import 'app_frame.dart';
 import 'theme.dart';
 
 /// 鸿蒙端 Index.ets：SECTION_H = 52、FLEX_SECTION_H = 36、TT_AXIS_W = 38、TT_GRID_PAD = 4
@@ -82,9 +81,14 @@ class _TimetablePageState extends State<TimetablePage> {
     final showWeekend = _sem.showWeekend;
 
     return SingleChildScrollView(
-      // 顶部让出悬浮页头、底部让出悬浮导航栏（内容会从它们下面滑过）
-      padding:
-          EdgeInsets.only(top: widget.topInset, bottom: tabBarInset),
+      // 顶部让出悬浮页头、底部让出悬浮导航栏（内容会从它们下面滑过）。
+      // ⚠️ 顶部还要 `+ FLOAT_GAP`：鸿蒙 Index 的课表滚动内容是
+      // `.padding({ top: topInset() + FLOAT_GAP, bottom: bottomInset() })` ——
+      // 页头浮窗和下面那条周条之间要留一条空行（01-timetable.jpg 里看得见）。
+      // 底部是 `bottomInset`（导航栏高 + 一条缝），不是 `tabBarInset`（那还多一条缝，
+      // 是给**浮在导航栏上方**的元素用的）
+      padding: EdgeInsets.only(
+          top: widget.topInset + floatGap, bottom: floatGap + hTabbar),
       child: Column(
         children: [
           _WeekdayHeader(
@@ -298,8 +302,9 @@ class _Grid extends StatelessWidget {
                         : const <CourseSession>[]))
                       Positioned(
                         top: _offsetOf(times, s.startSection),
-                        left: 2,
-                        right: 2,
+                        // 鸿蒙 SessionBlock 外层 `.padding({ left: 1.5, right: 1.5 })`
+                        left: 1.5,
+                        right: 1.5,
                         height:
                             _blockHeight(times, s.startSection, s.endSection),
                         child: _SessionBlock(

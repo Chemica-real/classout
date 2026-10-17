@@ -440,7 +440,9 @@ class _PlanPageState extends State<PlanPage> {
     // 不留这点余量的话，滑到底时它的下半截会被悬浮的待安排托盘盖住。
     // 托盘高度是**量出来的**（鸿蒙 `bottomPaneH` 也是 onAreaChange 量的）：
     // 写死 62/176 时，托盘里的课时或提示多一行，滚动区底部就会多/少一截。
-    final trayBlock = tabBarInset + _trayH + ddlMarkAllow;
+    // 鸿蒙：`bottom: bottomInset + FLOAT_GAP + bottomPaneH + FLOAT_GAP + DDL_MARK_ALLOW`
+    // （bottomInset = 导航栏 + 一条缝），这里 `tabBarInset` 就等于 `bottomInset + FLOAT_GAP`
+    final trayBlock = tabBarInset + floatGap + _trayH + floatGap + ddlMarkAllow;
     return Stack(
       children: [
         Positioned.fill(

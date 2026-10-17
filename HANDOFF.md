@@ -6537,3 +6537,18 @@ cd app_flutter && flutter test       # 1268 条（含 1115 条三端 fixture 逐
 现在照鸿蒙改成 `Stack` + `Positioned` 托盘 + `MeasureSize` 量高度，padding 与鸿蒙同式。
 
 - `flutter test`：**1281 passed**；golden 重出（`todos.png` 里托盘下面能看到被压住的那一行）。
+
+### 116.12 滚动内容的 padding 全部按鸿蒙的 `topInset/bottomInset/...+FLOAT_GAP` 重算
+
+对拍 `Index.ets` / `SettingsPage.ets` / `TodoInbox.ets` 的滚动区 padding 后，一次修完：
+
+| 页面 | 鸿蒙 | 安卓（改前 → 改后） |
+|---|---|---|
+| 课表 | `top: topInset + FLOAT_GAP`，`bottom: bottomInset` | `topInset` / `tabBarInset` → **`topInset + 10` / `10 + 54`**（页头与周条之间那条空行就回来了，`01-timetable.jpg` 里看得见） |
+| 待办 | `top: 12 + topInset + FLOAT_GAP`，`bottom: 20 + bottomInset + actionsH + FLOAT_GAP` | `12 + topInset` / `20 + tabBarInset` → 同式；行动托盘改成浮层见 §116.11 |
+| 设置 | `top: 12 + topInset + titleH + FLOAT_GAP`，`bottom: 30 + bottomInset` | `_barH` / `20 + tabBarInset` → `12 + _barH - FLOAT_TOP` / `30 + tabBarInset - FLOAT_GAP` |
+| 计划 | `top: topBarsBlockH + FLOAT_GAP`，`bottom: bottomInset + FLOAT_GAP + bottomPaneH + FLOAT_GAP + DDL_MARK_ALLOW` | 已按同式（§116.1/§116.9） |
+
+顺手对齐：课表里每节课的色块外层左右内边距 **1.5**（原来是 2，鸿蒙 `SessionBlock` 外层就是 1.5）。
+
+- `flutter test`：**1281 passed**；`flutter analyze` 无问题；golden 全部重出；真机复看课表页头与周条之间已有空行。
