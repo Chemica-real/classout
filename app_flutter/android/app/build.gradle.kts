@@ -12,6 +12,12 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // ⚠️ flutter_local_notifications 需要「核心库去糖化」（java.time 等 API 在低版本
+        // Android 上的回填）。不打开的话 APK 打包会直接失败：
+        //   Dependency ':flutter_local_notifications' requires core library desugaring
+        //   to be enabled for :app.
+        // 见 https://developer.android.com/studio/write/java8-support
+        isCoreLibraryDesugaringEnabled = true
     }
 
     defaultConfig {
@@ -36,6 +42,11 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+}
+
+dependencies {
+    // 与上面的 isCoreLibraryDesugaringEnabled 配套
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
 
 kotlin {
