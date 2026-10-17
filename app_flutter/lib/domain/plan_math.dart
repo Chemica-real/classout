@@ -43,7 +43,9 @@ class TimeWindow {
 
   @override
   bool operator ==(Object other) =>
-      other is TimeWindow && other.startMin == startMin && other.endMin == endMin;
+      other is TimeWindow &&
+      other.startMin == startMin &&
+      other.endMin == endMin;
 
   @override
   int get hashCode => Object.hash(startMin, endMin);
@@ -65,8 +67,8 @@ int _snapTo(int v, int step) => jsRound(v / step) * step;
 TimeWindow normalizeWindow(TimeWindow w) {
   var s = _clamp(_snapTo(w.startMin, windowSnapMin), windowMinStart,
       windowMaxEnd - windowMinSpan);
-  var e = _clamp(_snapTo(w.endMin, windowSnapMin), windowMinStart + windowMinSpan,
-      windowMaxEnd);
+  var e = _clamp(_snapTo(w.endMin, windowSnapMin),
+      windowMinStart + windowMinSpan, windowMaxEnd);
   if (e - s < windowMinSpan) {
     s = e - windowMinSpan;
     if (s < windowMinStart) {
@@ -117,7 +119,8 @@ class TimeAxis {
 
   int height() => (endMin - startMin) * vpPerMin;
 
-  int yToMinute(int y) => _clamp(snap(startMin + (y ~/ vpPerMin)), startMin, endMin);
+  int yToMinute(int y) =>
+      _clamp(snap(startMin + (y ~/ vpPerMin)), startMin, endMin);
 
   int minuteToY(int min) => (min - startMin) * vpPerMin;
 
@@ -156,15 +159,15 @@ List<int> dropRange(TimeAxis axis, int y, int durationMin) {
 /// 竖直拖动：时长不变，整体平移并夹在窗口内
 List<int> moveRange(TimeAxis axis, int startMin, int endMin, int deltaY) {
   final dur = endMin - startMin;
-  final start = _clamp(snap(startMin + (deltaY ~/ vpPerMin)), axis.startMin,
-      axis.endMin - dur);
+  final start = _clamp(
+      snap(startMin + (deltaY ~/ vpPerMin)), axis.startMin, axis.endMin - dur);
   return <int>[start, start + dur];
 }
 
 /// 拖底边：起点不动，最短 15 分钟，最晚到窗口末尾
 List<int> resizeRange(TimeAxis axis, int startMin, int endMin, int deltaY) {
-  final end = _clamp(snap(endMin + (deltaY ~/ vpPerMin)), startMin + minBlockMin,
-      axis.endMin);
+  final end = _clamp(
+      snap(endMin + (deltaY ~/ vpPerMin)), startMin + minBlockMin, axis.endMin);
   return <int>[startMin, end];
 }
 
@@ -264,9 +267,11 @@ List<DdlGroup> ddlGroupsOn(List<Todo> todos, String date, int axisStartMin,
     [int axisEndMin = windowMaxEnd]) {
   final buckets = <int, List<Todo>>{};
   for (final t in todos) {
-    if (t.status == TodoStatus.done || t.status == TodoStatus.archived) continue;
+    if (t.status == TodoStatus.done || t.status == TodoStatus.archived)
+      continue;
     if (t.category == TodoCategory.exam) continue;
-    if (t.ddl.substring(0, t.ddl.length < 10 ? t.ddl.length : 10) != date) continue;
+    if (t.ddl.substring(0, t.ddl.length < 10 ? t.ddl.length : 10) != date)
+      continue;
     final raw = ddlMinuteOf(t.ddl);
     if (raw < 0) continue;
     var minute = raw < axisStartMin ? axisStartMin : raw;
@@ -334,7 +339,8 @@ List<(int, int)> defaultRestWindows() => [
 
 /// 触摸点进入距可视区上/下边缘 [edgeZone] 之内就滚：-1 向上、1 向下、0 不滚。
 /// 视口比两个触发区还矮时取更近的一边（避免两边打架）。
-int edgeScrollDirection(int touchWinY, int viewTop, int viewBottom, int edgeZone) {
+int edgeScrollDirection(
+    int touchWinY, int viewTop, int viewBottom, int edgeZone) {
   final span = viewBottom - viewTop;
   if (span <= 0) return 0;
   final fromTop = touchWinY - viewTop;

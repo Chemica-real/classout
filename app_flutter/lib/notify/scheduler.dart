@@ -34,7 +34,10 @@ Future<SyncResult> syncNotifications(
   await notifier.cancelAll();
   if (!granted) {
     return SyncResult(
-        granted: false, scheduled: 0, skippedByBudget: plan.skippedByBudget, pending: 0);
+        granted: false,
+        scheduled: 0,
+        skippedByBudget: plan.skippedByBudget,
+        pending: 0);
   }
   var id = startId;
   for (final r in plan.published) {

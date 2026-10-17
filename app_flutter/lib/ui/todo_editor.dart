@@ -8,10 +8,11 @@ import '../model/types.dart';
 import 'palette.dart';
 
 Future<Todo?> showTodoEditor(BuildContext context,
-    {required List<Course> courses, Todo? existing}) {
+    {required List<Course> courses, Todo? existing, bool asExam = false}) {
   return showDialog<Todo>(
     context: context,
-    builder: (_) => _Editor(courses: courses, existing: existing),
+    builder: (_) =>
+        _Editor(courses: courses, existing: existing, asExam: asExam),
   );
 }
 
@@ -33,7 +34,10 @@ class _Editor extends StatefulWidget {
   /// 不为空 = 编辑已有条目（保留 id/status/时间戳等，只改用户改得动的字段）
   final Todo? existing;
 
-  const _Editor({required this.courses, this.existing});
+  /// 从「+ 考试」进来：默认类型 = 考试
+  final bool asExam;
+
+  const _Editor({required this.courses, this.existing, this.asExam = false});
 
   @override
   State<_Editor> createState() => _EditorState();
@@ -52,7 +56,8 @@ class _EditorState extends State<_Editor> {
     super.initState();
     final e = widget.existing;
     _title = TextEditingController(text: e?.title ?? '');
-    _category = e?.category ?? TodoCategory.homework;
+    _category = e?.category ??
+        (widget.asExam ? TodoCategory.exam : TodoCategory.homework);
     _ddl = e?.ddl ?? '';
     _courseId = e?.courseId ?? 0;
     _estimateMin = e?.estimateMin ?? 60;
@@ -121,10 +126,12 @@ class _EditorState extends State<_Editor> {
               if (_error != null) ...[
                 const SizedBox(height: 6),
                 Text(_error!,
-                    style: const TextStyle(fontSize: 12, color: Color(0xFFFF8080))),
+                    style: const TextStyle(
+                        fontSize: 12, color: Color(0xFFFF8080))),
               ],
               const SizedBox(height: 12),
-              const Text('类型', style: TextStyle(fontSize: 12, color: inkSecondary)),
+              const Text('类型',
+                  style: TextStyle(fontSize: 12, color: inkSecondary)),
               const SizedBox(height: 6),
               Wrap(
                 spacing: 6,
@@ -149,29 +156,31 @@ class _EditorState extends State<_Editor> {
                       style: TextStyle(fontSize: 11, color: inkTertiary)),
                 ),
               if (_category != TodoCategory.exam) ...[
-              const SizedBox(height: 12),
-              const Text('截止', style: TextStyle(fontSize: 12, color: inkSecondary)),
-              const SizedBox(height: 6),
-              Wrap(
-                spacing: 6,
-                children: [
-                  ChoiceChip(
-                    label: const Text('无截止', style: TextStyle(fontSize: 12)),
-                    selected: _ddl.isEmpty,
-                    onSelected: (_) => setState(() => _ddl = ''),
-                  ),
-                  for (final p in presets)
+                const SizedBox(height: 12),
+                const Text('截止',
+                    style: TextStyle(fontSize: 12, color: inkSecondary)),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  children: [
                     ChoiceChip(
-                      label: Text(p.$1, style: const TextStyle(fontSize: 12)),
-                      selected: _ddl == p.$2,
-                      onSelected: (_) => setState(() => _ddl = p.$2),
+                      label: const Text('无截止', style: TextStyle(fontSize: 12)),
+                      selected: _ddl.isEmpty,
+                      onSelected: (_) => setState(() => _ddl = ''),
                     ),
-                ],
-              ),
+                    for (final p in presets)
+                      ChoiceChip(
+                        label: Text(p.$1, style: const TextStyle(fontSize: 12)),
+                        selected: _ddl == p.$2,
+                        onSelected: (_) => setState(() => _ddl = p.$2),
+                      ),
+                  ],
+                ),
               ],
               if (widget.courses.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                const Text('所属课程', style: TextStyle(fontSize: 12, color: inkSecondary)),
+                const Text('所属课程',
+                    style: TextStyle(fontSize: 12, color: inkSecondary)),
                 const SizedBox(height: 6),
                 Wrap(
                   spacing: 6,
@@ -183,7 +192,8 @@ class _EditorState extends State<_Editor> {
                     ),
                     for (final c in widget.courses)
                       ChoiceChip(
-                        label: Text(c.label, style: const TextStyle(fontSize: 12)),
+                        label:
+                            Text(c.label, style: const TextStyle(fontSize: 12)),
                         selected: _courseId == c.id,
                         onSelected: (_) => setState(() => _courseId = c.id),
                       ),

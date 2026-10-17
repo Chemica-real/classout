@@ -58,14 +58,19 @@ class _PlanPageState extends State<PlanPage> {
   // ---- 拖动 / 缩放（见 domain/plan_math.dart 的 moveRange / resizeRange / edgeScroll*）----
   final ScrollController _scroll = ScrollController();
   final GlobalKey _gridKey = GlobalKey();
+
   /// 正在拖的块 id（0 = 没在拖）
   int _dragId = 0;
+
   /// 拖的是底边（缩放）还是整块（移动）
   bool _dragResize = false;
+
   /// 手指按下时的窗口 y
   double _dragTouchStartY = 0;
+
   /// 按下时的滚动位置
   double _dragScrollStart = 0;
+
   /// 预览用的偏移（分钟）：拖动过程中只改这个，松手才写数据
   int _dragDeltaMin = 0;
 
@@ -114,7 +119,8 @@ class _PlanPageState extends State<PlanPage> {
       }
     }
     // 块的位移 = 手指位移 + 滚动量（符号必须是加，见 fixtures 里那条断言）
-    final scrollDelta = (_scroll.hasClients ? _scroll.offset : 0) - _dragScrollStart;
+    final scrollDelta =
+        (_scroll.hasClients ? _scroll.offset : 0) - _dragScrollStart;
     final offset = dragOffsetWithScroll(
         (globalY - _dragTouchStartY).round(), scrollDelta.round());
     setState(() => _dragDeltaMin = snap(offset));
@@ -153,7 +159,8 @@ class _PlanPageState extends State<PlanPage> {
   @override
   void initState() {
     super.initState();
-    _day = widget.initialDay ?? DateTime(widget.now().year, widget.now().month, widget.now().day);
+    _day = widget.initialDay ??
+        DateTime(widget.now().year, widget.now().month, widget.now().day);
     _threeDay = widget.initialThreeDay;
   }
 
@@ -174,8 +181,13 @@ class _PlanPageState extends State<PlanPage> {
 
   /// 某天的课（灰带）
   List<CourseSession> _sessionsOn(DateTime day) {
-    final sessions = computeWeekSessions(_sem, widget.bundle.courses, widget.bundle.rules,
-        widget.bundle.overrides, widget.bundle.sectionTimes, weekOfDate(_sem, day));
+    final sessions = computeWeekSessions(
+        _sem,
+        widget.bundle.courses,
+        widget.bundle.rules,
+        widget.bundle.overrides,
+        widget.bundle.sectionTimes,
+        weekOfDate(_sem, day));
     final ds = formatDate(day);
     return sessions.where((s) => s.date == ds).toList();
   }
@@ -185,19 +197,58 @@ class _PlanPageState extends State<PlanPage> {
       widget.bundle.blocks.where((b) => b.date == formatDate(day)).toList();
 
   /// 某天的截止分组（★ 考试不算截止，这条在 ddlGroupsOn 里）
-  List<DdlGroup> _ddlOn(DateTime day) => ddlGroupsOn(widget.bundle.todos, formatDate(day),
-      _axis.startMin, _axis.endMin);
+  List<DdlGroup> _ddlOn(DateTime day) => ddlGroupsOn(
+      widget.bundle.todos, formatDate(day), _axis.startMin, _axis.endMin);
+
+  /// 某一天适用的不可排时段：`weekday == 0` 表示每天；裁到当前时间窗内
+  List<RestWindow> _restsOn(DateTime d) {
+    final wd = weekdayOf(d);
+    final out = <RestWindow>[];
+    // 库里没有就用默认（午休/晚饭/睡觉/凌晨），与鸿蒙端 defaultRestWindows 一致
+    final source = widget.restWindows.isNotEmpty
+        ? widget.restWindows
+        : [
+            for (final w in defaultRestWindows())
+              RestWindow(
+                weekday: 0,
+                startMin: w.$1,
+                endMin: w.$2,
+                label: w.$1 >= 23 * 60
+                    ? '睡觉'
+                    : (w.$1 >= 17 * 60
+                        ? '晚饭'
+                        : (w.$1 >= 12 * 60 ? '午休' : '睡觉')),
+              ),
+          ];
+    for (final w in source) {
+      if (w.weekday != 0 && w.weekday != wd) continue;
+      final from = w.startMin < _axis.startMin ? _axis.startMin : w.startMin;
+      final to = w.endMin > _axis.endMin ? _axis.endMin : w.endMin;
+      if (to - from < 10) continue;
+      out.add(RestWindow(
+          id: w.id,
+          weekday: w.weekday,
+          startMin: from,
+          endMin: to,
+          label: w.label));
+    }
+    return out;
+  }
 
   /// 库里有就用库里的，空则退回默认（午休/晚饭/睡觉）
   List<List<int>> _restRanges() {
     if (widget.restWindows.isNotEmpty) {
-      return [for (final w in widget.restWindows) [w.startMin, w.endMin]];
+      return [
+        for (final w in widget.restWindows) [w.startMin, w.endMin]
+      ];
     }
-    return [for (final w in defaultRestWindows()) [w.$1, w.$2]];
+    return [
+      for (final w in defaultRestWindows()) [w.$1, w.$2]
+    ];
   }
 
-  List<Todo> get _pool => sortPoolTodos(
-      selectPoolTodos(widget.bundle.todos, widget.bundle.blocks));
+  List<Todo> get _pool =>
+      sortPoolTodos(selectPoolTodos(widget.bundle.todos, widget.bundle.blocks));
 
   Todo? _todoOf(int id) {
     for (final t in widget.bundle.todos) {
@@ -257,8 +308,8 @@ class _PlanPageState extends State<PlanPage> {
     final from = isToday ? (now.hour * 60 + now.minute) : _axis.startMin;
     final slot = findFreeSlot(_axis, busy, rest, todo.estimateMin, from);
     if (slot < 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('这一天找不到合适空档')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('这一天找不到合适空档')));
       return;
     }
     _place(day, slot, todo.estimateMin);
@@ -270,9 +321,7 @@ class _PlanPageState extends State<PlanPage> {
   void _halveBlock(PlanBlock b) {
     final parts = halveMinutes(b.endMin - b.startMin);
     if (parts.isEmpty) return;
-    final blocks = widget.bundle.blocks
-        .where((x) => x.id != b.id)
-        .toList()
+    final blocks = widget.bundle.blocks.where((x) => x.id != b.id).toList()
       ..add(PlanBlock(
           id: _nextBlockId(),
           todoId: b.todoId,
@@ -297,13 +346,14 @@ class _PlanPageState extends State<PlanPage> {
     final days = _days;
     return Column(
       children: [
-        _Header(
+        _DayBar(
           day: _day,
           threeDay: _threeDay,
           onPrev: () => _shift(_threeDay ? -3 : -1),
           onNext: () => _shift(_threeDay ? 3 : 1),
           onToday: _jumpToday,
-          onToggle: () => setState(() => _threeDay = !_threeDay),
+          onDay: () => setState(() => _threeDay = false),
+          onThreeDay: () => setState(() => _threeDay = true),
         ),
         Expanded(
           child: SingleChildScrollView(
@@ -323,9 +373,12 @@ class _PlanPageState extends State<PlanPage> {
                   axis: _axis,
                   axisW: _axisW,
                   days: days,
-                  sessions: {for (final d in days) formatDate(d): _sessionsOn(d)},
+                  sessions: {
+                    for (final d in days) formatDate(d): _sessionsOn(d)
+                  },
                   blocks: {for (final d in days) formatDate(d): _blocksOn(d)},
                   ddls: {for (final d in days) formatDate(d): _ddlOn(d)},
+                  rests: {for (final d in days) formatDate(d): _restsOn(d)},
                   todoOf: _todoOf,
                   onTapMinute: (day, min) {
                     if (_selectedTodoId == 0) return;
@@ -347,7 +400,8 @@ class _PlanPageState extends State<PlanPage> {
         _Tray(
           pool: _pool,
           selectedId: _selectedTodoId,
-          onSelect: (id) => setState(() => _selectedTodoId = _selectedTodoId == id ? 0 : id),
+          onSelect: (id) =>
+              setState(() => _selectedTodoId = _selectedTodoId == id ? 0 : id),
           onFindSlot: _selectedTodoId == 0 ? null : _findSlot,
         ),
       ],
@@ -399,60 +453,120 @@ class _PlanPageState extends State<PlanPage> {
 
 // ---------------- 页头 ----------------
 
-class _Header extends StatelessWidget {
+/// 计划页的日期条 —— 鸿蒙端 `PlanDayView.ets → DayBarFloat()`：
+///   ‹  10 月 16 日 周五 / 今天  ›    [日] [三日]   今天
+class _DayBar extends StatelessWidget {
   final DateTime day;
   final bool threeDay;
   final VoidCallback onPrev;
   final VoidCallback onNext;
   final VoidCallback onToday;
-  final VoidCallback onToggle;
+  final VoidCallback onDay;
+  final VoidCallback onThreeDay;
 
-  const _Header({
+  const _DayBar({
     required this.day,
     required this.threeDay,
     required this.onPrev,
     required this.onNext,
     required this.onToday,
-    required this.onToggle,
+    required this.onDay,
+    required this.onThreeDay,
   });
 
   @override
   Widget build(BuildContext context) {
     const names = ['一', '二', '三', '四', '五', '六', '日'];
+    final wd = names[weekdayOf(day) - 1];
     return Glass(
-      margin: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-      padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      sheet: true,
+      margin:
+          const EdgeInsets.fromLTRB(floatSide, floatTop, floatSide, floatGap),
+      padding: const EdgeInsets.fromLTRB(8, 10, 12, 8),
+      child: Row(
         children: [
-          Row(
-            children: [
-              const Text('计划',
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: inkPrimary)),
-              const Spacer(),
-              _MiniButton(text: threeDay ? '三日' : '日', onTap: onToggle),
-            ],
+          _BarTap(
+            onTap: onPrev,
+            child: const Icon(Icons.chevron_left, size: 26, color: accentBlue),
           ),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              _MiniButton(icon: Icons.chevron_left, onTap: onPrev),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                child: Text('${day.month}/${day.day} 周${names[weekdayOf(day) - 1]}',
+          Expanded(
+            child: Column(
+              children: [
+                Text('${day.month} 月 ${day.day} 日 周$wd',
                     style: const TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w600, color: inkPrimary)),
-              ),
-              _MiniButton(icon: Icons.chevron_right, onTap: onNext),
-              const Spacer(),
-              GestureDetector(
-                onTap: onToday,
-                child: const Text('今天',
-                    style: TextStyle(fontSize: 12, color: goodGreen)),
-              ),
-            ],
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        color: inkPrimary)),
+                Text(relativeDayText(day, today()),
+                    style: const TextStyle(
+                        fontSize: 12, color: Color(0xFF94A0B5))),
+              ],
+            ),
+          ),
+          _BarTap(
+            onTap: onNext,
+            child: const Icon(Icons.chevron_right, size: 26, color: accentBlue),
+          ),
+          const SizedBox(width: 6),
+          _Chip(text: '日', selected: !threeDay, onTap: onDay),
+          _Chip(text: '三日', selected: threeDay, onTap: onThreeDay),
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: onToday,
+            behavior: HitTestBehavior.opaque,
+            child: const Text('今天',
+                style: TextStyle(fontSize: 14, color: accentBlue)),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _BarTap extends StatelessWidget {
+  final Widget child;
+  final VoidCallback onTap;
+  const _BarTap({required this.child, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: child,
+      ),
+    );
+  }
+}
+
+/// 可选中的小胶囊（鸿蒙端 ChipButton：选中 = 蓝底白字）
+class _Chip extends StatelessWidget {
+  final String text;
+  final bool selected;
+  final VoidCallback onTap;
+  const _Chip(
+      {required this.text, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        margin: const EdgeInsets.only(right: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: selected
+              ? const Color(0xFF2E6BE6)
+              : Colors.white.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text(text,
+            style: TextStyle(
+                fontSize: 12,
+                color: selected ? Colors.white : const Color(0xFFC3CDDE))),
       ),
     );
   }
@@ -507,11 +621,14 @@ class _DayTitles extends StatelessWidget {
                       style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: formatDate(d) == now ? accentBlue : inkSecondary)),
+                          color: formatDate(d) == now
+                              ? accentBlue
+                              : inkSecondary)),
                   Text('${d.month}/${d.day}',
                       style: TextStyle(
                           fontSize: 10,
-                          color: formatDate(d) == now ? accentBlue : inkTertiary)),
+                          color:
+                              formatDate(d) == now ? accentBlue : inkTertiary)),
                 ],
               ),
             ),
@@ -530,6 +647,9 @@ class _Grid extends StatelessWidget {
   final Map<String, List<CourseSession>> sessions;
   final Map<String, List<PlanBlock>> blocks;
   final Map<String, List<DdlGroup>> ddls;
+
+  /// 每天各自的不可排时段（已按星日过滤 + 裁到时间窗内）
+  final Map<String, List<RestWindow>> rests;
   final Todo? Function(int) todoOf;
   final void Function(DateTime, int) onTapMinute;
   final void Function(PlanBlock) onTapBlock;
@@ -550,6 +670,7 @@ class _Grid extends StatelessWidget {
     required this.sessions,
     required this.blocks,
     required this.ddls,
+    required this.rests,
     required this.todoOf,
     required this.onTapMinute,
     required this.onTapBlock,
@@ -580,7 +701,8 @@ class _Grid extends StatelessWidget {
                       top: (m - axis.startMin).toDouble(),
                       right: 4,
                       child: Text(minToHHmm(m),
-                          style: const TextStyle(fontSize: 9, color: inkTertiary)),
+                          style:
+                              const TextStyle(fontSize: 9, color: inkTertiary)),
                     ),
                 ],
               ),
@@ -603,6 +725,8 @@ class _Grid extends StatelessWidget {
                         sessions: sessions[formatDate(d)] ?? const [],
                         blocks: blocks[formatDate(d)] ?? const [],
                         ddls: ddls[formatDate(d)] ?? const [],
+                        rests: rests[formatDate(d)] ?? const [],
+                        singleDay: days.length == 1,
                         todoOf: todoOf,
                         onTapMinute: onTapMinute,
                         onTapBlock: onTapBlock,
@@ -630,6 +754,8 @@ class _DayColumn extends StatelessWidget {
   final List<CourseSession> sessions;
   final List<PlanBlock> blocks;
   final List<DdlGroup> ddls;
+  final List<RestWindow> rests;
+  final bool singleDay;
   final Todo? Function(int) todoOf;
   final void Function(DateTime, int) onTapMinute;
   final void Function(PlanBlock) onTapBlock;
@@ -647,6 +773,8 @@ class _DayColumn extends StatelessWidget {
     required this.sessions,
     required this.blocks,
     required this.ddls,
+    required this.rests,
+    required this.singleDay,
     required this.todoOf,
     required this.onTapMinute,
     required this.onTapBlock,
@@ -662,26 +790,35 @@ class _DayColumn extends StatelessWidget {
       },
       child: Container(
         decoration: BoxDecoration(
-          border: Border(left: BorderSide(color: Colors.white.withValues(alpha: 0.06))),
+          border: Border(
+              left: BorderSide(color: Colors.white.withValues(alpha: 0.06))),
         ),
         child: Stack(
           children: [
+            // 不可排时段（"睡觉""午休"）：斜纹淡标记，压在最下面
+            for (final w in rests)
+              _RestBand(
+                top: (w.startMin - axis.startMin).toDouble(),
+                height: (w.endMin - w.startMin).toDouble(),
+                label: w.label,
+                showLabel: singleDay && (w.endMin - w.startMin) >= 46,
+              ),
             // 整点横线
             for (final m in axis.marks)
               Positioned(
                 top: (m - axis.startMin).toDouble(),
                 left: 0,
                 right: 0,
-                child: Container(height: 1, color: Colors.white.withValues(alpha: 0.05)),
+                child: Container(
+                    height: 1, color: Colors.white.withValues(alpha: 0.05)),
               ),
-            // 课表灰带
+            // 课表灰带（鸿蒙端 ClassBlock：白 0.10 + 左对齐 12/11 号字）
             for (final s in sessions)
               _Band(
                 top: (s.startMin - axis.startMin).toDouble(),
                 height: (s.endMin - s.startMin).toDouble(),
-                color: Colors.white.withValues(alpha: s.isQuiz ? 0.10 : 0.16),
-                text: s.course.label,
-                light: true,
+                course: s.course,
+                location: s.location,
               ),
             // 计划块
             for (final b in blocks)
@@ -713,37 +850,121 @@ class _DayColumn extends StatelessWidget {
 class _Band extends StatelessWidget {
   final double top;
   final double height;
-  final Color color;
-  final String text;
-  final bool light;
+  final Course course;
+  final String location;
   const _Band({
     required this.top,
     required this.height,
-    required this.color,
-    required this.text,
-    this.light = false,
+    required this.course,
+    required this.location,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final short = course.shortName.isNotEmpty ? course.shortName : course.name;
+    return Positioned(
+      top: top,
+      left: 0,
+      right: 0,
+      height: height - 2,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(6, 2, 6, 0),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(short,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12, color: Color(0xFFA9B5C9))),
+            if (height > 40 && location.isNotEmpty)
+              Text(location,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style:
+                      const TextStyle(fontSize: 11, color: Color(0xFF8B97AC))),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 不可排时段：45° 斜纹（鸿蒙端 RestBands）
+class _RestBand extends StatelessWidget {
+  final double top;
+  final double height;
+  final String label;
+  final bool showLabel;
+  const _RestBand({
+    required this.top,
+    required this.height,
+    required this.label,
+    required this.showLabel,
   });
 
   @override
   Widget build(BuildContext context) {
     return Positioned(
       top: top,
-      left: 2,
-      right: 2,
+      left: 0,
+      right: 0,
       height: height,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(3, 2, 2, 2),
-        decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(6)),
-        child: Text(text,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-                fontSize: 9,
-                color: light ? inkSecondary : inkPrimary,
-                fontWeight: FontWeight.w600)),
+      child: IgnorePointer(
+        child: CustomPaint(
+          painter: _StripePainter(),
+          child: Align(
+            alignment: Alignment.topRight,
+            child: showLabel
+                ? Padding(
+                    padding: const EdgeInsets.only(right: 6, top: 3),
+                    child: Text(label,
+                        maxLines: 1,
+                        style: const TextStyle(
+                            fontSize: 9, color: Color(0xFF7C8798))),
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ),
       ),
     );
   }
+}
+
+/// 45° 斜纹 + 圆角细边（decorative only）
+class _StripePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rrect = RRect.fromRectAndRadius(
+      Offset.zero & size,
+      const Radius.circular(4),
+    );
+    canvas.save();
+    canvas.clipRRect(rrect);
+    canvas.drawRect(
+        Offset.zero & size, Paint()..color = const Color(0x0E7FA8FF));
+    final paint = Paint()
+      ..color = const Color(0x0DFFFFFF)
+      ..strokeWidth = 3;
+    for (var x = -size.height; x < size.width + size.height; x += 12) {
+      canvas.drawLine(
+          Offset(x, size.height), Offset(x + size.height, 0), paint);
+    }
+    canvas.restore();
+    canvas.drawRRect(
+      rrect.deflate(0.5),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..color = const Color(0x12FFFFFF),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_StripePainter old) => false;
 }
 
 class _Block extends StatelessWidget {
@@ -773,7 +994,8 @@ class _Block extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = todo == null ? const Color(0xFF4A5B75) : courseColor(todo!.courseId);
+    final color =
+        todo == null ? const Color(0xFF4A5B75) : courseColor(todo!.courseId);
     // 拖动中只改预览：移动 → 顶边跟着走、高度不变；缩放 → 顶边不动、高度跟着变
     final topMin = resizing ? block.startMin : block.startMin + dragDeltaMin;
     final endMin = block.endMin + dragDeltaMin;
@@ -917,7 +1139,8 @@ class _Tray extends StatelessWidget {
           if (pool.isEmpty)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 6),
-              child: Text('都排完了', style: TextStyle(fontSize: 12, color: inkTertiary)),
+              child: Text('都排完了',
+                  style: TextStyle(fontSize: 12, color: inkTertiary)),
             )
           else
             SizedBox(
@@ -934,14 +1157,17 @@ class _Tray extends StatelessWidget {
                     onTap: () => onSelect(t.id),
                     borderRadius: BorderRadius.circular(17),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
                         color: selected
                             ? accentBlue.withValues(alpha: 0.30)
                             : Colors.white.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(17),
                         border: Border.all(
-                            color: selected ? accentBlue : Colors.white.withValues(alpha: 0.10)),
+                            color: selected
+                                ? accentBlue
+                                : Colors.white.withValues(alpha: 0.10)),
                       ),
                       child: Row(
                         children: [
@@ -949,11 +1175,13 @@ class _Tray extends StatelessWidget {
                             width: 7,
                             height: 7,
                             decoration: BoxDecoration(
-                                color: courseColor(t.courseId), shape: BoxShape.circle),
+                                color: courseColor(t.courseId),
+                                shape: BoxShape.circle),
                           ),
                           const SizedBox(width: 6),
                           Text('${t.title} · ${t.estimateMin}分',
-                              style: const TextStyle(fontSize: 11, color: inkPrimary)),
+                              style: const TextStyle(
+                                  fontSize: 11, color: inkPrimary)),
                         ],
                       ),
                     ),

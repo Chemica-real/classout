@@ -16,6 +16,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:classout/data/backup.dart';
 import 'package:classout/ui/app_frame.dart';
+import 'package:classout/ui/course_header.dart';
+import 'package:classout/ui/theme.dart' as theme;
 import 'package:classout/ui/timetable_page.dart';
 import 'package:classout/data/settings.dart';
 import 'package:classout/ui/backup_picker.dart';
@@ -80,13 +82,27 @@ class _NoopPicker implements BackupPicker {
 }
 
 void main() {
+  // 截图必须确定性：关掉背景光晕的常驻漂移（无限循环动画会让 pumpAndSettle 永不静止）
+  theme.ambientMotion = false;
   final demo = BackupBundle.decode(File('assets/demo_backup.json').readAsStringSync());
 
   testWidgets('课表页截图', (tester) async {
     final family = await _loadFonts();
     await _shot(
       tester,
-      TimetablePage(bundle: demo, onImport: () async {}),
+      Column(
+        children: [
+          CourseHeader(
+            sem: demo.semester,
+            week: 1,
+            onPrev: () {},
+            onNext: () {},
+            onToday: () {},
+            onSync: () async {},
+          ),
+          Expanded(child: TimetablePage(bundle: demo, week: 1)),
+        ],
+      ),
       'timetable',
       family,
     );
@@ -96,7 +112,18 @@ void main() {
     final family = await _loadFonts();
     await _shot(
       tester,
-      TodoPage(bundle: demo, onChanged: (_) {}),
+      Column(children: [
+        CourseHeader(
+          sem: demo.semester,
+          week: 1,
+          adjustCount: 0,
+          onPrev: () {},
+          onNext: () {},
+          onToday: () {},
+          onSync: () async {},
+        ),
+        Expanded(child: TodoPage(bundle: demo, onChanged: (_) {})),
+      ]),
       'todos',
       family,
     );

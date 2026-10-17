@@ -37,7 +37,8 @@ class BackupBundle {
   /// 当前学期（暂时取第一条；以后有学期切换再说）
   Semester? get semester => semesters.isEmpty ? null : semesters.first;
 
-  static List<T> _list<T>(Map<String, dynamic> j, String key, T Function(Map<String, dynamic>) f) =>
+  static List<T> _list<T>(Map<String, dynamic> j, String key,
+          T Function(Map<String, dynamic>) f) =>
       (j[key] as List? ?? const [])
           .map((e) => f(Map<String, dynamic>.from(e as Map)))
           .toList();

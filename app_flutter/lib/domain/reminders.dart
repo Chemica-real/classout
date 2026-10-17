@@ -16,8 +16,10 @@ import 'timetable.dart';
 
 /// 排期窗口（天）：上课提醒与简报
 const int reminderWindowDays = 7;
+
 /// 计划块提醒只排近几天（块是会改的）
 const int blockWindowDays = 3;
+
 /// 预算：本地通知的待发上限，留一点余量
 const int reminderBudget = 60;
 
@@ -107,19 +109,23 @@ List<PlannedReminder> buildReminderCandidates({
     final week = weekOfDate(sem, d);
     if (week < 1 || week > sem.totalWeeks) continue;
     final dateStr = formatDate(d);
-    final sessions = computeWeekSessions(sem, courses, rules, overrides, times, week);
+    final sessions =
+        computeWeekSessions(sem, courses, rules, overrides, times, week);
     final daySessions = sessions.where((s) => s.date == dateStr).toList();
 
     for (final s in daySessions) {
-      final startAt = DateTime(
-          d.year, d.month, d.day, s.startMin ~/ 60, s.startMin % 60);
-      final remindAt = startAt.subtract(Duration(minutes: settings.classLeadMin));
+      final startAt =
+          DateTime(d.year, d.month, d.day, s.startMin ~/ 60, s.startMin % 60);
+      final remindAt =
+          startAt.subtract(Duration(minutes: settings.classLeadMin));
       if (!remindAt.isAfter(now)) continue;
-      final name = s.course.shortName.isNotEmpty ? s.course.shortName : s.course.name;
+      final name =
+          s.course.shortName.isNotEmpty ? s.course.shortName : s.course.name;
       final loc = s.location.isNotEmpty ? s.location : '教室待定';
-      final teacher = s.course.teacher.isNotEmpty ? ' · ${s.course.teacher}' : '';
-      out.add(PlannedReminder(remindAt, '$name 还有 ${settings.classLeadMin} 分钟上课',
-          '$loc$teacher', 'class'));
+      final teacher =
+          s.course.teacher.isNotEmpty ? ' · ${s.course.teacher}' : '';
+      out.add(PlannedReminder(remindAt,
+          '$name 还有 ${settings.classLeadMin} 分钟上课', '$loc$teacher', 'class'));
     }
 
     if (settings.briefEnabled) {
@@ -156,14 +162,15 @@ List<PlannedReminder> buildReminderCandidates({
     final dateStr = formatDate(d);
     for (final b in blocks) {
       if (b.date != dateStr || b.done) continue;
-      final at = DateTime(d.year, d.month, d.day, b.startMin ~/ 60, b.startMin % 60);
+      final at =
+          DateTime(d.year, d.month, d.day, b.startMin ~/ 60, b.startMin % 60);
       if (!at.isAfter(now)) continue;
       var title = '该做这件事了';
       for (final t in todos) {
         if (t.id == b.todoId) title = '该做「${t.title}」了';
       }
-      out.add(PlannedReminder(
-          at, title, '计划 ${minToHHmm(b.startMin)}-${minToHHmm(b.endMin)}', 'block'));
+      out.add(PlannedReminder(at, title,
+          '计划 ${minToHHmm(b.startMin)}-${minToHHmm(b.endMin)}', 'block'));
     }
   }
 

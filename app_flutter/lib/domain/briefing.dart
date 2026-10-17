@@ -5,14 +5,16 @@
 import '../model/types.dart';
 import 'dates.dart';
 
-String buildBriefing(String dateStr, List<CourseSession> sessions, List<Todo> todos) {
+String buildBriefing(
+    String dateStr, List<CourseSession> sessions, List<Todo> todos) {
   var text = '';
   if (sessions.isEmpty) {
     text = '今天没有课。';
   } else {
     final parts = <String>[];
     for (final s in sessions) {
-      final name = s.course.shortName.isNotEmpty ? s.course.shortName : s.course.name;
+      final name =
+          s.course.shortName.isNotEmpty ? s.course.shortName : s.course.name;
       final loc = s.location.isNotEmpty ? ' ${s.location}' : '';
       parts.add('${minToHHmm(s.startMin)} $name$loc');
     }

@@ -59,8 +59,9 @@ class AppSettings {
           : briefEnabledRaw == '1',
       briefMin: _parseHHmm(briefTimeRaw) ?? defaultBriefMin,
       classLeadMin: _parseLead(leadRaw),
-      syncIntervalMin: normalizeSyncInterval(
-          sync == null || sync.isEmpty ? syncIntervalDefault : (int.tryParse(sync) ?? syncIntervalDefault)),
+      syncIntervalMin: normalizeSyncInterval(sync == null || sync.isEmpty
+          ? syncIntervalDefault
+          : (int.tryParse(sync) ?? syncIntervalDefault)),
       planWindow: win == null || win.isEmpty ? defaultWindow : parseWindow(win),
       customCategories: cats == null ? const [] : parseCustomCategories(cats),
       motto: motto ?? '',

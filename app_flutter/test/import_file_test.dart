@@ -41,6 +41,26 @@ Future<void> _pump(WidgetTester tester, MemoryRepo repo, BackupPicker picker) as
   await tester.pumpAndSettle();
 }
 
+/// 回到课表页（导入后要看学期名）
+Future<void> _gotoTimetable(WidgetTester tester) async {
+  // 导入成功的 SnackBar 会盖住底部标签栏，先等它自己消失
+  await tester.pump(const Duration(seconds: 5));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('课表').last);
+  await tester.pumpAndSettle();
+}
+
+/// 导入入口在「设置 → 数据 → 导入备份…」（与鸿蒙端「管理课程 → 备份与恢复」对应）
+Future<void> _openImport(WidgetTester tester) async {
+  await tester.tap(find.text('设置').last); // 底部导航
+  await tester.pumpAndSettle();
+  final btn = find.byKey(const ValueKey('settings-import'));
+  await tester.ensureVisible(btn);
+  await tester.pumpAndSettle();
+  await tester.tap(btn);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('选到文件 → 填进输入框 → 导入成功', (tester) async {
     final repo = MemoryRepo();
@@ -51,8 +71,7 @@ void main() {
     await _pump(tester, repo, picker);
 
     expect(find.text('演示学期'), findsOneWidget);
-    await tester.tap(find.text('导入'));
-    await tester.pumpAndSettle();
+    await _openImport(tester);
 
     // 对话框里应有「选择文件…」
     expect(find.text('选择文件…'), findsOneWidget);
@@ -67,9 +86,11 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, '导入'));
     await tester.pumpAndSettle();
 
+    // 先看数据有没有换（失败时能区分"没导入"和"界面没刷新"）
+    expect((await repo.load())?.semester?.name, '文件导入的学期',
+        reason: '点「导入」后仓库里的学期名应该变了');
+    await _gotoTimetable(tester);
     expect(find.text('文件导入的学期'), findsOneWidget);
-    expect(find.text('演示学期'), findsNothing);
-    expect((await repo.load())?.semester?.name, '文件导入的学期');
   });
 
   testWidgets('用户取消选择 → 什么都不变', (tester) async {
@@ -77,8 +98,7 @@ void main() {
     final picker = _FakePicker(text: null); // 取消
     await _pump(tester, repo, picker);
 
-    await tester.tap(find.text('导入'));
-    await tester.pumpAndSettle();
+    await _openImport(tester);
     await tester.tap(find.byKey(const ValueKey('pick-file')));
     await tester.pumpAndSettle();
 
@@ -87,7 +107,8 @@ void main() {
     expect(field.controller?.text, isEmpty, reason: '取消不该写入任何内容');
     await tester.tap(find.widgetWithText(TextButton, '取消'));
     await tester.pumpAndSettle();
-    expect(find.text('演示学期'), findsOneWidget);
+    expect(find.text('导入备份'), findsNothing, reason: '对话框应该关掉');
+    expect((await repo.load())?.semester?.name ?? '演示学期', '演示学期');
   });
 
   testWidgets('文件读失败 → 显示原因且不关窗', (tester) async {
@@ -95,8 +116,7 @@ void main() {
     final picker = _FakePicker(error: StateError('读不到文件内容'));
     await _pump(tester, repo, picker);
 
-    await tester.tap(find.text('导入'));
-    await tester.pumpAndSettle();
+    await _openImport(tester);
     await tester.tap(find.byKey(const ValueKey('pick-file')));
     await tester.pumpAndSettle();
 
@@ -109,17 +129,16 @@ void main() {
     final picker = _FakePicker(text: '{"app":"别的App","version":1}');
     await _pump(tester, repo, picker);
 
-    await tester.tap(find.text('导入'));
-    await tester.pumpAndSettle();
+    await _openImport(tester);
     await tester.tap(find.byKey(const ValueKey('pick-file')));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, '导入'));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('不是 ClassOUT'), findsOneWidget);
-    // 取消后数据仍是最初那份
+    expect(find.text('导入备份'), findsOneWidget, reason: '报错不关窗');
     await tester.tap(find.widgetWithText(TextButton, '取消'));
     await tester.pumpAndSettle();
-    expect(find.text('演示学期'), findsOneWidget);
+    expect((await repo.load())?.semester?.name ?? '演示学期', '演示学期');
   });
 }

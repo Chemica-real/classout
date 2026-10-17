@@ -12,8 +12,10 @@ class TodoCategory {
   static const String homework = 'homework';
   static const String self = 'self';
   static const String exam = 'exam';
+
   /// 「无」= 没有类型
   static const String none = 'none';
+
   /// 已退役，只为兼容存量数据；不要再往新数据里写
   static const String other = 'other';
 }
@@ -165,7 +167,8 @@ class Semester {
         startDate: _str(j['startDate']),
         totalWeeks: _int(j['totalWeeks'], 16),
         firstDayOfWeek: _int(j['firstDayOfWeek'], 1),
-        showWeekend: j['showWeekend'] != false && _int(j['showWeekend'], 1) != 0,
+        showWeekend:
+            j['showWeekend'] != false && _int(j['showWeekend'], 1) != 0,
       );
 }
 
@@ -208,8 +211,9 @@ class Course {
       );
 
   /// 课表格子上显示的短名：没填就退回全名的前 4 个字
-  String get label =>
-      shortName.isNotEmpty ? shortName : (name.length > 4 ? name.substring(0, 4) : name);
+  String get label => shortName.isNotEmpty
+      ? shortName
+      : (name.length > 4 ? name.substring(0, 4) : name);
 }
 
 class SectionTime {
@@ -334,7 +338,6 @@ class CourseSession {
     required this.isExtra,
   });
 }
-
 
 /// 不可排时段（午休/晚饭/睡觉…）；weekday 0 = 每天，1..7 = 周一..周日
 class RestWindow {

@@ -16,8 +16,30 @@ Future<void> _pump(WidgetTester tester, MemoryRepo repo) async {
   tester.view.physicalSize = const Size(1080, 2400);
   tester.view.devicePixelRatio = 3.0;
   addTearDown(tester.view.reset);
-  await tester.pumpWidget(MaterialApp(home: HomeShell(repo: repo)));
+  await tester.pumpWidget(MaterialApp(home: HomeShell(repo: repo, fallback: BackupBundle.decode(_demoJson()))));
   await tester.pumpAndSettle();
+}
+
+/// 导入入口 = 设置页「数据 → 导入备份…」（跟鸿蒙端「管理课程 → 备份与恢复」对应）
+Future<void> _openImport(WidgetTester tester) async {
+  await tester.tap(find.text('设置').last);
+  await tester.pumpAndSettle();
+  final b = find.byKey(const ValueKey('settings-import'));
+  await tester.ensureVisible(b);
+  await tester.pumpAndSettle();
+  await tester.tap(b);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _gotoTimetable(WidgetTester tester) async {
+  // 导入成功的 SnackBar 会盖住底部标签栏，先等它自己消失
+  await tester.pump(const Duration(seconds: 5));
+  await tester.pumpAndSettle();
+  final t = find.text('课表');
+  if (t.evaluate().isNotEmpty) {
+    await tester.tap(t.last);
+    await tester.pumpAndSettle();
+  }
 }
 
 void main() {
@@ -28,12 +50,12 @@ void main() {
 
     // 把学期名改一下，用于确认"新数据真的进来了"
     final incoming = _demoJson().replaceAll('演示学期', '导入学期');
-    await tester.tap(find.text('导入'));
-    await tester.pumpAndSettle();
+    await _openImport(tester);
     await tester.enterText(find.byType(TextField), incoming);
     await tester.tap(find.widgetWithText(FilledButton, '导入'));
     await tester.pumpAndSettle();
 
+    await _gotoTimetable(tester);
     expect(find.text('导入学期'), findsOneWidget);
     expect(find.text('演示学期'), findsNothing);
   });
@@ -42,8 +64,7 @@ void main() {
     final demo = BackupBundle.decode(_demoJson());
     await _pump(tester, MemoryRepo(demo));
 
-    await tester.tap(find.text('导入'));
-    await tester.pumpAndSettle();
+    await _openImport(tester);
     await tester.enterText(find.byType(TextField), '{"app":"别的App","version":1}');
     await tester.tap(find.widgetWithText(FilledButton, '导入'));
     await tester.pumpAndSettle();
@@ -54,10 +75,12 @@ void main() {
     // 取消之后数据还是原来的（对话框盖着时底层 widget 仍在树里，所以这里只验取消后的状态）
     await tester.tap(find.widgetWithText(TextButton, '取消'));
     await tester.pumpAndSettle();
+    await _gotoTimetable(tester);
     expect(find.text('演示学期'), findsOneWidget);
   });
 
   testWidgets('空库时用兜底数据，并写回仓库', (tester) async {
+    // 演示数据兜底后，课表页应该显示它的学期名
     final demo = BackupBundle.decode(_demoJson());
     final repo = MemoryRepo();
     tester.view.physicalSize = const Size(1080, 2400);

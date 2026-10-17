@@ -55,7 +55,8 @@ Database openFileDatabase(String path) {
 List<String> splitSchema(String sql) {
   final out = <String>[];
   for (var chunk in sql.split(';')) {
-    final lines = chunk.split('\n').where((l) => !l.trimLeft().startsWith('--'));
+    final lines =
+        chunk.split('\n').where((l) => !l.trimLeft().startsWith('--'));
     final stmt = lines.join('\n').trim();
     if (stmt.isEmpty) continue;
     out.add(stmt);

@@ -11,7 +11,8 @@ import 'package:timezone/timezone.dart' as tz;
 import 'notifier.dart';
 
 class FlutterNotifier implements ReminderNotifier {
-  final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
+  final FlutterLocalNotificationsPlugin _plugin =
+      FlutterLocalNotificationsPlugin();
   bool _inited = false;
 
   static const String _channelId = 'classout_reminders';
@@ -41,7 +42,8 @@ class FlutterNotifier implements ReminderNotifier {
     final ios = _plugin.resolvePlatformSpecificImplementation<
         IOSFlutterLocalNotificationsPlugin>();
     if (ios != null) {
-      final ok = await ios.requestPermissions(alert: true, badge: true, sound: true);
+      final ok =
+          await ios.requestPermissions(alert: true, badge: true, sound: true);
       return ok ?? false;
     }
     final android = _plugin.resolvePlatformSpecificImplementation<

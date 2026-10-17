@@ -20,7 +20,8 @@ class TodoSections {
 
   const TodoSections(this.pending, this.exams, this.tasks, this.done);
 
-  bool get isEmpty => pending.isEmpty && exams.isEmpty && tasks.isEmpty && done.isEmpty;
+  bool get isEmpty =>
+      pending.isEmpty && exams.isEmpty && tasks.isEmpty && done.isEmpty;
 }
 
 /// 把全量待办切成四段（各自排好序）

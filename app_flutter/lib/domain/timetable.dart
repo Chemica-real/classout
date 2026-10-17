@@ -24,7 +24,8 @@ Map<int, SectionTime> buildSectionMap(List<SectionTime> times) =>
     {for (final t in times) t.section: t};
 
 /// 节次区间 → [起, 止] 分钟（endSection 缺省时按 +45 分钟兜底）
-List<int> sectionMinutes(Map<int, SectionTime> times, int startSection, int endSection) {
+List<int> sectionMinutes(
+    Map<int, SectionTime> times, int startSection, int endSection) {
   final s = times[startSection];
   final e = times[endSection];
   final startMin = s?.startMin ?? 0;
@@ -91,8 +92,9 @@ List<CourseSession> computeWeekSessions(
       }
       if (moved.newStartSection > 0) {
         startSection = moved.newStartSection;
-        endSection =
-            moved.newEndSection >= moved.newStartSection ? moved.newEndSection : moved.newStartSection;
+        endSection = moved.newEndSection >= moved.newStartSection
+            ? moved.newEndSection
+            : moved.newStartSection;
       }
       if (moved.newLocation.isNotEmpty) location = moved.newLocation;
     }
@@ -127,7 +129,8 @@ List<CourseSession> computeWeekSessions(
     final course = courseMap[o.courseId];
     if (course == null) continue;
     final startSection = o.newStartSection > 0 ? o.newStartSection : 1;
-    final endSection = o.newEndSection >= startSection ? o.newEndSection : startSection;
+    final endSection =
+        o.newEndSection >= startSection ? o.newEndSection : startSection;
     final minutes = sectionMinutes(timeMap, startSection, endSection);
     // 老数据里「补课 + 单独一条 room」是两条记录，补课也要认 room 覆盖
     final roomForExtra = roomMap['${o.courseId}|${o.newDate}'];
@@ -171,7 +174,8 @@ List<CourseSession> computeWeekSessions(
 
 /// 按星期分组（下标 0 = 周一 … 6 = 周日）
 List<List<CourseSession>> groupByWeekday(List<CourseSession> sessions) {
-  final groups = List<List<CourseSession>>.generate(7, (_) => <CourseSession>[]);
+  final groups =
+      List<List<CourseSession>>.generate(7, (_) => <CourseSession>[]);
   for (final s in sessions) {
     final idx = s.weekday - 1;
     if (idx >= 0 && idx < 7) groups[idx].add(s);

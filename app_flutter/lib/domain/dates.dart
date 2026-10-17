@@ -11,8 +11,7 @@ DateTime parseDate(String s) {
 
 String _pad2(int n) => n < 10 ? '0$n' : '$n';
 
-String formatDate(DateTime d) =>
-    '${d.year}-${_pad2(d.month)}-${_pad2(d.day)}';
+String formatDate(DateTime d) => '${d.year}-${_pad2(d.month)}-${_pad2(d.day)}';
 
 DateTime addDays(DateTime d, int n) => DateTime(d.year, d.month, d.day + n);
 

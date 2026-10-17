@@ -55,8 +55,8 @@ class _BootState extends State<_Boot> {
         final repo = await openRepo();
         // --- 给 CI 看的自检日志（GitHub Actions 里 grep 这几行判断真跑起来了）---
         debugPrint('[ClassOUT] db opened');
-        final demo =
-            BackupBundle.decode(await rootBundle.loadString('assets/demo_backup.json'));
+        final demo = BackupBundle.decode(
+            await rootBundle.loadString('assets/demo_backup.json'));
         debugPrint('[ClassOUT] demo bundle ok: courses=${demo.courses.length}');
         return (repo, demo);
       } catch (e) {
@@ -77,13 +77,15 @@ class _BootState extends State<_Boot> {
             body: Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
-                child: Text('读不出演示数据：\n${snap.error}', textAlign: TextAlign.center),
+                child: Text('读不出演示数据：\n${snap.error}',
+                    textAlign: TextAlign.center),
               ),
             ),
           );
         }
         if (!snap.hasData) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
         }
         final (repo, demo) = snap.data!;
         return HomeShell(repo: repo, fallback: demo);

@@ -4377,3 +4377,55 @@ iOS 侧这次改动**还需 CI 复核**（`DynamicLibrary.process()` + 插件同
 | UI | ✅ 中文/玻璃卡片/四标签正常（另存了真机截图） |
 | 通知 | ⏳ 没测（下一步用「设置 → 立即重排提醒」+ 锁屏看） |
 | 热重载 | ⏳ `flutter run -d 7D7PAQ9PORLR79Z9` 现在可行（NDK/SDK 都齐了） |
+
+## 52. 2026-10-17 ★ 安卓版开始「1:1 照抄鸿蒙版」：主题/页头/课表页/待办页/计划页
+
+用户 2026-10-17 的明确目标（已设为长期 goal）：
+> 现在的安卓版与鸿蒙版相差太大，我希望安卓版可以几乎完全仿照鸿蒙版的 UI 设计和所有逻辑、操作。
+> 现在开始不用管 CI 了，CI 太慢了；直接在这台安卓上调试。
+
+所以做法是：**按页面逐个对照 `docs/manual/01..09.jpg`（鸿蒙端截图）重写**，
+数值一律从 ArkTS 源码搬（`view/Glass.ets`、`view/Float.ets`、`view/Motion.ets`、
+`pages/Index.ets`、`view/TodoInbox.ets`、`view/PlanDayView.ets`），不再自己配色。
+
+### 52.1 新增/重写的文件
+
+| 文件 | 内容 |
+|---|---|
+| `lib/ui/theme.dart` | **唯一配色/尺寸/动画来源**：页面渐变 `#0f0c29→#302b63→#24243e`、玻璃 blur 20 / 圆角 20 / 白 0.16 / 描边 0.25–0.14、10 个课程色、两个背景光晕（`#FF6FD8` 0.35 + `#00D4FF` 0.25）、`floatSide/floatGap/floatTop`、时长与曲线、`ambientMotion` 总开关 |
+| `lib/ui/app_frame.dart` | `AppFrame` 改为 Stateful：底层渐变 + **两个模糊光晕（9 秒一来一回漂移）**；底部导航 13 号**加粗白字**（选中纯白 / 其余 72% 白，与鸿蒙端一致）；`Glass` / `GlassShelf` |
+| `lib/ui/course_header.dart` | **课表/待办/计划三页共用**的三行页头（鸿蒙端 `Index.Header()`）：学期名 + `10/12 — 10/18`、`‹ 第 N 周 ›`、`＋补课 / 本周调整 N / 管理课程 / 今天|回到本周`、`本地生成 · 无需联网` + `立即与日历同步`。周次状态因此**上移到 HomeShell** |
+| `lib/ui/timetable_page.dart` | 只剩表格本体：周条（今天高亮）+ 时间轴（顶对齐、`#CBD6E8`/`#A9B5C9`）+ 7 列（只有横线白 0.12、今天列白 0.10）+ 课程块（简称/教室/教师，`SECTION_H 52`/`FLEX 36`、圆角 6、居中、考试白虚线框） |
+| `lib/ui/todo_page.dart` | 照 `TodoInbox.ets` 重写：四段（待确认/即将考试/待办/已完成）+ 计数与提示语、`○` 圆圈、课程色胶囊 + 类型灰标签、`ddl · 预计 N 分钟`、备注行、删除二次确认、已完成可收起、底部玻璃托盘 `+ 新建待办`(2 份宽, `#2E6BE6`) / `+ 考试`(1 份宽, 金) |
+| `lib/ui/plan_page.dart` | 日期条换成鸿蒙端 `DayBarFloat`（`10 月 16 日 周五` + 相对日 + `日/三日` 胶囊 + 今天）、课程灰带改成白 0.10 + 12/11 号左对齐、**补上不可排时段的 45° 斜纹带**（含「午休」等标签、按星期过滤、裁到时间窗内） |
+| `test/flutter_test_config.dart` | 所有测试统一关掉常驻动画（无限循环会让 `pumpAndSettle` 永不静止） |
+| `tool/screenshot_test.dart` | 截图里也关动画；待办/计划截图改成「页头 + 页面」，与真机一致 |
+
+### 52.2 验证
+
+- `flutter test`：**683 passed**（改了 4 条受影响的断言：`‹`/`›` 变图标、待办圆圈变 `○` 文字、计划日期条文案、周次切换走 HomeShell）
+- `flutter test --update-goldens tool/screenshot_test.dart` 重出 5 张 golden，与 `docs/manual/01..04` 逐张对照
+- `flutter analyze lib` 只剩历史 info/warning（`curly_braces` 之类，没新增错误）
+- 真机：`flutter build apk --debug` → `adb install -r` 成功；**本次改完还没在真机上复看**
+  （手机当时是锁屏状态，`adb` 截图只能拍到锁屏；需要用户解锁后再跑一遍 §51.3 的流程）
+
+### 52.3 还差的（按优先级，下一轮继续）
+
+1. **设置页**：鸿蒙端是「设置」标题条 + 若干张玻璃卡（背景 / 首页标语 / 动画 / 日历同步 / 提醒 / …），
+   这边还是「标题 + 裸控件」，且**三个功能完全没做**：换壁纸（`WallpaperRepo` + 显示位置/缩放）、
+   首页标语（可编辑、32 上限、恢复默认）、动画总开关（`motionOn`）
+2. **待办编辑器**：鸿蒙端是**右侧 84% 抽屉**（标题固定 + ✕ + 可滚表单：类型/考试时间/截止/预计耗时/所属课程/备注/保存/删除），
+   这边还是 Material `AlertDialog` + 浅色 `ChoiceChip`
+3. **计划页**：待安排货架（`待安排 N` + 展开 ▸ + 池子）、按列画的截止标记（⚑ 合并 + 浮层展开）、
+   长按选中→拖动两步模型、双指缩放改时长、块编辑抽屉
+4. **单周调整**（点课程块 → 停课/换教室/调课/补课/撤销）、**课程管理**（列表 + 模板）、**备份导出**
+5. **启动流程**：加载页（打字机 + 步骤清单 + 浓缩成球 + 白球扩张）、浮动浮窗（`view/Float.ets`）
+6. 页头/导航栏要真做成**悬浮层**（鸿蒙端内容从屏幕顶铺到底、靠 padding 给浮窗让位；
+   现在是 Column 顺序排布，滚动内容不会钻到页头下面）
+
+### 52.4 一个坑（记下来别再踩）
+
+`flutter test` 里只要存在**无限循环动画**（`AnimationController.repeat`），`pumpAndSettle` 就永远
+等不到静止 → 全线超时。所以 `theme.ambientMotion` 是全局开关，`test/flutter_test_config.dart`
+（`test/` 目录下的测试）和 `tool/screenshot_test.dart`（不在 `test/` 下，配置钩子管不到）
+两处都要显式关掉。

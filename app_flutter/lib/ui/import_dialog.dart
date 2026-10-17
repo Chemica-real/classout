@@ -142,7 +142,8 @@ class _ImportDialogState extends State<_ImportDialog> {
             if (_error != null) ...[
               const SizedBox(height: 8),
               Text(_error!,
-                  style: const TextStyle(fontSize: 12, color: Color(0xFFFF8080))),
+                  style:
+                      const TextStyle(fontSize: 12, color: Color(0xFFFF8080))),
             ],
           ],
         ),

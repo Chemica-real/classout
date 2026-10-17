@@ -7,6 +7,8 @@ import '../data/backup.dart';
 import '../data/repo.dart';
 import '../data/settings.dart';
 import '../domain/reminders.dart';
+import '../domain/dates.dart';
+import '../domain/timetable.dart';
 import '../notify/flutter_notifier.dart';
 import '../notify/notifier.dart';
 import '../notify/scheduler.dart';
@@ -16,6 +18,7 @@ import 'import_dialog.dart';
 import 'palette.dart';
 import 'plan_page.dart';
 import 'settings_page.dart';
+import 'course_header.dart';
 import 'timetable_page.dart';
 import 'todo_page.dart';
 
@@ -49,6 +52,10 @@ class _HomeShellState extends State<HomeShell> {
   bool _loading = true;
   String? _error;
   int _tab = 0;
+  bool _syncing = false;
+
+  /// 当前周次（页头 ‹ › 改它；课表页照着画）
+  int _week = 1;
   late final ReminderNotifier _notifier = widget.notifier ?? FlutterNotifier();
 
   @override
@@ -75,6 +82,10 @@ class _HomeShellState extends State<HomeShell> {
         _settings = settings;
         _loading = false;
         _error = null;
+        final sem = data?.semester;
+        if (sem != null) {
+          _week = weekOfDate(sem, DateTime.now()).clamp(1, sem.totalWeeks);
+        }
       });
     } catch (e) {
       debugPrint('[ClassOUT] load error: $e');
@@ -111,11 +122,46 @@ class _HomeShellState extends State<HomeShell> {
     try {
       final r = await syncNotifications(_notifier, plan);
       if (!r.granted) return '没有通知权限，提醒没排上（去系统设置里开一下）';
-      final extra = r.skippedByBudget > 0 ? '，另有 ${r.skippedByBudget} 条超出额度' : '';
+      final extra =
+          r.skippedByBudget > 0 ? '，另有 ${r.skippedByBudget} 条超出额度' : '';
       return '已排 ${r.scheduled} 条提醒（系统待发 ${r.pending} 条）$extra';
     } catch (e) {
       return '排提醒失败：$e';
     }
+  }
+
+  int get _totalWeeks => _bundle?.semester?.totalWeeks ?? 1;
+
+  /// 本周有几条单周调整（页头的「本周调整 N」；没有就不显示）
+  int _adjustCount(BackupBundle bundle) {
+    final sem = bundle.semester;
+    if (sem == null) return 0;
+    final dates = {
+      for (var d = 1; d <= 7; d++) formatDate(dateOfWeekday(sem, _week, d)),
+    };
+    return bundle.overrides
+        .where((o) => dates.contains(o.newDate) || dates.contains(o.date))
+        .length;
+  }
+
+  /// 还没移植完的入口：老实说一句，而不是装作点了没反应
+  void _notReady(String what) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('「$what」还在移植中（鸿蒙端已有，这边下一步补齐）')),
+    );
+  }
+
+  /// 页头「⟳ 立即与日历同步」：走和「用到 n 分钟自动同步」同一套重排，
+  /// 只是这次是用户主动点的 —— 顶部弹提示，排完再报结果（鸿蒙端 runCalendarSync(true)）。
+  Future<void> _manualSync() async {
+    if (_syncing) return;
+    setState(() => _syncing = true);
+    // 让「正在与日历同步」至少露一下脸（真机上重排可能几毫秒就完事）
+    await Future<void>.delayed(const Duration(milliseconds: 700));
+    final msg = await _resyncReminders();
+    if (!mounted) return;
+    setState(() => _syncing = false);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   Future<void> _applySettings(AppSettings next) async {
@@ -166,29 +212,80 @@ class _HomeShellState extends State<HomeShell> {
       );
     }
     return Scaffold(
-      body: AppFrame(
-        tab: _tab,
-        onTab: (i) => setState(() => _tab = i),
-        child: switch (_tab) {
-          0 => TimetablePage(bundle: bundle, onImport: _import),
-          1 => TodoPage(
-              bundle: bundle,
-              onChanged: _apply,
-              customCategories: _settings.customCategories),
-          2 => PlanPage(
-              bundle: bundle,
-              onChanged: _apply,
-              window: _settings.planWindow,
-              restWindows: bundle.restWindows),
-          _ => SettingsPage(
-              bundle: bundle,
-              onChanged: _apply,
-              settings: _settings,
-              onSettingsChanged: _applySettings,
-              onResyncReminders: _resyncReminders),
-        },
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: AppFrame(
+              tab: _tab,
+              onTab: (i) => setState(() => _tab = i),
+              // 课表 / 待办 / 计划 三页共用同一条页头（鸿蒙端 FloatingBars），
+              // 设置页没有它 —— 那些是课表页的导航控件。
+              child: _tab == 3
+                  ? SettingsPage(
+                      bundle: bundle,
+                      onChanged: _apply,
+                      settings: _settings,
+                      onSettingsChanged: _applySettings,
+                      onResyncReminders: _resyncReminders,
+                      onImport: _import)
+                  : Column(
+                      children: [
+                        CourseHeader(
+                          sem: bundle.semester,
+                          week: _week,
+                          adjustCount: _adjustCount(bundle),
+                          onPrev: () => setState(
+                              () => _week = (_week - 1).clamp(1, _totalWeeks)),
+                          onNext: () => setState(
+                              () => _week = (_week + 1).clamp(1, _totalWeeks)),
+                          onToday: () => setState(() => _week =
+                              weekOfDate(bundle.semester!, DateTime.now())
+                                  .clamp(1, _totalWeeks)),
+                          onSync: _manualSync,
+                          onExtra: () => _notReady('补课'),
+                          onManage: () => _notReady('管理课程'),
+                          onOpenAdjust: () => _notReady('本周调整'),
+                        ),
+                        Expanded(
+                          child: switch (_tab) {
+                            0 => TimetablePage(bundle: bundle, week: _week),
+                            1 => TodoPage(
+                                bundle: bundle,
+                                onChanged: _apply,
+                                customCategories: _settings.customCategories),
+                            _ => PlanPage(
+                                bundle: bundle,
+                                onChanged: _apply,
+                                window: _settings.planWindow,
+                                restWindows: bundle.restWindows),
+                          },
+                        ),
+                      ],
+                    ),
+            ),
+          ),
+          // 同步中：顶部一条玻璃提示（鸿蒙端也是"页面上方弹出同步提示"）
+          if (_syncing)
+            const Positioned(
+              left: 0,
+              right: 0,
+              top: 0,
+              child: SafeArea(
+                child: Center(
+                  child: Padding(
+                    padding: EdgeInsets.only(top: 10),
+                    child: Glass(
+                      padding:
+                          EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Text('正在与日历同步…',
+                          style: TextStyle(fontSize: 12, color: inkPrimary)),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
 }
-

@@ -11,6 +11,7 @@ const String legacyOther = 'other';
 
 /// 自定义类型名最长几个字
 const int categoryNameMax = 8;
+
 /// 自定义类型最多几个
 const int categoryMaxCount = 20;
 
@@ -22,7 +23,8 @@ class CategoryOption {
   final bool builtin;
   const CategoryOption(this.key, this.label, this.builtin);
 
-  Map<String, dynamic> toJson() => {'key': key, 'label': label, 'builtin': builtin};
+  Map<String, dynamic> toJson() =>
+      {'key': key, 'label': label, 'builtin': builtin};
 }
 
 class CategoryVerdict {
@@ -33,7 +35,13 @@ class CategoryVerdict {
   Map<String, dynamic> toJson() => {'ok': ok, 'message': message};
 }
 
-const List<String> _reservedKeys = ['homework', 'self', 'exam', 'none', legacyOther];
+const List<String> _reservedKeys = [
+  'homework',
+  'self',
+  'exam',
+  'none',
+  legacyOther
+];
 const List<String> _reservedLabels = ['作业', '自学', '考试', '无', '其他'];
 
 List<CategoryOption> builtinCategoryOptions() => const [
@@ -58,7 +66,8 @@ List<String> parseCustomCategories(String raw) {
   final out = <String>[];
   for (final p in raw.split(_sep)) {
     final name = p.trim();
-    if (name.isEmpty || name.length > categoryNameMax || _isReservedName(name)) continue;
+    if (name.isEmpty || name.length > categoryNameMax || _isReservedName(name))
+      continue;
     if (!out.contains(name)) out.add(name);
   }
   return out;
@@ -70,8 +79,10 @@ String serializeCustomCategories(List<String> list) =>
 CategoryVerdict validateCategoryName(String name, List<String> custom) {
   final t = name.trim();
   if (t.isEmpty) return const CategoryVerdict(false, '类型名不能为空');
-  if (t.length > categoryNameMax) return const CategoryVerdict(false, '类型名最多 $categoryNameMax 个字');
-  if (_isReservedName(t) || custom.contains(t)) return const CategoryVerdict(false, '这个类型已经有了');
+  if (t.length > categoryNameMax)
+    return const CategoryVerdict(false, '类型名最多 $categoryNameMax 个字');
+  if (_isReservedName(t) || custom.contains(t))
+    return const CategoryVerdict(false, '这个类型已经有了');
   if (custom.length >= categoryMaxCount) {
     return const CategoryVerdict(false, '自定义类型最多 $categoryMaxCount 个');
   }

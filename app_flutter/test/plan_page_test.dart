@@ -68,7 +68,7 @@ void main() {
 
     expect(find.text('线代'), findsWidgets, reason: '周五 3-4 节是线代的灰带');
     expect(find.text('实验报告'), findsWidgets, reason: '演示数据在周五放了一个块');
-    expect(find.text('10/16 周五'), findsOneWidget);
+    expect(find.text('10 月 16 日 周五'), findsOneWidget);
   });
 
   testWidgets('选中托盘里的待办 → 点网格 15:00 → 生成计划块', (tester) async {

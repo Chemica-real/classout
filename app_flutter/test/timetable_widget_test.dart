@@ -6,7 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:classout/data/backup.dart';
+import 'package:classout/data/repo.dart';
 import 'package:classout/domain/timetable.dart';
+import 'package:classout/ui/home_shell.dart';
 import 'package:classout/ui/timetable_page.dart';
 
 BackupBundle _demo() =>
@@ -19,12 +21,13 @@ void main() {
     tester.view.devicePixelRatio = 3.0;
     addTearDown(tester.view.reset);
 
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: TimetablePage(bundle: bundle))));
+    final sem0 = bundle.semester!;
+    final w0 = weekOfDate(sem0, DateTime.now()).clamp(1, sem0.totalWeeks);
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: TimetablePage(bundle: bundle, week: w0))));
     await tester.pumpAndSettle();
 
-    // 学期名 + 周次
-    expect(find.text('演示学期'), findsOneWidget);
-    expect(find.textContaining('第 '), findsWidgets);
+    // 页头（学期名 / 第 N 周）在外壳 HomeShell 上，这里只测表格本体
     // 七天表头
     expect(find.text('周一'), findsOneWidget);
     expect(find.text('周日'), findsOneWidget);
@@ -43,7 +46,9 @@ void main() {
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 3.0;
     addTearDown(tester.view.reset);
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: TimetablePage(bundle: _demo()))));
+    // 周次状态在**外壳**（页头也那儿），所以这条走 HomeShell
+    final repo = MemoryRepo(_demo());
+    await tester.pumpWidget(MaterialApp(home: HomeShell(repo: repo, fallback: _demo())));
     await tester.pumpAndSettle();
 
     final sem = _demo().semester!;

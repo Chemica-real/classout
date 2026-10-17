@@ -52,9 +52,9 @@ void main() {
 
     // ⚠️ 第一张卡是「待确认」，它的圆圈本来就不响应（要先点「确认」）；
     // 这里精确点「实验报告」那张卡里的圆圈
-    final card = find.ancestor(of: find.text('实验报告'), matching: find.byType(Glass));
-    await tester.tap(find.descendant(
-        of: card, matching: find.byIcon(Icons.radio_button_unchecked)));
+    // 行首那颗「○」是文字（鸿蒙端也是 Text('○')，不是图标）
+    final card = find.ancestor(of: find.text('实验报告'), matching: find.byType(Container)).first;
+    await tester.tap(find.descendant(of: card, matching: find.text('○')));
     await tester.pumpAndSettle();
 
     expect(last, isNotNull, reason: '点圆圈应该触发 onChanged');
@@ -140,7 +140,7 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('新建待办'));
+    await tester.tap(find.text('+ 新建待办'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).first, '新的作业');
     await tester.tap(find.widgetWithText(FilledButton, '保存'));
