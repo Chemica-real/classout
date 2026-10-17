@@ -59,6 +59,9 @@ Future<void> _openImport(WidgetTester tester) async {
   }
   await tester.tap(find.text('管理课程'));
   await tester.pumpAndSettle();
+  // 鸿蒙结构：列表首屏三张入口卡 →「备份与恢复」→「从备份文件导入…」
+  await tester.tap(find.byKey(const ValueKey('entry-backup')));
+  await tester.pumpAndSettle();
   final btn = find.byKey(const ValueKey('manager-import'));
   await tester.ensureVisible(btn);
   await tester.pumpAndSettle();

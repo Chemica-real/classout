@@ -36,6 +36,10 @@ void main() {
   testWidgets('打开课程管理：列出 4 门课与学期摘要', (tester) async {
     await _pump(tester);
     expect(find.text('课程与学期'), findsWidgets);
+    // 课程卡照鸿蒙：彩色简称胶囊 + 全名 + 逐条时段 + ⚙ 模板行
+    expect(find.textContaining('节 · 1-16'), findsWidgets);
+    expect(find.text('学期'), findsOneWidget);
+    expect(find.text('备份与恢复'), findsOneWidget);
     expect(find.text('课程（4）'), findsOneWidget);
     expect(find.textContaining('线代'), findsWidgets);
   });
@@ -74,7 +78,7 @@ void main() {
     final repo = await _pump(tester);
     await _tapVisible(tester, find.byKey(const ValueKey('course-4')));
     await _tapVisible(tester, find.text('+ 添加模板'));
-    expect(find.text('添加待办模板'), findsOneWidget);
+    expect(find.text('添加生成模板'), findsOneWidget);
 
     final title = find.descendant(
         of: find.byType(Dialog).last, matching: find.byType(TextField)).first;
@@ -173,7 +177,7 @@ void main() {
     await _tapVisible(tester, find.text('清空本学期课程'));
     expect((await repo.load())!.courses.length, 4, reason: '第一次点不能真删');
 
-    await _tapVisible(tester, find.text('确认清空本学期课程'));
+    await _tapVisible(tester, find.text('确定重载'));
     final saved = (await repo.load())!;
     expect(saved.courses, isEmpty);
     expect(saved.rules, isEmpty);
@@ -185,6 +189,7 @@ void main() {
 
   testWidgets('诊断信息显示各表条数', (tester) async {
     await _pump(tester);
+    await _tapVisible(tester, find.byKey(const ValueKey('entry-backup')));
     expect(find.text('诊断信息'), findsOneWidget);
     expect(find.textContaining('课程 4'), findsWidgets);
     expect(find.textContaining('待办 6'), findsWidgets);
@@ -192,6 +197,7 @@ void main() {
 
   testWidgets('新建学期（不复制）→ 学期 +1，当前学期不变', (tester) async {
     final repo = await _pump(tester);
+    await _tapVisible(tester, find.byKey(const ValueKey('entry-semester')));
     await _tapVisible(tester, find.text('+ 新建学期'));
     // 关掉「复制课表」再创建
     await _tapVisible(tester, find.byType(Switch).last);
@@ -207,6 +213,7 @@ void main() {
   testWidgets('新建学期 + 复制课表 → 课程/时段/节次都各多一份（换新 id）',
       (tester) async {
     final repo = await _pump(tester);
+    await _tapVisible(tester, find.byKey(const ValueKey('entry-semester')));
     await _tapVisible(tester, find.text('+ 新建学期'));
     await _tapVisible(tester, find.widgetWithText(FilledButton, '创建'));
 
@@ -241,6 +248,7 @@ void main() {
 
   testWidgets('把第二个学期设为当前 → 顺序换了、课表切过去', (tester) async {
     final repo = await _pump(tester);
+    await _tapVisible(tester, find.byKey(const ValueKey('entry-semester')));
     await _tapVisible(tester, find.text('+ 新建学期'));
     await _tapVisible(tester, find.widgetWithText(FilledButton, '创建'));
     await _tapVisible(tester, find.text('设为当前'));

@@ -22,6 +22,24 @@ import 'section_times_editor.dart';
 import 'theme.dart';
 
 /// 复制一份 bundle，只换 courses / rules / templates
+/// 截止规则的键与中文标签（与 ArkTS `DD_RULES` / `DD_LABELS` 同序）
+const List<String> kDdRules = [
+  'next_session',
+  'weekday',
+  'week_end',
+  'same_day',
+  'days',
+  'none',
+];
+const List<String> kDdLabels = [
+  '下一次同门课当天 23:59',
+  '指定星期几 23:59',
+  '本周日 23:59',
+  '布置当天 23:59',
+  'N 天后 23:59',
+  '不设截止',
+];
+
 BackupBundle _with(
   BackupBundle b, {
   List<Semester>? semesters,
@@ -92,9 +110,6 @@ class _Manager extends StatefulWidget {
 class _ManagerState extends State<_Manager> {
   late BackupBundle _b = widget.bundle;
 
-  /// 上次「导出备份」写出来的文件路径（同一次打开里一直显示，方便复制）
-  String? _exportPath;
-
   /// 「清空本学期课程」的二次确认状态
   bool _confirmClear = false;
 
@@ -103,10 +118,6 @@ class _ManagerState extends State<_Manager> {
     widget.onChanged(next);
   }
 
-  int _rulesOf(int courseId) =>
-      _b.rules.where((r) => r.courseId == courseId).length;
-  int _templatesOf(int courseId) =>
-      _b.templates.where((t) => t.courseId == courseId).length;
 
   @override
   Widget build(BuildContext context) {
@@ -151,13 +162,26 @@ class _ManagerState extends State<_Manager> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _semesterSection(),
-                        _summary(
+                        // 鸿蒙列表首屏是**三张入口卡**：学期 / 上课节次时间 / 备份与恢复
+                        _entryRow(
+                          key: const ValueKey('entry-semester'),
+                          '学期',
+                          _b.semester == null
+                              ? ''
+                              : '${_b.semester!.name} · ${_b.semester!.startDate} 起 · '
+                                  '${_b.semester!.totalWeeks} 周',
+                          onTap: _openSemesterSheet,
+                        ),
+                        _entryRow(
+                          key: const ValueKey('entry-sections'),
                           '上课节次时间',
                           '${_b.sectionTimes.length} 节 · 可随意改',
                           onTap: _openSections,
                         ),
-                        const SizedBox(height: 10),
+                        _entryRow('备份与恢复', '导出 JSON / 整份恢复 / 诊断',
+                            key: const ValueKey('entry-backup'),
+                            onTap: _openBackupSheet),
+                        const SizedBox(height: 8),
                         Row(
                           children: [
                             Text('课程（${_b.courses.length}）',
@@ -183,9 +207,64 @@ class _ManagerState extends State<_Manager> {
                                     fontSize: 12, color: Color(0xFF8B97AC))),
                           ),
                         for (final c in _b.courses) _courseCard(c),
-                        const SizedBox(height: 6),
-                        _backupCard(),
-                        _diagnoseCard(),
+                        // 清空本学期课程放在列表末尾（鸿蒙同位置），两次确认
+                        if (_b.courses.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          if (_confirmClear)
+                            Row(
+                              children: [
+                                const Expanded(
+                                  child: Text(
+                                      '确定清空本学期的全部课程？课程、上课时段与生成模板都会删掉，手改的内容会丢。',
+                                      style: TextStyle(
+                                          fontSize: 11,
+                                          color: Color(0xFFFF8A8A))),
+                                ),
+                                GestureDetector(
+                                  onTap: () =>
+                                      setState(() => _confirmClear = false),
+                                  behavior: HitTestBehavior.opaque,
+                                  child: const Padding(
+                                    padding:
+                                        EdgeInsets.symmetric(horizontal: 8),
+                                    child: Text('取消',
+                                        style: TextStyle(
+                                            fontSize: 12,
+                                            color: Color(0xFFA9B5C9))),
+                                  ),
+                                ),
+                                GestureDetector(
+                                  onTap: _clearSemesterCourses,
+                                  behavior: HitTestBehavior.opaque,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFD64545),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Text('确定重载',
+                                        style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.white)),
+                                  ),
+                                ),
+                              ],
+                            )
+                          else
+                            GestureDetector(
+                              onTap: () =>
+                                  setState(() => _confirmClear = true),
+                              behavior: HitTestBehavior.opaque,
+                              child: const Padding(
+                                padding: EdgeInsets.only(top: 8),
+                                child: Text('清空本学期课程',
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: Color(0xFF8B97AC))),
+                              ),
+                            ),
+                        ],
                       ],
                     ),
                   ),
@@ -198,24 +277,67 @@ class _ManagerState extends State<_Manager> {
     );
   }
 
-  Widget _summary(String label, String value, {VoidCallback? onTap}) {
+  /// 入口卡（鸿蒙列表里那三张）：左标题 15 Medium，右侧摘要 12 灰字
+  Widget _entryRow(String title, String summary,
+      {VoidCallback? onTap, Key? key}) {
     return GestureDetector(
+      key: key,
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        margin: const EdgeInsets.only(bottom: 8),
+        decoration: BoxDecoration(
+          color: glassTintRow,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: glassEdgeSoft),
+        ),
+        child: Row(
           children: [
-            Text(label,
-                style: const TextStyle(fontSize: 12, color: Color(0xFF94A0B5))),
-            const SizedBox(height: 2),
-            Text(value, style: const TextStyle(fontSize: 13, color: inkPrimary)),
+            Text(title,
+                style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: inkPrimary)),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text(summary,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style:
+                      const TextStyle(fontSize: 12, color: Color(0xFF94A0B5))),
+            ),
           ],
         ),
       ),
     );
   }
+
+  Future<void> _openSemesterSheet() async {
+    await showDialog<void>(
+      context: context,
+      barrierColor: const Color(0x990C1220),
+      builder: (ctx) => _SemesterSheet(
+        b: _b,
+        onChanged: (next) => _apply(next),
+      ),
+    );
+  }
+
+  Future<void> _openBackupSheet() async {
+    await showDialog<void>(
+      context: context,
+      barrierColor: const Color(0x990C1220),
+      builder: (ctx) => _BackupSheet(
+        b: _b,
+        onChanged: (next) => _apply(next),
+        onImport: widget.onImport,
+      ),
+    );
+  }
+
 
   /// 「上课节次时间」子页（鸿蒙端 SectionsView）：改完立刻影响课表格子排布
   Future<void> _openSections() async {
@@ -231,9 +353,14 @@ class _ManagerState extends State<_Manager> {
     ]));
   }
 
+  /// 课程卡（鸿蒙 `lc-` 那张）：彩色简称胶囊 + 全名，下面逐条列时段与模板
   Widget _courseCard(Course c) {
-    final rules = _rulesOf(c.id);
-    final templates = _templatesOf(c.id);
+    final rules = _b.rules.where((r) => r.courseId == c.id).toList()
+      ..sort((a, b) => a.weekday == b.weekday
+          ? a.startSection - b.startSection
+          : a.weekday - b.weekday);
+    final templates = _b.templates.where((t) => t.courseId == c.id).toList();
+    final lessons = _b.lessons.where((l) => l.courseId == c.id).toList();
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: GestureDetector(
@@ -241,55 +368,69 @@ class _ManagerState extends State<_Manager> {
         onTap: () => _openCourse(c),
         behavior: HitTestBehavior.opaque,
         child: Container(
+          width: double.infinity,
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: glassTintRow,
-            borderRadius: BorderRadius.circular(glassRadius),
+            borderRadius: BorderRadius.circular(10),
             border: Border.all(color: glassEdgeSoft),
           ),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(
-                    color: courseColor(c.colorIndex), shape: BoxShape.circle),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      c.shortName.isNotEmpty
-                          ? '${c.shortName}（${c.name}）'
-                          : c.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 15, color: inkPrimary),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: courseColor(c.colorIndex),
+                      borderRadius: BorderRadius.circular(4),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      [
-                        if (c.teacher.isNotEmpty) c.teacher,
-                        if (c.location.isNotEmpty) c.location,
-                        '$rules 个时段',
-                        '$templates 个模板',
-                        if (_b.lessons.any((l) => l.courseId == c.id))
-                          '${_b.lessons.where((l) => l.courseId == c.id).length} 课时',
-                        if (c.isVirtual) '虚拟课程',
-                        if (!c.autoTodoEnabled) '不自动生成',
-                      ].join(' · '),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    child: Text(
+                        c.shortName.isNotEmpty ? c.shortName : c.name,
+                        style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFFF2F5FA))),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(c.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize: 13, color: Color(0xFFC3CDDE))),
+                  ),
+                  if (!c.autoTodoEnabled)
+                    const Text('不自动生成',
+                        style: TextStyle(
+                            fontSize: 10, color: Color(0xFF8B97AC))),
+                ],
+              ),
+              for (final r in rules)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(_ruleText(r),
                       style: const TextStyle(
-                          fontSize: 11, color: Color(0xFF94A0B5)),
-                    ),
-                  ],
+                          fontSize: 11, color: Color(0xFF9BA7BD))),
                 ),
-              ),
-              const Icon(Icons.chevron_right,
-                  size: 20, color: Color(0xFF8B97AC)),
+              for (final t in templates)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text('⚙ ${_tplText(t)}',
+                      style: const TextStyle(
+                          fontSize: 11, color: Color(0xFF7BD69A))),
+                ),
+              if (c.isVirtual)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                      '虚拟课程 · ${lessons.length} 讲，'
+                      '已完成 ${lessons.where((l) => l.done).length}',
+                      style: const TextStyle(
+                          fontSize: 11, color: Color(0xFFE0A94E))),
+                ),
             ],
           ),
         ),
@@ -297,116 +438,32 @@ class _ManagerState extends State<_Manager> {
     );
   }
 
-  /// 「备份与恢复」：导出 JSON 到应用文档目录（鸿蒙端是同名子页）
-  Widget _backupCard() {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: glassEdgeSoft),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('备份与恢复',
-              style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: inkPrimary)),
-          const SizedBox(height: 4),
-          const Text(
-              '数据只在这台手机里。导出会把全部内容写成一个 JSON 文件放在应用文档目录，'
-              '恢复则用它整份覆盖当前数据。',
-              style: TextStyle(fontSize: 11, color: Color(0xFF94A0B5))),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              _PillAction(text: '导出备份', onTap: _export),
-              if (widget.onImport != null) const SizedBox(width: 8),
-              if (widget.onImport != null)
-                _PillAction(
-                  key: const ValueKey('manager-import'),
-                  text: '导入备份…',
-                  onTap: () async {
-                    final nav = Navigator.of(context);
-                    await widget.onImport!();
-                    if (mounted) nav.maybePop();
-                  },
-                ),
-              if (_exportPath != null) const SizedBox(width: 8),
-              if (_exportPath != null)
-                _PillAction(
-                  text: '复制路径',
-                  onTap: () async {
-                    await Clipboard.setData(ClipboardData(text: _exportPath!));
-                    if (!mounted) return;
-                    ScaffoldMessenger.of(context)
-                        .showSnackBar(const SnackBar(content: Text('路径已复制')));
-                  },
-                ),
-            ],
-          ),
-          if (_exportPath != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: SelectableText(_exportPath!,
-                  style:
-                      const TextStyle(fontSize: 11, color: Color(0xFF8FC9A0))),
-            ),
-          const SizedBox(height: 8),
-          Text(backupSummary(_b),
-              style: const TextStyle(
-                  fontSize: 11, height: 1.5, color: Color(0xFF8B97AC))),
-        ],
-      ),
-    );
+  /// 时段一行（鸿蒙 `ruleText`）：周X 3-4 节 · 1-16 · 习题课
+  String _ruleText(SessionRule r) {
+    final sec = r.startSection == r.endSection
+        ? '${r.startSection}'
+        : '${r.startSection}-${r.endSection}';
+    final quiz = r.isQuiz ? ' 习题课' : '';
+    return '周${weekdayCn[r.weekday - 1]} $sec 节 · ${maskToText(r.weeksMask)}$quiz';
   }
 
-  /// 诊断信息（鸿蒙端「备份与恢复」子页里那块）：一眼看清各表条数
-  Widget _diagnoseCard() {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      margin: const EdgeInsets.only(top: 8),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: glassEdgeSoft),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('诊断信息',
-              style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: inkPrimary)),
-          const SizedBox(height: 6),
-          Text(backupSummary(_b),
-              style: const TextStyle(
-                  fontSize: 11, height: 1.5, color: Color(0xFF8B97AC))),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              _PillAction(text: '刷新', onTap: () => setState(() {})),
-              const SizedBox(width: 8),
-              _PillAction(
-                text: _confirmClear ? '确认清空本学期课程' : '清空本学期课程',
-                danger: true,
-                onTap: _clearSemesterCourses,
-              ),
-            ],
-          ),
-          if (_confirmClear)
-            const Padding(
-              padding: EdgeInsets.only(top: 6),
-              child: Text('会删掉本学期的课程、时段规则与待办模板；待办与计划块不动。',
-                  style: TextStyle(fontSize: 11, color: Color(0xFFE8B25C))),
-            ),
-        ],
-      ),
-    );
+  /// 模板一行（鸿蒙 `tplText`）：标题 · 截止：<规则>（参数） · 预计 N 分钟
+  String _tplText(TodoTemplate t) {
+    final idx = kDdRules.indexOf(t.ddlRule);
+    final label = idx >= 0 ? kDdLabels[idx] : t.ddlRule;
+    var param = '';
+    if (t.ddlRule == 'weekday' && t.ddlParam.isNotEmpty) {
+      final w = int.tryParse(t.ddlParam) ?? 0;
+      if (w >= 1 && w <= 7) param = '（周${weekdayCn[w - 1]}）';
+    } else if (t.ddlRule == 'days' && t.ddlParam.isNotEmpty) {
+      param = '（${t.ddlParam} 天）';
+    }
+    return '${t.titleTemplate} · 截止：$label$param · 预计 ${t.estimateMin} 分钟';
   }
+
+  /// 「备份与恢复」：导出 JSON 到应用文档目录（鸿蒙端是同名子页）
+
+  /// 诊断信息（鸿蒙端「备份与恢复」子页里那块）：一眼看清各表条数
 
   /// 清空本学期课程（二次确认；对应鸿蒙端「清空本学期课程」）
   void _clearSemesterCourses() {
@@ -428,95 +485,10 @@ class _ManagerState extends State<_Manager> {
     ));
   }
 
-  Future<void> _export() async {
-    try {
-      final path = await writeBackupFile(backupToJson(_b));
-      if (!mounted) return;
-      setState(() => _exportPath = path);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('已导出到 App 文档目录')));
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('导出失败：$e')));
-    }
-  }
 
   /// 「学期」区块：列出全部学期（第一个 = 当前）、可切换、可新建（可顺便复制课表）
-  Widget _semesterSection() {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      margin: const EdgeInsets.only(top: 4),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: glassEdgeSoft),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text('学期 ${_b.semesters.length} 个',
-                  style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: inkPrimary)),
-              const Spacer(),
-              _PillAction(text: '+ 新建学期', onTap: _createSemester),
-            ],
-          ),
-          const SizedBox(height: 6),
-          for (var i = 0; i < _b.semesters.length; i++)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 3),
-              child: Row(
-                children: [
-                  if (i == 0)
-                    const Padding(
-                      padding: EdgeInsets.only(right: 6),
-                      child: Text('当前',
-                          style: TextStyle(fontSize: 11, color: accentBlue)),
-                    ),
-                  Expanded(
-                    child: Text(
-                      '${_b.semesters[i].name} · ${_b.semesters[i].totalWeeks} 周 · '
-                      '${_b.semesters[i].startDate} 开学',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 12,
-                          color: i == 0 ? inkPrimary : const Color(0xFFC3CDDE)),
-                    ),
-                  ),
-                  if (i > 0)
-                    _MiniAction(
-                      text: '设为当前',
-                      color: accentBlue,
-                      onTap: () => _setCurrentSemester(i),
-                    ),
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
 
-  void _setCurrentSemester(int index) {
-    if (index <= 0 || index >= _b.semesters.length) return;
-    final list = List.of(_b.semesters);
-    final picked = list.removeAt(index);
-    _apply(_with(_b, semesters: [picked, ...list]));
-  }
 
-  Future<void> _createSemester() async {
-    final next = await showDialog<BackupBundle>(
-      context: context,
-      builder: (_) => _SemesterDialog(b: _b),
-    );
-    if (next != null) _apply(next);
-  }
 
   Future<void> _openCourse(Course? existing) async {
     final next = await showDialog<BackupBundle>(
@@ -532,10 +504,8 @@ class _PillAction extends StatelessWidget {
   final String text;
   final VoidCallback onTap;
 
-  /// 危险动作（红字红底）
-  final bool danger;
-  const _PillAction(
-      {super.key, required this.text, required this.onTap, this.danger = false});
+
+  const _PillAction({required this.text, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -1252,7 +1222,7 @@ class _TemplateDialogState extends State<_TemplateDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(widget.existing == null ? '添加待办模板' : '修改待办模板',
+              Text(widget.existing == null ? '添加生成模板' : '编辑生成模板',
                   style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w500,
@@ -1291,18 +1261,11 @@ class _TemplateDialogState extends State<_TemplateDialog> {
                 spacing: 6,
                 runSpacing: 6,
                 children: [
-                  for (final r in const [
-                    ('none', '不设截止'),
-                    ('same_day', '当天'),
-                    ('days', 'N 天后'),
-                    ('weekday', '指定星期'),
-                    ('week_end', '本周日'),
-                    ('next_session', '下次课'),
-                  ])
+                  for (var i = 0; i < kDdRules.length; i++)
                     _Chip(
-                      text: r.$2,
-                      selected: _rule == r.$1,
-                      onTap: () => setState(() => _rule = r.$1),
+                      text: kDdLabels[i],
+                      selected: _rule == kDdRules[i],
+                      onTap: () => setState(() => _rule = kDdRules[i]),
                     ),
                 ],
               ),
@@ -1749,6 +1712,465 @@ class _SemesterDialogState extends State<_SemesterDialog> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ---------------- 子页：学期设置（鸿蒙 SemesterView）----------------
+
+class _SemesterSheet extends StatefulWidget {
+  final BackupBundle b;
+  final void Function(BackupBundle next) onChanged;
+  const _SemesterSheet({required this.b, required this.onChanged});
+
+  @override
+  State<_SemesterSheet> createState() => _SemesterSheetState();
+}
+
+class _SemesterSheetState extends State<_SemesterSheet> {
+  late BackupBundle _b = widget.b;
+  late final TextEditingController _name =
+      TextEditingController(text: _b.semester?.name ?? '');
+  late int _weeks = _b.semester?.totalWeeks ?? 16;
+
+  void _apply(BackupBundle next) {
+    setState(() => _b = next);
+    widget.onChanged(next);
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickStart() async {
+    final sem = _b.semester;
+    if (sem == null) return;
+    final d = await showDatePicker(
+      context: context,
+      initialDate: parseDate(sem.startDate),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (d == null || !mounted) return;
+    final list = _b.semesters
+        .map((s) => s.id == sem.id
+            ? Semester(
+                id: s.id,
+                name: s.name,
+                startDate: formatDate(d),
+                totalWeeks: s.totalWeeks,
+                firstDayOfWeek: s.firstDayOfWeek,
+                showWeekend: s.showWeekend)
+            : s)
+        .toList();
+    _apply(_with(_b, semesters: list));
+  }
+
+  void _saveSemester() {
+    final sem = _b.semester;
+    if (sem == null) return;
+    if (_name.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('学期名称不能为空')));
+      return;
+    }
+    final list = _b.semesters
+        .map((s) => s.id == sem.id
+            ? Semester(
+                id: s.id,
+                name: _name.text.trim(),
+                startDate: s.startDate,
+                totalWeeks: _weeks,
+                firstDayOfWeek: s.firstDayOfWeek,
+                showWeekend: s.showWeekend)
+            : s)
+        .toList();
+    _apply(_with(_b, semesters: list));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('学期设置已保存')));
+  }
+
+  Future<void> _createSemester() async {
+    final next = await showDialog<BackupBundle>(
+      context: context,
+      builder: (_) => _SemesterDialog(b: _b),
+    );
+    if (next != null) _apply(next);
+  }
+
+  void _setCurrent(int index) {
+    if (index <= 0 || index >= _b.semesters.length) return;
+    final list = List.of(_b.semesters);
+    final picked = list.removeAt(index);
+    _apply(_with(_b, semesters: [picked, ...list]));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sem = _b.semester;
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.all(floatSide),
+      child: Glass(
+        sheet: true,
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.82),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).pop(),
+                    behavior: HitTestBehavior.opaque,
+                    child: const Text('‹ 返回',
+                        style:
+                            TextStyle(fontSize: 15, color: Color(0xFF7FA8FF))),
+                  ),
+                  const Spacer(),
+                  const Text('学期设置',
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                          color: inkPrimary)),
+                  const Spacer(),
+                  const SizedBox(width: 44),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('学期名称',
+                          style: TextStyle(
+                              fontSize: 12, color: Color(0xFF94A0B5))),
+                      const SizedBox(height: 4),
+                      _sheetInput(_name, '2026 秋季学期'),
+                      const SizedBox(height: 12),
+                      const Text('第一教学周周一',
+                          style: TextStyle(
+                              fontSize: 12, color: Color(0xFF94A0B5))),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                                sem == null || sem.startDate.isEmpty
+                                    ? '未选择'
+                                    : sem.startDate,
+                                style: const TextStyle(
+                                    fontSize: 15, color: Color(0xFFF2F5FA))),
+                          ),
+                          _PillAction(text: '选择日期…', onTap: _pickStart),
+                        ],
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.only(top: 4),
+                        child: Text('北大 2026 秋季：9/7 开学，16 个教学周（到 12/27）',
+                            style: TextStyle(
+                                fontSize: 11, color: Color(0xFF8B97AC))),
+                      ),
+                      const SizedBox(height: 12),
+                      const Text('教学周数',
+                          style: TextStyle(
+                              fontSize: 12, color: Color(0xFF94A0B5))),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: [
+                          for (final n in const [14, 15, 16, 17, 18, 20])
+                            _MiniChip(
+                              text: '$n 周',
+                              selected: _weeks == n,
+                              onTap: () => setState(() => _weeks = n),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      _sheetButton('保存学期设置', _saveSemester),
+                      const SizedBox(height: 10),
+                      // 所有学期：当前 = 第一个
+                      Row(
+                        children: [
+                          const Expanded(
+                            child: Text('所有学期',
+                                style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    color: inkPrimary)),
+                          ),
+                          _PillAction(text: '+ 新建学期', onTap: _createSemester),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      for (var i = 0; i < _b.semesters.length; i++)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 3),
+                          child: Row(
+                            children: [
+                              if (i == 0)
+                                const Padding(
+                                  padding: EdgeInsets.only(right: 6),
+                                  child: Text('当前',
+                                      style: TextStyle(
+                                          fontSize: 11, color: accentBlue)),
+                                ),
+                              Expanded(
+                                child: Text(
+                                  '${_b.semesters[i].name} · '
+                                  '${_b.semesters[i].totalWeeks} 周 · '
+                                  '${_b.semesters[i].startDate} 开学',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: i == 0
+                                          ? inkPrimary
+                                          : const Color(0xFFC3CDDE)),
+                                ),
+                              ),
+                              if (i > 0)
+                                _MiniAction(
+                                  text: '设为当前',
+                                  color: accentBlue,
+                                  onTap: () => _setCurrent(i),
+                                ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------- 子页：备份与恢复（鸿蒙 BackupView）----------------
+
+class _BackupSheet extends StatefulWidget {
+  final BackupBundle b;
+  final void Function(BackupBundle next) onChanged;
+  final Future<void> Function()? onImport;
+  const _BackupSheet(
+      {required this.b, required this.onChanged, this.onImport});
+
+  @override
+  State<_BackupSheet> createState() => _BackupSheetState();
+}
+
+class _BackupSheetState extends State<_BackupSheet> {
+  late final BackupBundle _b = widget.b;
+  String? _exportPath;
+
+  Future<void> _export() async {
+    try {
+      final path = await writeBackupFile(backupToJson(_b));
+      if (!mounted) return;
+      setState(() => _exportPath = path);
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已导出到 App 文档目录')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('导出失败：$e')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.all(floatSide),
+      child: Glass(
+        sheet: true,
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.82),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).pop(),
+                    behavior: HitTestBehavior.opaque,
+                    child: const Text('‹ 返回',
+                        style:
+                            TextStyle(fontSize: 15, color: Color(0xFF7FA8FF))),
+                  ),
+                  const Spacer(),
+                  const Text('备份与恢复',
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                          color: inkPrimary)),
+                  const Spacer(),
+                  const SizedBox(width: 44),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                          '数据只在这台手机里。导出会把全部内容写成一个 JSON 文件放在应用文档目录，'
+                          '恢复则用它整份覆盖当前数据。',
+                          style: TextStyle(
+                              fontSize: 11, color: Color(0xFF94A0B5))),
+                      const SizedBox(height: 12),
+                      _sheetButton('导出备份到文件', _export),
+                      if (_exportPath != null) ...[
+                        const SizedBox(height: 10),
+                        const Text('备份文件路径',
+                            style: TextStyle(
+                                fontSize: 12, color: Color(0xFF94A0B5))),
+                        const SizedBox(height: 4),
+                        SelectableText(_exportPath!,
+                            style: const TextStyle(
+                                fontSize: 11, color: Color(0xFFC3CDDE))),
+                        const SizedBox(height: 6),
+                        _PillAction(
+                          text: '复制路径',
+                          onTap: () async {
+                            final messenger = ScaffoldMessenger.of(context);
+                            await Clipboard.setData(
+                                ClipboardData(text: _exportPath!));
+                            messenger.showSnackBar(
+                                const SnackBar(content: Text('路径已复制')));
+                          },
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      if (widget.onImport != null)
+                        _sheetButton('从备份文件导入…', () async {
+                          final nav = Navigator.of(context);
+                          await widget.onImport!();
+                          if (mounted) nav.pop();
+                        }, secondary: true, key: const ValueKey('manager-import')),
+                      const SizedBox(height: 22),
+                      Row(
+                        children: [
+                          const Text('诊断信息',
+                              style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                  color: inkPrimary)),
+                          const Spacer(),
+                          _PillAction(
+                              text: '刷新', onTap: () => setState(() {})),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(backupSummary(_b),
+                          style: const TextStyle(
+                              fontSize: 11,
+                              height: 1.5,
+                              color: Color(0xFF8B97AC))),
+                      const SizedBox(height: 12),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 胶囊输入框（鸿蒙裸 TextInput）
+Widget _sheetInput(TextEditingController c, String hint) {
+  return Container(
+    height: 40,
+    padding: const EdgeInsets.symmetric(horizontal: 12),
+    alignment: Alignment.centerLeft,
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: 0.10),
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: TextField(
+      controller: c,
+      style: const TextStyle(fontSize: 14, color: inkPrimary),
+      cursorColor: accentBlue,
+      decoration: InputDecoration(
+        isDense: true,
+        border: InputBorder.none,
+        hintText: hint,
+        hintStyle: const TextStyle(fontSize: 14, color: Color(0xFF8B97AC)),
+      ),
+    ),
+  );
+}
+
+/// 子页里的整宽蓝按钮
+Widget _sheetButton(String text, VoidCallback onTap,
+    {bool secondary = false, Key? key}) {
+  return GestureDetector(
+    key: key,
+    onTap: onTap,
+    behavior: HitTestBehavior.opaque,
+    child: Container(
+      height: 40,
+      width: double.infinity,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: secondary
+            ? Colors.white.withValues(alpha: 0.14)
+            : const Color(0xFF2E6BE6),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(text,
+          style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: secondary ? const Color(0xFFC3CDDE) : Colors.white)),
+    ),
+  );
+}
+
+class _MiniChip extends StatelessWidget {
+  final String text;
+  final bool selected;
+  final VoidCallback onTap;
+  const _MiniChip(
+      {required this.text, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected
+              ? const Color(0xFF2E6BE6)
+              : Colors.white.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text(text,
+            style: TextStyle(
+                fontSize: 12,
+                color: selected ? Colors.white : const Color(0xFFC3CDDE))),
       ),
     );
   }
