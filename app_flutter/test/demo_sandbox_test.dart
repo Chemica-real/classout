@@ -36,6 +36,9 @@ void main() {
     expect(b.todos[3].courseId, 0);
     expect(b.todos[0].note, '记得写过程');
     expect(b.todos[3].note, '顺手买支笔');
+    // 鸿蒙 seedDemoData 传的类型：作业 / 自学 / 作业 / 无
+    expect(b.todos.map((t) => t.category).toList(),
+        ['homework', 'self', 'homework', 'none']);
   });
 
   test('两个已排块：今天 14:00、明天 09:00；节次 12 节、不可排 4 段', () {

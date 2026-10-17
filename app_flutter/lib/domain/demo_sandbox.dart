@@ -114,6 +114,8 @@ BackupBundle buildDemoSandbox({DateTime? now}) {
         courseId: 1,
         ddl: ddlToday,
         estimateMin: 60,
+        // 鸿蒙 `seedDemoData`：这两条是「作业」，第二条是「自学」，第四条「无」
+        category: TodoCategory.homework,
         note: '记得写过程'),
     Todo(
         id: 2,
@@ -126,7 +128,8 @@ BackupBundle buildDemoSandbox({DateTime? now}) {
         id: 3,
         title: '预习第 2 章',
         courseId: 3,
-        estimateMin: 45),
+        estimateMin: 45,
+        category: TodoCategory.homework),
     Todo(
         id: 4,
         title: '买笔记本',

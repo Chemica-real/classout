@@ -6655,3 +6655,16 @@ cd app_flutter && flutter build apk --debug && adb -s 7D7PAQ9PORLR79Z9 install -
 - 真机（OPPO A97）对照 `04-settings.jpg`：沙箱设置页现在也是「默认渐变 + 从相册选一张 + 标语 22/32」，
   退出后壁纸/标语/动效都回到用户自己的值（logcat 里能看到 `restored prefs from sandbox snapshot`）。
 - `flutter test`：**1284 passed**。
+
+### 116.17 演练沙箱的演示待办补上类型标签（和 `seedDemoData` 逐字段对齐）
+
+对着 `GuideRepo.seedDemoData` 逐字段核了一遍演示数据，只有一处不一致：
+鸿蒙四条演示待办的类型是 **作业 / 自学 / 作业 / 无**，安卓的 `buildDemoSandbox` 只给了第二条「自学」，
+第一、三条没写类型（默认 `none`）→ 待办页里少了两个「作业」小标签（真机沙箱截图和 `02-todo.jpg` 一比就看出来）。
+
+- `demo_sandbox.dart`：第 1、3 条补 `category: TodoCategory.homework`；
+  `demo_sandbox_test` 增加一条断言钉住 `['homework','self','homework','none']`。
+- 顺带核对了沙箱里其余字段：4 门课的名字/简称/教师/地点/**colorIndex**（2/1/3/0）、
+  6 条时段（含周三 10-11 的习题课）、每门一条 `%D作业` 模板、学期「演练学期」本周一开学 16 周、
+  12 节 PKU 作息、4 段默认不可排、两个计划块（今天 14:00、明天 09:00）——全部与鸿蒙一致。
+- `flutter test`：**1284 passed**。
