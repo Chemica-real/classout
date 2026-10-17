@@ -75,7 +75,13 @@ void main() {
     final h = await _pump(tester);
     expect(h.last, isNull);
 
+    // 托盘默认收起（鸿蒙端 TraySummonBar），先点开
+    await tester.tap(find.byKey(const ValueKey('tray-toggle')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('pool-5')));
+    await tester.pumpAndSettle();
+    // 选完收起托盘，免得展开的面板把网格下半截挤出视口
+    await tester.tap(find.byKey(const ValueKey('tray-toggle')));
     await tester.pumpAndSettle();
 
     final col = find.byKey(const ValueKey('plan-day-2026-10-17'));
@@ -155,9 +161,13 @@ void main() {
   testWidgets('⚡找空档：落点不与课表/不可排时段重叠', (tester) async {
     final h = await _pump(tester);
 
+    // 托盘默认收起（鸿蒙端 TraySummonBar），先点开
+    await tester.tap(find.byKey(const ValueKey('tray-toggle')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('pool-5')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('find-slot')));
+    // 卡片自己的「⚡ 找空档」
+    await tester.tap(find.byKey(const ValueKey('pool-find-5')));
     await tester.pumpAndSettle();
 
     final b = h.last;
