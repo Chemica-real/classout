@@ -1,0 +1,1272 @@
+{
+ "module": "PlanMath",
+ "note": "由 tools/fixtures/gen.js 从鸿蒙端实现生成；iOS/Android 实现必须逐条一致。",
+ "generatedFrom": "entry/src/main/ets/domain/PlanMath.ets",
+ "cases": [
+  {
+   "fn": "snap",
+   "args": [
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "snap",
+   "args": [
+    7
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "snap",
+   "args": [
+    8
+   ],
+   "expect": 15
+  },
+  {
+   "fn": "snap",
+   "args": [
+    14
+   ],
+   "expect": 15
+  },
+  {
+   "fn": "snap",
+   "args": [
+    15
+   ],
+   "expect": 15
+  },
+  {
+   "fn": "snap",
+   "args": [
+    22
+   ],
+   "expect": 15
+  },
+  {
+   "fn": "snap",
+   "args": [
+    23
+   ],
+   "expect": 30
+  },
+  {
+   "fn": "snap",
+   "args": [
+    30
+   ],
+   "expect": 30
+  },
+  {
+   "fn": "snap",
+   "args": [
+    37
+   ],
+   "expect": 30
+  },
+  {
+   "fn": "snap",
+   "args": [
+    45
+   ],
+   "expect": 45
+  },
+  {
+   "fn": "snap",
+   "args": [
+    52
+   ],
+   "expect": 45
+  },
+  {
+   "fn": "snap",
+   "args": [
+    53
+   ],
+   "expect": 60
+  },
+  {
+   "fn": "snap",
+   "args": [
+    58
+   ],
+   "expect": 60
+  },
+  {
+   "fn": "snap",
+   "args": [
+    60
+   ],
+   "expect": 60
+  },
+  {
+   "fn": "snap",
+   "args": [
+    90
+   ],
+   "expect": 90
+  },
+  {
+   "fn": "snap",
+   "args": [
+    -3
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "snap",
+   "args": [
+    -8
+   ],
+   "expect": -15
+  },
+  {
+   "fn": "normalizeWindow",
+   "args": [
+    {
+     "startMin": 420,
+     "endMin": 1440
+    }
+   ],
+   "expect": {
+    "startMin": 420,
+    "endMin": 1440
+   }
+  },
+  {
+   "fn": "alignWindow",
+   "args": [
+    {
+     "startMin": 420,
+     "endMin": 1440
+    }
+   ],
+   "expect": {
+    "startMin": 420,
+    "endMin": 1440
+   }
+  },
+  {
+   "fn": "formatWindow",
+   "args": [
+    {
+     "startMin": 420,
+     "endMin": 1440
+    }
+   ],
+   "expect": "420,1440"
+  },
+  {
+   "fn": "normalizeWindow",
+   "args": [
+    {
+     "startMin": 490,
+     "endMin": 1370
+    }
+   ],
+   "expect": {
+    "startMin": 480,
+    "endMin": 1380
+   }
+  },
+  {
+   "fn": "alignWindow",
+   "args": [
+    {
+     "startMin": 490,
+     "endMin": 1370
+    }
+   ],
+   "expect": {
+    "startMin": 480,
+    "endMin": 1380
+   }
+  },
+  {
+   "fn": "formatWindow",
+   "args": [
+    {
+     "startMin": 490,
+     "endMin": 1370
+    }
+   ],
+   "expect": "480,1380"
+  },
+  {
+   "fn": "normalizeWindow",
+   "args": [
+    {
+     "startMin": 1380,
+     "endMin": 1500
+    }
+   ],
+   "expect": {
+    "startMin": 1380,
+    "endMin": 1440
+   }
+  },
+  {
+   "fn": "alignWindow",
+   "args": [
+    {
+     "startMin": 1380,
+     "endMin": 1500
+    }
+   ],
+   "expect": {
+    "startMin": 1380,
+    "endMin": 1440
+   }
+  },
+  {
+   "fn": "formatWindow",
+   "args": [
+    {
+     "startMin": 1380,
+     "endMin": 1500
+    }
+   ],
+   "expect": "1380,1440"
+  },
+  {
+   "fn": "normalizeWindow",
+   "args": [
+    {
+     "startMin": -30,
+     "endMin": 120
+    }
+   ],
+   "expect": {
+    "startMin": 0,
+    "endMin": 120
+   }
+  },
+  {
+   "fn": "alignWindow",
+   "args": [
+    {
+     "startMin": -30,
+     "endMin": 120
+    }
+   ],
+   "expect": {
+    "startMin": 0,
+    "endMin": 120
+   }
+  },
+  {
+   "fn": "formatWindow",
+   "args": [
+    {
+     "startMin": -30,
+     "endMin": 120
+    }
+   ],
+   "expect": "0,120"
+  },
+  {
+   "fn": "normalizeWindow",
+   "args": [
+    {
+     "startMin": 720,
+     "endMin": 740
+    }
+   ],
+   "expect": {
+    "startMin": 690,
+    "endMin": 750
+   }
+  },
+  {
+   "fn": "alignWindow",
+   "args": [
+    {
+     "startMin": 720,
+     "endMin": 740
+    }
+   ],
+   "expect": {
+    "startMin": 690,
+    "endMin": 750
+   }
+  },
+  {
+   "fn": "formatWindow",
+   "args": [
+    {
+     "startMin": 720,
+     "endMin": 740
+    }
+   ],
+   "expect": "690,750"
+  },
+  {
+   "fn": "normalizeWindow",
+   "args": [
+    {
+     "startMin": 569,
+     "endMin": 631
+    }
+   ],
+   "expect": {
+    "startMin": 570,
+    "endMin": 630
+   }
+  },
+  {
+   "fn": "alignWindow",
+   "args": [
+    {
+     "startMin": 569,
+     "endMin": 631
+    }
+   ],
+   "expect": {
+    "startMin": 570,
+    "endMin": 630
+   }
+  },
+  {
+   "fn": "formatWindow",
+   "args": [
+    {
+     "startMin": 569,
+     "endMin": 631
+    }
+   ],
+   "expect": "570,630"
+  },
+  {
+   "fn": "parseWindow",
+   "args": [
+    "07:00-24:00"
+   ],
+   "expect": {
+    "startMin": 420,
+    "endMin": 1440
+   }
+  },
+  {
+   "fn": "parseWindow",
+   "args": [
+    "07:00–24:00"
+   ],
+   "expect": {
+    "startMin": 420,
+    "endMin": 1440
+   }
+  },
+  {
+   "fn": "parseWindow",
+   "args": [
+    "8:00 - 22:30"
+   ],
+   "expect": {
+    "startMin": 420,
+    "endMin": 1440
+   }
+  },
+  {
+   "fn": "parseWindow",
+   "args": [
+    "00:00-23:30"
+   ],
+   "expect": {
+    "startMin": 420,
+    "endMin": 1440
+   }
+  },
+  {
+   "fn": "parseWindow",
+   "args": [
+    "乱写"
+   ],
+   "expect": {
+    "startMin": 420,
+    "endMin": 1440
+   }
+  },
+  {
+   "fn": "parseWindow",
+   "args": [
+    ""
+   ],
+   "expect": {
+    "startMin": 420,
+    "endMin": 1440
+   }
+  },
+  {
+   "fn": "parseWindow",
+   "args": [
+    "23:00-01:00"
+   ],
+   "expect": {
+    "startMin": 420,
+    "endMin": 1440
+   }
+  },
+  {
+   "fn": "normalizeDuration",
+   "args": [
+    0
+   ],
+   "expect": 60
+  },
+  {
+   "fn": "normalizeDuration",
+   "args": [
+    5
+   ],
+   "expect": 15
+  },
+  {
+   "fn": "normalizeDuration",
+   "args": [
+    14
+   ],
+   "expect": 15
+  },
+  {
+   "fn": "normalizeDuration",
+   "args": [
+    15
+   ],
+   "expect": 15
+  },
+  {
+   "fn": "normalizeDuration",
+   "args": [
+    29
+   ],
+   "expect": 29
+  },
+  {
+   "fn": "normalizeDuration",
+   "args": [
+    30
+   ],
+   "expect": 30
+  },
+  {
+   "fn": "normalizeDuration",
+   "args": [
+    45
+   ],
+   "expect": 45
+  },
+  {
+   "fn": "normalizeDuration",
+   "args": [
+    60
+   ],
+   "expect": 60
+  },
+  {
+   "fn": "normalizeDuration",
+   "args": [
+    61
+   ],
+   "expect": 61
+  },
+  {
+   "fn": "normalizeDuration",
+   "args": [
+    120
+   ],
+   "expect": 120
+  },
+  {
+   "fn": "normalizeDuration",
+   "args": [
+    599
+   ],
+   "expect": 599
+  },
+  {
+   "fn": "normalizeDuration",
+   "args": [
+    600
+   ],
+   "expect": 600
+  },
+  {
+   "fn": "normalizeDuration",
+   "args": [
+    601
+   ],
+   "expect": 601
+  },
+  {
+   "fn": "normalizeDuration",
+   "args": [
+    5000
+   ],
+   "expect": 5000
+  },
+  {
+   "fn": "normalizeDuration",
+   "args": [
+    -10
+   ],
+   "expect": 60
+  },
+  {
+   "fn": "halveMinutes",
+   "args": [
+    0
+   ],
+   "expect": []
+  },
+  {
+   "fn": "halveMinutes",
+   "args": [
+    15
+   ],
+   "expect": [
+    5,
+    10
+   ]
+  },
+  {
+   "fn": "halveMinutes",
+   "args": [
+    30
+   ],
+   "expect": [
+    15,
+    15
+   ]
+  },
+  {
+   "fn": "halveMinutes",
+   "args": [
+    45
+   ],
+   "expect": [
+    20,
+    25
+   ]
+  },
+  {
+   "fn": "halveMinutes",
+   "args": [
+    60
+   ],
+   "expect": [
+    30,
+    30
+   ]
+  },
+  {
+   "fn": "halveMinutes",
+   "args": [
+    75
+   ],
+   "expect": [
+    35,
+    40
+   ]
+  },
+  {
+   "fn": "halveMinutes",
+   "args": [
+    90
+   ],
+   "expect": [
+    45,
+    45
+   ]
+  },
+  {
+   "fn": "halveMinutes",
+   "args": [
+    105
+   ],
+   "expect": [
+    50,
+    55
+   ]
+  },
+  {
+   "fn": "halveMinutes",
+   "args": [
+    120
+   ],
+   "expect": [
+    60,
+    60
+   ]
+  },
+  {
+   "fn": "halveMinutes",
+   "args": [
+    150
+   ],
+   "expect": [
+    75,
+    75
+   ]
+  },
+  {
+   "fn": "halveMinutes",
+   "args": [
+    999
+   ],
+   "expect": [
+    495,
+    504
+   ]
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    480,
+    540,
+    480,
+    540
+   ],
+   "expect": true
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    480,
+    540,
+    480,
+    480
+   ],
+   "expect": false
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    480,
+    540,
+    500,
+    560
+   ],
+   "expect": true
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    480,
+    540,
+    540,
+    600
+   ],
+   "expect": false
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    480,
+    540,
+    539,
+    541
+   ],
+   "expect": true
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    480,
+    540,
+    0,
+    1440
+   ],
+   "expect": true
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    480,
+    480,
+    480,
+    540
+   ],
+   "expect": false
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    480,
+    480,
+    480,
+    480
+   ],
+   "expect": false
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    480,
+    480,
+    500,
+    560
+   ],
+   "expect": false
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    480,
+    480,
+    540,
+    600
+   ],
+   "expect": false
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    480,
+    480,
+    539,
+    541
+   ],
+   "expect": false
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    480,
+    480,
+    0,
+    1440
+   ],
+   "expect": true
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    500,
+    560,
+    480,
+    540
+   ],
+   "expect": true
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    500,
+    560,
+    480,
+    480
+   ],
+   "expect": false
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    500,
+    560,
+    500,
+    560
+   ],
+   "expect": true
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    500,
+    560,
+    540,
+    600
+   ],
+   "expect": true
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    500,
+    560,
+    539,
+    541
+   ],
+   "expect": true
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    500,
+    560,
+    0,
+    1440
+   ],
+   "expect": true
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    540,
+    600,
+    480,
+    540
+   ],
+   "expect": false
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    540,
+    600,
+    480,
+    480
+   ],
+   "expect": false
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    540,
+    600,
+    500,
+    560
+   ],
+   "expect": true
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    540,
+    600,
+    540,
+    600
+   ],
+   "expect": true
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    540,
+    600,
+    539,
+    541
+   ],
+   "expect": true
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    540,
+    600,
+    0,
+    1440
+   ],
+   "expect": true
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    539,
+    541,
+    480,
+    540
+   ],
+   "expect": true
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    539,
+    541,
+    480,
+    480
+   ],
+   "expect": false
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    539,
+    541,
+    500,
+    560
+   ],
+   "expect": true
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    539,
+    541,
+    540,
+    600
+   ],
+   "expect": true
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    539,
+    541,
+    539,
+    541
+   ],
+   "expect": true
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    539,
+    541,
+    0,
+    1440
+   ],
+   "expect": true
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    0,
+    1440,
+    480,
+    540
+   ],
+   "expect": true
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    0,
+    1440,
+    480,
+    480
+   ],
+   "expect": true
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    0,
+    1440,
+    500,
+    560
+   ],
+   "expect": true
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    0,
+    1440,
+    540,
+    600
+   ],
+   "expect": true
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    0,
+    1440,
+    539,
+    541
+   ],
+   "expect": true
+  },
+  {
+   "fn": "overlaps",
+   "args": [
+    0,
+    1440,
+    0,
+    1440
+   ],
+   "expect": true
+  },
+  {
+   "fn": "ddlMinuteOf",
+   "args": [
+    "2026-10-18 23:59"
+   ],
+   "expect": 1439
+  },
+  {
+   "fn": "ddlMinuteOf",
+   "args": [
+    "2026-10-18 00:00"
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "ddlMinuteOf",
+   "args": [
+    "2026-10-18 12:34"
+   ],
+   "expect": 754
+  },
+  {
+   "fn": "ddlMinuteOf",
+   "args": [
+    ""
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "ddlMinuteOf",
+   "args": [
+    "2026-10-18"
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "ddlGroupsOn",
+   "args": [
+    [
+     {
+      "id": 1,
+      "title": "作业甲",
+      "courseId": 1,
+      "category": "homework",
+      "ddl": "2026-10-18 23:59"
+     },
+     {
+      "id": 2,
+      "title": "作业乙",
+      "courseId": 1,
+      "category": "homework",
+      "ddl": "2026-10-18 23:59"
+     },
+     {
+      "id": 3,
+      "title": "考试甲",
+      "courseId": 2,
+      "category": "exam",
+      "ddl": "2026-10-18 09:00",
+      "endAt": "2026-10-18 11:00"
+     },
+     {
+      "id": 4,
+      "title": "自学丙",
+      "courseId": 0,
+      "category": "self",
+      "ddl": "2026-10-19 12:00"
+     },
+     {
+      "id": 5,
+      "title": "无截止",
+      "courseId": 0,
+      "category": "none",
+      "ddl": ""
+     }
+    ],
+    "2026-10-18",
+    420,
+    1440
+   ],
+   "expect": [
+    {
+     "minute": 1439,
+     "todos": [
+      {
+       "id": 1,
+       "title": "作业甲",
+       "courseId": 1,
+       "category": "homework",
+       "ddl": "2026-10-18 23:59"
+      },
+      {
+       "id": 2,
+       "title": "作业乙",
+       "courseId": 1,
+       "category": "homework",
+       "ddl": "2026-10-18 23:59"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "fn": "ddlGroupsOn",
+   "args": [
+    [
+     {
+      "id": 1,
+      "title": "作业甲",
+      "courseId": 1,
+      "category": "homework",
+      "ddl": "2026-10-18 23:59"
+     },
+     {
+      "id": 2,
+      "title": "作业乙",
+      "courseId": 1,
+      "category": "homework",
+      "ddl": "2026-10-18 23:59"
+     },
+     {
+      "id": 3,
+      "title": "考试甲",
+      "courseId": 2,
+      "category": "exam",
+      "ddl": "2026-10-18 09:00",
+      "endAt": "2026-10-18 11:00"
+     },
+     {
+      "id": 4,
+      "title": "自学丙",
+      "courseId": 0,
+      "category": "self",
+      "ddl": "2026-10-19 12:00"
+     },
+     {
+      "id": 5,
+      "title": "无截止",
+      "courseId": 0,
+      "category": "none",
+      "ddl": ""
+     }
+    ],
+    "2026-10-19",
+    420,
+    1440
+   ],
+   "expect": [
+    {
+     "minute": 720,
+     "todos": [
+      {
+       "id": 4,
+       "title": "自学丙",
+       "courseId": 0,
+       "category": "self",
+       "ddl": "2026-10-19 12:00"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "fn": "ddlGroupsOn",
+   "args": [
+    [
+     {
+      "id": 1,
+      "title": "作业甲",
+      "courseId": 1,
+      "category": "homework",
+      "ddl": "2026-10-18 23:59"
+     },
+     {
+      "id": 2,
+      "title": "作业乙",
+      "courseId": 1,
+      "category": "homework",
+      "ddl": "2026-10-18 23:59"
+     },
+     {
+      "id": 3,
+      "title": "考试甲",
+      "courseId": 2,
+      "category": "exam",
+      "ddl": "2026-10-18 09:00",
+      "endAt": "2026-10-18 11:00"
+     },
+     {
+      "id": 4,
+      "title": "自学丙",
+      "courseId": 0,
+      "category": "self",
+      "ddl": "2026-10-19 12:00"
+     },
+     {
+      "id": 5,
+      "title": "无截止",
+      "courseId": 0,
+      "category": "none",
+      "ddl": ""
+     }
+    ],
+    "2026-10-20",
+    420,
+    1440
+   ],
+   "expect": []
+  },
+  {
+   "fn": "scheduledDays",
+   "args": [
+    [
+     {
+      "id": 1,
+      "todoId": 1,
+      "date": "2026-10-18",
+      "startMin": 480,
+      "endMin": 540,
+      "done": 0
+     },
+     {
+      "id": 2,
+      "todoId": 4,
+      "date": "2026-10-19",
+      "startMin": 600,
+      "endMin": 660,
+      "done": 0
+     }
+    ],
+    1
+   ],
+   "expect": [
+    "2026-10-18"
+   ]
+  },
+  {
+   "fn": "hasBlockOnDate",
+   "args": [
+    [
+     {
+      "id": 1,
+      "todoId": 1,
+      "date": "2026-10-18",
+      "startMin": 480,
+      "endMin": 540,
+      "done": 0
+     },
+     {
+      "id": 2,
+      "todoId": 4,
+      "date": "2026-10-19",
+      "startMin": 600,
+      "endMin": 660,
+      "done": 0
+     }
+    ],
+    1,
+    "2026-10-18"
+   ],
+   "expect": true
+  },
+  {
+   "fn": "hasBlockOnDate",
+   "args": [
+    [
+     {
+      "id": 1,
+      "todoId": 1,
+      "date": "2026-10-18",
+      "startMin": 480,
+      "endMin": 540,
+      "done": 0
+     },
+     {
+      "id": 2,
+      "todoId": 4,
+      "date": "2026-10-19",
+      "startMin": 600,
+      "endMin": 660,
+      "done": 0
+     }
+    ],
+    1,
+    "2026-10-19"
+   ],
+   "expect": false
+  }
+ ]
+}
