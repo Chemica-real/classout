@@ -442,7 +442,7 @@ class _BodyState extends State<_Body> {
                       '${_b.date} ${minToHHmm(_b.startMin)} - ${minToHHmm(_b.endMin)}'
                       '（$dur 分钟）',
                       style: const TextStyle(
-                          fontSize: 12, color: Color(0xFF9BA7BD))),
+                          fontSize: 14, color: Color(0xFF9BA7BD))),
                 ),
 
                 // 日期 ‹ ›
@@ -453,7 +453,7 @@ class _BodyState extends State<_Body> {
                       const Expanded(
                         child: Text('日期',
                             style: TextStyle(
-                                fontSize: 12, color: Color(0xFF94A0B5))),
+                                fontSize: 14, color: Color(0xFF94A0B5))),
                       ),
                       _Tap(
                         onTap: () => _shiftDate(-1),
@@ -642,6 +642,7 @@ class _BodyState extends State<_Body> {
                   _BigAction(
                     text:
                         '对半分（${halveMinutes(dur)[0]} + ${halveMinutes(dur)[1]} 分钟）',
+                    fontSize: 14, // 鸿蒙这颗按钮写了 LAYOUT.title
                     background: const Color(0x382E6BE6),
                     color: accentBlue,
                     onTap: _splitHalf,
@@ -702,7 +703,7 @@ class _BodyState extends State<_Body> {
                     padding: EdgeInsets.symmetric(horizontal: 10),
                     child: Text('取消',
                         style: TextStyle(
-                            fontSize: 13, color: Color(0xFFA9B5C9))),
+                            fontSize: 14, color: Color(0xFFA9B5C9))),
                   ),
                 ),
                 GestureDetector(
@@ -716,7 +717,7 @@ class _BodyState extends State<_Body> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: const Text('删除待办',
-                        style: TextStyle(fontSize: 13, color: Colors.white)),
+                        style: TextStyle(fontSize: 14, color: Colors.white)),
                   ),
                 ),
               ],
@@ -749,7 +750,8 @@ class _Label extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.only(top: 12, bottom: 6),
         child: Text(text,
-            style: const TextStyle(fontSize: 12, color: Color(0xFF94A0B5))),
+            // 鸿蒙这一页的字段标题用的是 `LAYOUT.tray = 14`
+            style: const TextStyle(fontSize: 14, color: Color(0xFF94A0B5))),
       );
 }
 
@@ -792,8 +794,9 @@ class _Chip extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
         ),
         child: Text(text,
+            // 鸿蒙 ChipButton 在这一页传的是 `fontSize: LAYOUT.title = 14`
             style: TextStyle(
-                fontSize: 12,
+                fontSize: 14,
                 color: selected ? Colors.white : const Color(0xFFC3CDDE))),
       ),
     );
@@ -848,11 +851,16 @@ class _BigAction extends StatelessWidget {
   final Color background;
   final Color color;
   final VoidCallback onTap;
+
+  /// 鸿蒙这一页的按钮大多没写 fontSize（= ArkUI 默认 16）；
+  /// 「对半分」那颗写了 `LAYOUT.title = 14`
+  final double fontSize;
   const _BigAction({
     required this.text,
     required this.background,
     required this.color,
     required this.onTap,
+    this.fontSize = 16,
   });
 
   @override
@@ -869,7 +877,9 @@ class _BigAction extends StatelessWidget {
         ),
         child: Text(text,
             style: TextStyle(
-                fontSize: 13, fontWeight: FontWeight.w500, color: color)),
+                fontSize: fontSize,
+                fontWeight: FontWeight.w500,
+                color: color)),
       ),
     );
   }

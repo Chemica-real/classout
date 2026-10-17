@@ -202,7 +202,11 @@ void main() {
   testWidgets('对半分 → 变两块、总时长不变', (tester) async {
     final seen = await _pump(tester);
     await _openBlock(tester);
-    await tester.tap(find.textContaining('对半分'));
+    // 字段变高之后「对半分」可能要先滚进视口（抽屉内部滚动，鸿蒙也是）
+    final half = find.textContaining('对半分');
+    await tester.ensureVisible(half);
+    await tester.pumpAndSettle();
+    await tester.tap(half);
     await tester.pumpAndSettle();
 
     final blocks = seen.last!.blocks.where((x) => x.todoId == 3).toList();

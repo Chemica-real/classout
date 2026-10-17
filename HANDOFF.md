@@ -6630,3 +6630,14 @@ cd app_flutter && flutter build apk --debug && adb -s 7D7PAQ9PORLR79Z9 install -
 - 动效总开关关掉时直接删（鸿蒙 `if (!isMotionOn())` 同款）。
 - 测试 +2（碎裂期间数据不动、播完才删 / 动效关掉立即删）；golden 新增 `todos_shatter.png`（动画中间帧）。
   顺带把 `MIRROR.md` 里所有过时的行都更新了（课程管理整页化、待办托盘浮层、截止浮层、toast 改行内、沙箱偏好快照）。
+
+### 116.15 计划块属性面板：字号全部按 `LAYOUT.tray/title` 调大一号
+
+鸿蒙 `BlockEditor` 里字段标题、`日期 时间（N 分钟）` 那一行、`日期` 行都用 `LAYOUT.tray = 14`，
+`ChipButton` 传的是 `fontSize: LAYOUT.title = 14`，底部按钮大多没写 fontSize（= ArkUI 默认 **16**），
+只有「对半分」写了 14。安卓原来一律 12（chips/labels）和 13（按钮），真机对照整页偏小一号。
+
+- `_Label` 12 → **14**；`_Chip` 12 → **14**；时间段那一行 12 → 14；`日期` 标签 12 → 14。
+- `_BigAction` 增加 `fontSize`（默认 **16**），「对半分」显式 14；二次确认行的「取消 / 删除待办」13 → 14。
+- 内容变高后 `block_editor_test` 的「对半分」用例加了 `ensureVisible`（抽屉内部滚动，鸿蒙同款）。
+- `flutter test`：**1283 passed**；golden 新增 `block_editor` / `adjust_sheet` / `privacy` 三张（共 19 张）。

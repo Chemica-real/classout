@@ -23,6 +23,9 @@ import 'package:classout/ui/course_manager.dart';
 import 'package:classout/ui/guide_bar.dart';
 import 'package:classout/domain/timetable.dart';
 import 'package:classout/ui/session_sheet.dart';
+import 'package:classout/ui/block_editor.dart';
+import 'package:classout/ui/privacy_page.dart';
+import 'package:classout/domain/plan_math.dart';
 import 'package:classout/ui/theme.dart' as theme;
 import 'package:classout/ui/timetable_page.dart';
 import 'package:classout/data/settings.dart';
@@ -316,6 +319,76 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('entry-semester')));
     await tester.pumpAndSettle();
     await _capture(tester, 'semester_page');
+  });
+
+  testWidgets('计划块属性面板截图（右侧抽屉）', (tester) async {
+    final family = await _loadFonts();
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+          brightness: Brightness.dark, useMaterial3: true, fontFamily: family),
+      home: Scaffold(
+        body: AppFrame(tab: 2, onTab: (_) {}, child: const SizedBox.expand()),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    final ctx = tester.element(find.byType(AppFrame));
+    final fut = showBlockEditor(ctx,
+        bundle: demo,
+        block: demo.blocks.first,
+        window: defaultWindow,
+        onChanged: (_) {});
+    await tester.pumpAndSettle();
+    await _capture(tester, 'block_editor');
+    Navigator.of(ctx).pop();
+    await fut;
+  });
+
+  testWidgets('「本周调整」弹窗截图', (tester) async {
+    final family = await _loadFonts();
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+          brightness: Brightness.dark, useMaterial3: true, fontFamily: family),
+      home: Scaffold(
+        body: AppFrame(tab: 0, onTab: (_) {}, child: const SizedBox.expand()),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    final ctx = tester.element(find.byType(AppFrame));
+    final fut = showAdjustSheet(ctx, bundle: demo, onChanged: (_) {});
+    await tester.pumpAndSettle();
+    await _capture(tester, 'adjust_sheet');
+    Navigator.of(ctx).pop();
+    await fut;
+  });
+
+  testWidgets('隐私说明页截图', (tester) async {
+    final family = await _loadFonts();
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+          brightness: Brightness.dark, useMaterial3: true, fontFamily: family),
+      home: Scaffold(
+        body: AppFrame(tab: 3, onTab: (_) {}, child: const SizedBox.expand()),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    final ctx = tester.element(find.byType(AppFrame));
+    final fut = showPrivacyPage(ctx);
+    await tester.pumpAndSettle();
+    await _capture(tester, 'privacy');
+    Navigator.of(ctx).pop();
+    await fut;
   });
 
   testWidgets('课程编辑子页截图（整页，不是弹窗）', (tester) async {
