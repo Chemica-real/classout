@@ -510,7 +510,7 @@ class _PlanPageState extends State<PlanPage> {
                   onPointer: _onBlockPointer,
                   lessonTitles: {
                     for (final l in widget.bundle.lessons)
-                      l.id: '第 ${l.seq} 讲 · ${l.title}',
+                      l.id: lessonTitleOf(l, widget.bundle.courses),
                   },
                   lessonColors: {
                     for (final l in widget.bundle.lessons)
@@ -2049,14 +2049,8 @@ class _Tray extends StatelessWidget {
   }
 
   /// 课时卡片上的标题（鸿蒙端 `lessonTitle`）：没起名就「课程简称 第 N 讲」
-  String _lessonTitle(VirtualLesson l) {
-    if (l.title.isNotEmpty) return l.title;
-    final c = courses[l.courseId];
-    final name = c == null
-        ? '虚拟课程'
-        : (c.shortName.isNotEmpty ? c.shortName : c.name);
-    return '$name 第 ${l.seq} 讲';
-  }
+  String _lessonTitle(VirtualLesson l) =>
+      lessonTitleOf(l, courses.values.toList());
 
   /// 小卡（鸿蒙端 glassCard）：半透明纯色 + 细边 + 投影，不使用模糊
   BoxDecoration _cardDecoration({required bool selected, Color? tint, Color? edge}) {

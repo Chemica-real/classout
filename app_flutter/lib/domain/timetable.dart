@@ -41,6 +41,23 @@ String sessionTimeText(Map<int, SectionTime> times, CourseSession s) {
   return '${minToHHmm(st.startMin)}-${minToHHmm(et.endMin)}';
 }
 
+/// 虚拟课时的显示名（鸿蒙 `lessonTitle`）：起了名就用名字，
+/// 否则「课程简称 第 N 讲」（找不到课就叫「虚拟课程」）。
+///
+/// ⚠️ **不要**拼成「第 N 讲 · 标题」—— 演示数据的标题本身就是「第 N 讲」，
+/// 拼起来会变成「第 2 讲 · 第 2 讲」（真机上看着像 bug）。
+String lessonTitleOf(VirtualLesson l, List<Course> courses) {
+  if (l.title.isNotEmpty) return l.title;
+  Course? c;
+  for (final x in courses) {
+    if (x.id == l.courseId) c = x;
+  }
+  final name = c == null
+      ? '虚拟课程'
+      : (c.shortName.isNotEmpty ? c.shortName : c.name);
+  return '$name 第 ${l.seq} 讲';
+}
+
 /// 算出第 [week] 周的全部课时。
 /// 规则层（SessionRule）自动排课，覆盖层（SessionOverride）做单周调整：
 ///   cancel → 该周这节不上；move → 挪到 newDate（可换节次）；

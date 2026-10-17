@@ -12,6 +12,7 @@ import '../data/backup.dart';
 import '../data/note_pref.dart';
 import '../domain/dates.dart';
 import '../domain/plan_math.dart';
+import '../domain/timetable.dart';
 import '../domain/todo_generator.dart';
 import '../domain/todo_list.dart';
 import '../model/types.dart';
@@ -198,7 +199,7 @@ class _BodyState extends State<_Body> {
     final t = _todo;
     if (t != null) return t.title;
     final l = _lesson;
-    if (l != null) return '第 ${l.seq} 讲 · ${l.title}';
+    if (l != null) return lessonTitleOf(l, widget.bundle.courses);
     return _course?.label ?? '计划块';
   }
 

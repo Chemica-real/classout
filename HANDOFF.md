@@ -12,7 +12,7 @@ ClassOUT 是一款**纯离线**的「课表 + 待办 + 计划」三合一 App，
 |---|---|---|
 | 版本 | v1.5.1（上架准备中，未提审） | 0.2.0（Android 已装真机 OPPO A97） |
 | 页面 | 课表 / 待办 / 计划 / 设置 + 启动加载页 + 悬浮浮窗 | **同样四页 + 启动页 + 浮窗（§52–§68 逐页复刻）** |
-| 测试 | 离线断言 524 项（`tools/domain-check`） | **1302 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
+| 测试 | 离线断言 524 项（`tools/domain-check`） | **1305 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
 | 差异基准 | 本目录 `docs/manual/01..09.jpg`（真机截图） | `app_flutter/tool/goldens/*.png` 对照上面九张 + `shared/fixtures/`（1115 条规则用例） |
 
 **安卓版与鸿蒙版的 1:1 复刻已经完成**：主题 token 抄自 ArkTS（§52）、六个页面重做、
@@ -6936,3 +6936,14 @@ Flutter 要做这个得上 `AnimatedList`/`SliverAnimatedList`，改动面比收
   标题 14 Medium、副行 11 `#CBD6E8`、圆角 6、选中/拖拽 2px 白框、拖动 0.72 半透明、块左右各 3。
 
 - `flutter test` **1302 passed**；golden 重出（`plan` / `sandbox_plan`）。
+
+### 116.35 虚拟课时的显示名统一走 `lessonTitleOf`（修「第 2 讲 · 第 2 讲」）
+
+鸿蒙 `lessonTitle(l)`：`l.title` 非空就用它，否则 `「课程简称 第 N 讲」`（找不到课叫「虚拟课程」）。
+安卓有两处拼成了 **`第 N 讲 · 标题`** —— 而演示数据/课时的标题本身就是「第 2 讲」，
+于是计划块和块属性面板上显示成「第 2 讲 · 第 2 讲」（真机上一眼就是 bug）。
+
+- 新增 `domain/timetable.dart → lessonTitleOf(l, courses)`；
+- 计划页的 `lessonTitles` 映射、块属性面板标题、待安排托盘的小卡统一改用它
+  （托盘那份本来就对，现在共用一个函数）。
+- 测试 +3（有标题 / 无标题 / 简称空 or 找不到课）。`flutter test` **1305 passed**；golden 重出。
