@@ -39,3 +39,13 @@
 # 做图标用的原始素材（游戏截图，含平台水印）：不入库
 /特蕾西娅.jpg
 /圣聆初雪.jpg
+
+# ---- Dart / Flutter（app_flutter/）----
+# .dart_tool 是 pub 的缓存与编译产物，绝不该入库（里面还有几十 MB 的快照）
+app_flutter/.dart_tool/
+app_flutter/build/
+app_flutter/.flutter-plugins
+app_flutter/.flutter-plugins-dependencies
+app_flutter/ios/Pods/
+app_flutter/**/*.iml
+.DS_Store
