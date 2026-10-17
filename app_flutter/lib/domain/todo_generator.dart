@@ -206,3 +206,90 @@ GenerationOutcome generateMissedTodos({
   }
   return GenerationOutcome(out, scanned, todayKey);
 }
+
+/// 虚拟课程的某一讲完成 → 跟真课下课一样，按课程模板生成待办。
+///
+/// 对应鸿蒙端 `generateForLesson`：用课时计划的日期/起止分钟伪造一个 `CourseSession`
+/// （虚拟课程本来就没有节次规则），再走与真课完全相同的那套规则：
+/// 只在 `autoTodoEnabled` 时生成、去重键 `course|date|template`、备注为空、状态 pending。
+GenerationOutcome generateForLesson({
+  required List<Course> courses,
+  required List<SessionRule> rules,
+  required List<SectionTime> times,
+  required List<TodoTemplate> templates,
+  required List<Todo> todos,
+  required Semester sem,
+  required VirtualLesson lesson,
+  required String date,
+  required int startMin,
+  required int endMin,
+  int nextId = 0,
+}) {
+  Course? course;
+  for (final c in courses) {
+    if (c.id == lesson.courseId) course = c;
+  }
+  if (course == null || !course.autoTodoEnabled) {
+    return GenerationOutcome(const [], 0, '');
+  }
+  final c0 = course;
+  final syntheticRule = SessionRule(
+    id: 0,
+    courseId: course.id,
+    weekday: 0,
+    startSection: 0,
+    endSection: 0,
+    weeksMask: '',
+    location: course.location,
+    isQuiz: false,
+  );
+  final s = CourseSession(
+    course: course,
+    rule: syntheticRule,
+    date: date,
+    originDate: date,
+    weekday: weekdayOf(parseDate(date)),
+    startSection: 0,
+    endSection: 0,
+    startMin: startMin,
+    endMin: endMin,
+    location: course.location,
+    isQuiz: false,
+    fromOverride: false,
+    isExtra: false,
+  );
+  final keys = {for (final t in todos) t.generationKey};
+  final out = <Todo>[];
+  var id = nextId;
+  final week = weekOfDate(sem, parseDate(date));
+  for (final t in templates) {
+    if (t.courseId != c0.id || !t.enabled) continue;
+    final key = templateKey(c0.id, date, t.id);
+    if (keys.contains(key)) continue;
+    final n = todos.where((x) => x.courseId == c0.id).length + 1;
+    id++;
+    out.add(Todo(
+      id: id,
+      title: renderTitle(t.titleTemplate, s, week, n),
+      courseId: c0.id,
+      category: t.category,
+      priority: 1,
+      ddl: computeDdl(sem, courses, rules, const [], times, s, t.ddlRule,
+          t.ddlParam),
+      endAt: '',
+      estimateMin: t.estimateMin,
+      status: TodoStatus.pending,
+      source: 'template',
+      generationKey: key,
+      note: '',
+      submitChannel: t.submitChannel,
+      repeatRule: '',
+      photos: '',
+      createdAt: DateTime.now().millisecondsSinceEpoch,
+      confirmedAt: 0,
+      doneAt: 0,
+    ));
+    keys.add(key);
+  }
+  return GenerationOutcome(out, 1, date);
+}

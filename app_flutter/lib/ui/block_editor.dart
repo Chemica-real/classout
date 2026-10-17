@@ -12,6 +12,7 @@ import '../data/backup.dart';
 import '../data/note_pref.dart';
 import '../domain/dates.dart';
 import '../domain/plan_math.dart';
+import '../domain/todo_generator.dart';
 import '../domain/todo_list.dart';
 import '../model/types.dart';
 import 'app_frame.dart';
@@ -181,7 +182,8 @@ class _BodyState extends State<_Body> {
 
   Course? get _course {
     // ⚠️ lessonId 是**课时 id**，不是课程 id：要先查到那一讲，再拿它的 courseId
-    final id = _b.todoId > 0 ? (_todo?.courseId ?? 0) : (_lesson?.courseId ?? 0);
+    final id =
+        _b.todoId > 0 ? (_todo?.courseId ?? 0) : (_lesson?.courseId ?? 0);
     for (final c in widget.bundle.courses) {
       if (c.id == id) return c;
     }
@@ -213,15 +215,36 @@ class _BodyState extends State<_Body> {
                     seq: l.seq,
                     title: l.title,
                     done: nb.done,
-                    doneAt:
-                        nb.done ? DateTime.now().millisecondsSinceEpoch : 0,
+                    doneAt: nb.done ? DateTime.now().millisecondsSinceEpoch : 0,
                   )
                 : l)
             .toList()
         : widget.bundle.lessons;
+    // 虚拟课时刚被标记完成 → 按课程模板生成待办（鸿蒙端 generateForLesson 同款）
+    var nextTodos = todos;
+    final l = _lesson;
+    final sem = widget.bundle.semester;
+    if (nb.lessonId > 0 && nb.done && !_b.done && l != null && sem != null) {
+      final outcome = generateForLesson(
+        courses: widget.bundle.courses,
+        rules: widget.bundle.rules,
+        times: widget.bundle.sectionTimes,
+        templates: widget.bundle.templates,
+        todos: todos,
+        sem: sem,
+        lesson: l,
+        date: nb.date,
+        startMin: nb.startMin,
+        endMin: nb.endMin,
+        nextId: todos.fold<int>(0, (m, t) => t.id > m ? t.id : m),
+      );
+      if (outcome.created.isNotEmpty) {
+        nextTodos = [...todos, ...outcome.created];
+      }
+    }
     setState(() => _b = nb);
     widget.onChanged(_with(widget.bundle,
-        blocks: blocks, todos: todos, lessons: lessons));
+        blocks: blocks, todos: nextTodos, lessons: lessons));
   }
 
   PlanBlock _copy({

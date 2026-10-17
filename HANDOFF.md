@@ -5345,3 +5345,31 @@ fixtures 与单测里跑，**界面层根本没接线** —— 也就是鸿蒙�
   `lessonId=1`、`startMin=540`
 - `block_editor_test` 新增 1 条：课时块标完成 → 对应 `VirtualLesson.done=true` 且 `doneAt>0`
 - `flutter test`：**884 passed**；golden 重出
+
+## 81. 2026-10-17 安卓版：虚拟课时完成 → 自动生成待办（接上 `generateForLesson`）
+
+§80 里"课时块标完成只标记讲次"，这轮把**生成待办**那一步接上（鸿蒙端 `generateForLesson`）。
+
+### 81.1 纯逻辑（`todo_generator.dart`）
+
+新增 `generateForLesson(...)`：用课时的日期/起止分钟**伪造一个 `CourseSession`**
+（虚拟课程本来就没有节次规则），然后走和真课完全相同的一套规则：
+
+- 只在该课程 `autoTodoEnabled` 时生成
+- 去重键 `courseId|date|templateId`（同一讲重复触发不会生成第二份）
+- `%N` = 该课程已有待办数 + 1；`renderTitle` / `computeDdl` 复用 §73 抽出来的纯规则
+- 状态 `pending`、`source=template`、**备注强制为空**
+
+### 81.2 接线（`block_editor.dart`）
+
+课时块**从"未完成"变"完成"**的那一刻：`generateForLesson` → 新待办追加进 bundle，
+和"标记讲次完成"一起写回。取消完成不会删已生成的待办（鸿蒙端也不删，避免误删用户确认过的）。
+
+### 81.3 验证
+
+- 新增 `test/lesson_generation_test.dart` 4 条：生成一条（标题/截止/耗时/状态/备注/去重键）、
+  重复触发去重、`autoTodoEnabled=false` 不生成、`%N` 取"已有该课程待办数 + 1"
+- `flutter test`：**888 passed**
+- 还没做：`TodoGenerator.ets` 的 `generateForLesson` 仍在 ArkTS 侧依赖 Context，
+  所以这个函数**没进 fixtures**（Dart 侧测试覆盖；要三端对拍得先把 ArkTS 的纯部分也抽出来，
+  和 §73 一样处理）
