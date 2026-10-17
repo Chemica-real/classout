@@ -1,7 +1,7 @@
 name: classout
 description: ClassOUT —— 课表 + 待办 + 计划（iOS / Android 用 Dart/Flutter 实现；鸿蒙端是 ArkTS）
 publish_to: 'none'
-version: 0.1.0+1
+version: 0.2.0+2
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
@@ -34,3 +34,10 @@ flutter:
     - assets/demo_backup.json
     # 建库用的权威 DDL（从 ../shared/schema.sql 复制而来，db_test 会校验两边一致）
     - assets/schema.sql
+  fonts:
+    # 中文字体子集（只含项目里用到的 1440 个字，359 KB）
+    # 为什么需要：Flutter 的 web 版用 CanvasKit 渲染，包里没有中文字形时它会去
+    # fonts.gstatic.com 下载兜底 —— 国内网络连不上，结果就是满屏豆腐块。
+    - family: ClassOutCJK
+      fonts:
+        - asset: assets/fonts/ClassOutCJK.ttf

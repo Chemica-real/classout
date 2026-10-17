@@ -4006,3 +4006,35 @@ for (const t of todos) {              // ← 没有排除 category === 'exam'
 3. **鸿蒙端那一行 bug**（§41.2：提醒里给考试推"即将截止"）—— 等用户确认后再动，
    因为会改到已发布的 v1.5.0 代码并需要重新装机。
 4. 计划页的拖动/缩放（`dropRange`/`moveRange`/`resizeRange` 已有 fixtures，只差手势）。
+
+
+## 44. 2026-10-17 web 端「豆腐块」：打包中文字体子集（iPad 预览用）
+
+**症状**：把 `flutter build web` 的产物用浏览器打开，**所有中文都渲染成 □**。
+
+**根因**：Flutter web 用 CanvasKit 渲染，**字体包里没有中文字形**；缺字时它的
+`FontFallbackManager` 会去 `fonts.gstatic.com` 下载 Noto 兜底字体 —— 国内网络基本连不上
+（或极慢），于是满屏豆腐块。**这跟系统里装没装中文字体无关**（CanvasKit 不走系统字体）。
+
+**修法**：把中文字体**子集**打进 App 资源，并只在 web 上使用。
+
+1. 用 `fontTools` 的 `pyftsubset` 把系统里的 `wqy-zenhei.ttc` 裁成项目实际用到的字：
+   收集 `lib/**`、`test/**`、`tool/**`、`assets/demo_backup.json`、`HANDOFF/README` 里
+   出现过的字符 + 常用字/符号，共 **1440 个字（1252 个汉字）→ 359 KB**
+   （整包 16 MB，直接塞进去对 200 KB/s 的网络是灾难）。
+   命令：`pyftsubset wqy-zenhei.ttc --font-number=0 --text-file=/tmp/subset_chars.txt
+   --output-file=assets/fonts/ClassOutCJK.ttf --no-hinting --drop-tables+=DSIG`
+2. `pubspec.yaml` 里 `flutter: fonts: - family: ClassOutCJK`（注意 `fonts:` 是
+   **`assets:` 的兄弟**，不是它的子项 —— 我一开始缩进写错，`pub get` 直接报
+   "While parsing a block collection, expected '-'"）。
+3. `main.dart`：`ThemeData(fontFamily: kIsWeb ? 'ClassOutCJK' : null)` ——
+   **只在 web 用**；iOS/Android 用系统字体（苹方/思源）更好看，也不占包体。
+
+**副作用/注意**：
+- 用户**自己导入的备份**里如果有子集外的生僻字，那些字仍会是 □。要覆盖就去掉子集、
+  或者把常用字表扩大后重新生成（脚本思路在 `tools/` 里没落盘，命令记在上面）。
+- 这也是「iPad 上验 web 版」这条路的必要前提（见 §43.3）。
+
+**环境小记**：`pip install fonttools` 在国内直连 PyPI 会被 reset，用
+`-i https://pypi.tuna.tsinghua.edu.cn/simple` 就好了；且 Debian 的 Python 有 PEP 668
+保护，得开 `venv`（我用的是 `/tmp/fontenv`）。

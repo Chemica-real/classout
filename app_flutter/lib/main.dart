@@ -6,6 +6,7 @@
 //   web   → MemoryRepo（刷新即回到演示数据）
 //   原生  → SqliteRepo（App 数据目录下的 classout.db，schema 来自 assets/schema.sql）
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
@@ -24,7 +25,13 @@ class ClassOutApp extends StatelessWidget {
     return MaterialApp(
       title: 'ClassOUT',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(brightness: Brightness.dark, useMaterial3: true),
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        useMaterial3: true,
+        // web 端必须自带中文字体（否则 CanvasKit 会去 fonts.gstatic.com 找兜底字体，
+        // 国内网络基本连不上 → 满屏豆腐块）。原生端用系统字体更好，所以只在 web 用。
+        fontFamily: kIsWeb ? 'ClassOutCJK' : null,
+      ),
       home: const _Boot(),
     );
   }
