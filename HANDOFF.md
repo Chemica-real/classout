@@ -12,7 +12,7 @@ ClassOUT 是一款**纯离线**的「课表 + 待办 + 计划」三合一 App，
 |---|---|---|
 | 版本 | v1.5.1（上架准备中，未提审） | 0.2.0（Android 已装真机 OPPO A97） |
 | 页面 | 课表 / 待办 / 计划 / 设置 + 启动加载页 + 悬浮浮窗 | **同样四页 + 启动页 + 浮窗（§52–§68 逐页复刻）** |
-| 测试 | 离线断言 524 项（`tools/domain-check`） | **1268 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
+| 测试 | 离线断言 524 项（`tools/domain-check`） | **1273 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
 | 差异基准 | 本目录 `docs/manual/01..09.jpg`（真机截图） | `app_flutter/tool/goldens/*.png` 对照上面九张 + `shared/fixtures/`（1115 条规则用例） |
 
 **安卓版与鸿蒙版的 1:1 复刻已经完成**：主题 token 抄自 ArkTS（§52）、六个页面重做、
@@ -6322,3 +6322,41 @@ Material 关闭图标。连同下面几处一起对齐：
 cd app_flutter && flutter analyze    # 0 issue
 cd app_flutter && flutter test       # 1268 条（含 1115 条三端 fixture 逐条对拍）
 ```
+
+---
+
+## 115. 演练沙箱改成鸿蒙的"按今天现造"，并补上冷启动安全网（真机抓到的真 bug）
+
+### 115.1 沙箱数据与鸿蒙逐项一致
+
+鸿蒙 `GuideRepo.seedDemoData()` 是**按"今天"现造**的：学期「演练学期」从本周一开（第 1 周）、
+待办截止是今天/明天/3 天后、计划块在**今天 14:00 与明天 09:00**、4 门课用「明理101 / 外语楼203 /
+理科楼305 / 明理408」。安卓原来直接加载 `assets/demo_backup.json`（固定日期的演示数据，
+学期名「演示学期」、地点 A101…），于是在别的日子点「开始演练」，课表里的课会"对不上今天"。
+
+新增 `lib/domain/demo_sandbox.dart → buildDemoSandbox({now})`，逐项照鸿蒙：
+学期/12 节作息/4 条不可排/4 门课 + 6 条时段（含一节习题课）/每门一条 `%D作业` 模板 /
+4 条待办（有/无截止、有/无课程、有/无备注）/2 个计划块。`HomeShell._startGuide` 改用它；
+`demo_backup.json` 仍留给测试与截图（固定日期 = 结果稳定）。
+
+### 115.2 冷启动安全网（这是真机抓到的 bug）
+
+安卓的沙箱是**整份替换同一个库**（鸿蒙是切到另一个 `.db` 文件），所以"演练中被杀/被升级覆盖"时，
+再打开 App 看到的是演示数据、而且引导条已经没了（`_sandbox` 只存在运行期），用户自己的课表
+明明备份在 kv 里却进不去。
+
+现在 `_reload()` 在加载前先查 `sandbox_backup`：有就先 `replaceAll(还原)` 再清 kv；
+**但在演练进行中（`_sandbox=true`）不还原**，否则刚进沙箱就被弹回去。
+
+- 真机验证：先进入演练（库里是演示数据 + kv 有备份），然后重装/冷启动 →
+  logcat 打出 `[ClassOUT] restored real data from sandbox backup`，界面回到「大一上 / 13 门课 /
+  26 条待办」。
+- 测试：+1 条（冷启动发现备份 → 还原并清 kv）；另有 4 条 `demo_sandbox_test.dart` 钉住沙箱内容。
+
+### 115.3 顺带修掉：节次轴标签折行撑破机动节
+
+真实课表用 12 节作息时，时间轴那格（`11` + `08:00`）在测试的 Ahem 字体下会**折行**，
+把 36 高的机动节撑破 8px（真机窄屏+大字号也可能出现）。改成 `FittedBox(scaleDown)` +
+`maxLines: 1` + `height: 1.0`，等比缩小而不折行。
+
+- `flutter test`：**1273 passed**；`flutter analyze` 无问题；golden 重出。

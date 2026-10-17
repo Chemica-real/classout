@@ -4,7 +4,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
 
 import '../data/backup.dart';
 import '../data/backup_export.dart';
@@ -15,6 +14,7 @@ import '../domain/reminders.dart';
 import '../domain/sync_cadence.dart';
 import '../domain/categories.dart';
 import '../domain/dates.dart';
+import '../domain/demo_sandbox.dart';
 import '../domain/guide.dart';
 import '../domain/motto.dart';
 import '../domain/timetable.dart';
@@ -158,6 +158,21 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     });
     try {
       final settings = await AppSettings.load(widget.repo);
+      // 演练沙箱的"安全网"：鸿蒙端演练用的是**另一个库文件**，App 被杀也只是丢沙箱；
+      // 安卓是整份替换同一个库，所以冷启动时必须先把 kv 里的真实备份还原回去。
+      // 否则（演练中被杀/被更新覆盖）用户再打开就是演示数据，而且没有"退出演练"可点。
+      final sandboxBackup = await widget.repo.getKv(sandboxBackupKey) ?? '';
+      // ⚠️ 正在演练里（_sandbox=true）时不要还原：`_startGuide` 刚把真实数据写进 kv，
+      // 这时还原会把刚进沙箱的状态又弹回去。
+      if (!_sandbox && sandboxBackup.isNotEmpty) {
+        try {
+          await widget.repo.replaceAll(BackupBundle.decode(sandboxBackup));
+          debugPrint('[ClassOUT] restored real data from sandbox backup');
+        } catch (e) {
+          debugPrint('[ClassOUT] sandbox restore failed: $e');
+        }
+        await widget.repo.setKv(sandboxBackupKey, '');
+      }
       var data = await widget.repo.load();
       if (data == null && widget.fallback != null) {
         await widget.repo.replaceAll(widget.fallback!);
@@ -398,8 +413,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     if (current != null) {
       await widget.repo.setKv(sandboxBackupKey, backupToJson(current));
     }
-    final demo = BackupBundle.decode(
-        await rootBundle.loadString('assets/demo_backup.json'));
+    // 演练沙箱按"今天"现造（鸿蒙 `GuideRepo.seedDemoData` 同款），不是固定日期的演示备份
+    final demo = buildDemoSandbox();
     await widget.repo.replaceAll(demo);
     if (!mounted) return;
     setState(() {

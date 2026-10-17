@@ -10,6 +10,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:classout/data/backup.dart';
 import 'package:classout/data/repo.dart';
+import 'package:classout/data/backup_export.dart';
+import 'package:classout/domain/demo_sandbox.dart';
 import 'package:classout/domain/guide.dart';
 import 'package:classout/ui/guide_bar.dart';
 import 'package:classout/ui/home_shell.dart';
@@ -76,8 +78,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('下一步'));
     await tester.pumpAndSettle();
-    // 第 4 步在待办页：能看到「待确认」段
-    expect(find.textContaining('待确认'), findsWidgets);
+    // 第 4 步在待办页：能看到演练数据里的待办（鸿蒙沙箱没有"待确认"条目）
+    expect(find.text('数学作业 P12 第 3-5 题'), findsWidgets);
 
     // ④ 还剩 3 步（5/6/7）→ 走到最后一步并完成演练
     for (var i = 0; i < 3; i++) {
@@ -112,5 +114,27 @@ void main() {
     expect(find.byType(GuideBar), findsNothing);
     expect(await repo.getKv(guidePromptedKey), '1');
     expect(await repo.getKv(sandboxBackupKey), isNull);
+  });
+
+  testWidgets('冷启动发现沙箱备份 → 先把真实数据还原、再清掉 kv（演练被杀也不丢数据）',
+      (tester) async {
+    guidePromptEnabled = true;
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+
+    final mine = _demo();
+    final sandbox = buildDemoSandbox(now: DateTime(2026, 10, 16));
+    final repo = MemoryRepo(sandbox); // 库里现在是"演练数据"
+    await repo.setKv(sandboxBackupKey, backupToJson(mine));
+
+    await tester.pumpWidget(MaterialApp(home: HomeShell(repo: repo)));
+    await tester.pumpAndSettle();
+
+    final restored = (await repo.load())!;
+    expect(restored.semester!.name, mine.semester!.name,
+        reason: '冷启动应把真实数据还原回来');
+    expect(restored.courses.length, mine.courses.length);
+    expect(await repo.getKv(sandboxBackupKey), '');
   });
 }

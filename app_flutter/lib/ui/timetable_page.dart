@@ -229,12 +229,28 @@ class _Grid extends StatelessWidget {
                       padding: const EdgeInsets.only(top: 2),
                       child: Column(
                         children: [
-                          Text('${st.section}',
-                              style: const TextStyle(
-                                  fontSize: 11, color: _axisSection)),
-                          Text(minToHHmm(st.startMin),
-                              style: const TextStyle(
-                                  fontSize: 9, color: _axisTime)),
+                          // 窄屏 + 大字号时时间和节次都会被折行，把 36 高的机动节撑破；
+                          // 一律等比缩小、绝不折行（鸿蒙端 Text 默认单行）
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text('${st.section}',
+                                maxLines: 1,
+                                softWrap: false,
+                                style: const TextStyle(
+                                    fontSize: 11,
+                                    height: 1.0,
+                                    color: _axisSection)),
+                          ),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(minToHHmm(st.startMin),
+                                maxLines: 1,
+                                softWrap: false,
+                                style: const TextStyle(
+                                    fontSize: 9,
+                                    height: 1.0,
+                                    color: _axisTime)),
+                          ),
                         ],
                       ),
                     ),
