@@ -39,6 +39,8 @@
 | `data/*Repo.ets`（`TimetableRepo`/`TodoRepo`/`KvRepo`…） | `lib/data/sqlite_repo.dart` + `repo.dart` | 同一套 SQL schema（`shared/schema.sql`）；`todo_template`、`virtual_lesson` 也读写 |
 | `model/Types.ets`（`VirtualLesson` 虚拟课程课时） | `lib/model/types.dart`（`VirtualLesson`） | 数据层 + 课程管理编辑 + **计划页课时池（选中→点网格排入、块完成联动讲次）** ✅ |
 | `domain/TodoGenRules.ets`（**纯规则**：`renderTitle` / `computeDdl` / `nextSessionOfCourse`） | `lib/domain/todo_generator.dart` 的上半部分 | 已进 fixtures（`todo_gen.json` 84 条），三端逐条对拍 |
+| `data/Seeder.ets`（`ensureSemester` / `ensureRestWindows` / `migrateData` / `cloneCourses`） | `lib/domain/demo_sandbox.dart → buildFirstRunBundle` + `lib/domain/migrate.dart` + `course_manager.dart` 的「复制到当前学期」 | 首次启动：`我的学期`（本周一、16 周）+ 北大 12 节 + 4 段默认不可排，**不内置课表**；老数据迁移：时长 5 分钟归一 / 考试归 0 / 「其他」→「无」 |
+| `data/TodoRepo.ets` 的 `blacklist` / `isBlacklisted` | `lib/data/blacklist.dart`（kv `todo_blacklist`） | 删掉的自动生成待办不再补生成；导入备份清空、进沙箱清空（鸿蒙沙箱是全新库） |
 | `domain/TodoGenerator.ets`（读模板/查重/写库，依赖 Context） | `lib/domain/todo_generator.dart` 的下半部分 + `HomeShell._generateMissed` | 下课自动生成待办：`renderTitle`（%C/%c/%D/%d/%W/%T/%N/%R）、6 种 `computeDdl`、`nextSessionOfCourse`、`generateMissedTodos`（去重键 `course|date|template`、只看已下课、备注不带） |
 | `domain/*.ets`（`Timetable`/`PlanMath`/`TodoRules`/`Reminders`/`Validate`/`SyncCadence`…） | `lib/domain/*.dart` | 规则逐条搬运，用 `shared/fixtures` 对拍（`./tools/sync-contract.sh`） |
 
