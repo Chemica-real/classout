@@ -29,12 +29,12 @@
 | `view/SettingsPage.ets`（`WallpaperCard`/`MottoCard`/`MotionCard`/`ReminderCard`/…） | `lib/ui/settings_page.dart` | 10 张玻璃卡；内容 padding 与鸿蒙同式（`12 + 标题条 + FLOAT_GAP` / `30 + bottomInset`） |
 | `view/PlanDayView.ets` → `BlockEditor()` | `lib/ui/block_editor.dart` | 计划块属性面板：右侧抽屉（日期 ‹›/开始时间 ±/时长 ±/截止/备注/其他块/对半分/标记完成/移除） |
 | `domain/Guide.ets` + `view/GuideBar.ets` + `data/GuideRepo.ets` | `lib/domain/guide.dart` + `lib/ui/guide_bar.dart` | 新手演练：步骤脚本（7 步，各自标签页）+ 引导条 + 沙箱（真实数据存 kv `sandbox_backup`，**整张 kv 快照存 `sandbox_prefs`** → 换演练数据 → 退出/冷启动整份还原）；首次启动询问 `guide_prompted`；退出回课表页且不弹提示条 |
-| `view/CourseManager.ets` | `lib/ui/course_manager.dart` | **整页换内容**（`_mode = list / semester / sections / backup / course`）：全宽玻璃顶栏（关闭 / ‹ 返回）+ 全屏 `backdropBlur` 薄纱；列表三张入口卡 + 课程卡；学期设置（所有学期 / 新建内联表单）、上课节次时间、备份与恢复（路径块常驻、琥珀色「从备份文件恢复…」）、课程编辑（颜色/开关/时段规则/待办模板/删除课程） |
+| `view/CourseManager.ets` | `lib/ui/course_manager.dart` | **整页换内容**（`_mode = list / semester / sections / backup / course`）：全宽玻璃顶栏（关闭 / ‹ 返回）+ 全屏 `backdropBlur` 薄纱；列表三张入口卡 + 课程卡；学期设置（所有学期 / 新建内联表单）、上课节次时间、备份与恢复（固定文件 `classout-backup.json` 路径常显、琥珀「从备份恢复」→ 内联「取消 / 确认恢复」、按表诊断）、课程编辑（颜色/开关/时段规则/待办模板/删除课程） |
 | `view/ChipButton.ets` | `_Choice`/`_Chip`/`_ChipButton`（各页面内） | 选中 = `#2E6BE6` 底 + 白字 |
 | `data/Prefs.ets`（`MOTTO_*`、`mottoUnits`、`clampMottoUnits`、`cleanMotto`） | `lib/domain/motto.dart` | 标语：按显示宽度 32（汉字 2 / 半角 1） |
 | `domain/Privacy.ets` | `lib/domain/privacy.dart` + `lib/ui/privacy_page.dart` | 隐私说明（上架材料）：9 节正文、更新日期；设置页「关于 → 隐私说明」打开 |
 | `data/Prefs.ets`（`NOTE_EXPANDED_*`） | `lib/data/note_pref.dart` | 备注展开状态：kv `note_expanded`，待办编辑窗与计划块面板共用 |
-| `data/BackupRepo.ets`（导出/恢复/诊断） | `lib/data/backup_export.dart` + `backup.dart` | 备份 JSON 序列化（布尔写 1/0）、写文件、诊断摘要；恢复走「设置 → 导入备份」 |
+| `data/BackupRepo.ets`（导出/恢复/诊断） | `lib/data/backup_export.dart` + `backup.dart` | 备份 JSON 序列化（布尔写 1/0）、固定文件名 `classout-backup.json`、`backupFilePath` / `readBackupText`、`backupSummary` 逐字同文案、`diagnosticsText` 按表一行；恢复 = 读固定文件整份覆盖（安卓额外：长按「从备份恢复」= 粘贴/选文件导入） |
 | `data/WallpaperRepo.ets` | `lib/data/wallpaper.dart` + `lib/ui/wallpaper_view.dart` | 选图 → 拷进 App 私有目录 → kv `wallpaper_path`；**显示几何**走 `domain/wallpaper.dart`（见下一行） |
 | `domain/Wallpaper.ets`（`wallpaperGeometry` / `clampFocus` / `parseWallpaperFormat`） | `lib/domain/wallpaper.dart`（+ `lib/ui/wallpaper_view.dart` 渲染） | cover → ×zoom → 归一化焦点 × 可动余量；zoom 1..4、焦点 -1..1；所有页面与「调整背景」用同一个函数（所见即所得） |
 | `data/*Repo.ets`（`TimetableRepo`/`TodoRepo`/`KvRepo`…） | `lib/data/sqlite_repo.dart` + `repo.dart` | 同一套 SQL schema（`shared/schema.sql`）；`todo_template`、`virtual_lesson` 也读写 |
@@ -60,4 +60,4 @@
    解锁后按 HANDOFF §84.3 跑一遍四页；这是唯一还挡在"1:1 完成"前面的。
 2. 双指缩放：逻辑有单测 + fixtures，真机多指手测待做（`adb input` 只能单指）。
 3. 玻璃浮窗滚动时偶发重影（Impeller + BackdropFilter 瞬态，HANDOFF §111）。
-4. 备份入口形态、版本号、提醒诊断：都是**平台性差异**（HANDOFF §117.2）。
+4. 版本号、提醒诊断、长按导入：都是**平台性差异**（HANDOFF §117.2 / §118.3）。

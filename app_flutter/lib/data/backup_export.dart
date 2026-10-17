@@ -152,45 +152,65 @@ String backupToJson(BackupBundle b) {
   return const JsonEncoder.withIndent('  ').convert(map);
 }
 
-/// 文件名：`classout-backup-20261017-2330.json`
-String backupFileName([DateTime? now]) {
-  final t = now ?? DateTime.now();
-  String two(int n) => n < 10 ? '0$n' : '$n';
-  return 'classout-backup-${t.year}${two(t.month)}${two(t.day)}'
-      '-${two(t.hour)}${two(t.minute)}.json';
-}
+/// 备份文件名 —— 与鸿蒙端 `data/BackupRepo.ets` 的 `BACKUP_FILE` 完全一致。
+///
+/// 鸿蒙那边是**固定一个文件**：路径可以一直显示在「备份与恢复」页上、恢复时
+/// 直接读它（不弹选文件框）。安卓原来用「每次导出新文件名」，路径只能先显示
+/// 目录、恢复要走文件选择器 —— 和鸿蒙差了两处。改成固定名后两端一模一样。
+const String backupFileName = 'classout-backup.json';
 
 /// 测试可注入的目录（null = 真机走 path_provider；测试环境里没有原生实现）
 Directory? backupDirOverride;
 
-/// 备份目录（只查不写）。给「备份与恢复」页**还没导出时**显示路径用：
-/// 鸿蒙那边是一个固定文件，路径随时可见；安卓是"每次导出新文件"，
-/// 所以这里退一步显示目录，导出后再换成具体文件路径。
-Future<String> backupDirPath({Directory? dir}) async {
-  final target =
-      dir ?? backupDirOverride ?? await getApplicationDocumentsDirectory();
-  return target.path;
+Future<Directory> _backupDir([Directory? dir]) async =>
+    dir ?? backupDirOverride ?? await getApplicationDocumentsDirectory();
+
+/// 备份文件路径（只拼路径、不写文件）：鸿蒙 `BackupRepo.backupFilePath`。
+/// 「备份与恢复」页**一直**显示它（不是导出后才出现）。
+Future<String> backupFilePath({Directory? dir}) async {
+  final target = await _backupDir(dir);
+  return '${target.path}${Platform.pathSeparator}$backupFileName';
 }
 
-/// 写一份备份到应用文档目录，返回文件路径。
-/// [dir] 可注入（测试写临时目录，不碰真机沙箱）。
+/// 写一份备份到应用文档目录（固定文件名，会覆盖上一份 —— 鸿蒙同行为），
+/// 返回文件路径。[dir] 可注入（测试写临时目录，不碰真机沙箱）。
 Future<String> writeBackupFile(String json, {Directory? dir}) async {
-  final target = dir ?? backupDirOverride ?? await getApplicationDocumentsDirectory();
+  final target = await _backupDir(dir);
   if (!await target.exists()) await target.create(recursive: true);
-  final file = File('${target.path}${Platform.pathSeparator}${backupFileName()}');
+  final file = File('${target.path}${Platform.pathSeparator}$backupFileName');
   await file.writeAsString(json, flush: true);
   return file.path;
 }
 
-/// 诊断信息（鸿蒙端「备份与恢复」里也有一块，用来判断数据是不是齐的）
-String backupSummary(BackupBundle b) {
-  final done = b.todos.where((t) => t.status == 'done').length;
-  final active = b.todos.where((t) => t.status == 'active').length;
-  final pending = b.todos.where((t) => t.status == 'pending').length;
-  return '学期 ${b.semesters.length} · 课程 ${b.courses.length} · '
-      '时段 ${b.rules.length} · 模板 ${b.templates.length} · '
-      '单周调整 ${b.overrides.length}\n'
-      '待办 ${b.todos.length}（待确认 $pending / 进行中 $active / 已完成 $done）· '
-      '计划块 ${b.blocks.length} · 课时 ${b.lessons.length} · '
-      '不可排 ${b.restWindows.length}';
+/// 读回那份固定备份的文本；没有文件返回空串（鸿蒙 `readBackupText` 同语义）。
+Future<String> readBackupText({Directory? dir}) async {
+  final path = await backupFilePath(dir: dir);
+  final file = File(path);
+  if (!await file.exists()) return '';
+  return file.readAsString();
 }
+
+/// 导出/恢复后显示在页内蓝框里的摘要 —— 文案与鸿蒙 `backupSummary()` 逐字一致
+/// （单行、`·` 分隔、同一组标签），截图对比时这一行必须能对上。
+String backupSummary(BackupBundle b) =>
+    '学期 ${b.semesters.length} · 课程 ${b.courses.length} · '
+    '时段 ${b.rules.length} · 节次 ${b.sectionTimes.length} · '
+    '生成模板 ${b.templates.length} · 待办 ${b.todos.length} · '
+    '计划块 ${b.blocks.length} · 课时 ${b.lessons.length} · '
+    '单周覆盖 ${b.overrides.length} · 休息时段 ${b.restWindows.length}';
+
+/// 「诊断信息」块 —— 鸿蒙 `BackupRepo.diagnostics()` 是按表 COUNT(*) 一行一行
+/// 列出来的（`semester: 1` …）。安卓这边数据全在 bundle 里，直接按同名表数出来，
+/// 顺序与鸿蒙一致（`todo_blacklist` 在安卓是 kv，不进备份，故不出现在这一块）。
+String diagnosticsText(BackupBundle b) => [
+      'semester: ${b.semesters.length}',
+      'section_time: ${b.sectionTimes.length}',
+      'course: ${b.courses.length}',
+      'session_rule: ${b.rules.length}',
+      'session_override: ${b.overrides.length}',
+      'todo_template: ${b.templates.length}',
+      'todo: ${b.todos.length}',
+      'virtual_lesson: ${b.lessons.length}',
+      'plan_block: ${b.blocks.length}',
+      'rest_window: ${b.restWindows.length}',
+    ].join('\n');

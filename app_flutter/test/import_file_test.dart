@@ -62,10 +62,11 @@ Future<void> _openImport(WidgetTester tester) async {
   // 鸿蒙结构：列表首屏三张入口卡 →「备份与恢复」→「从备份文件导入…」
   await tester.tap(find.byKey(const ValueKey('entry-backup')));
   await tester.pumpAndSettle();
+  // 安卓专属入口：**长按**「从备份恢复」= 粘贴 / 选文件导入
   final btn = find.byKey(const ValueKey('manager-import'));
   await tester.ensureVisible(btn);
   await tester.pumpAndSettle();
-  await tester.tap(btn);
+  await tester.longPress(btn);
   await tester.pumpAndSettle();
 }
 

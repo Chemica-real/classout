@@ -10,10 +10,10 @@
 // 数据整份写回仓库（`onChanged(bundle)`），与其它页面一致。
 
 import 'dart:async';
+import 'dart:convert' show utf8;
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../data/backup.dart';
 import '../data/backup_export.dart';
@@ -2212,6 +2212,14 @@ class _NewSemesterFormState extends State<_NewSemesterForm> {
 }
 
 // ---------------- 子页：备份与恢复（鸿蒙 BackupView）----------------
+//
+// 与鸿蒙 `CourseManager.BackupView` 逐块对齐：
+//   说明文字 → 导出按钮 → 备份文件路径（常显）→ 拉到电脑的命令 →
+//   「从备份恢复」（点一下变「取消 | 确认恢复」两栏）→ 诊断信息（按表计数）。
+// 备份文件是**固定一个** `classout-backup.json`（鸿蒙 `BACKUP_FILE` 同名），
+// 所以路径可以一直显示，恢复也直接读它、不弹选文件框。
+// 安卓额外保留「长按从备份恢复」= 粘贴/选文件导入（跨端搬数据用，鸿蒙没有），
+// 这样既不破坏 1:1，又不丢安卓原本的能力。
 
 class _BackupSheet extends StatefulWidget {
   final BackupBundle b;
@@ -2224,139 +2232,207 @@ class _BackupSheet extends StatefulWidget {
   State<_BackupSheet> createState() => _BackupSheetState();
 }
 
-class _BackupSheetState extends State<_BackupSheet>
-    with InlineToastMixin {
-  late final BackupBundle _b = widget.b;
-  String? _exportPath;
+class _BackupSheetState extends State<_BackupSheet> {
+  /// 鸿蒙 `backupPath`：**一直**显示在页上（不是导出后才出现）
+  String _path = '';
 
-  /// 鸿蒙 `backupPath` 是一直显示在页上的；安卓导出前先显示目录
-  String _dirPath = '';
+  /// 鸿蒙 `backupNote`：页内蓝框（导出成功 / 恢复成功 / 失败都写这里）
+  String _note = '';
+
+  /// 鸿蒙 `confirmRestore`：点「从备份恢复」先变成「取消 | 确认恢复」
+  bool _confirmRestore = false;
+
+  /// 刚从文件恢复进来的那份：诊断信息要显示**恢复后**的条数
+  BackupBundle? _restored;
+
+  BackupBundle get _shown => _restored ?? widget.b;
+
+  /// 安卓专属：长按 = 粘贴 / 选文件导入（鸿蒙没有这条路，保持默认界面对齐）
+  Future<void> _importFromAnywhere() async {
+    final got = await widget.onImport?.call();
+    if (!mounted || got == null) return;
+    setState(() {
+      _restored = got;
+      _note = '已从备份恢复：\n${backupSummary(got)}';
+    });
+  }
 
   @override
   void initState() {
     super.initState();
-    backupDirPath().then((p) {
-      if (mounted) setState(() => _dirPath = p);
+    backupFilePath().then((p) {
+      if (mounted) setState(() => _path = p);
     }).catchError((Object _) {});
   }
 
-  /// 刚恢复过：鸿蒙 `backupNote` —— 在页内显示一行蓝框「已从备份恢复：…」，
-  /// 不是弹提示条、也不关掉这一页
-  String _restored = '';
-
+  /// 鸿蒙 `runExport`：写固定文件 → 蓝框显示「已写入 N 字节」+ 摘要
   Future<void> _export() async {
     try {
-      final path = await writeBackupFile(backupToJson(_b));
+      final json = backupToJson(_shown);
+      final path = await writeBackupFile(json);
       if (!mounted) return;
-      setState(() => _exportPath = path);
-      showToast('已导出到 App 文档目录');
+      setState(() {
+        _path = path;
+        _note = '已写入 ${utf8.encode(json).length} 字节\n${backupSummary(_shown)}';
+      });
     } catch (e) {
       if (!mounted) return;
-      showToast('导出失败：$e');
+      setState(() => _note = '导出失败：$e');
     }
+  }
+
+  /// 鸿蒙 `runRestore`：读固定文件 → 解析 → 整份覆盖；失败原因写进蓝框
+  Future<void> _restore() async {
+    final text = await readBackupText();
+    if (!mounted) return;
+    if (text.isEmpty) {
+      setState(() {
+        _note = '还没有备份文件，先点上面的「导出备份」';
+        _confirmRestore = false;
+      });
+      return;
+    }
+    final BackupBundle bundle;
+    try {
+      bundle = BackupBundle.decode(text);
+    } catch (_) {
+      setState(() {
+        _note = '备份文件读不懂（不是本 App 的备份，或格式太新）。已放弃恢复，数据没动。';
+        _confirmRestore = false;
+      });
+      return;
+    }
+    setState(() {
+      _confirmRestore = false;
+      _restored = bundle;
+      _note = '已从备份恢复：\n${backupSummary(bundle)}';
+    });
+    widget.onChanged(bundle);
   }
 
   /// 鸿蒙 `BackupView` 同样是整页场景（顶栏由外壳画）
   @override
   Widget build(BuildContext context) {
+    final path = _path.isEmpty ? '（读取中…）' : _path;
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 30),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          toastLine(),
-                      const Text(
-                          '数据只在这台手机里。导出会把全部内容写成一个 JSON 文件放在应用文档目录，'
-                          '恢复则用它整份覆盖当前数据。',
-                          style: TextStyle(
-                              fontSize: 11, color: Color(0xFF94A0B5))),
-                      if (_restored.isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: const Color(0x382E6BE6),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(_restored,
-                              style: const TextStyle(
-                                  fontSize: 12,
-                                  height: 1.5,
-                                  color: Color(0xFF7FA8FF))),
-                        ),
-                      ],
-                      const SizedBox(height: 12),
-                      _sheetButton('导出备份到文件', _export),
-                      const SizedBox(height: 14),
-                      // 鸿蒙 `BackupView` 的路径块是**一直显示**的（不是导出后才出现）
-                      const Text('备份文件路径',
-                          style: TextStyle(
-                              fontSize: 12, color: Color(0xFF94A0B5))),
-                      const SizedBox(height: 4),
-                      SelectableText(
-                          _exportPath ?? (_dirPath.isEmpty ? '（读取中…）' : _dirPath),
-                          style: const TextStyle(
-                              fontSize: 11, color: Color(0xFFC3CDDE))),
-                      const SizedBox(height: 6),
-                      _PillAction(
-                        text: '复制路径',
-                        onTap: () async {
-                          final p = _exportPath ?? _dirPath;
-                          if (p.isEmpty) return;
-                          await Clipboard.setData(ClipboardData(text: p));
-                          if (mounted) showToast('路径已复制');
-                        },
-                      ),
-                        // 鸿蒙那边给的是 `./hdc.sh file recv …`；安卓的等价命令是 adb pull
-                      const Padding(
-                        padding: EdgeInsets.only(top: 10, bottom: 4),
-                        child: Text('想把它存到电脑上（或发给我排查问题），在这个项目目录里跑：',
-                            style: TextStyle(
-                                fontSize: 11, color: Color(0xFF94A0B5))),
-                      ),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.10),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: SelectableText(
-                            "adb pull '${_exportPath ?? _dirPath}/' ./",
-                            style: const TextStyle(
-                                fontSize: 10, color: Color(0xFFCBD6E8))),
-                      ),
-                      const SizedBox(height: 16),
-                      if (widget.onImport != null)
-                        // 鸿蒙：琥珀色「从备份恢复」；安卓要多一步选文件，所以文案写清楚是"文件"
-                        _sheetButton('从备份文件恢复…', () async {
-                          final got = await widget.onImport!();
-                          if (!mounted || got == null) return;
-                          // 鸿蒙恢复完**留在本页**，在顶部显示这行蓝框（backupSummary 同款内容）
-                          setState(() => _restored = '已从备份恢复：\n'
-                              '${backupSummary(got)}');
-                        },
-                            amber: true,
-                            key: const ValueKey('manager-import')),
-                      const SizedBox(height: 22),
-                      Row(
-                        children: [
-                          const Text('诊断信息',
-                              style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  color: inkPrimary)),
-                          const Spacer(),
-                          _PillAction(
-                              text: '刷新', onTap: () => setState(() {})),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-          Text(backupSummary(_b),
-              style: const TextStyle(
-                  fontSize: 11, height: 1.5, color: Color(0xFF8B97AC))),
+          const Text(
+              '数据只在这台手机里。导出会把全部内容写成一个 JSON 文件放在应用沙箱，'
+              '恢复则用它整份覆盖当前数据。',
+              style: TextStyle(fontSize: 11, color: Color(0xFF94A0B5))),
+          if (_note.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0x382E6BE6),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(_note,
+                  style: const TextStyle(
+                      fontSize: 12, height: 1.5, color: Color(0xFF7FA8FF))),
+            ),
+          ],
           const SizedBox(height: 12),
+          _sheetButton('导出备份到文件', _export),
+          const SizedBox(height: 14),
+          const Text('备份文件路径',
+              style: TextStyle(fontSize: 12, color: Color(0xFF94A0B5))),
+          const SizedBox(height: 4),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: SelectableText(path,
+                style: const TextStyle(
+                    fontSize: 11, color: Color(0xFFC3CDDE))),
+          ),
+          const Padding(
+            padding: EdgeInsets.only(top: 10, bottom: 4),
+            child: Text('想把它存到电脑上（或发给我排查问题），在这个项目目录里跑：',
+                style: TextStyle(fontSize: 11, color: Color(0xFF94A0B5))),
+          ),
+          // 鸿蒙那行是 `./hdc.sh file recv …`；安卓的等价命令是 adb pull
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: SelectableText("adb pull '$path' ./",
+                style:
+                    const TextStyle(fontSize: 10, color: Color(0xFFCBD6E8))),
+          ),
+          const SizedBox(height: 16),
+          if (_confirmRestore) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0x2ED64545), // rgba(214,69,69,0.18)
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Text('确定用备份覆盖当前数据？当前内容会被整份替换，且不可撤销。',
+                  style: TextStyle(
+                      fontSize: 12, height: 1.5, color: Color(0xFFFF8A8A))),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: _sheetButton('取消',
+                      () => setState(() => _confirmRestore = false),
+                      secondary: true),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child:
+                      _sheetButton('确认恢复', _restore, danger: true),
+                ),
+              ],
+            ),
+          ] else
+            _sheetButton(
+              '从备份恢复',
+              () => setState(() => _confirmRestore = true),
+              amber: true,
+              onLongPress: _importFromAnywhere,
+              key: const ValueKey('manager-import'),
+            ),
+          const SizedBox(height: 22),
+          Row(
+            children: [
+              const Text('诊断信息',
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: inkPrimary)),
+              const Spacer(),
+              _PillAction(text: '刷新', onTap: () => setState(() {})),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: glassTintRow,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: glassEdgeSoft),
+              boxShadow: glassShadowRow,
+            ),
+            child: Text(diagnosticsText(_shown),
+                style: const TextStyle(
+                    fontSize: 11, height: 1.5, color: Color(0xFFC3CDDE))),
+          ),
         ],
       ),
     );
@@ -2384,20 +2460,27 @@ Widget _sheetInput(TextEditingController c, String hint) {
   );
 }
 
-/// 子页里的整宽蓝按钮
+/// 子页里的整宽蓝按钮（鸿蒙默认 Button：40 高、胶囊圆角、fontSize 16）
 Widget _sheetButton(String text, VoidCallback onTap,
-    {bool secondary = false, bool amber = false, Key? key}) {
-  final Color bg = amber
-      ? const Color(0x33B26B00) // rgba(178,107,0,0.20)，鸿蒙「从备份恢复」
-      : (secondary
-          ? Colors.white.withValues(alpha: 0.14)
-          : const Color(0xFF2E6BE6));
+    {bool secondary = false,
+    bool amber = false,
+    bool danger = false,
+    VoidCallback? onLongPress,
+    Key? key}) {
+  final Color bg = danger
+      ? const Color(0xFFD64545) // 鸿蒙「确认恢复」
+      : (amber
+          ? const Color(0x33B26B00) // rgba(178,107,0,0.20)，鸿蒙「从备份恢复」
+          : (secondary
+              ? Colors.white.withValues(alpha: 0.14)
+              : const Color(0xFF2E6BE6)));
   final Color fg = amber
       ? const Color(0xFFE8B25C)
       : (secondary ? const Color(0xFFC3CDDE) : Colors.white);
   return GestureDetector(
     key: key,
     onTap: onTap,
+    onLongPress: onLongPress,
     behavior: HitTestBehavior.opaque,
     child: Container(
       height: 40,

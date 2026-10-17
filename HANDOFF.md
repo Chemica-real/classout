@@ -12,7 +12,7 @@ ClassOUT 是一款**纯离线**的「课表 + 待办 + 计划」三合一 App，
 |---|---|---|
 | 版本 | v1.5.1（上架准备中，未提审） | 0.2.0（Android 已装真机 OPPO A97） |
 | 页面 | 课表 / 待办 / 计划 / 设置 + 启动加载页 + 悬浮浮窗 | **同样四页 + 启动页 + 浮窗（§52–§68 逐页复刻）** |
-| 测试 | 离线断言 524 项（`tools/domain-check`） | **1305 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
+| 测试 | 离线断言 524 项（`tools/domain-check`） | **1309 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
 | 差异基准 | 本目录 `docs/manual/01..09.jpg`（真机截图） | `app_flutter/tool/goldens/*.png` 对照上面九张 + `shared/fixtures/`（1115 条规则用例） |
 
 **安卓版与鸿蒙版的 1:1 复刻已经完成**：主题 token 抄自 ArkTS（§52）、六个页面重做、
@@ -6320,7 +6320,7 @@ Material 关闭图标。连同下面几处一起对齐：
 ```bash
 ./tools/domain-check/run.sh          # 鸿蒙端离线断言：524 项
 cd app_flutter && flutter analyze    # 0 issue
-cd app_flutter && flutter test       # 1305 条（含 1115 条三端 fixture 逐条对拍）
+cd app_flutter && flutter test       # 1309 条（含 1115 条三端 fixture 逐条对拍）
 ```
 
 ---
@@ -6574,7 +6574,7 @@ cd app_flutter && flutter test       # 1305 条（含 1115 条三端 fixture 逐
 | 演练沙箱偏好 | 进沙箱前整张 kv 快照、退出/冷启动整份还原 §116.2 |
 | 退出演练 / 手动同步 / 恢复备份的提示 | 按鸿蒙改成静默 / 白框 / 留在本页 §116.3 |
 | 课程管理 | 整页换内容（`_mode`）+ 顶栏玻璃条 + 全屏薄纱 §116.7 |
-| 备份页 | 路径块常驻、琥珀色「从备份文件恢复…」§116.7 |
+| 备份页 | 固定文件名 + 路径常显 + 内联「取消 / 确认恢复」+ 按表诊断 §118 |
 | 文案 | `M/D` 斜线日期；「这是习题课」；「加上这节课」§116.8 |
 | 抽屉几何 | 待办编辑 / 计划块面板：右缝 10、圆角 20 §116.8 |
 | 计划页浮窗 | 日期条与网格 10vp 空行、托盘高度实测、`DDL_MARK_ALLOW` §116.9 |
@@ -6590,8 +6590,8 @@ cd app_flutter && flutter test       # 1305 条（含 1115 条三端 fixture 逐
    这是唯一还挡在"1:1 完成"前面的东西。
 2. **双指缩放真机手测** —— `adb input` 只能单指、`sendevent` 被 SELinux 拒；逻辑有单测 + fixtures。
 3. **玻璃浮窗滚动时的偶发重影** —— Impeller/BackdropFilter 瞬态（§111），切页即消失，不是布局。
-4. **备份入口形态** —— 安卓没有可共享的沙箱目录，导入走系统文件选择（预览即确认）；
-   恢复后的表现已经和鸿蒙一致（留在本页 + 蓝框）。
+4. ~~备份入口形态~~ —— **已按鸿蒙改成固定文件 + 内联确认**（§118）：路径常显、恢复直接读
+   `classout-backup.json`，页面结构与文案逐块对齐；跨端搬数据留在「长按从备份恢复」。
 5. **版本号** —— 安卓 `0.2.0`、鸿蒙 `v1.5.1`，两端各自的版本号，不是抄错。
 6. **提醒诊断（长按「保存提醒设置」）** —— 安卓专属的排查入口（§86.2），鸿蒙没有。
 7. **列表项增删的过渡** —— 鸿蒙卡片有 `transition(OPACITY + translate y -10, DUR_ITEM)`；
@@ -6602,8 +6602,8 @@ cd app_flutter && flutter test       # 1305 条（含 1115 条三端 fixture 逐
 ```bash
 ./tools/domain-check/run.sh          # 鸿蒙端离线断言：524 项
 cd app_flutter && flutter analyze    # 0 issue
-cd app_flutter && flutter test       # 1305 条（含 1115 条三端 fixture 逐条对拍）
-cd app_flutter && flutter test --update-goldens tool/screenshot_test.dart   # 23 张 golden（1080×2400）
+cd app_flutter && flutter test       # 1309 条（含 1115 条三端 fixture 逐条对拍）
+cd app_flutter && flutter test --update-goldens tool/screenshot_test.dart   # 24 张 golden（1080×2400）
 ```
 
 真机（OPPO A97）安装：
@@ -7005,7 +7005,65 @@ Flutter 要做这个得上 `AnimatedList`/`SliverAnimatedList`，改动面比收
 而 `_capture` 截 `MaterialApp` 出的是 1080×2400 —— 同一个目录里两种尺寸，和 `docs/manual/*.jpg`
 （1084×2412）对比时还得先换算。
 
-现在 `_shot` 与导入对话框那张都改成截 `MaterialApp`，**23 张 golden 全部 1080×2400（DPR 3）**。
+现在 `_shot` 与导入对话框那张都改成截 `MaterialApp`，**24 张 golden 全部 1080×2400（DPR 3）**。
 以后按"同一张参考图/同一页 golden"逐像素量边界时，缩放比固定是 3，不用再猜。
 
 - `flutter test` **1305 passed**；golden 全部重出。
+
+### 116.40 首次启动询问卡的 golden（第 24 张）
+
+「第一次用 ClassOUT？」这张卡以前只在真机上见过，没有基准图。这次补了一张
+`guide_prompt.png`（1080×2400，卡压在课表上方）。
+
+⚠️ 踩到的坑：`showGeneralDialog` 的 `pageBuilder` 内容不在 `Material` 之下，
+拿不到 `MaterialApp` 的 `fontFamily` → golden 里中文全是**方块**（真机靠系统字体所以看不出来）。
+修法是把卡片包一层 `Material(type: MaterialType.transparency)`（`guide.png` 里也是同一个坑）。
+现在 24 张 golden 每张的中文都能看清，可以当基准图用。
+
+## 118. 备份与恢复页：从「选文件」改成鸿蒙那套「固定文件 + 内联确认」
+
+这一块以前只对齐了"留在本页 + 蓝框提示"，页面结构和入口形态都和鸿蒙不一样；
+这次按 `view/CourseManager.ets` 的 `BackupView` 逐块重写。
+
+### 118.1 数据侧（`data/backup_export.dart`）
+
+| 项 | 鸿蒙 | 安卓（改后） |
+|---|---|---|
+| 文件名 | `BACKUP_FILE = classout-backup.json`（固定） | `backupFileName` 常量同名，导出覆盖上一份 |
+| 路径 | `BackupRepo.backupFilePath()`，**开页即显示** | `backupFilePath()`（只拼路径不写文件），开页即显示 |
+| 导出 | `exportToFile` → `backupNote = 已写入 N 字节\n摘要` | 同文案（`utf8.encode(json).length` 计字节） |
+| 恢复 | `readBackupText` 读固定文件 | `readBackupText()`；没有文件返回空串 |
+| 摘要 | `backupSummary()` 单行 `学期 n · 课程 n · 时段 n · 节次 n · 生成模板 n · 待办 n · 计划块 n · 课时 n · 单周覆盖 n · 休息时段 n` | 逐字一致（原来是两行、标签也不同：模板/单周调整/不可排） |
+| 诊断 | 按表 `COUNT(*)`，一行一张表 + `--- 上次启动报告 ---` | `diagnosticsText()` 按同名表一行一行（`semester: 1` …），顺序同鸿蒙；安卓的 `todo_blacklist` 在 kv 里、不进备份，故不列 |
+
+### 118.2 界面（`ui/course_manager.dart` 的 `_BackupSheet`）
+
+从上到下与 `BackupView` 一一对应：
+
+1. 说明文字（11 `#94A0B5`）
+2. 蓝框 note（`0x382E6BE6` 底、圆角 8、padding 10、12 `#7FA8FF`）—— 导出成功 / 恢复成功 / 失败都写这里，
+   **不是 SnackBar**
+3. 「导出备份到文件」（默认 Button：40 高、胶囊、16 号）
+4. 「备份文件路径」12 + 路径块（11 `#C3CDDE`、白 0.10 底、圆角 6、padding 8）
+5. 「想把它存到电脑上…」+ 命令块（10 `#CBD6E8`、白 0.10 底）—— 安卓写 `adb pull '<path>' ./`
+6. 「从备份恢复」（琥珀 `0x33B26B00` / `#E8B25C`）→ 点一下变成
+   红框「确定用备份覆盖当前数据？…」+「取消 | 确认恢复」两栏（`#D64545`）
+7. 「诊断信息 / 刷新」+ 玻璃小卡里的按表计数
+
+原安卓的「复制路径」小胶囊去掉了（鸿蒙没有；路径是 `SelectableText`，长按仍可复制）。
+
+### 118.3 安卓多留的一条路：长按「从备份恢复」
+
+鸿蒙只能恢复自己沙箱里那份；安卓要跨端搬数据（鸿蒙导出的 JSON / 旧手机备份）必须有入口。
+折中办法：**长按**「从备份恢复」= 打开原来的「粘贴 / 选文件」导入对话框（预览即确认）。
+单击行为与鸿蒙完全一致，界面上不多一颗按钮 —— 和「长按保存提醒设置 = 提醒诊断」同一个思路。
+
+### 118.4 测试
+
+- `backup_export_test`：固定文件名/覆盖/`backupFilePath`/`readBackupText` 空文件；摘要逐字；诊断按表。
+- `course_manager_test`：导出后蓝框「已写入 N 字节」（无 SnackBar）；路径与「从备份恢复」常显；
+  点击出现内联确认、取消可回退；没有备份文件时确认恢复 → 「还没有备份文件」提示；诊断按表计数。
+- `import_test` / `import_file_test`：导入入口改成**长按** `manager-import`（单击是内联确认）。
+- `backup_sheet.png` golden 重出（24 张）。
+
+- `flutter test` **1309 passed**；golden 重出。

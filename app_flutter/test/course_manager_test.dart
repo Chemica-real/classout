@@ -192,14 +192,6 @@ void main() {
     expect(saved.blocks.length, withTemplate.blocks.length);
   });
 
-  testWidgets('诊断信息显示各表条数', (tester) async {
-    await _pump(tester);
-    await _tapVisible(tester, find.byKey(const ValueKey('entry-backup')));
-    expect(find.text('诊断信息'), findsOneWidget);
-    expect(find.textContaining('课程 4'), findsWidgets);
-    expect(find.textContaining('待办 6'), findsWidgets);
-  });
-
   testWidgets('新建学期（不复制）→ 学期 +1，当前学期不变', (tester) async {
     final repo = await _pump(tester);
     await _tapVisible(tester, find.byKey(const ValueKey('entry-semester')));
@@ -333,9 +325,13 @@ void main() {
     expect(find.text('课程（0）'), findsOneWidget);
   });
 
-  testWidgets('备份子页：导出后显示路径、adb pull 命令与顶部提示', (tester) async {
+  testWidgets('备份子页：导出后蓝框显示「已写入 N 字节」+ 摘要，路径与 adb pull 常显',
+      (tester) async {
     // path_provider 在测试里没有原生实现：用备份模块的测试注入点写到临时目录
-    backupDirOverride = Directory.systemTemp;
+    // FakeAsync 里做真实异步文件 I/O 会永远等下去 → 用同步版建/删临时目录
+    final dir = Directory.systemTemp.createTempSync('classout-bk-golden');
+    backupDirOverride = dir;
+    addTearDown(() => dir.deleteSync(recursive: true));
     addTearDown(() => backupDirOverride = null);
     await _pump(tester);
     await _tapVisible(tester, find.byKey(const ValueKey('entry-backup')));
@@ -345,21 +341,68 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 100));
     });
     await tester.pump();
-    expect(find.text('已导出到 App 文档目录'), findsOneWidget);
+    // 鸿蒙 `backupNote = 已写入 N 字节\n摘要`；蓝框不是 SnackBar
+    expect(find.textContaining('已写入 '), findsOneWidget);
+    expect(find.textContaining('字节'), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
     expect(find.textContaining('adb pull'), findsOneWidget);
-    expect(find.text('复制路径'), findsOneWidget);
+    // 路径块是固定文件（鸿蒙 BACKUP_FILE 同名）
+    expect(find.textContaining('classout-backup.json'), findsWidgets);
   });
 
-  testWidgets('备份子页：路径块与「从备份文件恢复」一直都在（鸿蒙 BackupView 同款）',
+  testWidgets('备份子页：路径块与「从备份恢复」一直都在（鸿蒙 BackupView 同款）',
       (tester) async {
     // 还没导出时 path_provider 读不到目录 → 显示占位；关键是这两块**不是导出后才出现**
     await _pump(tester);
     await _tapVisible(tester, find.byKey(const ValueKey('entry-backup')));
     expect(find.text('备份文件路径'), findsOneWidget);
-    expect(find.text('从备份文件恢复…'), findsOneWidget);
+    expect(find.text('从备份恢复'), findsOneWidget);
     expect(find.textContaining('adb pull'), findsOneWidget);
     // 鸿蒙那颗按钮是琥珀色（rgba(178,107,0,0.20) 底 + #E8B25C 字）
-    final txt = tester.widget<Text>(find.text('从备份文件恢复…'));
+    final txt = tester.widget<Text>(find.text('从备份恢复'));
     expect(txt.style!.color, const Color(0xFFE8B25C));
+  });
+
+  testWidgets('备份子页：点「从备份恢复」→ 内联「取消 | 确认恢复」，不弹文件选择',
+      (tester) async {
+    await _pump(tester);
+    await _tapVisible(tester, find.byKey(const ValueKey('entry-backup')));
+    await _tapVisible(tester, find.text('从备份恢复'));
+    // 鸿蒙 `confirmRestore` 面板：红底说明 + 两颗按钮，页面不跳走
+    expect(find.textContaining('确定用备份覆盖当前数据？'), findsOneWidget);
+    expect(find.text('取消'), findsOneWidget);
+    expect(find.text('确认恢复'), findsOneWidget);
+    expect(find.text('备份与恢复'), findsWidgets);
+    // 取消 → 回到琥珀按钮
+    await _tapVisible(tester, find.text('取消'));
+    expect(find.text('从备份恢复'), findsOneWidget);
+  });
+
+  testWidgets('备份子页：没有备份文件时确认恢复 → 蓝框提示先导出', (tester) async {
+    final dir = Directory.systemTemp.createTempSync('classout-bk-empty');
+    backupDirOverride = dir;
+    addTearDown(() => dir.deleteSync(recursive: true));
+    addTearDown(() => backupDirOverride = null);
+    await _pump(tester);
+    await _tapVisible(tester, find.byKey(const ValueKey('entry-backup')));
+    await _tapVisible(tester, find.text('从备份恢复'));
+    await tester.runAsync(() async {
+      await tester.tap(find.text('确认恢复'));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    await tester.pump();
+    // 鸿蒙文案：还没有备份文件，先点上面的「导出备份」
+    expect(find.textContaining('还没有备份文件'), findsOneWidget);
+    expect(find.text('从备份恢复'), findsOneWidget, reason: '确认面板应当收起');
+  });
+
+  testWidgets('诊断信息显示各表条数（鸿蒙 diagnostics 同款）', (tester) async {
+    await _pump(tester);
+    await _tapVisible(tester, find.byKey(const ValueKey('entry-backup')));
+    expect(find.text('诊断信息'), findsOneWidget);
+    expect(find.textContaining('semester: 1'), findsOneWidget);
+    expect(find.textContaining('course: 4'), findsOneWidget);
+    expect(find.textContaining('todo: 6'), findsOneWidget);
+    expect(find.textContaining('rest_window: '), findsOneWidget);
   });
 }

@@ -130,7 +130,8 @@ void main() {
     expect(l.doneAt, 123);
   });
 
-  test('写文件：文件名带日期，内容可解析', () async {
+  test('写文件：固定文件名 classout-backup.json（鸿蒙 BACKUP_FILE 同名），内容可解析',
+      () async {
     final dir = await Directory.systemTemp.createTemp('classout-backup-test');
     addTearDown(() => dir.delete(recursive: true));
     final json = backupToJson(_demo());
@@ -138,18 +139,44 @@ void main() {
 
     expect(File(path).existsSync(), isTrue);
     final name = path.split(Platform.pathSeparator).last;
-    expect(name, startsWith('classout-backup-'));
-    expect(name, endsWith('.json'));
+    expect(name, 'classout-backup.json');
+    expect(backupFileName, 'classout-backup.json');
 
-    final read = File(path).readAsStringSync();
+    // 再导出一次会覆盖同一份（鸿蒙也是固定一个文件）
+    final again = await writeBackupFile(json.replaceAll('演示学期', '覆盖学期'),
+        dir: dir);
+    expect(again, path);
+    expect(File(path).readAsStringSync(), contains('覆盖学期'));
+
+    final read = await readBackupText(dir: dir);
     expect(BackupBundle.decode(read).courses.length, 4);
+    // 路径可提前算出来（页上常显）
+    expect(await backupFilePath(dir: dir), path);
   });
 
-  test('诊断摘要包含各表计数', () {
+  test('没有备份文件时 readBackupText 返回空串（不抛异常）', () async {
+    final dir = await Directory.systemTemp.createTemp('classout-backup-none');
+    addTearDown(() => dir.delete(recursive: true));
+    expect(await readBackupText(dir: dir), '');
+  });
+
+  test('摘要文案与鸿蒙 backupSummary 逐字一致', () {
     final text = backupSummary(_demo());
-    expect(text, contains('课程 4'));
-    expect(text, contains('时段 6'));
-    expect(text, contains('待办 6'));
-    expect(text, contains('计划块 3'));
+    expect(
+        text,
+        '学期 1 · 课程 4 · 时段 6 · 节次 12 · '
+        '生成模板 0 · 待办 6 · 计划块 3 · 课时 0 · '
+        '单周覆盖 0 · 休息时段 1');
+  });
+
+  test('诊断信息按表一行一行列（鸿蒙 diagnostics 同款）', () {
+    final lines = diagnosticsText(_demo()).split('\n');
+    expect(lines, contains('semester: 1'));
+    expect(lines, contains('section_time: 12'));
+    expect(lines, contains('course: 4'));
+    expect(lines, contains('session_rule: 6'));
+    expect(lines, contains('todo: 6'));
+    expect(lines, contains('virtual_lesson: 0'));
+    expect(lines, contains('plan_block: 3'));
   });
 }
