@@ -157,7 +157,6 @@ class _EditorBodyState extends State<_EditorBody> {
   late String _examEnd;
   late int _courseId;
   late int _estimateMin;
-  String? _error;
 
   /// 自定义类型（就地新建；同时回写设置页那份列表）
   late List<String> _custom = List.of(widget.customCategories);
@@ -264,11 +263,8 @@ class _EditorBodyState extends State<_EditorBody> {
   }
 
   void _submit() {
-    final title = _title.text.trim();
-    if (title.isEmpty) {
-      setState(() => _error = '标题不能为空');
-      return;
-    }
+    // 鸿蒙 `doSave()`：标题空着也能存 —— 落库时补成「未命名待办」，不弹错误拦人
+    final title = _title.text.trim().isEmpty ? '未命名待办' : _title.text.trim();
     final e = widget.existing;
     final isExam = _category == TodoCategory.exam;
     Navigator.of(widget.ctx).pop(TodoEditorResult(Todo(
@@ -342,17 +338,8 @@ class _EditorBodyState extends State<_EditorBody> {
                   controller: _title,
                   hint: '例如：数学作业 P12 第 3-5 题',
                   autofocus: widget.existing == null,
-                  onChanged: (_) {
-                    if (_error != null) setState(() => _error = null);
-                  },
+                  onChanged: (_) {},
                 ),
-                if (_error != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(_error!,
-                        style: const TextStyle(
-                            fontSize: 11, color: Color(0xFFFF8080))),
-                  ),
                 _Label('类型'),
                 Wrap(
                   spacing: 8,

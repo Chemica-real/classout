@@ -103,8 +103,9 @@ void main() {
     final before = (await repo.load())!;
     await _tapVisible(tester, find.byKey(const ValueKey('course-4')));
     await _tapVisible(tester, find.text('删除课程'));
-    expect(find.text('确认删除课程'), findsOneWidget);
-    await _tapVisible(tester, find.text('确认删除课程'));
+    // 鸿蒙 DeleteConfirmRow：说明 + 取消 + 红色「删除」
+    expect(find.textContaining('确定删除'), findsOneWidget);
+    await _tapVisible(tester, find.text('删除').last);
 
     final saved = (await repo.load())!;
     expect(saved.courses.any((c) => c.id == 4), isFalse);
@@ -140,7 +141,7 @@ void main() {
     // 删除课程 → 课时一起没
     await _tapVisible(tester, find.byKey(const ValueKey('course-4')));
     await _tapVisible(tester, find.text('删除课程'));
-    await _tapVisible(tester, find.text('确认删除课程'));
+    await _tapVisible(tester, find.text('删除').last);
     saved = (await repo.load())!;
     expect(saved.lessons, isEmpty);
   });

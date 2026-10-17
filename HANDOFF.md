@@ -12,7 +12,7 @@ ClassOUT 是一款**纯离线**的「课表 + 待办 + 计划」三合一 App，
 |---|---|---|
 | 版本 | v1.5.1（上架准备中，未提审） | 0.2.0（Android 已装真机 OPPO A97） |
 | 页面 | 课表 / 待办 / 计划 / 设置 + 启动加载页 + 悬浮浮窗 | **同样四页 + 启动页 + 浮窗（§52–§68 逐页复刻）** |
-| 测试 | 离线断言 524 项（`tools/domain-check`） | **1317 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
+| 测试 | 离线断言 524 项（`tools/domain-check`） | **1318 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
 | 差异基准 | 本目录 `docs/manual/01..09.jpg`（真机截图） | `app_flutter/tool/goldens/*.png` 对照上面九张 + `shared/fixtures/`（1115 条规则用例） |
 
 **安卓版与鸿蒙版的 1:1 复刻已经完成**：主题 token 抄自 ArkTS（§52）、六个页面重做、
@@ -6320,7 +6320,7 @@ Material 关闭图标。连同下面几处一起对齐：
 ```bash
 ./tools/domain-check/run.sh          # 鸿蒙端离线断言：524 项
 cd app_flutter && flutter analyze    # 0 issue
-cd app_flutter && flutter test       # 1317 条（含 1115 条三端 fixture 逐条对拍）
+cd app_flutter && flutter test       # 1318 条（含 1115 条三端 fixture 逐条对拍）
 ```
 
 ---
@@ -6603,7 +6603,7 @@ cd app_flutter && flutter test       # 1317 条（含 1115 条三端 fixture 逐
 ```bash
 ./tools/domain-check/run.sh          # 鸿蒙端离线断言：524 项
 cd app_flutter && flutter analyze    # 0 issue
-cd app_flutter && flutter test       # 1317 条（含 1115 条三端 fixture 逐条对拍）
+cd app_flutter && flutter test       # 1318 条（含 1115 条三端 fixture 逐条对拍）
 cd app_flutter && flutter test --update-goldens tool/screenshot_test.dart   # 24 张 golden（1080×2400）
 ```
 
@@ -7169,3 +7169,28 @@ Flutter 要做这个得上 `AnimatedList`/`SliverAnimatedList`，改动面比收
   （演练学期 + 每门课的模板行），这才和 `05-manager.jpg` 同一条数据。
 
 - `flutter test` **1317 passed**；24 张 golden 重出。
+
+## 121. 又两处"安卓自己加的规矩"（对着 HOS 源码逐条核文案找出来的）
+
+### 121.1 待办标题留空：鸿蒙允许，安卓原来拦人
+
+鸿蒙 `TodoInbox.doSave()`：`title = trim 后为空 ? '未命名待办' : trim` —— **不拦**。
+安卓编辑器里写死了「标题不能为空」的红字错误，保存不下去。
+→ 改成同一套：直接存，名字补「未命名待办」；那条红字错误（`_error`）整段删掉。
+（测试：留空保存 → `todos.last.title == '未命名待办'`。）
+
+### 121.2 课程编辑页删除：鸿蒙是「说明 + 取消 + 删除」确认行
+
+鸿蒙 `DeleteConfirmRow`（课程/时段/模板共用）：
+
+```
+确定删除「X」及其所有时段、模板？        取消        删除
+ font 11 #FF8A8A                       12 #A9B5C9   12 white / #D64545 / 圆角 8 / padding 10×4
+```
+
+安卓原来是「删除课程」按钮文字自己变成「确认删除课程」，再点同一个月，**没有取消**。
+→ 底部按鸿蒙重排：`保存课程`（等宽蓝，16 号）+ `删除课程`（红底 0.18 / #FF8A8A，16 号，按内容宽），
+点删除后下面出现确认行（说明 + 取消 + 红色「删除」）。`_sheetButton` 加了 `dangerTint` 与
+`fill: false`（放在 Row 里按内容宽）。
+
+- `flutter test` **1318 passed**；golden 重出（课程编辑页、管理列表等）。

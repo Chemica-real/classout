@@ -185,6 +185,30 @@ void main() {
     expect(created.status, TodoStatus.active);
   });
 
+  testWidgets('标题留空也能存 → 名字补成「未命名待办」（鸿蒙 doSave）', (tester) async {
+    BackupBundle? last;
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: StatefulBuilder(
+          builder: (context, setState) => TodoPage(
+            bundle: last ?? _demo(),
+            onChanged: (next) => setState(() => last = next),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('+ 新建待办'));
+    await tester.pumpAndSettle();
+    // 不输入标题，直接保存：鸿蒙不拦，落库时才补个名字
+    await tester.tap(find.byKey(const ValueKey('todo-save')));
+    await tester.pumpAndSettle();
+    expect(last!.todos.last.title, '未命名待办');
+  });
+
   testWidgets('新建考试：默认「下周同一天 09:00–11:00」，保存即自动排进计划页',
       (tester) async {
     BackupBundle? last;

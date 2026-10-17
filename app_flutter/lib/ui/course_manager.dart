@@ -949,66 +949,64 @@ class _CourseEditorState extends State<_CourseEditor> {
                     ],
             const SizedBox(height: 8),
             const SizedBox(height: 20),
+            // 鸿蒙课程编辑页底部：保存课程（等宽蓝）+ 删除课程（红、按内容宽）
             Row(
               children: [
                 Expanded(
-                  child: GestureDetector(
-                    key: const ValueKey('course-save'),
-                    onTap: _save,
-                    behavior: HitTestBehavior.opaque,
-                    child: Container(
-                      height: 40,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF2E6BE6),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Text('保存课程',
-                          style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.white)),
-                    ),
-                  ),
+                  child: _sheetButton('保存课程', _save,
+                      key: const ValueKey('course-save')),
                 ),
                 if (_id > 0) ...[
                   const SizedBox(width: 10),
-                  GestureDetector(
-                    onTap: () {
-                      if (_confirmDelete) {
-                        _delete();
-                      } else {
-                        setState(() => _confirmDelete = true);
-                      }
-                    },
-                    behavior: HitTestBehavior.opaque,
-                    child: Container(
-                      height: 40,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: const Color(0x2ED64545),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(_confirmDelete ? '确认删除课程' : '删除课程',
-                          style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              color: Color(0xFFFF8A8A))),
-                    ),
-                  ),
+                  _sheetButton('删除课程',
+                      () => setState(() => _confirmDelete = true),
+                      dangerTint: true,
+                      fill: false),
                 ],
               ],
             ),
-          if (_confirmDelete && _id > 0)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                  '确定删除「${_short.text.isNotEmpty ? _short.text : _name.text}」'
-                  '及其所有时段、模板？',
-                  style: const TextStyle(
-                      fontSize: 11, color: Color(0xFFFF8A8A))),
-            ),
+            // 鸿蒙 `DeleteConfirmRow`：说明 + 取消 + 删除（红底小胶囊），不是"再点一次同一个按钮"
+            if (_confirmDelete && _id > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                          '确定删除「${_short.text.isNotEmpty ? _short.text : _name.text}」'
+                          '及其所有时段、模板？',
+                          style: const TextStyle(
+                              fontSize: 11, color: Color(0xFFFF8A8A))),
+                    ),
+                    GestureDetector(
+                      onTap: () => setState(() => _confirmDelete = false),
+                      behavior: HitTestBehavior.opaque,
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 10),
+                        child: Text('取消',
+                            style: TextStyle(
+                                fontSize: 12, color: Color(0xFFA9B5C9))),
+                      ),
+                    ),
+                    GestureDetector(
+                      key: const ValueKey('course-delete-confirm'),
+                      onTap: _delete,
+                      behavior: HitTestBehavior.opaque,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFD64545),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Text('删除',
+                            style: TextStyle(
+                                fontSize: 12, color: Colors.white)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
         ],
       ),
     );
@@ -2466,18 +2464,24 @@ Widget _sheetButton(String text, VoidCallback onTap,
     {bool secondary = false,
     bool amber = false,
     bool danger = false,
+    bool dangerTint = false,
     VoidCallback? onLongPress,
+    bool fill = true,
     Key? key}) {
   final Color bg = danger
       ? const Color(0xFFD64545) // 鸿蒙「确认恢复」
+      : (dangerTint
+          ? const Color(0x2ED64545) // rgba(214,69,69,0.18)，鸿蒙「删除课程」
+          : (amber
+              ? const Color(0x33B26B00) // rgba(178,107,0,0.20)，鸿蒙「从备份恢复」
+              : (secondary
+                  ? Colors.white.withValues(alpha: 0.14)
+                  : const Color(0xFF2E6BE6))));
+  final Color fg = dangerTint
+      ? const Color(0xFFFF8A8A)
       : (amber
-          ? const Color(0x33B26B00) // rgba(178,107,0,0.20)，鸿蒙「从备份恢复」
-          : (secondary
-              ? Colors.white.withValues(alpha: 0.14)
-              : const Color(0xFF2E6BE6)));
-  final Color fg = amber
-      ? const Color(0xFFE8B25C)
-      : (secondary ? const Color(0xFFC3CDDE) : Colors.white);
+          ? const Color(0xFFE8B25C)
+          : (secondary ? const Color(0xFFC3CDDE) : Colors.white));
   return GestureDetector(
     key: key,
     onTap: onTap,
@@ -2485,7 +2489,8 @@ Widget _sheetButton(String text, VoidCallback onTap,
     behavior: HitTestBehavior.opaque,
     child: Container(
       height: 40,
-      width: double.infinity,
+      // 整宽按钮默认撑满；放在 Row 里按内容宽时传 fill: false
+      width: fill ? double.infinity : null,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: bg,
