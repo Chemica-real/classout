@@ -279,54 +279,54 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     final v = await widget.repo.getKv(guidePromptedKey);
     if (v != null && v.isNotEmpty) return;
     if (!mounted) return;
-    final start = await showDialog<bool>(
+    // 鸿蒙端 `GuidePromptCard`：整屏薄纱 + 居中的玻璃卡（不是常规 Dialog）
+    final start = await showGeneralDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => Dialog(
-        backgroundColor: const Color(0xF20C101A),
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(glassRadius)),
+      barrierLabel: '关闭演练提示',
+      barrierColor: const Color(0x8C0C121C), // rgba(12,18,28,0.55)
+      transitionDuration: const Duration(milliseconds: 200),
+      pageBuilder: (ctx, _, __) => Center(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('先走一遍演练？',
-                  style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                      color: inkPrimary)),
-              const SizedBox(height: 6),
-              const Text(
-                  '演练用的是 4 门演示课，怎么点都不会动到你自己的数据；'
-                  '退出时演练数据整份删掉。',
-                  style: TextStyle(
-                      fontSize: 12, height: 1.45, color: Color(0xFFC3CDDE))),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  const Spacer(),
-                  TextButton(
-                    onPressed: () => Navigator.of(ctx).pop(false),
-                    style: TextButton.styleFrom(
-                        foregroundColor: const Color(0xFFA9B5C9)),
-                    child: const Text('先自己用用', style: TextStyle(fontSize: 12)),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton(
-                    onPressed: () => Navigator.of(ctx).pop(true),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF2E6BE6),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18)),
-                    ),
-                    child: const Text('开始演练', style: TextStyle(fontSize: 12)),
-                  ),
-                ],
-              ),
-            ],
+          padding: const EdgeInsets.all(24),
+          child: Glass(
+            sheet: true,
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('第一次用 ClassOUT？',
+                    style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w500,
+                        color: inkPrimary)),
+                const SizedBox(height: 8),
+                const Text(
+                    '可以在「演练」里走一遍：会建一个沙箱（里面有几门演示课和演示待办），'
+                    '你随便改、随便删；退出时整个沙箱删掉，你自己的课表一点都不会动。',
+                    style: TextStyle(
+                        fontSize: 12, height: 1.45, color: Color(0xFFC3CDDE))),
+                const SizedBox(height: 6),
+                Text('共 ${guideStepCount()} 步，大约两分钟。',
+                    style: const TextStyle(
+                        fontSize: 11, color: Color(0xFF8B97AC))),
+                const SizedBox(height: 14),
+                _GuidePromptButton(
+                  text: '开始演练',
+                  background: const Color(0xFF2E6BE6),
+                  foreground: Colors.white,
+                  onTap: () => Navigator.of(ctx).pop(true),
+                ),
+                const SizedBox(height: 10),
+                _GuidePromptButton(
+                  text: '先自己用用',
+                  background: Colors.white.withValues(alpha: 0.14),
+                  foreground: const Color(0xFFC3CDDE),
+                  onTap: () => Navigator.of(ctx).pop(false),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -565,8 +565,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                 final was = _tab;
                 setState(() => _tab = i);
                 // 用户 2026-10-16：「每次切换到待办列时，立即补生成下课列表」
-                if (i == 1 && was != 1 && _bundle != null)
+                if (i == 1 && was != 1 && _bundle != null) {
                   _generateMissed(_bundle!);
+                }
               },
               wallpaperPath: _settings.wallpaperPath,
               wallpaperFocus: _settings.wallpaperFocus,
@@ -629,28 +630,136 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                     ),
             ),
           ),
-          // 同步中：顶部一条玻璃提示（鸿蒙端也是"页面上方弹出同步提示"）
+          // 同步中：顶部一条玻璃提示（鸿蒙端 SyncToast：5 点点阵 + 两行字，贴浮窗下面）
           if (_syncing)
             const Positioned(
               left: 0,
               right: 0,
               top: 0,
-              child: SafeArea(
-                child: Center(
-                  child: Padding(
-                    padding: EdgeInsets.only(top: 10),
-                    child: Glass(
-                      padding:
-                          EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      child: Text('正在与日历同步…',
-                          style: TextStyle(fontSize: 12, color: inkPrimary)),
-                    ),
-                  ),
-                ),
-              ),
+              child: SafeArea(child: _SyncToast()),
             ),
         ],
       ),
     );
+  }
+}
+
+/// 演练提示卡里的整宽按钮（鸿蒙端默认 Button：高 40、圆角胶囊）
+class _GuidePromptButton extends StatelessWidget {
+  final String text;
+  final Color background;
+  final Color foreground;
+  final VoidCallback onTap;
+  const _GuidePromptButton({
+    required this.text,
+    required this.background,
+    required this.foreground,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        height: 40,
+        width: double.infinity,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(text,
+            style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: foreground)),
+      ),
+    );
+  }
+}
+
+/// 「正在与系统日历同步…」提示条（鸿蒙端 `SyncToast`）：
+/// 5 个点依次亮起（只动 opacity/scale，关掉动画时保持半亮）+ 两行说明。
+class _SyncToast extends StatefulWidget {
+  const _SyncToast();
+
+  @override
+  State<_SyncToast> createState() => _SyncToastState();
+}
+
+class _SyncToastState extends State<_SyncToast>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 660),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (theme.motionOn) _c.repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(floatSide, MediaQuery.of(context).padding.top + floatGap, floatSide, 0),
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: Glass(
+          sheet: true,
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedBuilder(
+                animation: _c,
+                builder: (_, __) => Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    for (var i = 0; i < 5; i++) ...[
+                      if (i > 0) const SizedBox(width: 9),
+                      Transform.scale(
+                        scale: theme.motionOn
+                            ? 0.85 + 0.33 * _dotPhase(i)
+                            : 0.85,
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                              color: Color(0xFF7FA8FF),
+                              shape: BoxShape.circle),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text('正在与系统日历同步…',
+                  style: TextStyle(fontSize: 12, color: inkPrimary)),
+              const SizedBox(height: 2),
+              const Text('把上课与截止提醒重排一遍，避免漏提醒',
+                  style: TextStyle(fontSize: 10, color: Color(0xFF8B97AC))),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 第 i 个点的亮度相位（opacity 0.18 → 1），错开 140ms 依次亮
+  double _dotPhase(int i) {
+    if (!theme.motionOn) return 0.55;
+    final t = (_c.value + i * 0.21) % 1.0;
+    return 0.18 + 0.82 * (t < 0.5 ? t * 2 : (1 - t) * 2);
   }
 }

@@ -47,8 +47,10 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: HomeShell(repo: repo)));
     await tester.pumpAndSettle();
 
-    // ① 首次启动的询问
-    expect(find.text('先走一遍演练？'), findsOneWidget);
+    // ① 首次启动的询问（鸿蒙端 GuidePromptCard：整屏薄纱 + 居中玻璃卡）
+    expect(find.text('第一次用 ClassOUT？'), findsOneWidget);
+    expect(find.text('共 ${guideStepCount()} 步，大约两分钟。'), findsOneWidget);
+    expect(find.text('先自己用用'), findsOneWidget);
     await tester.tap(find.text('开始演练'));
     await tester.pumpAndSettle();
 
@@ -59,6 +61,12 @@ void main() {
     expect((await repo.getKv(sandboxBackupKey) ?? '').isNotEmpty, isTrue);
     expect(find.byType(GuideBar), findsOneWidget);
     expect(find.text('第 1/7 步'), findsOneWidget);
+    // 鸿蒙端两个按钮**等宽**：第一步时「上一步」只是变淡，仍然占位
+    expect(find.text('上一步'), findsOneWidget);
+    final prevRect = tester.getRect(find.text('上一步'));
+    final nextRect = tester.getRect(find.text('下一步'));
+    expect((prevRect.width - nextRect.width).abs(), lessThan(1.0),
+        reason: '两个按钮等宽');
 
     // ③ 下一步会切到「待办」标签
     await tester.tap(find.text('下一步'));

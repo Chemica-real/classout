@@ -30,57 +30,63 @@ class GuideBar extends StatelessWidget {
     final last = isLastGuideStep(step);
     return Glass(
       sheet: true,
-      padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+      padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // 头一行：第 N/7 步 + 标题 + 退出演练（鸿蒙端也是这样一行）
+          // 头一行：第 N/N 步（金色小字）+ 标题 + 退出演练（红字）
           Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
             children: [
               Text('第 ${step + 1}/$total 步',
-                  style: const TextStyle(fontSize: 11, color: accentBlue)),
+                  style: const TextStyle(
+                      fontSize: 10, color: Color(0xFFE8B25C))),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(s.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                        fontSize: 15,
+                        fontSize: 14,
                         fontWeight: FontWeight.w500,
                         color: inkPrimary)),
               ),
               GestureDetector(
                 onTap: onExit,
                 behavior: HitTestBehavior.opaque,
-                child: const Text('退出演练',
-                    style: TextStyle(fontSize: 11, color: Color(0xFFA9B5C9))),
+                child: const Padding(
+                  padding: EdgeInsets.only(left: 10, top: 2, bottom: 2),
+                  child: Text('退出演练',
+                      style: TextStyle(fontSize: 11, color: Color(0xFFFF8A8A))),
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           Text(s.body,
               style: const TextStyle(
                   fontSize: 12, height: 1.45, color: Color(0xFFC3CDDE))),
           const SizedBox(height: 10),
           Row(
             children: [
-              if (step > 0)
-                _Btn(
+              // 鸿蒙端两个按钮**等宽**，第一步时「上一步」变淡但仍占位
+              Expanded(
+                child: _Btn(
                   text: '上一步',
                   background: Colors.white.withValues(alpha: 0.14),
                   color: const Color(0xFFC3CDDE),
                   onTap: onPrev,
+                  enabled: step > 0,
                 ),
-              const Spacer(),
-              _Btn(
-                text: last ? '完成演练' : '下一步',
-                background: const Color(0xFF2E6BE6),
-                color: Colors.white,
-                onTap: onNext,
-                wide: true,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _Btn(
+                  text: last ? '完成演练' : '下一步',
+                  background: const Color(0xFF2E6BE6),
+                  color: Colors.white,
+                  onTap: onNext,
+                ),
               ),
             ],
           ),
@@ -95,33 +101,33 @@ class _Btn extends StatelessWidget {
   final Color background;
   final Color color;
   final VoidCallback onTap;
-
-  /// 主按钮（下一步/完成演练）比次要按钮宽一档
-  final bool wide;
+  final bool enabled;
   const _Btn({
     required this.text,
     required this.background,
     required this.color,
     required this.onTap,
-    this.wide = false,
+    this.enabled = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        margin: const EdgeInsets.only(left: 8),
-        padding: EdgeInsets.symmetric(
-            horizontal: wide ? 28 : 16, vertical: wide ? 9 : 7),
-        decoration: BoxDecoration(
-          color: background,
-          borderRadius: BorderRadius.circular(16),
+    return Opacity(
+      opacity: enabled ? 1 : 0.4,
+      child: GestureDetector(
+        onTap: enabled ? onTap : null,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          height: 34,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: background,
+            borderRadius: BorderRadius.circular(17),
+          ),
+          child: Text(text,
+              style: TextStyle(
+                  fontSize: 13, fontWeight: FontWeight.w500, color: color)),
         ),
-        child: Text(text,
-            style: TextStyle(
-                fontSize: 12, fontWeight: FontWeight.w500, color: color)),
       ),
     );
   }

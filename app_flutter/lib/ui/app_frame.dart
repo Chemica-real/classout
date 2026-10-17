@@ -195,39 +195,39 @@ class _BottomTabs extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(floatSide, 4, floatSide, floatGap),
+      padding: const EdgeInsets.fromLTRB(floatSide, 0, floatSide, floatGap),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(glassRadius),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: glassBlur, sigmaY: glassBlur),
           child: Container(
-            // 鸿蒙端 H_TABBAR = 54
+            // 鸿蒙端 H_TABBAR = 54；导航栏是"大面" → glassSheet（比列表行更亮 + 更重的阴影）
             height: hTabbar,
             decoration: BoxDecoration(
-              color: glassTintPanel,
+              color: glassTintSheet,
               borderRadius: BorderRadius.circular(glassRadius),
               border: Border.all(color: glassEdgeStrong),
-              boxShadow: glassShadowRow,
+              boxShadow: glassShadowSheet,
             ),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: List.generate(tabLabels.length, (i) {
                 final active = i == tab;
-                return InkWell(
-                  onTap: () => onTab(i),
-                  borderRadius: BorderRadius.circular(10),
-                  child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                    child: Text(
-                      tabLabels[i],
-                      style: TextStyle(
-                        fontSize: 13,
-                        // 鸿蒙端：两边都是**加粗白字**，选中态靠不透明度区分
-                        fontWeight: FontWeight.bold,
-                        color: active
-                            ? const Color(0xFFFFFFFF)
-                            : const Color(0xB8FFFFFF),
+                return Expanded(
+                  child: GestureDetector(
+                    // 鸿蒙端切标签**不做任何过渡**（用户明确说丑），这里也不加 ripple
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => onTab(i),
+                    child: Center(
+                      child: Text(
+                        tabLabels[i],
+                        style: TextStyle(
+                          fontSize: 13,
+                          // 鸿蒙端：两边都是**加粗白字**，选中态靠不透明度区分
+                          fontWeight: FontWeight.bold,
+                          color: active
+                              ? const Color(0xFFFFFFFF)
+                              : const Color(0xB8FFFFFF),
+                        ),
                       ),
                     ),
                   ),
