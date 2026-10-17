@@ -781,7 +781,9 @@ class _DoneRow extends StatelessWidget {
           children: [
             const Padding(
               padding: EdgeInsets.only(right: 10),
-              child: Icon(Icons.check, size: 16, color: _rowNote),
+              // 鸿蒙端是「✓」这个字符（16 号），不是 Material 图标
+              child: Text('✓',
+                  style: TextStyle(fontSize: 16, color: _rowNote)),
             ),
             Expanded(
               child: Column(

@@ -85,7 +85,7 @@ void main() {
         of: find.byType(Dialog).last, matching: find.byType(TextField)).first;
     await tester.enterText(title, '线代作业 %N');
     await tester.pumpAndSettle();
-    await _tapVisible(tester, find.widgetWithText(FilledButton, '保存').last);
+    await _tapVisible(tester, find.byKey(const ValueKey('template-save')));
     await _tapVisible(tester, find.byKey(const ValueKey('course-save')));
 
     final saved = (await repo.load())!;
@@ -168,7 +168,7 @@ void main() {
     // 先给一门课加个模板，验证模板会一起被清
     await _tapVisible(tester, find.byKey(const ValueKey('course-4')));
     await _tapVisible(tester, find.text('+ 添加模板'));
-    await _tapVisible(tester, find.widgetWithText(FilledButton, '保存').last);
+    await _tapVisible(tester, find.byKey(const ValueKey('template-save')));
     await _tapVisible(tester, find.byKey(const ValueKey('course-save')));
 
     final withTemplate = (await repo.load())!;
@@ -258,5 +258,29 @@ void main() {
     expect(saved.semesters.first.name, isNot('演示学期'));
     expect(saved.semester!.name, saved.semesters.first.name);
   });
-}
 
+  testWidgets('模板变量快捷插入 + 实时预览（鸿蒙 TemplateDialog）', (tester) async {
+    await _pump(tester);
+    await _tapVisible(tester, find.byKey(const ValueKey('course-4')));
+    await _tapVisible(tester, find.text('+ 添加模板'));
+
+    // 默认标题「%D作业」→ 预览里应该是具体日期 + 作业
+    expect(find.textContaining('预览：'), findsOneWidget);
+    expect(find.textContaining('作业'), findsWidgets);
+
+    // 点「课程简称」变量按钮 → 插到光标处（初始光标在末尾）
+    await _tapVisible(tester, find.text('课程简称'));
+    // 插到光标处（默认光标在开头）→ 「%c%D作业」
+    expect(
+        tester
+            .widget<EditableText>(find.byType(EditableText).last)
+            .controller
+            .text,
+        '%c%D作业');
+    await _tapVisible(tester, find.byKey(const ValueKey('template-save')));
+    await _tapVisible(tester, find.byKey(const ValueKey('course-save')));
+
+    // 草稿里的标题被保存下来
+    expect(find.text('课程（4）'), findsOneWidget);
+  });
+}

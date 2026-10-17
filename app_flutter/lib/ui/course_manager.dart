@@ -15,6 +15,7 @@ import 'package:flutter/services.dart';
 import '../data/backup.dart';
 import '../data/backup_export.dart';
 import '../domain/dates.dart';
+import '../domain/todo_generator.dart' show renderTitle;
 import '../domain/week_mask.dart';
 import '../model/types.dart';
 import 'app_frame.dart';
@@ -22,6 +23,28 @@ import 'section_times_editor.dart';
 import 'theme.dart';
 
 /// 复制一份 bundle，只换 courses / rules / templates
+/// 时段一行（鸿蒙 `ruleText`）：周X 3-4 节 · 1-16 · 习题课
+String ruleText(SessionRule r) {
+  final sec = r.startSection == r.endSection
+      ? '${r.startSection}'
+      : '${r.startSection}-${r.endSection}';
+  final quiz = r.isQuiz ? ' 习题课' : '';
+  return '周${weekdayCn[r.weekday - 1]} $sec 节 · ${maskToText(r.weeksMask)}$quiz';
+}
+
+/// 模板变量（与 ArkTS `Validate.TEMPLATE_VARS` 同序）与按钮上的中文标签
+const List<String> kTemplateVars = ['C', 'c', 'D', 'd', 'W', 'T', 'N', 'R'];
+const List<String> kTemplateVarLabels = [
+  '课程全名',
+  '课程简称',
+  '布置日期',
+  '完整日期',
+  '周次',
+  '起始节次',
+  '第几次',
+  '教室',
+];
+
 /// 截止规则的键与中文标签（与 ArkTS `DD_RULES` / `DD_LABELS` 同序）
 const List<String> kDdRules = [
   'next_session',
@@ -438,14 +461,7 @@ class _ManagerState extends State<_Manager> {
     );
   }
 
-  /// 时段一行（鸿蒙 `ruleText`）：周X 3-4 节 · 1-16 · 习题课
-  String _ruleText(SessionRule r) {
-    final sec = r.startSection == r.endSection
-        ? '${r.startSection}'
-        : '${r.startSection}-${r.endSection}';
-    final quiz = r.isQuiz ? ' 习题课' : '';
-    return '周${weekdayCn[r.weekday - 1]} $sec 节 · ${maskToText(r.weeksMask)}$quiz';
-  }
+  String _ruleText(SessionRule r) => ruleText(r);
 
   /// 模板一行（鸿蒙 `tplText`）：标题 · 截止：<规则>（参数） · 预计 N 分钟
   String _tplText(TodoTemplate t) {
@@ -640,7 +656,6 @@ class _CourseEditorState extends State<_CourseEditor> {
 
   @override
   Widget build(BuildContext context) {
-    const names = ['一', '二', '三', '四', '五', '六', '日'];
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
@@ -782,10 +797,7 @@ class _CourseEditorState extends State<_CourseEditor> {
                                 fontSize: 12, color: Color(0xFF8B97AC))),
                       for (final r in _rules)
                         _row(
-                          '周${names[r.weekday - 1]} · 第 ${r.startSection}-${r.endSection} 节'
-                          ' · ${maskToText(r.weeksMask)} 周'
-                          '${r.location.isNotEmpty ? ' · ${r.location}' : ''}'
-                          '${r.isQuiz ? ' · 习题课' : ''}',
+                          ruleText(r),
                           onEdit: () => _editRule(r),
                           onDelete: () {
                             setState(() => _b = _with(_b,
@@ -1139,7 +1151,7 @@ class _RuleDialogState extends State<_RuleDialog> {
                     ),
                 ],
               ),
-              const _Label('起止节次'),
+              const _Label('开始节次'),
               Wrap(
                 spacing: 6,
                 runSpacing: 6,
@@ -1155,7 +1167,7 @@ class _RuleDialogState extends State<_RuleDialog> {
                     ),
                 ],
               ),
-              const SizedBox(height: 6),
+              const _Label('结束节次'),
               Wrap(
                 spacing: 6,
                 runSpacing: 6,
@@ -1169,7 +1181,7 @@ class _RuleDialogState extends State<_RuleDialog> {
                     ),
                 ],
               ),
-              const _Label('周次（如 1-16 / 1-16单 / 2-16双 / 1-8,10-16）'),
+              const _Label('周次（支持 1-16 / 1-8,10-16 / 1-16单 / 2-16双）'),
               TextField(
                 controller: _weeks,
                 style: const TextStyle(fontSize: 13, color: inkPrimary),
@@ -1184,18 +1196,6 @@ class _RuleDialogState extends State<_RuleDialog> {
                 ),
               ),
               const SizedBox(height: 8),
-              TextField(
-                controller: _location,
-                style: const TextStyle(fontSize: 13, color: inkPrimary),
-                decoration: const InputDecoration(
-                  labelText: '地点（留空用课程默认地点）',
-                  labelStyle: TextStyle(fontSize: 11, color: Color(0xFF94A0B5)),
-                  enabledBorder: UnderlineInputBorder(
-                      borderSide: BorderSide(color: Color(0x24FFFFFF))),
-                  focusedBorder: UnderlineInputBorder(
-                      borderSide: BorderSide(color: accentBlue)),
-                ),
-              ),
               Row(
                 children: [
                   const Expanded(
@@ -1255,9 +1255,58 @@ class _TemplateDialogState extends State<_TemplateDialog> {
   late final TextEditingController _param =
       TextEditingController(text: widget.existing?.ddlParam ?? '');
   late int _estimate = widget.existing?.estimateMin ?? 60;
-  late String _category = widget.existing?.category ?? 'homework';
-  late bool _enabled = widget.existing?.enabled ?? true;
+  late final String _category = widget.existing?.category ?? 'homework';
+  late final bool _enabled = widget.existing?.enabled ?? true;
   String? _error;
+  int _caret = 0;
+
+  void _insertVar(String v) {
+    final text = _title.text;
+    final at = _caret.clamp(0, text.length);
+    final next = '${text.substring(0, at)}%$v${text.substring(at)}';
+    setState(() {
+      _title.value = TextEditingValue(
+        text: next,
+        selection: TextSelection.collapsed(offset: at + 1 + v.length),
+      );
+      _caret = at + 1 + v.length;
+    });
+  }
+
+  /// 实时预览（鸿蒙 `templatePreviewText`）：渲染一遍样例
+  String _previewText() {
+    final b = widget.b;
+    Course? course;
+    for (final c in b.courses) {
+      if (c.id == widget.courseId) course = c;
+    }
+    final sem = b.semester;
+    final sample = CourseSession(
+      course: course ?? Course(name: '示例课程', shortName: '示例'),
+      rule: SessionRule(courseId: widget.courseId),
+      date: sem?.startDate ?? '2026-09-07',
+      originDate: sem?.startDate ?? '2026-09-07',
+      weekday: 1,
+      startSection: 1,
+      endSection: 2,
+      startMin: 8 * 60,
+      endMin: 9 * 60,
+      location: course?.location ?? '',
+      isQuiz: false,
+      fromOverride: false,
+      isExtra: false,
+    );
+    final ok = _previewOk;
+    final rendered = renderTitle(_title.text, sample, 1, 1);
+    return ok
+        ? '预览：$rendered'
+        : '预览：$rendered（标题里要有可选文字，不能只有变量）';
+  }
+
+  bool get _previewOk {
+    final t = _title.text.trim();
+    return t.isNotEmpty && t.replaceAll(RegExp(r'%[CcdWwTNnR]'), '').trim().isNotEmpty;
+  }
 
   @override
   void dispose() {
@@ -1340,7 +1389,41 @@ class _TemplateDialogState extends State<_TemplateDialog> {
                       style: const TextStyle(
                           fontSize: 11, color: Color(0xFFFF8080))),
                 ),
-              const _Label('截止规则'),
+              // 快捷插入变量：点一下插到光标处（%C 这些记号没人记得住）
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final v in kTemplateVars)
+                      _Chip(
+                        text: kTemplateVarLabels[kTemplateVars.indexOf(v)],
+                        selected: false,
+                        onTap: () => _insertVar(v),
+                      ),
+                    _Chip(
+                      text: '清空',
+                      selected: false,
+                      onTap: () => setState(() {
+                        _title.text = '';
+                        _caret = 0;
+                      }),
+                    ),
+                  ],
+                ),
+              ),
+              // 实时预览：拿这门课自己的名字 + 一个样例日期渲染一遍
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(_previewText(),
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: _previewOk
+                            ? const Color(0xFF7BD69A)
+                            : const Color(0xFFFF8A8A))),
+              ),
+              const _Label('截止时间规则'),
               Wrap(
                 spacing: 6,
                 runSpacing: 6,
@@ -1353,92 +1436,76 @@ class _TemplateDialogState extends State<_TemplateDialog> {
                     ),
                 ],
               ),
-              if (_rule == 'days' || _rule == 'weekday') ...[
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: TextField(
-                    controller: _param,
-                    keyboardType: TextInputType.number,
-                    style: const TextStyle(fontSize: 13, color: inkPrimary),
-                    decoration: InputDecoration(
-                      labelText: _rule == 'days' ? '几天后（数字）' : '星期几（1-7）',
-                      labelStyle: const TextStyle(
-                          fontSize: 11, color: Color(0xFF94A0B5)),
-                      enabledBorder: const UnderlineInputBorder(
-                          borderSide: BorderSide(color: Color(0x24FFFFFF))),
-                      focusedBorder: const UnderlineInputBorder(
-                          borderSide: BorderSide(color: accentBlue)),
-                    ),
-                  ),
+              if (_rule == 'weekday') ...[
+                const _Label('星期几'),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (var wd = 1; wd <= 7; wd++)
+                      _Chip(
+                        text: '周${weekdayCn[wd - 1]}',
+                        selected: _param.text == '$wd',
+                        onTap: () => setState(() => _param.text = '$wd'),
+                      ),
+                  ],
                 ),
               ],
-              const _Label('预计耗时'),
-              Row(
-                children: [
-                  _RoundTap(
-                    icon: Icons.remove,
-                    onTap: () => setState(
-                        () => _estimate = (_estimate - 15).clamp(15, 480)),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Text('$_estimate 分钟',
-                        style:
-                            const TextStyle(fontSize: 13, color: inkPrimary)),
-                  ),
-                  _RoundTap(
-                    icon: Icons.add,
-                    onTap: () => setState(
-                        () => _estimate = (_estimate + 15).clamp(15, 480)),
-                  ),
-                ],
-              ),
-              const _Label('类型'),
+              if (_rule == 'days') ...[
+                const _Label('几天后'),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final n in const [1, 2, 3, 5, 7, 14])
+                      _Chip(
+                        text: '$n 天',
+                        selected: _param.text == '$n',
+                        onTap: () => setState(() => _param.text = '$n'),
+                      ),
+                  ],
+                ),
+              ],
+              const _Label('预计耗时（排计划时用来算块长）'),
               Wrap(
                 spacing: 6,
                 runSpacing: 6,
                 children: [
-                  for (final c in const [
-                    ('homework', '作业'),
-                    ('self', '自学'),
-                    ('exam', '考试'),
-                    ('none', '无'),
-                  ])
+                  for (final m in const [30, 45, 60, 90, 120, 180])
                     _Chip(
-                      text: c.$2,
-                      selected: _category == c.$1,
-                      onTap: () => setState(() => _category = c.$1),
+                      text: '$m 分钟',
+                      selected: _estimate == m,
+                      onTap: () => setState(() => _estimate = m),
                     ),
                 ],
               ),
+              const SizedBox(height: 18),
               Row(
                 children: [
-                  const Expanded(
-                    child: Text('启用',
-                        style: TextStyle(fontSize: 13, color: inkPrimary)),
+                  Expanded(
+                    child: _PillAction(
+                        text: '取消', onTap: () => Navigator.of(context).pop()),
                   ),
-                  Switch(
-                      value: _enabled,
-                      activeThumbColor: const Color(0xFF2E6BE6),
-                      onChanged: (v) => setState(() => _enabled = v)),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  const Spacer(),
-                  _PillAction(
-                      text: '取消', onTap: () => Navigator.of(context).pop()),
                   const SizedBox(width: 10),
-                  FilledButton(
-                    onPressed: _save,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF2E6BE6),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20)),
+                  Expanded(
+                    child: GestureDetector(
+                      key: const ValueKey('template-save'),
+                      onTap: _save,
+                      behavior: HitTestBehavior.opaque,
+                      child: Container(
+                        height: 40,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF2E6BE6),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Text('保存',
+                            style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.white)),
+                      ),
                     ),
-                    child: const Text('保存', style: TextStyle(fontSize: 13)),
                   ),
                 ],
               ),
