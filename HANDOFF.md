@@ -4953,3 +4953,33 @@ PlatformException(exact_alarms_not_permitted,
 
 排期模式也顺手从 `exactAllowWhileIdle` 换成 `inexactAllowWhileIdle`（提醒晚几分钟可以接受，
 少一个特殊权限依赖；精确闹钟权限被拒时的那条降级分支仍然保留，见 66.2）。
+
+## 67. 2026-10-17 安卓版：计划块「长按才拖」两步模型（真机验证）
+
+之前计划块是**一按就拖**（`Listener` 收到 pointerDown 就开始），想滚时间轴的人很容易误拖。
+鸿蒙端是两步：轻点开属性面板，**长按 400ms 才进入拖动**。这轮对齐。
+
+### 67.1 改法
+
+`_Block` 从 `Listener` 换成 `GestureDetector(L onTap + onLongPressStart/MoveUpdate/End/Cancel)`：
+
+- 轻点 → `onTap`（打开块属性抽屉）
+- **长按 400ms** → 开始拖；按在底边 18vp 内 = 改时长，否则整块平移
+- 轻滑 → 长按在竞技场里被 Cancel，`SingleChildScrollView` 照常接管（时间轴能滚）
+- 拖动期间仍然锁滚动 + `dragOffsetWithScroll` 补偿（原来的逻辑没动）
+
+用 `GestureDetector` 而不是继续用 `Listener`，就是为了让"长按 vs 滚动"由手势竞技场裁决——
+这和鸿蒙端 `parallelGesture(LongPressGesture)` 的语义一致。
+
+### 67.2 验证
+
+- `test/plan_page_test.dart`：3 条拖动用例改成"先按住 600ms 再移动"；
+  新增 1 条 **两步模型**用例：轻滑（120ms 内拖 60px）→ 仓库一个字节都没变（`h.last == null`）；
+  再长按 600ms 拖 60px → `startMin + 60`
+- `flutter test`：**724 passed**
+- **真机（OPPO A97）**：
+  - 先用「待安排 → ⚡ 找空档」在 10/18 07:00 生成一个块（`bounds=[183,889][1038,1024]`）
+  - `input motionevent DOWN 600 950` → 停 1s → 分两次 MOVE 到 y=1060 → UP
+    → 块 bounds 变成 `[183,979][1038,1114]`（真的往下挪了 ~90px）✅
+  - 再 `input swipe 600 950 600 750 150`（快速轻滑）→ 块 bounds 变成 `[183,662]`，
+    这是**网格滚上去了**（时间没变），证明轻滑不会挪块 ✅

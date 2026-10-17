@@ -68,6 +68,23 @@ Future<void> _revealBlock(WidgetTester tester, Finder block) async {
   }
 }
 
+
+/// 两步模型：**长按**才开始拖（轻滑留给滚动）。
+Future<void> _longPressDragFrom(
+    WidgetTester tester, Offset start, Offset delta) async {
+  final g = await tester.startGesture(start);
+  await tester.pump(const Duration(milliseconds: 600)); // 过 long-press 门槛
+  await g.moveBy(delta);
+  await tester.pump();
+  await g.up();
+  await tester.pumpAndSettle();
+}
+
+Future<void> _longPressDrag(
+    WidgetTester tester, Finder finder, Offset delta) async {
+  await _longPressDragFrom(tester, tester.getCenter(finder), delta);
+}
+
 void main() {
   testWidgets('页面上有课表灰带和已有的计划块', (tester) async {
     tester.view.physicalSize = const Size(1080, 2400);
@@ -128,7 +145,7 @@ void main() {
     final block = find.byKey(ValueKey('plan-block-${before.id}'));
     await _revealBlock(tester, block);
     // 往下拖 60px = 60 分钟（1 分钟 = 1vp），吸附后仍是 60 的倍数
-    await tester.timedDrag(block, const Offset(0, 60), const Duration(milliseconds: 400));
+    await _longPressDrag(tester, block, const Offset(0, 60));
     await tester.pumpAndSettle();
 
     final b = h.last;
@@ -147,9 +164,8 @@ void main() {
     await _revealBlock(tester, blockFinder);
     // 从块底边上方 6px 处按下 = 拖底边缩放
     final rect = tester.getRect(blockFinder);
-    await tester.timedDragFrom(
-        Offset(rect.center.dx, rect.bottom - 6), const Offset(0, 30),
-        const Duration(milliseconds: 300));
+    await _longPressDragFrom(
+        tester, Offset(rect.center.dx, rect.bottom - 6), const Offset(0, 30));
     await tester.pumpAndSettle();
 
     final b = h.last;
@@ -165,7 +181,7 @@ void main() {
     final block = find.byKey(ValueKey('plan-block-${before.id}'));
     await _revealBlock(tester, block);
     // 往上拖很远：moveRange 会夹到时间窗起点
-    await tester.timedDrag(block, const Offset(0, -3000), const Duration(milliseconds: 600));
+    await _longPressDrag(tester, block, const Offset(0, -3000));
     await tester.pumpAndSettle();
 
     final b = h.last;
@@ -173,6 +189,26 @@ void main() {
     final after = _byIdBlock(b!, before.id);
     expect(after.startMin, TimeAxis(defaultWindow).startMin);
     expect(after.endMin - after.startMin, before.endMin - before.startMin);
+  });
+
+  testWidgets('两步模型：轻滑不挪块（交给滚动），长按才拖', (tester) async {
+    final h = await _pump(tester, initialDay: DateTime(2026, 10, 16));
+    final before = _demo().blocks.firstWhere((b) => b.date == '2026-10-16');
+    final block = find.byKey(ValueKey('plan-block-${before.id}'));
+    await _revealBlock(tester, block);
+
+    // ① 轻滑（没有长按）→ 不该改数据
+    final rect = tester.getRect(block);
+    await tester.timedDragFrom(
+        Offset(rect.center.dx, rect.center.dy), const Offset(0, 60),
+        const Duration(milliseconds: 120));
+    await tester.pumpAndSettle();
+    expect(h.last, isNull, reason: '轻滑是滚动，不能挪块');
+
+    // ② 长按 600ms 再拖 → 才真的挪
+    await _longPressDrag(tester, block, const Offset(0, 60));
+    final after = _byIdBlock(h.last!, before.id);
+    expect(after.startMin, before.startMin + 60);
   });
 
   testWidgets('⚡找空档：落点不与课表/不可排时段重叠', (tester) async {

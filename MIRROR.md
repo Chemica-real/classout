@@ -45,7 +45,7 @@
 |---|---|---|
 | `Index.BootLayer` / `bootIn` / `playBootExit` | `lib/ui/boot_screen.dart` ✅ | 启动：打字机 + 步骤清单 + 浓缩成球 + 喷射 + 白球扩张 |
 | `TodoInbox` 碎裂（`SHARD_*`） | 待做 | 确认待办时的碎片动画 |
-| `PlanDayView` 长按选中 → 拖动、双指缩放 | 部分（`_Block` + `Listener` 拖动；选中模型未做） | 两步模型：先选中、再长按拖 |
+| `PlanDayView` 长按选中 → 拖动、双指缩放 | 两步拖 ✅（`_Block` 用 `onLongPressStart/MoveUpdate/End`）；双指缩放 ⏳ | 轻点开属性面板，**长按 400ms** 才拖；双指缩放待做 |
 | `SettingsPage` toast | `SnackBar` | 鸿蒙端 `showToast`，这边统一 SnackBar |
 
 ## 四、还缺的（按 HANDOFF §52.3 的优先级）

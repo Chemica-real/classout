@@ -981,21 +981,22 @@ class _Block extends StatelessWidget {
       left: 3,
       right: 3,
       height: height < 12 ? 12 : height,
-      child: Listener(
-        // ⚠️ 用 Listener 而不是 GestureDetector 的 onPan*：竖直拖动会被外层
-        //    SingleChildScrollView 的手势竞技场抢走（实测一点回调都不触发）。
-        //    Listener 收原始指针事件、不参与竞技场；又因为我们用
-        //    dragOffsetWithScroll（位移 = 手指位移 + 滚动量）换算，
-        //    所以哪怕滚动视图跟着动了，块也仍然贴在手指下面。
-        onPointerDown: (e) {
+      // 两步模型（鸿蒙端：先选中、再长按拖）：
+      //   轻点 = 打开属性面板；**长按 400ms** 才开始拖动（拖底边 = 改时长）。
+      // 用 GestureDetector 的 longPress 而不是 Listener：长按会赢手势竞技场，
+      // 轻滑（想滚时间轴）时长按被系统 cancel，Scroll 照常接管 —— 和鸿蒙端
+      // `parallelGesture(LongPress)` 的效果一致。
+      child: GestureDetector(
+        onTap: onTap,
+        onLongPressStart: (e) {
           final box = context.findRenderObject() as RenderBox?;
           final h = box?.size.height ?? 0;
-          // 按下位置在底部 18vp 内 = 拖底边缩放，否则整块移动
-          onDragStart(block, e.localPosition.dy > h - 18, e.position.dy);
+          // 按在底部 18vp 内 = 拖底边改时长，否则整块平移
+          onDragStart(block, e.localPosition.dy > h - 18, e.globalPosition.dy);
         },
-        onPointerMove: (e) => onDragUpdate(e.position.dy),
-        onPointerUp: (_) => onDragEnd(),
-        onPointerCancel: (_) => onDragEnd(),
+        onLongPressMoveUpdate: (e) => onDragUpdate(e.globalPosition.dy),
+        onLongPressEnd: (_) => onDragEnd(),
+        onLongPressCancel: onDragEnd,
         child: GestureDetector(
           key: ValueKey('plan-block-${block.id}'),
           onTap: onTap,
