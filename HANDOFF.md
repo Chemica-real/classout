@@ -6892,3 +6892,15 @@ golden 总数 19 → **23**；`flutter test` **1293 passed**。
 整屏 `rgba(12,18,28,0.55)` 薄纱、`padding 24`、卡片 `padding 18`、按钮间距 14/10，都与鸿蒙一致）。
 
 - `flutter test` **1302 passed**。
+
+### 116.32 阴影只加在鸿蒙用 `.glassCard()` 的地方
+
+鸿蒙的 `glassCard()` = 半透明底 + 1px 描边 + **阴影**（`GLASS_SHADOW_ROW`）；
+不用它的卡（考试卡、已完成行）只有底色与描边。安卓的 `_RowCard` 却一律加了阴影，
+课程管理里另外三处（入口卡 / 课程卡）又都漏了阴影：
+
+- 待办页：**考试卡、已完成行去掉阴影**（鸿蒙是纯色 + 描边）；
+- 课程管理：**入口卡、课程卡补上 `glassShadowRow`**（鸿蒙都是 `.glassCard()`）；
+- 其余照旧：待确认卡 / 待办行 / 待安排托盘卡 / 设置卡片都有阴影（对应 `glassCard` / `glassPanelCard`）。
+
+- `flutter test` **1302 passed**；golden 重出（todos / course_manager 等）。

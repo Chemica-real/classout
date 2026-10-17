@@ -434,6 +434,7 @@ class _ManagerState extends State<_Manager> {
           color: glassTintRow,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: glassEdgeSoft),
+          boxShadow: glassShadowRow, // 鸿蒙入口卡是 .glassCard()（带阴影）
         ),
         child: Row(
           children: [
@@ -483,6 +484,7 @@ class _ManagerState extends State<_Manager> {
             color: glassTintRow,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: glassEdgeSoft),
+            boxShadow: glassShadowRow, // 鸿蒙课程卡也是 .glassCard()
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

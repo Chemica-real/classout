@@ -486,11 +486,16 @@ class _RowCard extends StatelessWidget {
   final Color color;
   final Color? border;
   final double radius;
+
+  /// 鸿蒙只有 `.glassCard()` 的卡（待确认 / 待办行）带阴影；
+  /// 考试卡与已完成行是"纯色 + 描边"，没有阴影
+  final bool shadow;
   const _RowCard({
     required this.child,
     this.color = glassTintRow,
     this.border = glassEdgeSoft,
     this.radius = glassRadius,
+    this.shadow = true,
   });
 
   @override
@@ -504,7 +509,7 @@ class _RowCard extends StatelessWidget {
           color: color,
           borderRadius: BorderRadius.circular(radius),
           border: border == null ? null : Border.all(color: border!),
-          boxShadow: glassShadowRow,
+          boxShadow: shadow ? glassShadowRow : null,
         ),
         child: child,
       ),
@@ -818,6 +823,7 @@ class _ExamCard extends StatelessWidget {
         color: _examBg,
         border: _examEdge,
         radius: 10,
+        shadow: false, // 鸿蒙 ExamCard 是"红底 + 描边"，没有 glassCard 的阴影
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -906,6 +912,7 @@ class _DoneRow extends StatelessWidget {
       child: _RowCard(
         color: const Color(0x0DFFFFFF), // rgba(255,255,255,0.05)
         border: const Color(0x14FFFFFF), // rgba(255,255,255,0.08)
+        shadow: false, // 鸿蒙 DoneRow 没走 glassCard → 无阴影
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
