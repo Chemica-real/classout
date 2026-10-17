@@ -255,11 +255,44 @@ void main() {
     await _tapVisible(tester, find.byKey(const ValueKey('entry-semester')));
     await _tapVisible(tester, find.text('+ 新建学期'));
     await _tapVisible(tester, find.widgetWithText(FilledButton, '创建'));
-    await _tapVisible(tester, find.text('设为当前'));
+    // 鸿蒙的学期行没有「设为当前」按钮：点整行 = 切换当前学期
+    await _tapVisible(tester, find.textContaining('起 ·').last);
 
     final saved = (await repo.load())!;
     expect(saved.semesters.first.name, isNot('演示学期'));
     expect(saved.semester!.name, saved.semesters.first.name);
+  });
+
+  testWidgets('复制到当前学期：课程 / 时段 / 模板都复制一份（换新 id、同名跳过）',
+      (tester) async {
+    final repo = await _pump(tester);
+    await _tapVisible(tester, find.byKey(const ValueKey('entry-semester')));
+    await _tapVisible(tester, find.text('+ 新建学期'));
+    // 不勾「复制课表」→ 新学期的课程是空的
+    await _tapVisible(tester, find.byType(Switch).last);
+    await _tapVisible(tester, find.widgetWithText(FilledButton, '创建'));
+    // 切到新学期（点行），再点另一行的「复制到当前学期」
+    await _tapVisible(tester, find.textContaining('起 ·').last);
+    await _tapVisible(tester, find.text('复制到当前学期'));
+
+    final saved = (await repo.load())!;
+    final cur = saved.semester!;
+    final copied = saved.courses.where((c) => c.semesterId == cur.id).toList();
+    expect(copied.length, 4);
+    expect(saved.courses.where((c) => c.id == copied.first.id).length, 1);
+    final copiedRules =
+        saved.rules.where((r) => copied.any((c) => c.id == r.courseId)).length;
+    expect(copiedRules, 6, reason: '时段规则一起复制');
+    // demo 数据本身没有模板：只比较"源有几条、复制后就有几条"
+    final srcIds = saved.courses
+        .where((c) => c.semesterId != cur.id)
+        .map((c) => c.id)
+        .toSet();
+    expect(
+        saved.templates
+            .where((t) => copied.any((c) => c.id == t.courseId))
+            .length,
+        saved.templates.where((t) => srcIds.contains(t.courseId)).length);
   });
 
   testWidgets('模板变量快捷插入 + 实时预览（鸿蒙 TemplateDialog）', (tester) async {

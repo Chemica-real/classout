@@ -1983,6 +1983,72 @@ class _SemesterSheetState extends State<_SemesterSheet> {
     _apply(_with(_b, semesters: [picked, ...list]));
   }
 
+  /// 「复制到当前学期」（鸿蒙 `Seeder.cloneCourses`）：只复制课程 / 时段 / 模板，
+  /// 同名的跳过；课时（virtual_lesson）不复制（和鸿蒙一致）。
+  void _copyFrom(int index) {
+    final from = _b.semesters[index];
+    final to = _b.semesters.first;
+    if (from.id == to.id) return;
+    final targetNames = {
+      for (final c in _b.courses.where((c) => c.semesterId == to.id)) c.name
+    };
+    final courses = [..._b.courses];
+    final rules = [..._b.rules];
+    final templates = [..._b.templates];
+    var added = 0;
+    for (final c in _b.courses.where((c) => c.semesterId == from.id)) {
+      if (targetNames.contains(c.name)) continue;
+      final nid = _nextId<Course>(courses, (x) => x.id);
+      courses.add(Course(
+        id: nid,
+        semesterId: to.id,
+        name: c.name,
+        shortName: c.shortName,
+        teacher: c.teacher,
+        location: c.location,
+        colorIndex: c.colorIndex,
+        autoTodoEnabled: c.autoTodoEnabled,
+        isVirtual: c.isVirtual,
+        note: c.note,
+      ));
+      for (final r in _b.rules.where((r) => r.courseId == c.id)) {
+        rules.add(SessionRule(
+          id: _nextId<SessionRule>(rules, (x) => x.id),
+          courseId: nid,
+          weekday: r.weekday,
+          startSection: r.startSection,
+          endSection: r.endSection,
+          weeksMask: r.weeksMask,
+          location: r.location,
+          isQuiz: r.isQuiz,
+        ));
+      }
+      var order = 0;
+      for (final t in _b.templates.where((t) => t.courseId == c.id)) {
+        templates.add(TodoTemplate(
+          id: _nextId<TodoTemplate>(templates, (x) => x.id),
+          courseId: nid,
+          sortOrder: order++,
+          enabled: t.enabled,
+          titleTemplate: t.titleTemplate,
+          ddlRule: t.ddlRule,
+          ddlParam: t.ddlParam,
+          estimateMin: t.estimateMin,
+          category: t.category,
+          submitChannel: t.submitChannel,
+          note: t.note,
+        ));
+      }
+      added++;
+    }
+    _apply(_with(_b,
+        courses: courses, rules: rules, templates: templates));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(added == 0
+            ? '没有可复制的课（可能已存在同名课程）'
+            : '已复制 $added 门课到当前学期')));
+  }
+
   @override
   Widget build(BuildContext context) {
     final sem = _b.semester;
@@ -2086,40 +2152,68 @@ class _SemesterSheetState extends State<_SemesterSheet> {
                           _PillAction(text: '+ 新建学期', onTap: _createSemester),
                         ],
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 8),
+                      // 所有学期：一行一张小卡（当前 = 第一个）
                       for (var i = 0; i < _b.semesters.length; i++)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 3),
-                          child: Row(
-                            children: [
-                              if (i == 0)
-                                const Padding(
-                                  padding: EdgeInsets.only(right: 6),
-                                  child: Text('当前',
+                        GestureDetector(
+                          onTap: i == 0 ? null : () => _setCurrent(i),
+                          behavior: HitTestBehavior.opaque,
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(10),
+                            margin: const EdgeInsets.only(bottom: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.06),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: glassEdgeSoft),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(_b.semesters[i].name,
+                                          style: const TextStyle(
+                                              fontSize: 14,
+                                              color: Color(0xFFF2F5FA))),
+                                      Padding(
+                                        padding:
+                                            const EdgeInsets.only(top: 2),
+                                        child: Text(
+                                            '${_b.semesters[i].startDate} 起 · '
+                                            '${_b.semesters[i].totalWeeks} 周',
+                                            style: const TextStyle(
+                                                fontSize: 11,
+                                                color: Color(0xFF94A0B5))),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (i == 0)
+                                  const Text('当前',
                                       style: TextStyle(
-                                          fontSize: 11, color: accentBlue)),
-                                ),
-                              Expanded(
-                                child: Text(
-                                  '${_b.semesters[i].name} · '
-                                  '${_b.semesters[i].totalWeeks} 周 · '
-                                  '${_b.semesters[i].startDate} 开学',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                      fontSize: 12,
-                                      color: i == 0
-                                          ? inkPrimary
-                                          : const Color(0xFFC3CDDE)),
-                                ),
-                              ),
-                              if (i > 0)
-                                _MiniAction(
-                                  text: '设为当前',
-                                  color: accentBlue,
-                                  onTap: () => _setCurrent(i),
-                                ),
-                            ],
+                                          fontSize: 11, color: accentBlue))
+                                else
+                                  GestureDetector(
+                                    onTap: () => _copyFrom(i),
+                                    behavior: HitTestBehavior.opaque,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0x382E6BE6),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: const Text('复制到当前学期',
+                                          style: TextStyle(
+                                              fontSize: 12,
+                                              color: accentBlue)),
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
                         ),
                     ],
