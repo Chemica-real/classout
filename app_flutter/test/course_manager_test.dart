@@ -36,8 +36,8 @@ Future<void> _tapVisible(WidgetTester tester, Finder f) async {
 void main() {
   testWidgets('打开课程管理：列出 4 门课与学期摘要', (tester) async {
     await _pump(tester);
-    expect(find.text('管理课程'), findsWidgets);
-    expect(find.text('课程 4 门'), findsOneWidget);
+    expect(find.text('课程与学期'), findsWidgets);
+    expect(find.text('课程（4）'), findsOneWidget);
     expect(find.textContaining('线代'), findsWidgets);
   });
 

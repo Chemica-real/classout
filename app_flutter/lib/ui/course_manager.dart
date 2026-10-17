@@ -127,20 +127,17 @@ class _ManagerState extends State<_Manager> {
                     GestureDetector(
                       onTap: () => Navigator.of(context).pop(),
                       behavior: HitTestBehavior.opaque,
+                      // 鸿蒙 TopBar：左边「关闭」蓝字、中间标题 16 Medium
                       child: const Padding(
                         padding: EdgeInsets.only(right: 12, top: 6, bottom: 6),
-                        child: Row(children: [
-                          Icon(Icons.chevron_left, size: 26, color: accentBlue),
-                          Text('返回',
-                              style:
-                                  TextStyle(fontSize: 14, color: accentBlue)),
-                        ]),
+                        child: Text('关闭',
+                            style: TextStyle(fontSize: 15, color: accentBlue)),
                       ),
                     ),
                     const Spacer(),
-                    const Text('管理课程',
+                    const Text('课程与学期',
                         style: TextStyle(
-                            fontSize: 18,
+                            fontSize: 16,
                             fontWeight: FontWeight.w500,
                             color: inkPrimary)),
                     const Spacer(),
@@ -163,7 +160,7 @@ class _ManagerState extends State<_Manager> {
                         const SizedBox(height: 10),
                         Row(
                           children: [
-                            Text('课程 ${_b.courses.length} 门',
+                            Text('课程（${_b.courses.length}）',
                                 style: const TextStyle(
                                     fontSize: 15,
                                     fontWeight: FontWeight.w500,
@@ -179,7 +176,9 @@ class _ManagerState extends State<_Manager> {
                         if (_b.courses.isEmpty)
                           const Padding(
                             padding: EdgeInsets.symmetric(vertical: 12),
-                            child: Text('还没有课程。点「+ 新增课程」开始建立自己的课表。',
+                            child: Text(
+                              '还没有课程。点右上角「新增课程」开始建立自己的课表；'
+                              '也可以用「备份与恢复」导入之前导出的备份。',
                                 style: TextStyle(
                                     fontSize: 12, color: Color(0xFF8B97AC))),
                           ),
