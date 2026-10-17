@@ -6771,3 +6771,6 @@ cd app_flutter && flutter build apk --debug && adb -s 7D7PAQ9PORLR79Z9 install -
 用 `buildDemoSandbox(now: 2026-10-16)` 生成和 `docs/manual/01..04.jpg` **完全同一条件**的数据
 （演练学期、第 1 周、10/12–10/18、同样的 4 门课与 4 条待办），以后对比不用先跑一遍演练。
 golden 总数 19 → **23**；`flutter test` **1293 passed**。
+
+补充：计划页**日期条**同样按参考图量过一遍 —— 鸿蒙 41vp、安卓 45 → 给日期 16 号与相对日 12 号都写 `height: 1.2`
+之后是 **40vp**，和参考图差 1vp；日期条与页头之间 20vp（鸿蒙 19）。

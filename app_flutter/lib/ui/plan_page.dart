@@ -844,13 +844,16 @@ class _DayBar extends StatelessWidget {
                       softWrap: false,
                       style: const TextStyle(
                           fontSize: 16,
+                          height: 1.2,
                           fontWeight: FontWeight.w500,
                           color: inkPrimary)),
                 ),
                 Text(relativeDayText(day, today()),
                     maxLines: 1,
                     style: const TextStyle(
-                        fontSize: 12, color: Color(0xFF94A0B5))),
+                        fontSize: 12,
+                        height: 1.2,
+                        color: Color(0xFF94A0B5))),
               ],
             ),
           ),
