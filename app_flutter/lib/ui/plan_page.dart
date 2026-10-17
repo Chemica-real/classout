@@ -1359,7 +1359,8 @@ class _DdlMark extends StatelessWidget {
           child: Text(label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 11, color: Color(0xFFFF8A8A))),
+              // 鸿蒙 LAYOUT.tray = 14
+              style: const TextStyle(fontSize: 14, color: Color(0xFFFF8A8A))),
         ),
       ),
     );
