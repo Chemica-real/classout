@@ -31,6 +31,7 @@ BackupBundle withOverrides(BackupBundle b, List<SessionOverride> list) =>
       todos: b.todos,
       blocks: b.blocks,
       restWindows: b.restWindows,
+      templates: b.templates,
     );
 
 int _nextOverrideId(List<SessionOverride> list) =>

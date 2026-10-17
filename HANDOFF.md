@@ -4567,3 +4567,41 @@ iOS 侧这次改动**还需 CI 复核**（`DynamicLibrary.process()` + 插件同
 - `flutter test`：**696 passed**
 - 真机（OPPO A97）：新包装上后 `db opened` / `loaded: courses=4 todos=6 rules=6` 正常
   （演示数据没有模板，所以不会凭空生成；模板链路由上面的测试覆盖）
+
+## 57. 2026-10-17 安卓版：课程管理（课程 / 时段规则 / 待办模板）接通
+
+上一轮把「模板 → 自动生成待办」的 domain 做完了，但**模板无处可编辑**（导入才有）。
+这轮补上 `CourseManager`，对应鸿蒙端 `view/CourseManager.ets` 的核心部分。
+
+### 57.1 新文件 `lib/ui/course_manager.dart`
+
+- `showCourseManager(context, bundle, onChanged)`：全屏玻璃浮层（淡入 + 0.96→1 缩放），
+  顶栏 `‹ 返回 / 管理课程`；正文：学期摘要、上课节次摘要、`课程 N 门` + `+ 新增课程`、课程卡列表
+- 课程卡：颜色点 + `简称（全名）` + `教师 · 地点 · N 个时段 · N 个模板 · 虚拟课程 · 不自动生成`
+- 课程编辑（`Dialog` + 玻璃）：全名 / 简称 / 教师 / 默认地点 / 10 个颜色圆点 /
+  `下课后自动生成待办` 开关 / `虚拟课程` 开关；已有课程还有：
+  - **时段规则**列表（`周五 · 第 3-4 节`，改/删）+ `+ 添加时段`（星期胶囊、起止节次 1-12、地点、习题课开关）
+  - **待办模板**列表（`「%D作业」 · 本周日 23:59 · 60 分钟`，改/删）+ `+ 添加模板`
+    （标题模板 + 变量说明、6 种截止规则、days/weekday 参数、预计耗时 ±15、类型、启用开关）
+  - `删除课程`（二次确认，连同它的时段与模板一起删）
+- 所有改动都整份写回（`onChanged(bundle)`），与其它页面同一套机制
+
+### 57.2 顺带的正确性修复
+
+`BackupBundle` 增加 `templates` 之后，**所有"整份复制 bundle"的地方都要带上它**，
+否则改一条待办/拖一个计划块就会把模板清空。已逐一补齐：`plan_page._withBlocks`、
+`todo_page._copyWith`、`settings_page._withRest`、`session_sheet.withOverrides`、`home_shell._generateMissed`。
+
+### 57.3 验证
+
+- 新增 `test/course_manager_test.dart`（5 条）：列出 4 门课；改简称写回且不动其它字段；
+  加时段规则写回；加模板写回（`courseId/titleTemplate/enabled` 对）；删课程连同时段一起消失
+- `flutter test`：**701 passed**
+- golden 新增 `tool/goldens/course_manager.png`（与 `docs/manual/05-manager.jpg` 对照）
+- **真机（OPPO A97）实测**：页头「管理课程」→ 浮层列表；点「线代」→ 编辑抽屉
+  （颜色圆点、两个开关、时段 `周五 · 第 3-4 节` 的改/删、`+ 添加时段`、待办模板区、删除课程/保存）
+
+### 57.4 还没做（课程管理剩余部分）
+
+- 学期管理（新建学期 / 复制到当前学期 / 当前学期标记）
+- 备份与恢复子页（导出 JSON 到沙箱、整份恢复、诊断信息）

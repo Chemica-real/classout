@@ -259,6 +259,8 @@ class _TodoPageState extends State<TodoPage> {
         overrides: widget.bundle.overrides,
         todos: todos ?? widget.bundle.todos,
         blocks: widget.bundle.blocks,
+        restWindows: widget.bundle.restWindows,
+        templates: widget.bundle.templates,
       );
 
   Future<void> _openEditor(BuildContext context,

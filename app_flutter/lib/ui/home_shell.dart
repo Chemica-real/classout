@@ -20,6 +20,7 @@ import 'palette.dart';
 import 'plan_page.dart';
 import 'settings_page.dart';
 import 'course_header.dart';
+import 'course_manager.dart';
 import 'session_sheet.dart';
 import 'theme.dart' as theme;
 import 'timetable_page.dart';
@@ -151,13 +152,6 @@ class _HomeShellState extends State<HomeShell> {
         .length;
   }
 
-  /// 还没移植完的入口：老实说一句，而不是装作点了没反应
-  void _notReady(String what) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('「$what」还在移植中（鸿蒙端已有，这边下一步补齐）')),
-    );
-  }
-
   /// 下课自动生成待办：把 last_gen_date 到现在之间已经下课的课时，
   /// 按课程模板生成「待确认」待办（去重键 course|date|template，见 domain/todo_generator.dart）
   Future<void> _generateMissed(BackupBundle data) async {
@@ -197,8 +191,6 @@ class _HomeShellState extends State<HomeShell> {
     await widget.repo.replaceAll(_bundle!);
   }
 
-  /// 页头「⟳ 立即与日历同步」：走和「用到 n 分钟自动同步」同一套重排，
-  /// 只是这次是用户主动点的 —— 顶部弹提示，排完再报结果（鸿蒙端 runCalendarSync(true)）。
   Future<void> _manualSync() async {
     if (_syncing) return;
     setState(() => _syncing = true);
@@ -297,7 +289,8 @@ class _HomeShellState extends State<HomeShell> {
                           onSync: _manualSync,
                           onExtra: () => showExtraSheet(context,
                               bundle: bundle, week: _week, onChanged: _apply),
-                          onManage: () => _notReady('管理课程'),
+                          onManage: () => showCourseManager(context,
+                              bundle: bundle, onChanged: _apply),
                           onOpenAdjust: () => showAdjustSheet(context,
                               bundle: bundle, onChanged: _apply),
                         ),

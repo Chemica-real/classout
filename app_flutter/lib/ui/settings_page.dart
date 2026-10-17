@@ -93,6 +93,7 @@ class _SettingsPageState extends State<SettingsPage> {
       todos: b.todos,
       blocks: b.blocks,
       restWindows: rest,
+      templates: b.templates,
     );
   }
 

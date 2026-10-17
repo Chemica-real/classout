@@ -26,6 +26,7 @@
 | `view/TodoInbox.ets` → `EditorPanel()` | `lib/ui/todo_editor.dart` | 右侧 84% 抽屉（标题 + ✕ + 可滚表单） |
 | `view/PlanDayView.ets`（`DayBarFloat` / `ColHeadRow` / `HourLines` / `RestBands` / `ClassBlock` / `PlanBlockView` / `DdlMarkers` / `TodoPool`） | `lib/ui/plan_page.dart` | 日/三日、时间轴、课表灰带、斜纹不可排带、计划块、截止标记、待安排托盘 |
 | `view/SettingsPage.ets`（`WallpaperCard`/`MottoCard`/`MotionCard`/`ReminderCard`/…） | `lib/ui/settings_page.dart` | 10 张玻璃卡 |
+| `view/CourseManager.ets` | `lib/ui/course_manager.dart` | 课程管理浮层：学期/节次摘要、课程卡、课程编辑抽屉（名称/简称/教师/地点/颜色/自动生成/虚拟课 + 时段规则 + 待办模板 + 删除课程） |
 | `view/ChipButton.ets` | `_Choice`/`_Chip`/`_ChipButton`（各页面内） | 选中 = `#2E6BE6` 底 + 白字 |
 | `data/Prefs.ets`（`MOTTO_*`、`mottoUnits`、`clampMottoUnits`、`cleanMotto`） | `lib/domain/motto.dart` | 标语：按显示宽度 32（汉字 2 / 半角 1） |
 | `data/WallpaperRepo.ets` | `lib/data/wallpaper.dart` | 选图 → 拷进 App 私有目录 → kv `wallpaper_path` |
@@ -44,7 +45,7 @@
 
 ## 四、还缺的（按 HANDOFF §52.3 的优先级）
 
-1. 课程管理（`CourseManager.ets`）：课程增删改 + 模板编辑（domain 已就绪，UI 未做）
+1. 课程管理：课程/时段/模板 ✅（本轮）；还差「学期管理」「备份与恢复（导出/诊断）」两个子页
 2. 计划页：待安排货架展开、按列截止标记 + 浮层、长按选中两步模型、双指缩放
 3. 单周调整（停课/换教室/调课/补课/撤销）、课程管理与模板、备份导出
 4. 启动加载页、页头/导航栏真正做成悬浮层

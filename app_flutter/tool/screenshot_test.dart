@@ -7,6 +7,7 @@
 // ⚠️ flutter_test 默认字体没有中文、也没有 Material 图标（全渲染成豆腐块），
 //    所以这里手动加载系统里的中文字体 + SDK 里的 MaterialIcons。
 
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -17,6 +18,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:classout/data/backup.dart';
 import 'package:classout/ui/app_frame.dart';
 import 'package:classout/ui/course_header.dart';
+import 'package:classout/ui/course_manager.dart';
 import 'package:classout/ui/theme.dart' as theme;
 import 'package:classout/ui/timetable_page.dart';
 import 'package:classout/data/settings.dart';
@@ -216,5 +218,40 @@ void main() {
     await tester.tap(find.text('+ 新建待办'));
     await tester.pumpAndSettle();
     await _capture(tester, 'todo_editor');
+  });
+
+  testWidgets('课程管理截图', (tester) async {
+    final family = await _loadFonts();
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+          brightness: Brightness.dark, useMaterial3: true, fontFamily: family),
+      home: Scaffold(
+        body: AppFrame(
+          tab: 0,
+          onTab: (_) {},
+          child: Column(children: [
+            CourseHeader(
+              sem: demo.semester,
+              week: 1,
+              onPrev: () {},
+              onNext: () {},
+              onToday: () {},
+              onSync: () async {},
+            ),
+            Expanded(child: TimetablePage(bundle: demo, week: 1)),
+          ]),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    // 不要 await：showGeneralDialog 的 Future 要等浮层关掉才完成
+    unawaited(showCourseManager(tester.element(find.byType(AppFrame)),
+        bundle: demo, onChanged: (_) {}));
+    await tester.pumpAndSettle();
+    await _capture(tester, 'course_manager');
   });
 }
