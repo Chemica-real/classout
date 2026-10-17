@@ -6924,3 +6924,15 @@ Flutter 要做这个得上 `AnimatedList`/`SliverAnimatedList`，改动面比收
 现已统一成 `glassTintRow + glassEdgeSoft + glassShadowRow`、圆角 8、行距 6。
 
 - `flutter test` **1302 passed**；golden 重出（`semester_page` / `course_editor` 等）。
+
+### 116.34 计划块的紧凑内边距与"完成"样式
+
+对着 `PlanBlockView` 逐值看：
+- 紧凑块（高度 < 阈值）鸿蒙是 `.padding({ left: 7, right: 5 })`，**没有上下内边距**；
+  安卓写成了 `symmetric(horizontal: 5) + left 7`（上下各 5vp）→ 已改成 `only(left: 7, right: 5)`。
+- 鸿蒙计划块**不加删除线**：完成只体现为 `○ → ●` 和整块 `opacity 0.5`；
+  安卓给标题加了 `lineThrough` → 已去掉（紧凑块与常规块都去掉）。
+- 其余已一致：常规块 `padding(8, 3, 6, 0)`、`○/●` 14 号（完成色 `#7FA8FF`）、
+  标题 14 Medium、副行 11 `#CBD6E8`、圆角 6、选中/拖拽 2px 白框、拖动 0.72 半透明、块左右各 3。
+
+- `flutter test` **1302 passed**；golden 重出（`plan` / `sandbox_plan`）。

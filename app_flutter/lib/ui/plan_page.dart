@@ -1505,8 +1505,8 @@ class _Block extends StatelessWidget {
         ? Container(
             width: double.infinity,
             height: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 5)
-                .copyWith(left: 7),
+            // 鸿蒙紧凑块：`.padding({ left: 7, right: 5 })`（没有上下内边距）
+            padding: const EdgeInsets.only(left: 7, right: 5),
             alignment: Alignment.centerLeft,
             child: Row(
               children: [
@@ -1514,13 +1514,10 @@ class _Block extends StatelessWidget {
                   child: Text(_compactTitle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
+                      style: const TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w500,
-                          color: inkPrimary,
-                          decoration: block.done
-                              ? TextDecoration.lineThrough
-                              : null)),
+                          color: inkPrimary)),
                 ),
                 const SizedBox(width: 6),
                 Text(minToHHmm(block.startMin),
@@ -1558,14 +1555,12 @@ class _Block extends StatelessWidget {
                       Text(todo?.title ?? (lessonTitle ?? '计划块'),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
+                          // 鸿蒙计划块**不加删除线**：完成的块靠 ○→● 与 0.5 透明度表达
                           style: TextStyle(
                               fontSize: 14,
                               height: 1.15,
                               fontWeight: FontWeight.w500,
-                              color: inkPrimary,
-                              decoration: block.done
-                                  ? TextDecoration.lineThrough
-                                  : null)),
+                              color: inkPrimary)),
                       Text(_subText,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
