@@ -3773,6 +3773,811 @@
     4,
     3
    ]
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    80,
+    100,
+    900,
+    0
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    80,
+    100,
+    900,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    80,
+    100,
+    900,
+    60
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    80,
+    100,
+    900,
+    60
+   ],
+   "expect": 60
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    80,
+    100,
+    900,
+    200
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    80,
+    100,
+    900,
+    200
+   ],
+   "expect": 200
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    80,
+    100,
+    900,
+    900
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    80,
+    100,
+    900,
+    900
+   ],
+   "expect": 900
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    100,
+    100,
+    900,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    100,
+    100,
+    900,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    100,
+    100,
+    900,
+    60
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    100,
+    100,
+    900,
+    60
+   ],
+   "expect": 60
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    100,
+    100,
+    900,
+    200
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    100,
+    100,
+    900,
+    200
+   ],
+   "expect": 200
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    100,
+    100,
+    900,
+    900
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    100,
+    100,
+    900,
+    900
+   ],
+   "expect": 900
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    140,
+    100,
+    900,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    140,
+    100,
+    900,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    140,
+    100,
+    900,
+    60
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    140,
+    100,
+    900,
+    60
+   ],
+   "expect": 20
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    140,
+    100,
+    900,
+    200
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    140,
+    100,
+    900,
+    200
+   ],
+   "expect": 160
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    140,
+    100,
+    900,
+    900
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    140,
+    100,
+    900,
+    900
+   ],
+   "expect": 860
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    180,
+    100,
+    900,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    180,
+    100,
+    900,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    180,
+    100,
+    900,
+    60
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    180,
+    100,
+    900,
+    60
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    180,
+    100,
+    900,
+    200
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    180,
+    100,
+    900,
+    200
+   ],
+   "expect": 120
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    180,
+    100,
+    900,
+    900
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    180,
+    100,
+    900,
+    900
+   ],
+   "expect": 820
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    500,
+    100,
+    900,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    500,
+    100,
+    900,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    500,
+    100,
+    900,
+    60
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    500,
+    100,
+    900,
+    60
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    500,
+    100,
+    900,
+    200
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    500,
+    100,
+    900,
+    200
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    500,
+    100,
+    900,
+    900
+   ],
+   "expect": -1
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    500,
+    100,
+    900,
+    900
+   ],
+   "expect": 500
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    820,
+    100,
+    900,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    820,
+    100,
+    900,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    820,
+    100,
+    900,
+    60
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    820,
+    100,
+    900,
+    60
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    820,
+    100,
+    900,
+    200
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    820,
+    100,
+    900,
+    200
+   ],
+   "expect": 120
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    820,
+    100,
+    900,
+    900
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    820,
+    100,
+    900,
+    900
+   ],
+   "expect": 820
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    860,
+    100,
+    900,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    860,
+    100,
+    900,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    860,
+    100,
+    900,
+    60
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    860,
+    100,
+    900,
+    60
+   ],
+   "expect": 20
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    860,
+    100,
+    900,
+    200
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    860,
+    100,
+    900,
+    200
+   ],
+   "expect": 160
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    860,
+    100,
+    900,
+    900
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    860,
+    100,
+    900,
+    900
+   ],
+   "expect": 860
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    900,
+    100,
+    900,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    900,
+    100,
+    900,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    900,
+    100,
+    900,
+    60
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    900,
+    100,
+    900,
+    60
+   ],
+   "expect": 60
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    900,
+    100,
+    900,
+    200
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    900,
+    100,
+    900,
+    200
+   ],
+   "expect": 200
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    900,
+    100,
+    900,
+    900
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    900,
+    100,
+    900,
+    900
+   ],
+   "expect": 900
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    950,
+    100,
+    900,
+    0
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    950,
+    100,
+    900,
+    0
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    950,
+    100,
+    900,
+    60
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    950,
+    100,
+    900,
+    60
+   ],
+   "expect": 60
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    950,
+    100,
+    900,
+    200
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    950,
+    100,
+    900,
+    200
+   ],
+   "expect": 200
+  },
+  {
+   "fn": "edgeScrollDirection",
+   "args": [
+    950,
+    100,
+    900,
+    900
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "edgeScrollDepth",
+   "args": [
+    950,
+    100,
+    900,
+    900
+   ],
+   "expect": 900
+  },
+  {
+   "fn": "edgeScrollStep",
+   "args": [
+    0,
+    60,
+    12
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "edgeScrollStep",
+   "args": [
+    5,
+    60,
+    12
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "edgeScrollStep",
+   "args": [
+    30,
+    60,
+    12
+   ],
+   "expect": 6
+  },
+  {
+   "fn": "edgeScrollStep",
+   "args": [
+    60,
+    60,
+    12
+   ],
+   "expect": 12
+  },
+  {
+   "fn": "edgeScrollStep",
+   "args": [
+    120,
+    60,
+    12
+   ],
+   "expect": 12
+  },
+  {
+   "fn": "dragOffsetWithScroll",
+   "args": [
+    10,
+    0
+   ],
+   "expect": 10
+  },
+  {
+   "fn": "dragOffsetWithScroll",
+   "args": [
+    10,
+    25
+   ],
+   "expect": 35
+  },
+  {
+   "fn": "dragOffsetWithScroll",
+   "args": [
+    -10,
+    25
+   ],
+   "expect": 15
+  },
+  {
+   "fn": "dragOffsetWithScroll",
+   "args": [
+    -10,
+    0
+   ],
+   "expect": -10
+  },
+  {
+   "fn": "dragOffsetWithScroll",
+   "args": [
+    0,
+    40
+   ],
+   "expect": 40
   }
  ]
 }

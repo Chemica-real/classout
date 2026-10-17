@@ -329,3 +329,45 @@ List<(int, int)> defaultRestWindows() => [
       (23 * 60 + 30, 24 * 60),
       (0, 7 * 60),
     ];
+
+// ---------------- 拖动时的边缘自动滚动 ----------------
+
+/// 触摸点进入距可视区上/下边缘 [edgeZone] 之内就滚：-1 向上、1 向下、0 不滚。
+/// 视口比两个触发区还矮时取更近的一边（避免两边打架）。
+int edgeScrollDirection(int touchWinY, int viewTop, int viewBottom, int edgeZone) {
+  final span = viewBottom - viewTop;
+  if (span <= 0) return 0;
+  final fromTop = touchWinY - viewTop;
+  final fromBottom = viewBottom - touchWinY;
+  final atTop = fromTop < edgeZone;
+  final atBottom = fromBottom < edgeZone;
+  if (atTop && atBottom) return fromTop <= fromBottom ? -1 : 1;
+  if (atTop) return -1;
+  if (atBottom) return 1;
+  return 0;
+}
+
+/// 伸进触发区多深（0..edgeZone）：越深滚得越快
+int edgeScrollDepth(int touchWinY, int viewTop, int viewBottom, int edgeZone) {
+  final dir = edgeScrollDirection(touchWinY, viewTop, viewBottom, edgeZone);
+  if (dir == 0 || edgeZone <= 0) return 0;
+  final fromEdge = dir < 0 ? touchWinY - viewTop : viewBottom - touchWinY;
+  return _clamp(edgeZone - fromEdge, 0, edgeZone);
+}
+
+/// 这一次自动滚动走多少 vp：按深入比例给（至少 1，最多 maxStep）
+int edgeScrollStep(int depth, int edgeZone, int maxStep) {
+  if (edgeZone <= 0 || maxStep <= 0) return 0;
+  final frac = (depth / edgeZone).clamp(0.0, 1.0);
+  final s = maxStep * frac;
+  if (s < 1) return 1;
+  if (s > maxStep) return maxStep;
+  return jsRound(s);
+}
+
+/// 拖动时块的位移 = 手指位移 **+** 滚动量。
+///
+/// ⚠️ 鸿蒙端曾把符号写反（`touchDelta - scrollDelta`），症状是"拖到屏幕上下边缘时
+/// 块不再跟手" —— 自动滚动时块朝反方向多跑一倍。这条断言（fixtures）盯着符号。
+int dragOffsetWithScroll(int touchDeltaY, int scrollDeltaY) =>
+    touchDeltaY + scrollDeltaY;

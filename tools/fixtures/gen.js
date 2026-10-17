@@ -185,6 +185,25 @@ for (const d of [-30, -5, 0, 5, 30]) add('pinchDeltaLabel', [d], VD.pinchDeltaLa
   add('sortBlocksByTime', [bl], PM.sortBlocksByTime(bl).map((b) => b.id));
 }
 
+// ---- 拖动时的边缘自动滚动 ----
+{
+  const view = [100, 900]; // viewTop, viewBottom
+  for (const y of [80, 100, 140, 180, 500, 820, 860, 900, 950]) {
+    for (const zone of [0, 60, 200, 900]) {
+      add('edgeScrollDirection', [y, view[0], view[1], zone],
+        PM.edgeScrollDirection(y, view[0], view[1], zone));
+      add('edgeScrollDepth', [y, view[0], view[1], zone],
+        PM.edgeScrollDepth(y, view[0], view[1], zone));
+    }
+  }
+  for (const d of [0, 5, 30, 60, 120]) {
+    add('edgeScrollStep', [d, 60, 12], PM.edgeScrollStep(d, 60, 12));
+  }
+  for (const [a, b] of [[10, 0], [10, 25], [-10, 25], [-10, 0], [0, 40]]) {
+    add('dragOffsetWithScroll', [a, b], PM.dragOffsetWithScroll(a, b));
+  }
+}
+
 // ================= Timetable =================
 const TB = require(path.join(DIST, 'Timetable.js'));
 const WM = require(path.join(DIST, 'WeekMask.js'));

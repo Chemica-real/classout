@@ -9,6 +9,7 @@ import 'package:classout/data/backup.dart';
 import 'package:classout/domain/dates.dart';
 import 'package:classout/domain/plan_math.dart';
 import 'package:classout/domain/timetable.dart';
+import 'package:classout/model/types.dart';
 import 'package:classout/ui/plan_page.dart';
 
 BackupBundle _demo() =>
@@ -20,7 +21,7 @@ class _Harness {
   BackupBundle get current => last ?? _demo();
 }
 
-Future<_Harness> _pump(WidgetTester tester) async {
+Future<_Harness> _pump(WidgetTester tester, {DateTime? initialDay}) async {
   tester.view.physicalSize = const Size(1080, 2400);
   tester.view.devicePixelRatio = 3.0;
   addTearDown(tester.view.reset);
@@ -31,6 +32,7 @@ Future<_Harness> _pump(WidgetTester tester) async {
         builder: (context, setState) => PlanPage(
           bundle: h.current,
           onChanged: (next) => setState(() => h.last = next),
+          initialDay: initialDay,
         ),
       ),
     ),
@@ -38,6 +40,9 @@ Future<_Harness> _pump(WidgetTester tester) async {
   await tester.pumpAndSettle();
   return h;
 }
+
+PlanBlock _byIdBlock(BackupBundle b, int id) =>
+    b.blocks.firstWhere((x) => x.id == id);
 
 void main() {
   testWidgets('页面上有课表灰带和已有的计划块', (tester) async {
@@ -83,6 +88,63 @@ void main() {
     expect(added.date, '2026-10-17');
     expect(added.startMin, 15 * 60, reason: '点哪儿落哪儿（吸附后）');
     expect(added.endMin - added.startMin, 45, reason: '时长用待办的预计耗时');
+  });
+
+  testWidgets('拖动块身 → 时间整体平移，时长不变', (tester) async {
+    final h = await _pump(tester, initialDay: DateTime(2026, 10, 16));
+    final before = _demo().blocks.firstWhere((b) => b.date == '2026-10-16');
+
+    final block = find.byKey(ValueKey('plan-block-${before.id}'));
+    await tester.ensureVisible(block);
+    await tester.pumpAndSettle();
+    // 往下拖 60px = 60 分钟（1 分钟 = 1vp），吸附后仍是 60 的倍数
+    await tester.timedDrag(block, const Offset(0, 60), const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+
+    final b = h.last;
+    expect(b, isNotNull, reason: '拖完应该写回数据');
+    final after = _byIdBlock(b!, before.id);
+    expect(after.startMin, before.startMin + 60);
+    expect(after.endMin - after.startMin, before.endMin - before.startMin,
+        reason: '移动不改变时长');
+  });
+
+  testWidgets('拖底边 → 只改结束时间，开始不变，且不小于 15 分钟', (tester) async {
+    final h = await _pump(tester, initialDay: DateTime(2026, 10, 16));
+    final before = _demo().blocks.firstWhere((b) => b.date == '2026-10-16');
+
+    final blockFinder = find.byKey(ValueKey('plan-block-${before.id}'));
+    await tester.ensureVisible(blockFinder);
+    await tester.pumpAndSettle();
+    // 从块底边上方 6px 处按下 = 拖底边缩放
+    final rect = tester.getRect(blockFinder);
+    await tester.timedDragFrom(
+        Offset(rect.center.dx, rect.bottom - 6), const Offset(0, 30),
+        const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+
+    final b = h.last;
+    expect(b, isNotNull);
+    final after = _byIdBlock(b!, before.id);
+    expect(after.startMin, before.startMin, reason: '缩放不动开始时间');
+    expect(after.endMin, before.endMin + 30);
+  });
+
+  testWidgets('拖到窗口外会被夹住（不会画到网格外）', (tester) async {
+    final h = await _pump(tester, initialDay: DateTime(2026, 10, 16));
+    final before = _demo().blocks.firstWhere((b) => b.date == '2026-10-16');
+    final block = find.byKey(ValueKey('plan-block-${before.id}'));
+    await tester.ensureVisible(block);
+    await tester.pumpAndSettle();
+    // 往上拖很远：moveRange 会夹到时间窗起点
+    await tester.timedDrag(block, const Offset(0, -3000), const Duration(milliseconds: 600));
+    await tester.pumpAndSettle();
+
+    final b = h.last;
+    expect(b, isNotNull);
+    final after = _byIdBlock(b!, before.id);
+    expect(after.startMin, TimeAxis(defaultWindow).startMin);
+    expect(after.endMin - after.startMin, before.endMin - before.startMin);
   });
 
   testWidgets('⚡找空档：落点不与课表/不可排时段重叠', (tester) async {

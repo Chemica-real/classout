@@ -12,7 +12,7 @@ ClassOUT 是一款**纯离线鸿蒙原生（ArkTS）「课表 + 待办 + 计划�
 
 **当前状态：v1.5.1（鸿蒙端，上架准备中，**尚未提交审核**）**；**iOS/Android 版（Dart+Flutter）
 正在开发中**，**iOS/Android 版目标 ①–⑤ 全部实现**（规则层 + 数据层 + 四标签页 + 原生接线 + 通知提醒，
-**597 条测试**，含 web/iPad 的「从文件导入」**），见 **§36–§43、§49**；**iOS 已在 GitHub Actions 的模拟器上自动验证**
+**682 条测试**，含 web/iPad 的「从文件导入」、计划页拖动/缩放**），见 **§36–§43、§49、§50**；**iOS 已在 GitHub Actions 的模拟器上自动验证**
 （§47：#1–#9 里 7 次绿，含 `db opened` + `loaded:` 自检）；**Android APK 也已能打包**
 （§48，模拟器运行验证降级为手动）。
 ⚠️ 仍然缺的都是**只能靠真机/CI** 的东西：通知权限弹窗/锁屏/免打扰、iOS 上
@@ -4271,3 +4271,34 @@ final bytes = await files.first.readAsBytes();        // 也有 readAsByteStream
 - `flutter analyze` 干净；**597 条测试全绿**；`flutter build web --release` 通过
   （file_picker 在 web 上走它的 web 实现，能编译）。
 - iOS/Android 的 CI 会在推送后自动跑（file_picker 加了插件，iOS 要过 CocoaPods/SPM）。
+
+
+## 50. 2026-10-17 iOS/Android 版：计划页拖动/缩放（里程碑 ③）
+
+### 50.1 做了什么
+
+| 东西 | 说明 |
+|---|---|
+| `domain/plan_math.dart` | 补齐 `edgeScrollDirection` / `edgeScrollDepth` / `edgeScrollStep` / `dragOffsetWithScroll`（贴边自动滚动的算术），**fixtures 从 533 → 615 条** |
+| `ui/plan_page.dart` | 块可以拖：整块平移（`moveRange`）、拖底边改时长（`resizeRange`）；拖动中显示预览、松手才写回；贴边自动滚动（`jumpTo`） |
+| 测试 | **682 条**（+3 UI 级：拖动 60px → 时间 +60 且时长不变；拖底边 +30px → 只改结束；往上拖 3000px → 被夹到时间窗起点） |
+| golden | `plan.png` 更新（块底部多了缩放手柄的白色小条） |
+
+### 50.2 ★★ 拖动这三个坑，一个比一个隐蔽
+
+1. **`GestureDetector(onPanStart/Update/End)` 根本不触发**：外层 `SingleChildScrollView` 的
+   竖直拖动在**手势竞技场**里赢了，子级的 pan 被直接拒掉（我加了 `debugPrint` 才确认
+   "一条回调都没进"）。
+   → 改用 **`Listener`**（`onPointerDown/Move/Up`，原始指针事件，**不参与竞技场**）。
+2. **只换 `Listener` 仍然不对**：滚动视图照样跟着滚，于是
+   `dragOffsetWithScroll = 手指位移 + 滚动量` 里的滚动量是**负**的（往下拖 → 偏移减小），
+   把手指位移抵消掉大半 —— 实测**拖 60px 只换了 15 分钟**（60 + (−45)）。
+   数学上块确实还贴在手指下面（视觉没错），但"网格整体滚走"不是想要的行为。
+   → 拖动期间把滚动视图的 `physics` 换成 `NeverScrollableScrollPhysics`（`_dragId != 0`）。
+   贴边自动滚动是自己 `jumpTo` 的，不受影响。
+3. **移动 vs 缩放的判定**：别用嵌套 `GestureDetector`（外层 pan 也会收到，双触发），
+   而是**按按下位置**——`e.localPosition.dy > height - 18` 就算拖底边。
+   `Listener` 的 `localPosition` 正好是相对块自己的坐标。
+
+> 教训写在这里：**"手势没反应"先怀疑竞技场**（用 `Listener` 打点确认指针到底有没有到）；
+> **"跟手但不准"先算滚动量**。这两件事在真机上用眼睛是分不出来的。

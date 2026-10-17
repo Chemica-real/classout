@@ -48,6 +48,101 @@ class _PlanPageState extends State<PlanPage> {
   late bool _threeDay;
   int _selectedTodoId = 0; // 托盘里选中、等着落到网格上的那条
 
+  // ---- 拖动 / 缩放（见 domain/plan_math.dart 的 moveRange / resizeRange / edgeScroll*）----
+  final ScrollController _scroll = ScrollController();
+  final GlobalKey _gridKey = GlobalKey();
+  /// 正在拖的块 id（0 = 没在拖）
+  int _dragId = 0;
+  /// 拖的是底边（缩放）还是整块（移动）
+  bool _dragResize = false;
+  /// 手指按下时的窗口 y
+  double _dragTouchStartY = 0;
+  /// 按下时的滚动位置
+  double _dragScrollStart = 0;
+  /// 预览用的偏移（分钟）：拖动过程中只改这个，松手才写数据
+  int _dragDeltaMin = 0;
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  /// 网格在屏幕上的可视范围（自动滚动要用）
+  Rect? _gridRect() {
+    final ctx = _gridKey.currentContext;
+    if (ctx == null) return null;
+    final box = ctx.findRenderObject() as RenderBox?;
+    if (box == null) return null;
+    final off = box.localToGlobal(Offset.zero);
+    return off & box.size;
+  }
+
+  void _startDrag(PlanBlock b, bool resize, double globalY) {
+    setState(() {
+      _dragId = b.id;
+      _dragResize = resize;
+      _dragTouchStartY = globalY;
+      _dragScrollStart = _scroll.hasClients ? _scroll.offset : 0;
+      _dragDeltaMin = 0;
+    });
+  }
+
+  void _updateDrag(double globalY) {
+    if (_dragId == 0) return;
+    // 贴边自动滚动：手指在上下 edgeZone 内就把视图推一推
+    const edgeZone = 56.0;
+    const maxStep = 14.0;
+    final rect = _gridRect();
+    if (rect != null) {
+      final dir = edgeScrollDirection(globalY.round(), rect.top.round(),
+          rect.bottom.round(), edgeZone.round());
+      if (dir != 0 && _scroll.hasClients) {
+        final depth = edgeScrollDepth(globalY.round(), rect.top.round(),
+            rect.bottom.round(), edgeZone.round());
+        final step = edgeScrollStep(depth, edgeZone.round(), maxStep.round());
+        final target = (_scroll.offset + dir * step)
+            .clamp(0.0, _scroll.position.maxScrollExtent);
+        _scroll.jumpTo(target);
+      }
+    }
+    // 块的位移 = 手指位移 + 滚动量（符号必须是加，见 fixtures 里那条断言）
+    final scrollDelta = (_scroll.hasClients ? _scroll.offset : 0) - _dragScrollStart;
+    final offset = dragOffsetWithScroll(
+        (globalY - _dragTouchStartY).round(), scrollDelta.round());
+    setState(() => _dragDeltaMin = snap(offset));
+  }
+
+  void _endDrag() {
+    final id = _dragId;
+    final resize = _dragResize;
+    final delta = _dragDeltaMin;
+    setState(() {
+      _dragId = 0;
+      _dragDeltaMin = 0;
+    });
+    if (id == 0 || delta == 0) return;
+    final b = widget.bundle.blocks.firstWhere((x) => x.id == id);
+    final range = resize
+        ? resizeRange(_axis, b.startMin, b.endMin, delta)
+        : moveRange(_axis, b.startMin, b.endMin, delta);
+    widget.onChanged(_withBlocks([
+      for (final x in widget.bundle.blocks)
+        if (x.id != id)
+          x
+        else
+          PlanBlock(
+            id: x.id,
+            todoId: x.todoId,
+            lessonId: x.lessonId,
+            date: x.date,
+            startMin: range[0],
+            endMin: range[1],
+            done: x.done,
+          ),
+    ]));
+  }
+
   @override
   void initState() {
     super.initState();
@@ -205,11 +300,19 @@ class _PlanPageState extends State<PlanPage> {
         ),
         Expanded(
           child: SingleChildScrollView(
+            controller: _scroll,
+            // 拖块期间锁住滚动：不锁的话外层滚动视图会抢走竖直拖动，
+            // 变成"网格整体滚走、块只挪一点点"（dragOffsetWithScroll 的补偿会抵消掉大半）。
+            // 贴边自动滚动由 _updateDrag 自己 jumpTo，所以锁住不影响那个功能。
+            physics: _dragId != 0
+                ? const NeverScrollableScrollPhysics()
+                : const ClampingScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
             child: Column(
               children: [
                 _DayTitles(days: days, axisW: _axisW),
                 _Grid(
+                  key: _gridKey,
                   axis: _axis,
                   axisW: _axisW,
                   days: days,
@@ -223,6 +326,12 @@ class _PlanPageState extends State<PlanPage> {
                     _place(day, min, todo?.estimateMin ?? 60);
                   },
                   onTapBlock: _showBlockSheet,
+                  dragId: _dragId,
+                  dragResize: _dragResize,
+                  dragDeltaMin: _dragDeltaMin,
+                  onDragStart: _startDrag,
+                  onDragUpdate: _updateDrag,
+                  onDragEnd: _endDrag,
                 ),
               ],
             ),
@@ -418,7 +527,16 @@ class _Grid extends StatelessWidget {
   final void Function(DateTime, int) onTapMinute;
   final void Function(PlanBlock) onTapBlock;
 
+  // 拖动 / 缩放
+  final int dragId;
+  final bool dragResize;
+  final int dragDeltaMin;
+  final void Function(PlanBlock, bool resize, double globalY) onDragStart;
+  final void Function(double globalY) onDragUpdate;
+  final VoidCallback onDragEnd;
+
   const _Grid({
+    super.key,
     required this.axis,
     required this.axisW,
     required this.days,
@@ -428,6 +546,12 @@ class _Grid extends StatelessWidget {
     required this.todoOf,
     required this.onTapMinute,
     required this.onTapBlock,
+    required this.dragId,
+    required this.dragResize,
+    required this.dragDeltaMin,
+    required this.onDragStart,
+    required this.onDragUpdate,
+    required this.onDragEnd,
   });
 
   @override
@@ -462,6 +586,12 @@ class _Grid extends StatelessWidget {
                       child: _DayColumn(
                         key: ValueKey('plan-day-${formatDate(d)}'),
                         axis: axis,
+                        dragId: dragId,
+                        dragResize: dragResize,
+                        dragDeltaMin: dragDeltaMin,
+                        onDragStart: onDragStart,
+                        onDragUpdate: onDragUpdate,
+                        onDragEnd: onDragEnd,
                         day: d,
                         sessions: sessions[formatDate(d)] ?? const [],
                         blocks: blocks[formatDate(d)] ?? const [],
@@ -483,6 +613,12 @@ class _Grid extends StatelessWidget {
 
 class _DayColumn extends StatelessWidget {
   final TimeAxis axis;
+  final int dragId;
+  final bool dragResize;
+  final int dragDeltaMin;
+  final void Function(PlanBlock, bool resize, double globalY) onDragStart;
+  final void Function(double globalY) onDragUpdate;
+  final VoidCallback onDragEnd;
   final DateTime day;
   final List<CourseSession> sessions;
   final List<PlanBlock> blocks;
@@ -494,6 +630,12 @@ class _DayColumn extends StatelessWidget {
   const _DayColumn({
     super.key,
     required this.axis,
+    required this.dragId,
+    required this.dragResize,
+    required this.dragDeltaMin,
+    required this.onDragStart,
+    required this.onDragUpdate,
+    required this.onDragEnd,
     required this.day,
     required this.sessions,
     required this.blocks,
@@ -540,7 +682,13 @@ class _DayColumn extends StatelessWidget {
                 block: b,
                 axis: axis,
                 todo: todoOf(b.todoId),
+                dragging: dragId == b.id,
+                resizing: dragId == b.id && dragResize,
+                dragDeltaMin: dragId == b.id ? dragDeltaMin : 0,
                 onTap: () => onTapBlock(b),
+                onDragStart: onDragStart,
+                onDragUpdate: onDragUpdate,
+                onDragEnd: onDragEnd,
               ),
             // 截止标记
             for (final g in ddls)
@@ -595,34 +743,99 @@ class _Block extends StatelessWidget {
   final PlanBlock block;
   final TimeAxis axis;
   final Todo? todo;
+  final bool dragging;
+  final bool resizing;
+  final int dragDeltaMin;
   final VoidCallback onTap;
-  const _Block({required this.block, required this.axis, required this.todo, required this.onTap});
+  final void Function(PlanBlock, bool resize, double globalY) onDragStart;
+  final void Function(double globalY) onDragUpdate;
+  final VoidCallback onDragEnd;
+
+  const _Block({
+    required this.block,
+    required this.axis,
+    required this.todo,
+    required this.dragging,
+    required this.resizing,
+    required this.dragDeltaMin,
+    required this.onTap,
+    required this.onDragStart,
+    required this.onDragUpdate,
+    required this.onDragEnd,
+  });
 
   @override
   Widget build(BuildContext context) {
     final color = todo == null ? const Color(0xFF4A5B75) : courseColor(todo!.courseId);
+    // 拖动中只改预览：移动 → 顶边跟着走、高度不变；缩放 → 顶边不动、高度跟着变
+    final topMin = resizing ? block.startMin : block.startMin + dragDeltaMin;
+    final endMin = block.endMin + dragDeltaMin;
+    final top = (topMin - axis.startMin).toDouble();
+    final height = (endMin - (resizing ? block.startMin : topMin)).toDouble();
     return Positioned(
-      top: (block.startMin - axis.startMin).toDouble(),
+      top: top,
       left: 3,
       right: 3,
-      height: (block.endMin - block.startMin).toDouble(),
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(4, 2, 3, 2),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.92),
-            borderRadius: BorderRadius.circular(7),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
-          ),
-          child: Text(
-            todo?.title ?? '计划块',
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 10,
-              color: inkPrimary,
-              decoration: block.done ? TextDecoration.lineThrough : null,
+      height: height < 12 ? 12 : height,
+      child: Listener(
+        // ⚠️ 用 Listener 而不是 GestureDetector 的 onPan*：竖直拖动会被外层
+        //    SingleChildScrollView 的手势竞技场抢走（实测一点回调都不触发）。
+        //    Listener 收原始指针事件、不参与竞技场；又因为我们用
+        //    dragOffsetWithScroll（位移 = 手指位移 + 滚动量）换算，
+        //    所以哪怕滚动视图跟着动了，块也仍然贴在手指下面。
+        onPointerDown: (e) {
+          final box = context.findRenderObject() as RenderBox?;
+          final h = box?.size.height ?? 0;
+          // 按下位置在底部 18vp 内 = 拖底边缩放，否则整块移动
+          onDragStart(block, e.localPosition.dy > h - 18, e.position.dy);
+        },
+        onPointerMove: (e) => onDragUpdate(e.position.dy),
+        onPointerUp: (_) => onDragEnd(),
+        onPointerCancel: (_) => onDragEnd(),
+        child: GestureDetector(
+          key: ValueKey('plan-block-${block.id}'),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(4, 2, 3, 8),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: dragging ? 0.98 : 0.92),
+              borderRadius: BorderRadius.circular(7),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: dragging ? 0.85 : 0.25),
+                width: dragging ? 1.5 : 1,
+              ),
+            ),
+            child: Stack(
+              children: [
+                Text(
+                  todo?.title ?? '计划块',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: inkPrimary,
+                    decoration: block.done ? TextDecoration.lineThrough : null,
+                  ),
+                ),
+                // 底边缩放手柄（只是视觉提示；判定是按按下位置算的）
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: 8,
+                  child: Center(
+                    child: Container(
+                      key: ValueKey('plan-resize-${block.id}'),
+                      width: 22,
+                      height: 3,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.55),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),

@@ -225,6 +225,15 @@ Object? _call(String fn, List<dynamic> a) {
         _todos(a[2]),
       );
 
+    case 'edgeScrollDirection':
+      return edgeScrollDirection(_n(a[0]), _n(a[1]), _n(a[2]), _n(a[3]));
+    case 'edgeScrollDepth':
+      return edgeScrollDepth(_n(a[0]), _n(a[1]), _n(a[2]), _n(a[3]));
+    case 'edgeScrollStep':
+      return edgeScrollStep(_n(a[0]), _n(a[1]), _n(a[2]));
+    case 'dragOffsetWithScroll':
+      return dragOffsetWithScroll(_n(a[0]), _n(a[1]));
+
     default:
       throw StateError('fixture 里有本端还没实现的函数：$fn');
   }
