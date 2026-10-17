@@ -399,8 +399,9 @@ class _BodyState extends State<_Body> {
               child: Text(_title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
+                  // 鸿蒙：LAYOUT.chip = 14 Medium
                   style: const TextStyle(
-                      fontSize: 18,
+                      fontSize: 14,
                       fontWeight: FontWeight.w500,
                       color: inkPrimary)),
             ),
@@ -409,7 +410,8 @@ class _BodyState extends State<_Body> {
               behavior: HitTestBehavior.opaque,
               child: const Padding(
                 padding: EdgeInsets.only(left: 12, bottom: 4),
-                child: Icon(Icons.close, size: 18, color: Color(0xFFA9B5C9)),
+                child: Text('✕',
+                    style: TextStyle(fontSize: 14, color: Color(0xFFA9B5C9))),
               ),
             ),
           ],
@@ -431,7 +433,7 @@ class _BodyState extends State<_Body> {
                     ),
                     child: Text(course.label,
                         style: const TextStyle(
-                            fontSize: 12, color: Color(0xFFEAF0FA))),
+                            fontSize: 14, color: Color(0xFFCBD6E8))),
                   ),
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
@@ -454,16 +456,18 @@ class _BodyState extends State<_Body> {
                       ),
                       _Tap(
                         onTap: () => _shiftDate(-1),
-                        child: const Icon(Icons.chevron_left,
-                            size: 24, color: accentBlue),
+                        child: const Text('‹',
+                            style:
+                                TextStyle(fontSize: 20, color: accentBlue)),
                       ),
                       Text(_b.date,
                           style:
-                              const TextStyle(fontSize: 12, color: inkPrimary)),
+                              const TextStyle(fontSize: 14, color: inkPrimary)),
                       _Tap(
                         onTap: () => _shiftDate(1),
-                        child: const Icon(Icons.chevron_right,
-                            size: 24, color: accentBlue),
+                        child: const Text('›',
+                            style:
+                                TextStyle(fontSize: 20, color: accentBlue)),
                       ),
                     ],
                   ),

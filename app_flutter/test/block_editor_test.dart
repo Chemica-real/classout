@@ -81,7 +81,7 @@ void main() {
   testWidgets('日期 › → 块挪到第二天', (tester) async {
     final seen = await _pump(tester);
     await _openBlock(tester);
-    await tester.tap(find.byIcon(Icons.chevron_right).last);
+    await tester.tap(find.text('›').last);
     await tester.pumpAndSettle();
 
     final block = seen.last!.blocks.firstWhere((x) => x.id == 1);
