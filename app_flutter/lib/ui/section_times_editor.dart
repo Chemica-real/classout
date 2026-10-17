@@ -300,7 +300,7 @@ class _HhmmField extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8),
       alignment: Alignment.centerLeft,
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.10),
+        color: Colors.transparent,
         borderRadius: BorderRadius.circular(8),
       ),
       child: TextField(

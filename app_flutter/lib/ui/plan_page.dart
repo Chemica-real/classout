@@ -1220,15 +1220,17 @@ class _Band extends StatelessWidget {
           color: Colors.white.withValues(alpha: 0.10),
           borderRadius: BorderRadius.circular(6),
         ),
+        // 鸿蒙 ClassBlock 的 Column 没设对齐 → 默认居中（真机图上课程灰带就是居中）
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Text(short,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 12, color: Color(0xFFA9B5C9))),
+                style: const TextStyle(fontSize: 14, color: Color(0xFFA9B5C9))),
             if (height > 40 && location.isNotEmpty)
               Text(location,
+                  textAlign: TextAlign.center,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style:

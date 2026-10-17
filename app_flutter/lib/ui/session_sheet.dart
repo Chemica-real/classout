@@ -293,7 +293,7 @@ class _SessionSheetState extends State<_SessionSheet> {
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       alignment: Alignment.centerLeft,
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.10),
+                        color: Colors.transparent,
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: TextField(

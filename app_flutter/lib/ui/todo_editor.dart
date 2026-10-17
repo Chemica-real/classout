@@ -448,8 +448,9 @@ class _EditorBodyState extends State<_EditorBody> {
                     height: 150,
                     padding: const EdgeInsets.symmetric(
                         horizontal: 12, vertical: 8),
+                    // 鸿蒙 TextArea 同样没有可见底色
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.10),
+                      color: Colors.transparent,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: TextField(
@@ -841,10 +842,7 @@ class _InputBox extends StatelessWidget {
       height: 40,
       padding: const EdgeInsets.symmetric(horizontal: 12),
       alignment: Alignment.centerLeft,
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(20),
-      ),
+      decoration: const BoxDecoration(),
       child: TextField(
         controller: controller,
         autofocus: autofocus,

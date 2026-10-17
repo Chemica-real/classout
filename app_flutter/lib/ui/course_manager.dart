@@ -937,10 +937,8 @@ class _CourseEditorState extends State<_CourseEditor> {
             height: 40,
             padding: const EdgeInsets.symmetric(horizontal: 12),
             alignment: Alignment.centerLeft,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(20),
-            ),
+            // 鸿蒙裸 TextInput：无可见底色
+            decoration: const BoxDecoration(),
             child: TextField(
               controller: c,
               style: const TextStyle(fontSize: 14, color: inkPrimary),
@@ -1527,10 +1525,7 @@ Widget _dialogInput(TextEditingController c, String hint,
     height: 40,
     padding: const EdgeInsets.symmetric(horizontal: 12),
     alignment: Alignment.centerLeft,
-    decoration: BoxDecoration(
-      color: Colors.white.withValues(alpha: 0.10),
-      borderRadius: BorderRadius.circular(20),
-    ),
+    decoration: const BoxDecoration(),
     child: TextField(
       controller: c,
       style: const TextStyle(fontSize: 14, color: inkPrimary),
@@ -2283,10 +2278,7 @@ Widget _sheetInput(TextEditingController c, String hint) {
     height: 40,
     padding: const EdgeInsets.symmetric(horizontal: 12),
     alignment: Alignment.centerLeft,
-    decoration: BoxDecoration(
-      color: Colors.white.withValues(alpha: 0.10),
-      borderRadius: BorderRadius.circular(20),
-    ),
+    decoration: const BoxDecoration(),
     child: TextField(
       controller: c,
       style: const TextStyle(fontSize: 14, color: inkPrimary),

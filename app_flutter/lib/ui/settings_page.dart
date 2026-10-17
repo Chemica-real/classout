@@ -962,10 +962,7 @@ class _InputBoxState extends State<_InputBox> {
       height: 40,
       padding: const EdgeInsets.symmetric(horizontal: 12),
       alignment: Alignment.centerLeft,
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(20),
-      ),
+      decoration: const BoxDecoration(),
       child: TextField(
         controller: _ctrl,
         style: const TextStyle(fontSize: 15, color: inkPrimary),
@@ -1337,10 +1334,8 @@ class _MottoCardState extends State<_MottoCard> {
             height: 40,
             padding: const EdgeInsets.symmetric(horizontal: 12),
             alignment: Alignment.centerLeft,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(20),
-            ),
+            // 鸿蒙的裸 TextInput 没有可见底色（对照 docs/manual/04 的标语输入框）
+            decoration: const BoxDecoration(),
             child: TextField(
               controller: _ctrl,
               style: const TextStyle(fontSize: 15, color: inkPrimary),
