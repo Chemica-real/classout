@@ -5137,3 +5137,47 @@ scale 识别器和 tap/longPress 抢同一个手势竞技场，两指分开时�
 - `./tools/domain-check/run.sh`：**524 项全绿**
 - `./tools/sync-contract.sh`：fixtures **750 条**（新增 `todo_gen.json` 84 条）
 - `flutter test`：**863 passed**
+
+## 74. 2026-10-18 真机复查（设备回来了）：提醒的"最后一层"证据
+
+设备重新插上后做了一次干净复验（顺带发现并修掉一个安装态问题）。
+
+### 74.1 先修安装态
+
+`adb install -r` 报 Success，但 `am start` 报 `Activity class ... does not exist`、
+`cmd package resolve-activity` 回 "No activity found"（`dumpsys package` 里活动其实在）。
+`adb uninstall` + 重新 `install` 之后一切正常 —— 记一下：**`-r` 覆盖安装偶发坏包裹时，卸载重装**。
+
+### 74.2 提醒复验的新证据（比 §66 更靠前一环）
+
+干净安装（权限全重置）→ 设置页「试一条提醒」：
+
+| 步骤 | 结果 |
+|---|---|
+| 系统权限弹窗 | ✅ 「允许 classout 向你发送通知？」→ `POST_NOTIFICATIONS: granted=true`（`USER_SET`） |
+| 立刻弹（`showNow` #9000） | ✅ `NotificationRecord ... id=9000 channel=classout_reminders` |
+| 10 秒后排期（`zonedSchedule` #9001） | ❌ 到点无通知、无 record、**连插件接收器的日志都没有** |
+
+关键新证据（`dumpsys activity broadcasts`）：
+
+```
+BroadcastRecord{... cmp=com.chemica.classout/...ScheduledNotificationReceiver (has extras)}
+  extras: Bundle[{STRIPPED=1}]
+  enqueueClockTime=2026-10-18 01:24:02.002  dispatchClockTime=1970-01-01 ...
+  dispatchTime=-- (-8m12s since enq)  finishTime=-3s443ms
+```
+
+也就是说：闹钟到点了、广播也进了队列，但**系统把 extras 剥成了 `STRIPPED=1` 且广播一直没被
+dispatch**（`dispatchTime=--`）——插件接收器拿不到 `NOTIFICATION_DETAILS`，自然既不发通知、
+也不会报错。这不是 Dart 侧代码的问题，是 ColorOS 对"后台广播拉起应用进程"的限制
+（`android.pendingIntent.backgroundActivityAllowed=false`、临时白名单只有 10 秒）。
+
+**结论（诚实版）**：安卓版提醒的**排期与前 90% 链路在真机上是对的**，
+`showNow` 能证明权限/渠道/图标/文案都没问题；但在这台 ColorOS 上，
+**定时提醒要真正弹出来，必须让系统放行 App 的自启动/后台活动**（应用启动管理里打开），
+或者改用「系统日历事件」这条 HOS 本来也走的兜底路径。下一轮可以评估后者。
+
+### 74.3 其它
+
+- 干净安装后首次启动 → 新手演练弹窗正常（截图留存）
+- 设备已重新连接，`adb devices` 正常；后续真机验证可以继续
