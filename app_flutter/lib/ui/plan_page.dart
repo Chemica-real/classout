@@ -370,7 +370,7 @@ class _PlanPageState extends State<PlanPage> {
             physics: _dragId != 0
                 ? const NeverScrollableScrollPhysics()
                 : const ClampingScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+            padding: const EdgeInsets.fromLTRB(10, 0, 10, 8 + tabBarInset),
             child: Column(
               children: [
                 _DayTitles(days: days, axisW: _axisW),
@@ -1172,7 +1172,8 @@ class _Tray extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(floatSide, 0, floatSide, floatGap),
+      padding: const EdgeInsets.fromLTRB(
+          floatSide, 0, floatSide, tabBarInset + floatGap),
       child: GlassShelf(
         padding: EdgeInsets.zero,
         child: open ? _expanded(context) : _collapsed(),

@@ -34,11 +34,15 @@ class TodoPage extends StatefulWidget {
   /// 自定义待办类型（设置页里加的）
   final List<String> customCategories;
 
+  /// 悬浮页头的高度（内容顶部留同样的空）
+  final double topInset;
+
   const TodoPage({
     super.key,
     required this.bundle,
     required this.onChanged,
     this.customCategories = const [],
+    this.topInset = 0,
   });
 
   @override
@@ -65,7 +69,8 @@ class _TodoPageState extends State<TodoPage> {
       children: [
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+            padding: EdgeInsets.fromLTRB(
+                16, 12 + widget.topInset, 16, 20 + tabBarInset),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -180,7 +185,8 @@ class _TodoPageState extends State<TodoPage> {
         ),
         // ---- 底部行动托盘 ----
         Padding(
-          padding: const EdgeInsets.fromLTRB(floatSide, 0, floatSide, floatGap),
+          padding: const EdgeInsets.fromLTRB(
+              floatSide, 0, floatSide, tabBarInset + floatGap),
           child: Glass(
             sheet: true,
             padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),

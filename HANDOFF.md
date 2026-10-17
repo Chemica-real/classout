@@ -4678,3 +4678,31 @@ iOS 侧这次改动**还需 CI 复核**（`DynamicLibrary.process()` + 插件同
 - **真机（OPPO A97）实测**：冷启动 → 加载页（清单打勾、进行中、打字机、五点）→
   整页向内浓缩（网格一起缩）→ 白色小球 + 12 颗粒子喷射 → 白球扩张淡出 → 课表页。
   四张过程截图都核对过。
+
+## 60. 2026-10-17 安卓版：悬浮浮窗层（底部导航 + 课表/待办页头）
+
+鸿蒙端页头和导航栏是**浮在内容之上**的：内容从屏幕顶铺到底，靠自己的 padding 给浮窗让位，
+所以往上滑时内容会钻到玻璃下面。安卓版之前是 `Column[页头, 内容, 导航栏]`，内容永远碰不到它们。
+
+### 60.1 这轮改的
+
+- `AppFrame`：底部导航从 `Column` 的最后一项改成 `Stack` 里的 `Positioned(bottom: 0)`；
+  新增常量 `tabBarInset = FLOAT_GAP + H_TABBAR + FLOAT_GAP`（= 74），页面底部照它留白
+- `HomeShell`：课表页与待办页改成 `Stack[ Positioned.fill(页面), Positioned(top:0, 页头) ]`；
+  页头高度用新加的 `MeasureSize`（`SizeChangedLayoutNotifier` + 每帧量 `context.size`）实测，
+  默认 134（首帧估计），量到后 `topInset` 传给页面
+- `TimetablePage` / `TodoPage` 新增 `topInset`，滚动内容顶部留同样的空（页头是半透明玻璃，
+  内容滑到下面能透出来）
+- `TodoPage` 的底部行动托盘、`PlanPage` 的待安排托盘都改成 `bottom: tabBarInset + FLOAT_GAP`，
+  不会再被导航栏压住；设置页滚动区底部也留 `tabBarInset`
+
+### 60.2 还没做（下一步）
+
+**计划页**的页头 + 日期条还是纵向排布（它自己有 `DayBarFloat`，需要两段 inset 一起量），
+**设置页**的「设置」标题条同理。这两页留到下一轮，避免一次改太多把已有手势/布局弄坏。
+
+### 60.3 验证
+
+- `flutter test`：**706 passed**（golden 重出：托盘与导航栏位置都按新 inset 调整）
+- **真机（OPPO A97）**：课表页往上滑 → 行号/课程块真的从页头玻璃下面滑过、底部课程块从导航栏下面
+  滑出（两张截图核对）；待办页托盘浮在导航栏之上

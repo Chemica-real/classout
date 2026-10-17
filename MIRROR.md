@@ -20,7 +20,7 @@
 | ArkTS | Dart | 说明 |
 |---|---|---|
 | `pages/Index.ets` → `Header()` | `lib/ui/course_header.dart` | 三行页头，**课表/待办/计划共用**（设置页没有） |
-| `pages/Index.ets` → 课表（`WeekHeaderRow` / `Grid` / `SessionBlock` / `TabBar`） | `lib/ui/timetable_page.dart` + `lib/ui/app_frame.dart` | 周条、时间轴、7 列、课程块、底部导航 |
+| `pages/Index.ets` → 课表（`WeekHeaderRow` / `Grid` / `SessionBlock` / `TabBar`） | `lib/ui/timetable_page.dart` + `lib/ui/app_frame.dart` | 周条、时间轴、7 列、课程块；**底部导航与课表/待办页头都是悬浮浮层**（`tabBarInset` / `topInset`，内容从下面滑过） |
 | `pages/Index.ets` → `PageBackground`（`Glass.ets`） | `app_frame.dart`（渐变 + 光晕 + 壁纸） | 壁纸数据来自 `data/wallpaper.dart` |
 | `pages/Index.ets` → `LoadingScreen()` + `playBootExit()` | `lib/ui/boot_screen.dart` | 启动加载页：网格底纹 / 双圆环 + 雷达 / ClassOUT 字标 + 标语 / 5 步清单 + 打字机 + 五点 / 浓缩成球 + 喷射 + 白球扩张 |
 | `view/TodoInbox.ets` | `lib/ui/todo_page.dart` | 四段列表、卡片、底部双按钮托盘 |

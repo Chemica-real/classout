@@ -37,6 +37,9 @@ class TimetablePage extends StatefulWidget {
   /// 点课程块（鸿蒙端会打开「这节课」属性窗：停课/换教室/调课/补课/撤销）
   final void Function(CourseSession s)? onOpenSession;
 
+  /// 页头浮窗的高度：内容要从它下面滑过，所以顶部留出同样的空
+  final double topInset;
+
   /// 时钟（测试与截图注入固定时间，避免「今天」随真实日期漂移）
   final DateTime? now;
 
@@ -46,6 +49,7 @@ class TimetablePage extends StatefulWidget {
     required this.week,
     this.onOpenSession,
     this.now,
+    this.topInset = 0,
   });
 
   @override
@@ -76,7 +80,9 @@ class _TimetablePageState extends State<TimetablePage> {
     final showWeekend = _sem.showWeekend;
 
     return SingleChildScrollView(
-      padding: EdgeInsets.zero,
+      // 顶部让出悬浮页头、底部让出悬浮导航栏（内容会从它们下面滑过）
+      padding:
+          EdgeInsets.only(top: widget.topInset, bottom: tabBarInset),
       child: Column(
         children: [
           _WeekdayHeader(

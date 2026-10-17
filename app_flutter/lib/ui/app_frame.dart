@@ -12,6 +12,9 @@ import 'theme.dart';
 
 const List<String> tabLabels = ['课表', '待办', '计划', '设置'];
 
+/// 内容底部要给「悬浮导航栏 + 上下两条缝」让出的高度（鸿蒙端 bottomInset + FLOAT_GAP）
+const double tabBarInset = floatGap + hTabbar + floatGap;
+
 class AppFrame extends StatefulWidget {
   final int tab;
   final ValueChanged<int> onTab;
@@ -111,10 +114,17 @@ class _AppFrameState extends State<AppFrame>
               ),
             ),
             SafeArea(
-              child: Column(
+              // 底部导航栏是**悬浮浮窗**（鸿蒙端 TabBar 也是浮在内容之上）：
+              // 内容铺满整屏、从它下面滑过，靠 tabBarInset 给底部留白。
+              child: Stack(
                 children: [
-                  Expanded(child: widget.child),
-                  _BottomTabs(tab: widget.tab, onTab: widget.onTab),
+                  Positioned.fill(child: widget.child),
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: _BottomTabs(tab: widget.tab, onTab: widget.onTab),
+                  ),
                 ],
               ),
             ),
@@ -283,6 +293,32 @@ class GlassShelf extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// 量出子树的尺寸（页头这种"高度会变、又必须让内容留出同样高度"的浮窗用它）
+class MeasureSize extends StatefulWidget {
+  final Widget child;
+  final ValueChanged<Size> onSize;
+  const MeasureSize({super.key, required this.child, required this.onSize});
+
+  @override
+  State<MeasureSize> createState() => _MeasureSizeState();
+}
+
+class _MeasureSizeState extends State<MeasureSize> {
+  @override
+  Widget build(BuildContext context) {
+    return NotificationListener<SizeChangedLayoutNotification>(
+      onNotification: (n) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final s = context.size;
+          if (s != null && mounted) widget.onSize(s);
+        });
+        return true;
+      },
+      child: SizeChangedLayoutNotifier(child: widget.child),
     );
   }
 }

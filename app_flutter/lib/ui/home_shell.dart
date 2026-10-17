@@ -67,6 +67,9 @@ class _HomeShellState extends State<HomeShell> {
   /// 过场层是否还在（true = 显示加载页/小球）
   bool _bootVisible = true;
 
+  /// 悬浮页头的实测高度（课表/待办页据此在滚动内容顶部留白）
+  double _headerH = 134;
+
   /// 当前周次（页头 ‹ › 改它；课表页照着画）
   int _week = 1;
   late final ReminderNotifier _notifier = widget.notifier ?? FlutterNotifier();
@@ -165,6 +168,23 @@ class _HomeShellState extends State<HomeShell> {
       return '排提醒失败：$e';
     }
   }
+
+  Widget _header(BackupBundle bundle) => CourseHeader(
+        sem: bundle.semester,
+        week: _week,
+        adjustCount: _adjustCount(bundle),
+        onPrev: () => setState(() => _week = (_week - 1).clamp(1, _totalWeeks)),
+        onNext: () => setState(() => _week = (_week + 1).clamp(1, _totalWeeks)),
+        onToday: () => setState(() => _week =
+            weekOfDate(bundle.semester!, DateTime.now()).clamp(1, _totalWeeks)),
+        onSync: _manualSync,
+        onExtra: () => showExtraSheet(context,
+            bundle: bundle, week: _week, onChanged: _apply),
+        onManage: () =>
+            showCourseManager(context, bundle: bundle, onChanged: _apply),
+        onOpenAdjust: () =>
+            showAdjustSheet(context, bundle: bundle, onChanged: _apply),
+      );
 
   int get _totalWeeks => _bundle?.semester?.totalWeeks ?? 1;
 
@@ -323,50 +343,58 @@ class _HomeShellState extends State<HomeShell> {
                       onSettingsChanged: _applySettings,
                       onResyncReminders: _resyncReminders,
                       onImport: _import)
-                  : Column(
-                      children: [
-                        CourseHeader(
-                          sem: bundle.semester,
-                          week: _week,
-                          adjustCount: _adjustCount(bundle),
-                          onPrev: () => setState(
-                              () => _week = (_week - 1).clamp(1, _totalWeeks)),
-                          onNext: () => setState(
-                              () => _week = (_week + 1).clamp(1, _totalWeeks)),
-                          onToday: () => setState(() => _week =
-                              weekOfDate(bundle.semester!, DateTime.now())
-                                  .clamp(1, _totalWeeks)),
-                          onSync: _manualSync,
-                          onExtra: () => showExtraSheet(context,
-                              bundle: bundle, week: _week, onChanged: _apply),
-                          onManage: () => showCourseManager(context,
-                              bundle: bundle, onChanged: _apply),
-                          onOpenAdjust: () => showAdjustSheet(context,
-                              bundle: bundle, onChanged: _apply),
-                        ),
-                        Expanded(
-                          child: switch (_tab) {
-                            0 => TimetablePage(
-                                bundle: bundle,
-                                week: _week,
-                                onOpenSession: (s) => showSessionSheet(context,
+                  : _tab == 2
+                      // 计划页有自己的日期条，暂时仍用纵向排布
+                      ? Column(
+                          children: [
+                            _header(bundle),
+                            Expanded(
+                              child: PlanPage(
+                                  bundle: bundle,
+                                  onChanged: _apply,
+                                  window: _settings.planWindow,
+                                  restWindows: bundle.restWindows),
+                            ),
+                          ],
+                        )
+                      // 课表 / 待办：页头是**悬浮浮窗**，内容从它下面滑过
+                      : Stack(
+                          children: [
+                            Positioned.fill(
+                              child: switch (_tab) {
+                                0 => TimetablePage(
                                     bundle: bundle,
-                                    session: s,
-                                    onChanged: _apply),
+                                    week: _week,
+                                    topInset: _headerH,
+                                    onOpenSession: (s) => showSessionSheet(
+                                        context,
+                                        bundle: bundle,
+                                        session: s,
+                                        onChanged: _apply),
+                                  ),
+                                _ => TodoPage(
+                                    bundle: bundle,
+                                    onChanged: _apply,
+                                    topInset: _headerH,
+                                    customCategories:
+                                        _settings.customCategories),
+                              },
+                            ),
+                            Positioned(
+                              left: 0,
+                              right: 0,
+                              top: 0,
+                              child: MeasureSize(
+                                onSize: (size) {
+                                  if ((size.height - _headerH).abs() > 0.5) {
+                                    setState(() => _headerH = size.height);
+                                  }
+                                },
+                                child: _header(bundle),
                               ),
-                            1 => TodoPage(
-                                bundle: bundle,
-                                onChanged: _apply,
-                                customCategories: _settings.customCategories),
-                            _ => PlanPage(
-                                bundle: bundle,
-                                onChanged: _apply,
-                                window: _settings.planWindow,
-                                restWindows: bundle.restWindows),
-                          },
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
             ),
           ),
           // 同步中：顶部一条玻璃提示（鸿蒙端也是"页面上方弹出同步提示"）
