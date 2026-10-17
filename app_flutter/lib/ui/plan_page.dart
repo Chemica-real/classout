@@ -13,6 +13,7 @@ import '../domain/todo_list.dart';
 import '../domain/timetable.dart';
 import '../model/types.dart';
 import 'app_frame.dart';
+import 'block_editor.dart';
 import 'palette.dart';
 
 class PlanPage extends StatefulWidget {
@@ -328,30 +329,6 @@ class _PlanPageState extends State<PlanPage> {
     _place(day, slot, todo.estimateMin);
   }
 
-  void _removeBlock(PlanBlock b) => widget.onChanged(
-      _withBlocks(widget.bundle.blocks.where((x) => x.id != b.id).toList()));
-
-  void _halveBlock(PlanBlock b) {
-    final parts = halveMinutes(b.endMin - b.startMin);
-    if (parts.isEmpty) return;
-    final blocks = widget.bundle.blocks.where((x) => x.id != b.id).toList()
-      ..add(PlanBlock(
-          id: _nextBlockId(),
-          todoId: b.todoId,
-          date: b.date,
-          startMin: b.startMin,
-          endMin: b.startMin + parts[0],
-          done: b.done))
-      ..add(PlanBlock(
-          id: _nextBlockId() + 1,
-          todoId: b.todoId,
-          date: b.date,
-          startMin: b.startMin + parts[0],
-          endMin: b.endMin,
-          done: b.done));
-    widget.onChanged(_withBlocks(blocks));
-  }
-
   // ---------------- 界面 ----------------
 
   @override
@@ -453,47 +430,13 @@ class _PlanPageState extends State<PlanPage> {
     _findSlot();
   }
 
-  Future<void> _showBlockSheet(PlanBlock b) async {
-    final todo = _todoOf(b.todoId);
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: const Color(0xFF1B2436),
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: Text(todo?.title ?? '这一块',
-                  style: const TextStyle(fontSize: 15, color: inkPrimary)),
-              subtitle: Text(
-                  '${b.date} ${minToHHmm(b.startMin)}–${minToHHmm(b.endMin)}',
-                  style: const TextStyle(fontSize: 12, color: inkTertiary)),
-            ),
-            Wrap(
-              spacing: 8,
-              children: [
-                TextButton(
-                    onPressed: () {
-                      Navigator.pop(ctx);
-                      _halveBlock(b);
-                    },
-                    child: const Text('对半分')),
-                TextButton(
-                    onPressed: () {
-                      Navigator.pop(ctx);
-                      _removeBlock(b);
-                    },
-                    child: const Text('移除此块')),
-              ],
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-  }
+  Future<void> _showBlockSheet(PlanBlock b) => showBlockEditor(
+        context,
+        bundle: widget.bundle,
+        block: b,
+        window: TimeWindow(_axis.startMin, _axis.endMin),
+        onChanged: widget.onChanged,
+      );
 }
 
 // ---------------- 页头 ----------------

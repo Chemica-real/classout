@@ -27,6 +27,7 @@
 | `view/TodoInbox.ets` → `EditorPanel()` | `lib/ui/todo_editor.dart` | 右侧 84% 抽屉（标题 + ✕ + 可滚表单） |
 | `view/PlanDayView.ets`（`DayBarFloat` / `ColHeadRow` / `HourLines` / `RestBands` / `ClassBlock` / `PlanBlockView` / `DdlMarkers` / `TodoPool`） | `lib/ui/plan_page.dart` | 日/三日、时间轴、课表灰带、斜纹不可排带、计划块、截止标记、待安排托盘；**日期条与托盘都是悬浮浮层**（`topInset` / `tabBarInset`） |
 | `view/SettingsPage.ets`（`WallpaperCard`/`MottoCard`/`MotionCard`/`ReminderCard`/…） | `lib/ui/settings_page.dart` | 10 张玻璃卡 |
+| `view/PlanDayView.ets` → `BlockEditor()` | `lib/ui/block_editor.dart` | 计划块属性面板：右侧抽屉（日期 ‹›/开始时间 ±/时长 ±/截止/备注/其他块/对半分/标记完成/移除） |
 | `view/CourseManager.ets` | `lib/ui/course_manager.dart` | 课程管理浮层：学期/节次摘要、课程卡、课程编辑抽屉（名称/简称/教师/地点/颜色/自动生成/虚拟课 + 时段规则 + 待办模板 + 删除课程） |
 | `view/ChipButton.ets` | `_Choice`/`_Chip`/`_ChipButton`（各页面内） | 选中 = `#2E6BE6` 底 + 白字 |
 | `data/Prefs.ets`（`MOTTO_*`、`mottoUnits`、`clampMottoUnits`、`cleanMotto`） | `lib/domain/motto.dart` | 标语：按显示宽度 32（汉字 2 / 半角 1） |
