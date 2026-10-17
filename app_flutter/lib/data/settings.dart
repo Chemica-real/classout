@@ -21,6 +21,12 @@ class AppSettings {
   int briefMin;
   int classLeadMin;
 
+  /// 界面动画总开关（kv `motionOn`，'1'/'0'；关掉 = 所有动效瞬切）
+  bool motionEnabled;
+
+  /// 自定义壁纸路径（kv `wallpaper_path`，空 = 默认渐变）
+  String wallpaperPath;
+
   AppSettings({
     this.syncIntervalMin = syncIntervalDefault,
     this.planWindow = defaultWindow,
@@ -29,6 +35,8 @@ class AppSettings {
     this.briefEnabled = true,
     this.briefMin = defaultBriefMin,
     this.classLeadMin = defaultClassLeadMin,
+    this.motionEnabled = true,
+    this.wallpaperPath = '',
   });
 
   ReminderSettings get reminderSettings => ReminderSettings(
@@ -44,6 +52,8 @@ class AppSettings {
   static const String _kBriefEnabled = 'brief_enabled';
   static const String _kBriefTime = 'brief_time';
   static const String _kClassLead = 'class_lead';
+  static const String _kMotion = 'motionOn';
+  static const String _kWallpaper = 'wallpaper_path';
 
   static Future<AppSettings> load(ClassOutRepo repo) async {
     final sync = await repo.getKv(_kSync);
@@ -53,6 +63,8 @@ class AppSettings {
     final briefEnabledRaw = await repo.getKv(_kBriefEnabled);
     final briefTimeRaw = await repo.getKv(_kBriefTime);
     final leadRaw = await repo.getKv(_kClassLead);
+    final motionRaw = await repo.getKv(_kMotion);
+    final wallpaper = await repo.getKv(_kWallpaper);
     return AppSettings(
       briefEnabled: briefEnabledRaw == null || briefEnabledRaw.isEmpty
           ? true
@@ -65,6 +77,10 @@ class AppSettings {
       planWindow: win == null || win.isEmpty ? defaultWindow : parseWindow(win),
       customCategories: cats == null ? const [] : parseCustomCategories(cats),
       motto: motto ?? '',
+      // 与鸿蒙端一致：读不到 = 默认开
+      motionEnabled:
+          motionRaw == null || motionRaw.isEmpty ? true : motionRaw == '1',
+      wallpaperPath: wallpaper ?? '',
     );
   }
 
@@ -76,6 +92,8 @@ class AppSettings {
     await repo.setKv(_kBriefEnabled, briefEnabled ? '1' : '0');
     await repo.setKv(_kBriefTime, minToHHmm(briefMin));
     await repo.setKv(_kClassLead, '$classLeadMin');
+    await repo.setKv(_kMotion, motionEnabled ? '1' : '0');
+    await repo.setKv(_kWallpaper, wallpaperPath);
   }
 
   /// 'HH:mm' → 分钟；坏值返回 null（与鸿蒙端 loadReminderSettings 一致）

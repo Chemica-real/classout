@@ -30,7 +30,10 @@ void main() {
     await _pump(tester, repo);
     expect(find.text('设置'), findsWidgets);
 
-    await tester.tap(find.byKey(const ValueKey('sync-15')));
+    final sync15 = find.byKey(const ValueKey('sync-15'));
+    await tester.ensureVisible(sync15);
+    await tester.pumpAndSettle();
+    await tester.tap(sync15);
     await tester.pumpAndSettle();
     expect(await repo.getKv('sync_interval_min'), '15');
   });
@@ -55,12 +58,14 @@ void main() {
     final repo = MemoryRepo();
     await _pump(tester, repo);
 
-    final chip = find.text('新建类型');
+    final chip = find.text('＋ 新建类型');
     await tester.ensureVisible(chip);
     await tester.pumpAndSettle();
     await tester.tap(chip);
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField).first, '社团');
+    // ⚠️ 设置页自己也有输入框（首页标语），所以必须限定在对话框里找
+    await tester.enterText(
+        find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField)), '社团');
     await tester.tap(find.widgetWithText(FilledButton, '保存'));
     await tester.pumpAndSettle();
 

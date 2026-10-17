@@ -19,6 +19,7 @@ import 'palette.dart';
 import 'plan_page.dart';
 import 'settings_page.dart';
 import 'course_header.dart';
+import 'theme.dart' as theme;
 import 'timetable_page.dart';
 import 'todo_page.dart';
 
@@ -76,6 +77,8 @@ class _HomeShellState extends State<HomeShell> {
       // CI 自检：这一行出现 = 数据层真的读通了
       debugPrint('[ClassOUT] loaded: courses=${data?.courses.length} '
           'todos=${data?.todos.length} rules=${data?.rules.length}');
+      // 动画总开关是"内存态"（鸿蒙端 AppStorage('motionOn')）：读库后立刻生效
+      theme.motionOn = settings.motionEnabled;
       if (!mounted) return;
       setState(() {
         _bundle = data;
@@ -218,6 +221,7 @@ class _HomeShellState extends State<HomeShell> {
             child: AppFrame(
               tab: _tab,
               onTab: (i) => setState(() => _tab = i),
+              wallpaperPath: _settings.wallpaperPath,
               // 课表 / 待办 / 计划 三页共用同一条页头（鸿蒙端 FloatingBars），
               // 设置页没有它 —— 那些是课表页的导航控件。
               child: _tab == 3

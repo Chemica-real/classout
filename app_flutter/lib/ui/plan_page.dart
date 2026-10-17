@@ -572,34 +572,6 @@ class _Chip extends StatelessWidget {
   }
 }
 
-class _MiniButton extends StatelessWidget {
-  final String? text;
-  final IconData? icon;
-  final VoidCallback onTap;
-  const _MiniButton({this.text, this.icon, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        constraints: const BoxConstraints(minWidth: 28),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.10),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: icon != null
-            ? Icon(icon, size: 18, color: inkPrimary)
-            : Text(text ?? '',
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 13, color: inkPrimary)),
-      ),
-    );
-  }
-}
-
 class _DayTitles extends StatelessWidget {
   final List<DateTime> days;
   final double axisW;

@@ -3,6 +3,7 @@
 // 数值全部来自 theme.dart（= 鸿蒙端 Glass.ets / Float.ets 的原始值）：
 //   渐变 #0f0c29→#302b63→#24243e，blur 20，圆角 20，白 0.16，描边 0.25/0.14。
 
+import 'dart:io';
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
@@ -15,8 +16,17 @@ class AppFrame extends StatefulWidget {
   final int tab;
   final ValueChanged<int> onTab;
   final Widget child;
-  const AppFrame(
-      {super.key, required this.tab, required this.onTab, required this.child});
+
+  /// 自定义壁纸（空 = 默认渐变）。对应鸿蒙端 PageBackground 的 `wallpaper`
+  final String wallpaperPath;
+
+  const AppFrame({
+    super.key,
+    required this.tab,
+    required this.onTab,
+    required this.child,
+    this.wallpaperPath = '',
+  });
 
   @override
   State<AppFrame> createState() => _AppFrameState();
@@ -49,6 +59,22 @@ class _AppFrameState extends State<AppFrame>
       child: ClipRect(
         child: Stack(
           children: [
+            // 自定义壁纸：铺满 + 压暗薄纱（照片明暗不可控，正文还得压在上面）
+            if (widget.wallpaperPath.isNotEmpty &&
+                File(widget.wallpaperPath).existsSync())
+              Positioned.fill(
+                child: Image.file(
+                  File(widget.wallpaperPath),
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                ),
+              ),
+            if (widget.wallpaperPath.isNotEmpty &&
+                File(widget.wallpaperPath).existsSync())
+              const Positioned.fill(
+                child:
+                    ColoredBox(color: Color(0x9E060810)), // rgba(6,8,16,0.62)
+              ),
             // 两个装饰光晕：压在内容之下（照片/墙纸也在这层之下，见 Glass.ets）
             Positioned.fill(
               child: IgnorePointer(

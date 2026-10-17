@@ -80,7 +80,8 @@ void main() {
 
     expect(picker.calls, 1);
     // 内容已填进输入框（不是直接提交，用户还有机会看/改）
-    final field = tester.widget<TextField>(find.byType(TextField));
+    final field = tester.widget<TextField>(find.descendant(
+        of: find.byType(AlertDialog), matching: find.byType(TextField)));
     expect(field.controller?.text.contains('文件导入的学期'), isTrue);
 
     await tester.tap(find.widgetWithText(FilledButton, '导入'));
@@ -103,7 +104,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(picker.calls, 1);
-    final field = tester.widget<TextField>(find.byType(TextField));
+    final field = tester.widget<TextField>(find.descendant(
+        of: find.byType(AlertDialog), matching: find.byType(TextField)));
     expect(field.controller?.text, isEmpty, reason: '取消不该写入任何内容');
     await tester.tap(find.widgetWithText(TextButton, '取消'));
     await tester.pumpAndSettle();

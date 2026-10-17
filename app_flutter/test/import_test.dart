@@ -51,7 +51,11 @@ void main() {
     // 把学期名改一下，用于确认"新数据真的进来了"
     final incoming = _demoJson().replaceAll('演示学期', '导入学期');
     await _openImport(tester);
-    await tester.enterText(find.byType(TextField), incoming);
+    // ⚠️ 设置页自己也有输入框（首页标语），必须限定在导入对话框里
+    await tester.enterText(
+        find.descendant(
+            of: find.byType(AlertDialog), matching: find.byType(TextField)),
+        incoming);
     await tester.tap(find.widgetWithText(FilledButton, '导入'));
     await tester.pumpAndSettle();
 
@@ -65,7 +69,10 @@ void main() {
     await _pump(tester, MemoryRepo(demo));
 
     await _openImport(tester);
-    await tester.enterText(find.byType(TextField), '{"app":"别的App","version":1}');
+    await tester.enterText(
+        find.descendant(
+            of: find.byType(AlertDialog), matching: find.byType(TextField)),
+        '{"app":"别的App","version":1}');
     await tester.tap(find.widgetWithText(FilledButton, '导入'));
     await tester.pumpAndSettle();
 
