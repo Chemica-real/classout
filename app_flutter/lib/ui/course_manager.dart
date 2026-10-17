@@ -22,6 +22,8 @@ import 'theme.dart';
 /// 复制一份 bundle，只换 courses / rules / templates
 BackupBundle _with(
   BackupBundle b, {
+  List<Semester>? semesters,
+  List<SectionTime>? sectionTimes,
   List<Course>? courses,
   List<SessionRule>? rules,
   List<TodoTemplate>? templates,
@@ -30,8 +32,8 @@ BackupBundle _with(
       app: b.app,
       version: b.version,
       exportedAt: b.exportedAt,
-      semesters: b.semesters,
-      sectionTimes: b.sectionTimes,
+      semesters: semesters ?? b.semesters,
+      sectionTimes: sectionTimes ?? b.sectionTimes,
       courses: courses ?? b.courses,
       rules: rules ?? b.rules,
       overrides: b.overrides,
@@ -139,12 +141,7 @@ class _ManagerState extends State<_Manager> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _summary(
-                          '学期',
-                          '${_b.semester?.name ?? '—'} · '
-                              '${_b.semester?.totalWeeks ?? 0} 周 · '
-                              '${_b.semester?.showWeekend == true ? '含周末' : '只到周五'}',
-                        ),
+                        _semesterSection(),
                         _summary(
                           '上课节次时间',
                           '${_b.sectionTimes.length} 节：'
@@ -335,6 +332,82 @@ class _ManagerState extends State<_Manager> {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('导出失败：$e')));
     }
+  }
+
+  /// 「学期」区块：列出全部学期（第一个 = 当前）、可切换、可新建（可顺便复制课表）
+  Widget _semesterSection() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(top: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: glassEdgeSoft),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text('学期 ${_b.semesters.length} 个',
+                  style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: inkPrimary)),
+              const Spacer(),
+              _PillAction(text: '+ 新建学期', onTap: _createSemester),
+            ],
+          ),
+          const SizedBox(height: 6),
+          for (var i = 0; i < _b.semesters.length; i++)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Row(
+                children: [
+                  if (i == 0)
+                    const Padding(
+                      padding: EdgeInsets.only(right: 6),
+                      child: Text('当前',
+                          style: TextStyle(fontSize: 11, color: accentBlue)),
+                    ),
+                  Expanded(
+                    child: Text(
+                      '${_b.semesters[i].name} · ${_b.semesters[i].totalWeeks} 周 · '
+                      '${_b.semesters[i].startDate} 开学',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: i == 0 ? inkPrimary : const Color(0xFFC3CDDE)),
+                    ),
+                  ),
+                  if (i > 0)
+                    _MiniAction(
+                      text: '设为当前',
+                      color: accentBlue,
+                      onTap: () => _setCurrentSemester(i),
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  void _setCurrentSemester(int index) {
+    if (index <= 0 || index >= _b.semesters.length) return;
+    final list = List.of(_b.semesters);
+    final picked = list.removeAt(index);
+    _apply(_with(_b, semesters: [picked, ...list]));
+  }
+
+  Future<void> _createSemester() async {
+    final next = await showDialog<BackupBundle>(
+      context: context,
+      builder: (_) => _SemesterDialog(b: _b),
+    );
+    if (next != null) _apply(next);
   }
 
   Future<void> _openCourse(Course? existing) async {
@@ -1185,6 +1258,303 @@ class _RoundTap extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
         ),
         child: Icon(icon, size: 16, color: inkSecondary),
+      ),
+    );
+  }
+}
+
+// ---------------- 新建学期 ----------------
+
+/// 新建学期：名称 / 开学日期 / 周数 / 含周末 / 顺便复制当前学期的课表
+class _SemesterDialog extends StatefulWidget {
+  final BackupBundle b;
+  const _SemesterDialog({required this.b});
+
+  @override
+  State<_SemesterDialog> createState() => _SemesterDialogState();
+}
+
+class _SemesterDialogState extends State<_SemesterDialog> {
+  late final TextEditingController _name =
+      TextEditingController(text: _defaultName());
+  late DateTime _start = _defaultStart();
+  int _weeks = 16;
+  bool _weekend = true;
+  bool _copy = true;
+  String? _error;
+
+  DateTime _defaultStart() {
+    // 下一个周一（"下学期开学时用"）
+    final now = DateTime.now();
+    final d = now.add(const Duration(days: 7));
+    return DateTime(d.year, d.month, d.day);
+  }
+
+  String _defaultName() {
+    final y = DateTime.now().year;
+    final m = DateTime.now().month;
+    return m >= 8 ? '$y 秋季学期' : '$y 春季学期';
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final name = _name.text.trim();
+    if (name.isEmpty) {
+      setState(() => _error = '学期名不能为空');
+      return;
+    }
+    final b = widget.b;
+    final id = b.semesters.fold<int>(0, (m, s) => s.id > m ? s.id : m) + 1;
+    final sem = Semester(
+      id: id,
+      name: name,
+      startDate: formatDate(_start),
+      totalWeeks: _weeks,
+      firstDayOfWeek: 1,
+      showWeekend: _weekend,
+    );
+    var sectionTimes = b.sectionTimes;
+    var courses = b.courses;
+    var rules = b.rules;
+    var templates = b.templates;
+    if (_copy && b.semester != null) {
+      // 复制当前学期：课程 / 时段规则 / 模板都换新 id，星期与节次照抄，
+      // 周掩码按新学期的周数重算（全选），节次时间也复制一份给新学期。
+      final oldSem = b.semester!;
+      final courseIdMap = <int, int>{};
+      var nextCourseId =
+          b.courses.fold<int>(0, (m, c) => c.id > m ? c.id : m) + 1;
+      final newCourses = <Course>[];
+      for (final c in b.courses.where((c) => c.semesterId == oldSem.id)) {
+        final nid = nextCourseId++;
+        courseIdMap[c.id] = nid;
+        newCourses.add(Course(
+          id: nid,
+          semesterId: id,
+          name: c.name,
+          shortName: c.shortName,
+          teacher: c.teacher,
+          location: c.location,
+          colorIndex: c.colorIndex,
+          autoTodoEnabled: c.autoTodoEnabled,
+          isVirtual: c.isVirtual,
+          note: c.note,
+        ));
+      }
+      courses = [...b.courses, ...newCourses];
+
+      var nextRuleId = b.rules.fold<int>(0, (m, r) => r.id > m ? r.id : m) + 1;
+      final newRules = <SessionRule>[];
+      for (final r in b.rules) {
+        final mapped = courseIdMap[r.courseId];
+        if (mapped == null) continue;
+        newRules.add(SessionRule(
+          id: nextRuleId++,
+          courseId: mapped,
+          weekday: r.weekday,
+          startSection: r.startSection,
+          endSection: r.endSection,
+          weeksMask: '1' * _weeks,
+          location: r.location,
+          isQuiz: r.isQuiz,
+        ));
+      }
+      rules = [...b.rules, ...newRules];
+
+      var nextTemplateId =
+          b.templates.fold<int>(0, (m, t) => t.id > m ? t.id : m) + 1;
+      final newTemplates = <TodoTemplate>[];
+      for (final t in b.templates) {
+        final mapped = courseIdMap[t.courseId];
+        if (mapped == null) continue;
+        newTemplates.add(TodoTemplate(
+          id: nextTemplateId++,
+          courseId: mapped,
+          sortOrder: t.sortOrder,
+          enabled: t.enabled,
+          titleTemplate: t.titleTemplate,
+          ddlRule: t.ddlRule,
+          ddlParam: t.ddlParam,
+          estimateMin: t.estimateMin,
+          category: t.category,
+          submitChannel: t.submitChannel,
+          note: t.note,
+        ));
+      }
+      templates = [...b.templates, ...newTemplates];
+
+      sectionTimes = [
+        ...b.sectionTimes,
+        for (final t in b.sectionTimes.where((t) => t.semesterId == oldSem.id))
+          SectionTime(
+            semesterId: id,
+            section: t.section,
+            startMin: t.startMin,
+            endMin: t.endMin,
+            flexible: t.flexible,
+          ),
+      ];
+    }
+    final next = _with(
+      b,
+      semesters: [...b.semesters, sem],
+      sectionTimes: sectionTimes,
+      courses: courses,
+      rules: rules,
+      templates: templates,
+    );
+    Navigator.of(context).pop(next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
+      child: Glass(
+        sheet: true,
+        padding: const EdgeInsets.all(18),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('新建学期',
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                      color: inkPrimary)),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _name,
+                style: const TextStyle(fontSize: 14, color: inkPrimary),
+                decoration: const InputDecoration(
+                  labelText: '学期名',
+                  labelStyle: TextStyle(fontSize: 11, color: Color(0xFF94A0B5)),
+                  enabledBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: Color(0x24FFFFFF))),
+                  focusedBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: accentBlue)),
+                ),
+                onChanged: (_) {
+                  if (_error != null) setState(() => _error = null);
+                },
+              ),
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(_error!,
+                      style: const TextStyle(
+                          fontSize: 11, color: Color(0xFFFF8080))),
+                ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text('开学日期',
+                        style:
+                            TextStyle(fontSize: 12, color: Color(0xFF94A0B5))),
+                  ),
+                  GestureDetector(
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: _start,
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2100),
+                      );
+                      if (picked != null) setState(() => _start = picked);
+                    },
+                    behavior: HitTestBehavior.opaque,
+                    child: Text(formatDate(_start),
+                        style:
+                            const TextStyle(fontSize: 13, color: accentBlue)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text('教学周数',
+                        style:
+                            TextStyle(fontSize: 12, color: Color(0xFF94A0B5))),
+                  ),
+                  _RoundTap(
+                      icon: Icons.remove,
+                      onTap: () =>
+                          setState(() => _weeks = (_weeks - 1).clamp(1, 30))),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Text('$_weeks 周',
+                        style:
+                            const TextStyle(fontSize: 13, color: inkPrimary)),
+                  ),
+                  _RoundTap(
+                      icon: Icons.add,
+                      onTap: () =>
+                          setState(() => _weeks = (_weeks + 1).clamp(1, 30))),
+                ],
+              ),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text('含周末',
+                        style: TextStyle(fontSize: 13, color: inkPrimary)),
+                  ),
+                  Switch(
+                      value: _weekend,
+                      activeThumbColor: const Color(0xFF2E6BE6),
+                      onChanged: (v) => setState(() => _weekend = v)),
+                ],
+              ),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('顺便复制当前学期的课表',
+                            style: TextStyle(fontSize: 13, color: inkPrimary)),
+                        Text('新学期的课大多和上学期一样，复制后改改就行',
+                            style: TextStyle(
+                                fontSize: 11, color: Color(0xFF8B97AC))),
+                      ],
+                    ),
+                  ),
+                  Switch(
+                      value: _copy,
+                      activeThumbColor: const Color(0xFF2E6BE6),
+                      onChanged: (v) => setState(() => _copy = v)),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  const Spacer(),
+                  _PillAction(
+                      text: '取消', onTap: () => Navigator.of(context).pop()),
+                  const SizedBox(width: 10),
+                  FilledButton(
+                    onPressed: _save,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF2E6BE6),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20)),
+                    ),
+                    child: const Text('创建', style: TextStyle(fontSize: 13)),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

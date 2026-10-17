@@ -105,4 +105,66 @@ void main() {
     expect(saved.rules.any((r) => r.courseId == 4), isFalse);
     expect(before.courses.length - 1, saved.courses.length);
   });
+
+  testWidgets('新建学期（不复制）→ 学期 +1，当前学期不变', (tester) async {
+    final repo = await _pump(tester);
+    await _tapVisible(tester, find.text('+ 新建学期'));
+    // 关掉「复制课表」再创建
+    await _tapVisible(tester, find.byType(Switch).last);
+    await _tapVisible(tester, find.widgetWithText(FilledButton, '创建'));
+
+    final saved = (await repo.load())!;
+    expect(saved.semesters.length, 2);
+    expect(saved.semesters.first.name, '演示学期', reason: '当前学期仍是第一个');
+    expect(saved.semesters.last.totalWeeks, 16);
+    expect(saved.courses.length, 4, reason: '没勾复制就不该多出课程');
+  });
+
+  testWidgets('新建学期 + 复制课表 → 课程/时段/节次都各多一份（换新 id）',
+      (tester) async {
+    final repo = await _pump(tester);
+    await _tapVisible(tester, find.text('+ 新建学期'));
+    await _tapVisible(tester, find.widgetWithText(FilledButton, '创建'));
+
+    final saved = (await repo.load())!;
+    final oldSem = saved.semesters.first;
+    final newSem = saved.semesters.last;
+    expect(saved.semesters.length, 2);
+
+    final newCourses =
+        saved.courses.where((c) => c.semesterId == newSem.id).toList();
+    expect(newCourses.length, 4, reason: '四门课都复制过去');
+    // id 必须换新（否则两学期共用同一批课程，改一个动两个）
+    final oldIds = saved.courses
+        .where((c) => c.semesterId == oldSem.id)
+        .map((c) => c.id)
+        .toSet();
+    for (final c in newCourses) {
+      expect(oldIds.contains(c.id), isFalse);
+    }
+    // 新学期的时段规则指向新课程 id，且周掩码按新周数
+    final newRules =
+        saved.rules.where((r) => newCourses.any((c) => c.id == r.courseId));
+    expect(newRules.length, 6);
+    for (final r in newRules) {
+      expect(r.weeksMask.length, newSem.totalWeeks);
+    }
+    // 节次时间也复制了一份
+    expect(
+        saved.sectionTimes.where((t) => t.semesterId == newSem.id).length,
+        saved.sectionTimes.where((t) => t.semesterId == oldSem.id).length);
+  });
+
+  testWidgets('把第二个学期设为当前 → 顺序换了、课表切过去', (tester) async {
+    final repo = await _pump(tester);
+    await _tapVisible(tester, find.text('+ 新建学期'));
+    await _tapVisible(tester, find.widgetWithText(FilledButton, '创建'));
+    await _tapVisible(tester, find.text('设为当前'));
+
+    final saved = (await repo.load())!;
+    expect(saved.semesters.first.name, isNot('演示学期'));
+    expect(saved.semester!.name, saved.semesters.first.name);
+  });
 }
+
+void _semesterTests(WidgetTester tester) {}
