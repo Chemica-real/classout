@@ -168,8 +168,8 @@ class _SettingsPageState extends State<SettingsPage> {
                 _Card(
                   title: '提醒',
                   description: '每天一条简报 + 上课前提醒。提醒写在系统通知里（不是后台常驻）。'
-                      '如果到点没弹，去系统的「应用启动管理」里允许 ClassOUT 自启动/后台活动'
-                      '（国产 ROM 会拦后台广播，通知就发不出来）。',
+                      '到点没看到提示时，先看系统是不是开了「免打扰」（开着时通知会被静音/收起）；'
+                      '仍然没有，再去「应用启动管理」里允许 ClassOUT 自启动/后台活动。',
                   footnote:
                       '当前：提前 ${_s.classLeadMin} 分钟（默认 $defaultClassLeadMin 分钟）',
                   child: Column(
