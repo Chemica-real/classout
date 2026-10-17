@@ -6,102 +6,17 @@ import { TimetableRepo, } from '../data/TimetableRepo';
 import { TodoRepo } from '../data/TodoRepo';
 import { Db } from '../data/Db';
 import { computeWeekSessions, sessionsOnDate, weekOfDate } from './Timetable';
-import { addDays, formatDate, monthDayText, parseDate, today, weekdayOf } from '../util/DateUtil';
+import { addDays, formatDate, parseDate, today, weekdayOf } from '../util/DateUtil';
+import { computeDdl, nextSessionOfCourse, renderTitle } from './TodoGenRules';
+
+// 旧的调用方（页面/管理器）曾经直接从 TodoGenerator 里 import 这几个纯函数；
+// 现在规则搬到 TodoGenRules 了，这里保留一层 re-export 免得外部调用点全要改。
+export { computeDdl, nextSessionOfCourse, renderTitle };
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'ClassOUT';
 
 const KV_LAST_GEN: string = 'last_gen_date';
-/** next_session 向前找多少天 */
-const LOOKAHEAD_DAYS: number = 28;
-
-/** ArkTS 下不用正则，手写替换（课程名里出现 $& 之类也不会出事） */
-function replaceAll(src: string, token: string, value: string): string {
-  let out: string = src;
-  let idx: number = out.indexOf(token);
-  while (idx >= 0) {
-    out = out.substring(0, idx) + value + out.substring(idx + token.length);
-    idx = out.indexOf(token, idx + value.length);
-  }
-  return out;
-}
-
-/**
- * 模板变量替换
- *   %C 课程全名   %c 简称     %D 布置日期(M.D)   %d 布置日期(YYYY-MM-DD)
- *   %W 第几周     %T 起始节次  %N 第 N 次作业     %R 教室
- */
-export function renderTitle(tpl: string, s: CourseSession, week: number, n: number): string {
-  let out: string = tpl;
-  out = replaceAll(out, '%C', s.course.name);
-  out = replaceAll(out, '%c', s.course.shortName.length > 0 ? s.course.shortName : s.course.name);
-  out = replaceAll(out, '%D', monthDayText(parseDate(s.date)));
-  out = replaceAll(out, '%d', s.date);
-  out = replaceAll(out, '%W', `${week}`);
-  out = replaceAll(out, '%T', `${s.startSection}`);
-  out = replaceAll(out, '%N', `${n}`);
-  out = replaceAll(out, '%R', s.location);
-  return out;
-}
-
-/** 找某门课在 afterDate 之后（不含当天）的第一节课 */
-export function nextSessionOfCourse(sem: Semester, courses: Course[], rules: SessionRule[],
-  overrides: SessionOverride[], times: SectionTime[], courseId: number,
-  afterDate: Date): CourseSession | undefined {
-  for (let i = 1; i <= LOOKAHEAD_DAYS; i++) {
-    const d: Date = addDays(afterDate, i);
-    const sessions: CourseSession[] = sessionsOnDate(sem, courses, rules, overrides, times, d);
-    for (const s of sessions) {
-      if (s.course.id === courseId) {
-        return s;
-      }
-    }
-  }
-  return undefined;
-}
-
-/**
- * 计算截止时间字符串 'YYYY-MM-DD HH:mm'
- *   none          不设截止
- *   same_day      当天 23:59
- *   days:N        N 天后 23:59
- *   weekday:N     最近（含当天）的星期 N 23:59
- *   week_end      本周日 23:59
- *   next_session  下一次同门课当天 23:59
- */
-export function computeDdl(sem: Semester, courses: Course[], rules: SessionRule[],
-  overrides: SessionOverride[], times: SectionTime[], s: CourseSession, ddlRule: string,
-  ddlParam: string): string {
-  const base: Date = parseDate(s.date);
-  if (ddlRule === 'none') {
-    return '';
-  }
-  if (ddlRule === 'same_day') {
-    return `${s.date} 23:59`;
-  }
-  if (ddlRule === 'days') {
-    const n: number = parseInt(ddlParam, 10);
-    const step: number = isNaN(n) ? 1 : n;
-    return `${formatDate(addDays(base, step))} 23:59`;
-  }
-  if (ddlRule === 'weekday') {
-    const target: number = parseInt(ddlParam, 10);
-    const want: number = isNaN(target) ? 7 : target;
-    const delta: number = (want - weekdayOf(base) + 7) % 7;
-    return `${formatDate(addDays(base, delta))} 23:59`;
-  }
-  if (ddlRule === 'week_end') {
-    const delta: number = 7 - weekdayOf(base);
-    return `${formatDate(addDays(base, delta))} 23:59`;
-  }
-  if (ddlRule === 'next_session') {
-    const next: CourseSession | undefined =
-      nextSessionOfCourse(sem, courses, rules, overrides, times, s.course.id, base);
-    const d: Date = next === undefined ? addDays(base, 7) : parseDate(next.date);
-    return `${formatDate(d)} 23:59`;
-  }
-  return '';
-}
 
 export interface GenerationOutcome {
   created: number;

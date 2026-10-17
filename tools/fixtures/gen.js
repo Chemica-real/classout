@@ -325,6 +325,9 @@ for (const d of ['2026-10-12', '2026-10-13', '2026-10-14', '2026-10-15',
 // ================= Categories（待办类型）=================
 const CT = require(path.join(DIST, 'Categories.js'));
 const GD = require(path.join(DIST, 'Guide.js'));
+const TG = require(path.join(DIST, 'TodoGenRules.js'));
+const TT = require(path.join(DIST, 'Timetable.js'));
+const SD = require(path.join(DIST, 'SeedData.js'));
 {
   const customs = [[], ['学校琐事'], ['学校琐事', '个人', '社交']];
   for (const c of customs) {
@@ -353,6 +356,56 @@ const GD = require(path.join(DIST, 'Guide.js'));
   }
 }
 
+// ---------------- 下课自动生成待办：纯规则（domain/TodoGenRules.ets） ----------------
+// 输入固定（学期 + 两门课 + 三条规则 + 一张节次表），保证 fixture 稳定、可复现；
+// args 里带**完整输入**，Android 那边拿同一份输入跑 todo_generator.dart 再比结果。
+{
+  const sem = { id: 1, name: '演示学期', startDate: '2026-09-07', totalWeeks: 16,
+    firstDayOfWeek: 1, showWeekend: true };
+  const courses = [
+    { id: 1, semesterId: 1, name: '高等数学', shortName: '高数', teacher: '王老师',
+      location: '明理101', colorIndex: 2, autoTodoEnabled: true, isVirtual: false, note: '' },
+    { id: 2, semesterId: 1, name: '大学英语', shortName: '英语', teacher: '李老师',
+      location: '外语楼203', colorIndex: 1, autoTodoEnabled: true, isVirtual: false, note: '' }
+  ];
+  const rules = [
+    { id: 1, courseId: 1, weekday: 1, startSection: 1, endSection: 2,
+      weeksMask: '1111111111111111', location: '', isQuiz: false },
+    { id: 2, courseId: 1, weekday: 3, startSection: 3, endSection: 4,
+      weeksMask: '1111111111111111', location: '', isQuiz: false },
+    { id: 3, courseId: 2, weekday: 2, startSection: 5, endSection: 6,
+      weeksMask: '1111111111111111', location: '', isQuiz: false }
+  ];
+  const times = [];
+  for (let i = 1; i <= 12; i++) {
+    const start = 8 * 60 + (i - 1) * 60;
+    times.push({ semesterId: 1, section: i, startMin: start, endMin: start + 50, flexible: false });
+  }
+  const sessions = TT.computeWeekSessions(sem, courses, rules, [], times, 3);
+  const INPUT = [sem, courses, rules, times];
+  for (const s of sessions) {
+    const sessionJson = {
+      course: s.course, rule: s.rule, date: s.date, originDate: s.originDate,
+      weekday: s.weekday, startSection: s.startSection, endSection: s.endSection,
+      startMin: s.startMin, endMin: s.endMin, location: s.location,
+      isQuiz: s.isQuiz, fromOverride: s.fromOverride, isExtra: s.isExtra
+    };
+    for (const tpl of ['%D作业', '%c 第 %N 次作业', '%C/%d/%W/%T/%R']) {
+      add('renderTitle', [tpl, sessionJson, 3, 2], TG.renderTitle(tpl, s, 3, 2), 'todo_gen');
+    }
+    for (const rule of ['none', 'same_day', 'days', 'weekday', 'week_end', 'next_session']) {
+      for (const param of ['', '3', 'x', '7']) {
+        add('computeDdl', [...INPUT, sessionJson, rule, param],
+          TG.computeDdl(sem, courses, rules, [], times, s, rule, param), 'todo_gen');
+      }
+    }
+    const next = TG.nextSessionOfCourse(sem, courses, rules, [], times, s.course.id,
+      DU.parseDate(s.date));
+    add('nextSessionDate', [...INPUT, s.course.id, s.date],
+      next === undefined ? null : next.date, 'todo_gen');
+  }
+}
+
 // ---------------- 新手演练步骤脚本（domain/Guide.ets） ----------------
 // 文案也是产品的一部分：三端必须逐步一致，所以把整份脚本冻进 fixture。
 for (let i = -1; i <= GD.guideStepCount(); i++) {
@@ -376,7 +429,8 @@ const SOURCE = {
   dates: 'entry/src/main/ets/util/DateUtil.ets',
   categories: 'entry/src/main/ets/domain/Categories.ets',
   briefing: 'entry/src/main/ets/domain/Briefing.ets',
-  guide: 'entry/src/main/ets/domain/Guide.ets'
+  guide: 'entry/src/main/ets/domain/Guide.ets',
+  todo_gen: 'entry/src/main/ets/domain/TodoGenRules.ets'
 };
 fs.mkdirSync(OUT, { recursive: true });
 for (const mod of Object.keys(SOURCE)) {

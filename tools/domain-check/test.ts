@@ -22,7 +22,7 @@ import { SYNC_INTERVAL_CHOICES, SYNC_INTERVAL_DEFAULT, SYNC_INTERVAL_MAX, SYNC_I
   isSyncBoundary, normalizeSyncInterval, shouldRestartAfterIdle } from './SyncCadence';
 import { maskAll, maskFromText, maskToText, maskHas } from './WeekMask';
 import { countdownText, formatDateTime, minToHHmm, parseDate, parseDateTime } from './DateUtil';
-import { computeDdl, renderTitle } from './TodoGenerator';
+import { computeDdl, renderTitle } from './TodoGenRules';
 import { TimeAxis, DEFAULT_WINDOW, WINDOW_MAX_END, WINDOW_MIN_SPAN, WINDOW_SNAP_MIN,
   allBlocksDone, dragOffsetWithScroll,
   dropRange, edgeScrollDepth, edgeScrollDirection, edgeScrollStep, findFreeSlot, formatWindow, moveRange,

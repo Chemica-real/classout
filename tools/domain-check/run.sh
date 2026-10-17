@@ -28,6 +28,7 @@ cp "$SRC/domain/PlanMath.ets"  "$WORK/PlanMath.ts"
 cp "$SRC/domain/Validate.ets"  "$WORK/Validate.ts"
 cp "$SRC/domain/Categories.ets" "$WORK/Categories.ts"
 cp "$SRC/domain/Guide.ets"     "$WORK/Guide.ts"
+cp "$SRC/domain/TodoGenRules.ets" "$WORK/TodoGenRules.ts"
 cp "$SRC/domain/Privacy.ets"   "$WORK/Privacy.ts"
 cp "$SRC/domain/Guide.ets"     "$WORK/Guide.ts"
 cp "$SRC/domain/SyncCadence.ets" "$WORK/SyncCadence.ts"
@@ -40,20 +41,8 @@ cp "$SRC/domain/Wallpaper.ets" "$WORK/Wallpaper.ts"
 # 夹具里那份真实课表只用来给断言提供"接近真实的输入"，不进 HAP。
 cp "$HERE/SeedData.ts"          "$WORK/SeedData.ts"
 
-# TodoGenerator 只保留纯函数部分（模板渲染 / ddl 计算 / 找下一节课）
-python3 - "$SRC/domain/TodoGenerator.ets" "$WORK/TodoGenerator.ts" <<'PY'
-import sys
-src = open(sys.argv[1], encoding='utf-8').read()
-cut = src.index('export interface GenerationOutcome')
-head = src[:cut]
-out = []
-for line in head.splitlines():
-    s = line.strip()
-    if s.startswith('import ') and ("@kit" in s or "Repo'" in s or "/Db'" in s):
-        continue
-    out.append(line)
-open(sys.argv[2], 'w', encoding='utf-8').write('\n'.join(out) + '\n')
-PY
+# 下课自动生成待办的纯规则现在单独成文件（TodoGenRules.ets），上面已拷；
+# TodoGenerator.ets 剩下的部分依赖 Repo/Context，不进离线断言。
 
 # 改写 import 路径为同目录
 for f in "$WORK"/*.ts; do

@@ -16,6 +16,7 @@ import 'package:classout/domain/dates.dart';
 import 'package:classout/domain/guide.dart';
 import 'package:classout/domain/sync_cadence.dart';
 import 'package:classout/domain/timetable.dart';
+import 'package:classout/domain/todo_generator.dart';
 import 'package:classout/domain/week_mask.dart';
 import 'package:classout/domain/validate.dart';
 import 'package:classout/model/types.dart';
@@ -78,9 +79,44 @@ int _n(Object? v) => (v as num).toInt();
 num _num(Object? v) => v as num;
 bool _b(Object? v) => v as bool;
 
+
+// ---------------- 下课自动生成待办 fixture 的辅助（输入都带在 args 里）----------------
+Semester _sem(Map<String, dynamic> j) => Semester.fromJson(j);
+List<Course> _courses(List<dynamic> raw) =>
+    raw.map((e) => Course.fromJson(e as Map<String, dynamic>)).toList();
+List<SessionRule> _rules(List<dynamic> raw) =>
+    raw.map((e) => SessionRule.fromJson(e as Map<String, dynamic>)).toList();
+List<SectionTime> _times(List<dynamic> raw) =>
+    raw.map((e) => SectionTime.fromJson(e as Map<String, dynamic>)).toList();
+
 /// 按 fn 名派发到本端实现，返回值统一成 JSON 可比的形状
 Object? _call(String fn, List<dynamic> a) {
   switch (fn) {
+    // ---- TodoGenerator 纯规则（下课自动生成待办）----
+    case 'renderTitle':
+      return renderTitle(a[0] as String, _sessionFromJson(a[1]), _n(a[2]), _n(a[3]));
+    case 'computeDdl':
+      return computeDdl(
+        _sem(a[0] as Map<String, dynamic>),
+        _courses(a[1] as List),
+        _rules(a[2] as List),
+        const [],
+        _times(a[3] as List),
+        _sessionFromJson(a[4]),
+        a[5] as String,
+        a[6] as String,
+      );
+    case 'nextSessionDate':
+      final next = nextSessionOfCourse(
+        _sem(a[0] as Map<String, dynamic>),
+        _courses(a[1] as List),
+        _rules(a[2] as List),
+        const [],
+        _times(a[3] as List),
+        _n(a[4]),
+        parseDate(a[5] as String),
+      );
+      return next?.date;
     // ---- Guide（新手演练步骤脚本：文案也是产品的一部分）----
     case 'guideStepCount':
       return guideStepCount();

@@ -12,8 +12,8 @@ ClassOUT 是一款**纯离线**的「课表 + 待办 + 计划」三合一 App，
 |---|---|---|
 | 版本 | v1.5.1（上架准备中，未提审） | 0.2.0（Android 已装真机 OPPO A97） |
 | 页面 | 课表 / 待办 / 计划 / 设置 + 启动加载页 + 悬浮浮窗 | **同样四页 + 启动页 + 浮窗（§52–§68 逐页复刻）** |
-| 测试 | 离线断言 524 项（`tools/domain-check`） | **779 条 `flutter test`**（含 666 条三端 fixture 逐条对拍） |
-| 差异基准 | 本目录 `docs/manual/01..09.jpg`（真机截图） | `app_flutter/tool/goldens/*.png` 对照上面九张 + `shared/fixtures/`（666 条规则用例） |
+| 测试 | 离线断言 524 项（`tools/domain-check`） | **863 条 `flutter test`**（含 750 条三端 fixture 逐条对拍） |
+| 差异基准 | 本目录 `docs/manual/01..09.jpg`（真机截图） | `app_flutter/tool/goldens/*.png` 对照上面九张 + `shared/fixtures/`（750 条规则用例） |
 
 **安卓版与鸿蒙版的 1:1 复刻已经完成**：主题 token 抄自 ArkTS（§52）、六个页面重做、
 悬浮页头/导航/日期条/托盘（§60–61）、启动过场（§59）、单周调整（§55）、课程管理+模板+学期
@@ -5104,3 +5104,36 @@ scale 识别器和 tap/longPress 抢同一个手势竞技场，两指分开时�
 - `flutter test`：**779 passed**（666 条 fixture 逐条对拍 + 其余单测/组件测）
 - 注：`TodoGenerator` 仍是"只 Dart 侧有测试"——它依赖 Repo/DB，不是纯函数，
   要进 fixture 得先像 Guide 那样把规则抽成纯模块（记在 §69.3 的待办里）
+
+## 73. 2026-10-17 三端契约升级：下课自动生成待办的**纯规则**抽出来 + 进 fixtures（750 条）
+
+§72 之后剩下的最后一块"只有 Dart 侧测试"的规则是 `TodoGenerator`。这轮把它拆成
+"纯规则"与"读库/写库"两半，纯的那半进三端契约。
+
+### 73.1 ArkTS 侧：新文件 `domain/TodoGenRules.ets`
+
+从 `TodoGenerator.ets` 里**原样搬出**（逻辑一行没改）：
+
+- `LOOKAHEAD_DAYS`、`renderTitle`（%C/%c/%D/%d/%W/%T/%N/%R）、`nextSessionOfCourse`、`computeDdl`（6 种规则）
+- `TodoGenerator.ets` 改为从它 import，并保留一层 `export { ... }` 兼容旧调用点；
+  `view/CourseManager.ets` 的 `renderTitle` 改成直接从 `TodoGenRules` 引（依赖方向更准）
+
+为什么这么拆：`TodoGenerator.ets` 剩下的部分要 `common.Context` + `TodoRepo` + `Db`，
+进不了离线断言；而"标题怎么渲染、截止怎么算、下一节课哪天"是纯的。
+
+### 73.2 契约侧
+
+- `tools/domain-check/run.sh`：多拷 `TodoGenRules.ets`；**删掉**原先那段"从 TodoGenerator 里
+  截取纯函数"的 python 逻辑（现在有独立文件了），`test.ts` 的 import 改到 `./TodoGenRules`
+- `tools/fixtures/gen.js`：新增 `todo_gen` 模块 **84 条**——固定输入（1 学期 + 2 课 + 3 规则 +
+  12 节次表）算出的第 3 周每节课，跑 `renderTitle`（3 种模板）、`computeDdl`（6 规则 × 4 参数）、
+  `nextSessionOfCourse`；**args 里带完整输入**，Android 拿同一份输入跑 `todo_generator.dart` 再比
+- `app_flutter/test/fixtures_test.dart`：加 `renderTitle` / `computeDdl` / `nextSessionDate` 三个派发
+
+### 73.3 验证
+
+- `./build.sh assembleHap`：**BUILD SUCCESSFUL**（第一次失败是因为 `CourseManager` 还从
+  `TodoGenerator` 引 `renderTitle`——已修；这条正好证明"重构要跑 HAP 构建"不是形式主义）
+- `./tools/domain-check/run.sh`：**524 项全绿**
+- `./tools/sync-contract.sh`：fixtures **750 条**（新增 `todo_gen.json` 84 条）
+- `flutter test`：**863 passed**

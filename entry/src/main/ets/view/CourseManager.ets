@@ -12,7 +12,7 @@ import { maskAll, maskFromText, maskToText } from '../model/WeekMask';
 import { formatDate, hhmmToMin, minToHHmm, nearestMonday, parseDate, today, WEEKDAY_CN } from '../util/DateUtil';
 import { TEMPLATE_VARS, TemplateCheck, Validation, validateSectionTimes, validateSessionRule,
   validateTemplateDdl, validateTemplateTitle } from '../domain/Validate';
-import { renderTitle } from '../domain/TodoGenerator';
+import { renderTitle } from '../domain/TodoGenRules';
 import { ChipButton } from './ChipButton';
 import { pickDate } from '../util/DateTimePicker';
 import { BackHandler, backStack } from '../util/BackStack';
