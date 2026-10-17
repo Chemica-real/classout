@@ -263,8 +263,14 @@ class _TodoPageState extends State<TodoPage> {
 
   Future<void> _openEditor(BuildContext context,
       {Todo? existing, bool asExam = false}) async {
-    final draft = await showTodoEditor(context,
+    final result = await showTodoEditor(context,
         courses: widget.bundle.courses, existing: existing, asExam: asExam);
+    if (result == null) return;
+    if (result.delete) {
+      if (existing != null) widget.onChanged(_without(existing.id));
+      return;
+    }
+    final draft = result.todo;
     if (draft == null) return;
     if (existing == null) {
       final nextId =

@@ -4435,3 +4435,32 @@ iOS 侧这次改动**还需 CI 复核**（`DynamicLibrary.process()` + 插件同
 等不到静止 → 全线超时。所以 `theme.ambientMotion` 是全局开关，`test/flutter_test_config.dart`
 （`test/` 目录下的测试）和 `tool/screenshot_test.dart`（不在 `test/` 下，配置钩子管不到）
 两处都要显式关掉。
+
+## 53. 2026-10-17 MIRROR.md（ArkTS → Dart 对照表）+ 待办编辑器改成右侧抽屉
+
+### 53.1 `MIRROR.md`（仓库根目录，新增）
+
+目的：**把"长什么样的唯一标准"钉在鸿蒙端**。表里有四块：
+① 设计 token（`Glass.ets`/`Motion.ets`/`Float.ets`/`Types.ets`/`PlanLayout.ets` → `theme.dart` 与各页面）；
+② 页面/组件（`Index.ets` Header、`TodoInbox.ets`、`PlanDayView.ets`、`SettingsPage.ets`、
+`Prefs.ets`、`WallpaperRepo.ets`、各 `*Repo.ets` → 对应 Dart 文件）；
+③ 动效与反馈逐项对应；④ 还缺的清单（与 §52.3 一致）。
+改 UI 之前先查这张表，不要重新发明数值。
+
+### 53.2 待办编辑器：对话框 → 右侧 84% 抽屉
+
+`lib/ui/todo_editor.dart` 整个重写，对齐 `TodoInbox.ets → EditorPanel()`：
+
+- `showGeneralDialog` + 右侧滑入（300ms `drawerCurve`）+ 遮罩 `rgba(12,18,28,0.45)`，点空白关闭
+- 面板：`Glass(sheet: true)`、宽 `drawerWidthFactor`(84%)、标题固定 + ✕ 关闭、内容可滚
+- 字段顺序与鸿蒙端一致：标题 → 类型（作业/自学/考试/无）→（考试）考试日期 / 开始 / 结束
+  →（非考试）截止（无 / 今天 / 明天 / 本周日 / 3 天后 / 自定义…）→ 预计耗时（±15 分钟）
+  → 所属课程 → 备注；底部 `删除`（仅编辑时）+ `保存`
+- 返回值从 `Todo?` 改成 `TodoEditorResult`（`todo` 或 `delete`），删除也走同一套抽屉
+- 考试模式：`ddl = 日期 开始时间`、`endAt = 日期 结束时间`，`estimateMin` 置 0（与鸿蒙端一致）
+
+### 53.3 验证
+
+- `flutter test`：**683 passed**（`todo_page_test` 里"新建/编辑"两条照旧走真实抽屉，没改断言）
+- golden 新增 `tool/goldens/todo_editor.png`（`flutter test --update-goldens tool/screenshot_test.dart`）
+- 待办编辑器截图已和 `docs/manual/06-new-todo.jpg` 对照：标题/✕/类型胶囊/截止胶囊/保存按钮位置一致

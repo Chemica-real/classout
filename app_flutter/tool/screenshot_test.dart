@@ -74,6 +74,11 @@ Future<void> _shot(WidgetTester tester, Widget page, String name, String? family
       find.byType(AppFrame), matchesGoldenFile('goldens/$name.png'));
 }
 
+/// 直接截当前这棵树（用于"点开某个面板之后"的截图）
+Future<void> _capture(WidgetTester tester, String name) async {
+  await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/$name.png'));
+}
+
 /// 假的选文件实现（截图只用来看界面，不会真弹文件框）
 class _NoopPicker implements BackupPicker {
   const _NoopPicker();
@@ -178,5 +183,38 @@ void main() {
       'plan',
       family,
     );
+  });
+
+  testWidgets('待办编辑器（右侧抽屉）截图', (tester) async {
+    final family = await _loadFonts();
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+          brightness: Brightness.dark, useMaterial3: true, fontFamily: family),
+      home: Scaffold(
+        body: AppFrame(
+          tab: 1,
+          onTab: (_) {},
+          child: Column(children: [
+            CourseHeader(
+              sem: demo.semester,
+              week: 1,
+              onPrev: () {},
+              onNext: () {},
+              onToday: () {},
+              onSync: () async {},
+            ),
+            Expanded(child: TodoPage(bundle: demo, onChanged: (_) {})),
+          ]),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('+ 新建待办'));
+    await tester.pumpAndSettle();
+    await _capture(tester, 'todo_editor');
   });
 }
