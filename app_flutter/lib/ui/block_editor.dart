@@ -145,6 +145,9 @@ class _Body extends StatefulWidget {
 class _BodyState extends State<_Body> {
   late PlanBlock _b = widget.block;
   late bool _noteOpen = noteExpanded;
+
+  /// 「删除这个待办」的二次确认（鸿蒙端 editorConfirmDeleteTodo）
+  bool _confirmDeleteTodo = false;
   String? _error;
   late final TextEditingController _startCtrl;
   late final TextEditingController _durCtrl;
@@ -196,6 +199,17 @@ class _BodyState extends State<_Body> {
     final l = _lesson;
     if (l != null) return '第 ${l.seq} 讲 · ${l.title}';
     return _course?.label ?? '计划块';
+  }
+
+  /// 删除**整个待办**：它的所有块（含别的日期的）一起删；块本身由调用方在删完后关抽屉。
+  void _deleteWholeTodo() {
+    final todoId = _b.todoId;
+    Navigator.of(widget.ctx).pop();
+    widget.onChanged(_with(
+      widget.bundle,
+      todos: widget.bundle.todos.where((t) => t.id != todoId).toList(),
+      blocks: widget.bundle.blocks.where((b) => b.todoId != todoId).toList(),
+    ));
   }
 
   void _write({PlanBlock? block, Todo? todo}) {
@@ -561,16 +575,26 @@ class _BodyState extends State<_Body> {
                   const _Label('备注'),
                   Container(
                     width: double.infinity,
+                    // 展开时固定最大高度 + **内部滚动**（不把抽屉撑满）
+                    constraints: _noteOpen
+                        ? const BoxConstraints(maxHeight: 140)
+                        : null,
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.06),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Text(_todo!.note,
-                        maxLines: _noteOpen ? null : 1,
-                        overflow: _noteOpen ? null : TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            fontSize: 12, color: Color(0xFFC3CDDE))),
+                    child: _noteOpen
+                        ? SingleChildScrollView(
+                            child: Text(_todo!.note,
+                                style: const TextStyle(
+                                    fontSize: 12, color: Color(0xFFC3CDDE))),
+                          )
+                        : Text(_todo!.note,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 12, color: Color(0xFFC3CDDE))),
                   ),
                   Align(
                     alignment: Alignment.centerRight,
@@ -584,7 +608,7 @@ class _BodyState extends State<_Body> {
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 2),
-                        child: Text(_noteOpen ? '收起' : '展开',
+                        child: Text(_noteOpen ? '收起 ▴' : '展开 ▾',
                             style: const TextStyle(
                                 fontSize: 10, color: accentBlue)),
                       ),
@@ -655,6 +679,51 @@ class _BodyState extends State<_Body> {
             ),
           ],
         ),
+        // 删除**整个待办**（它在别的日期的块也一起没）—— 必须二次确认
+        if (_b.todoId > 0) ...[
+          const SizedBox(height: 12),
+          if (_confirmDeleteTodo)
+            Row(
+              children: [
+                const Expanded(
+                  child: Text('确定删除整个待办？它在别的日期的块也会一起没。',
+                      style: TextStyle(
+                          fontSize: 12, color: Color(0xFFFF8A8A))),
+                ),
+                GestureDetector(
+                  onTap: () => setState(() => _confirmDeleteTodo = false),
+                  behavior: HitTestBehavior.opaque,
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 10),
+                    child: Text('取消',
+                        style: TextStyle(
+                            fontSize: 13, color: Color(0xFFA9B5C9))),
+                  ),
+                ),
+                GestureDetector(
+                  onTap: _deleteWholeTodo,
+                  behavior: HitTestBehavior.opaque,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFD64545),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Text('删除待办',
+                        style: TextStyle(fontSize: 13, color: Colors.white)),
+                  ),
+                ),
+              ],
+            )
+          else
+            _BigAction(
+              text: '删除这个待办',
+              background: const Color(0x24D64545), // rgba(214,69,69,0.14)
+              color: const Color(0xFFFF8A8A),
+              onTap: () => setState(() => _confirmDeleteTodo = true),
+            ),
+        ],
         const SizedBox(height: 8),
         _BigAction(
           text: '完成',

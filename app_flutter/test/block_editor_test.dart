@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:classout/data/backup.dart';
 import 'package:classout/model/types.dart';
 import 'package:classout/domain/plan_math.dart';
+import 'package:classout/ui/block_editor.dart';
 import 'package:classout/ui/plan_page.dart';
 
 BackupBundle _demo() =>
@@ -206,5 +207,45 @@ void main() {
     expect(blocks[0].endMin, 13 * 60 + 45);
     expect(blocks[1].startMin, 13 * 60 + 45);
     expect(blocks[1].endMin, 14 * 60 + 30);
+  });
+
+  testWidgets('删除整个待办：两段式确认，块与待办一起没', (tester) async {
+    final demo = BackupBundle.decode(
+        File('assets/demo_backup.json').readAsStringSync());
+    final block = demo.blocks.first;
+    final todoId = block.todoId;
+    BackupBundle? last;
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Builder(
+          builder: (ctx) => TextButton(
+            onPressed: () => showBlockEditor(ctx,
+                bundle: demo,
+                block: block,
+                window: defaultWindow,
+                onChanged: (next) => last = next),
+            child: const Text('open'),
+          ),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    final del = find.text('删除这个待办');
+    await tester.ensureVisible(del);
+    await tester.pumpAndSettle();
+    await tester.tap(del);
+    await tester.pumpAndSettle();
+    expect(find.text('确定删除整个待办？它在别的日期的块也会一起没。'), findsOneWidget);
+
+    await tester.tap(find.text('删除待办'));
+    await tester.pumpAndSettle();
+    expect(last, isNotNull);
+    expect(last!.todos.any((t) => t.id == todoId), isFalse, reason: '待办被删');
+    expect(last!.blocks.any((b) => b.todoId == todoId), isFalse, reason: '所有块一起删');
   });
 }
