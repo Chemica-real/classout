@@ -13,6 +13,7 @@ import '../data/repo.dart';
 import '../data/settings.dart';
 import '../domain/reminders.dart';
 import '../domain/sync_cadence.dart';
+import '../domain/categories.dart';
 import '../domain/dates.dart';
 import '../domain/guide.dart';
 import '../domain/motto.dart';
@@ -604,7 +605,14 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                                 bundle: bundle,
                                 onChanged: _apply,
                                 topInset: _headerH,
-                                customCategories: _settings.customCategories),
+                                customCategories: _settings.customCategories,
+                                onAddCategory: (name) {
+                                  _settings.customCategories = addCustomCategory(
+                                      _settings.customCategories, name);
+                                  _settings.save(widget.repo).then((_) {
+                                    if (mounted) setState(() {});
+                                  });
+                                }),
                             _ => PlanPage(
                                 bundle: bundle,
                                 onChanged: _apply,

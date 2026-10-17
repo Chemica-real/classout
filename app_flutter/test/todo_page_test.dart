@@ -108,7 +108,7 @@ void main() {
     expect(find.text('编辑待办'), findsOneWidget, reason: '点正文应该进编辑窗');
 
     await tester.enterText(find.byType(TextField).first, '实验报告（改）');
-    await tester.tap(find.widgetWithText(FilledButton, '保存'));
+    await tester.tap(find.byKey(const ValueKey('todo-save')));
     await tester.pumpAndSettle();
 
     expect(last, isNotNull);
@@ -143,7 +143,7 @@ void main() {
     await tester.tap(find.text('+ 新建待办'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).first, '新的作业');
-    await tester.tap(find.widgetWithText(FilledButton, '保存'));
+    await tester.tap(find.byKey(const ValueKey('todo-save')));
     await tester.pumpAndSettle();
 
     expect(last, isNotNull);

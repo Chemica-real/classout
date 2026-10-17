@@ -34,6 +34,9 @@ class TodoPage extends StatefulWidget {
   /// 自定义待办类型（设置页里加的）
   final List<String> customCategories;
 
+  /// 在待办编辑窗里就地新建类型 → 回写设置页那份列表
+  final void Function(String name)? onAddCategory;
+
   /// 悬浮页头的高度（内容顶部留同样的空）
   final double topInset;
 
@@ -45,6 +48,7 @@ class TodoPage extends StatefulWidget {
     required this.bundle,
     required this.onChanged,
     this.customCategories = const [],
+    this.onAddCategory,
     this.topInset = 0,
     this.onNotePref,
   });
@@ -280,7 +284,9 @@ class _TodoPageState extends State<TodoPage> {
         courses: widget.bundle.courses,
         existing: existing,
         asExam: asExam,
-        onNotePref: widget.onNotePref);
+        onNotePref: widget.onNotePref,
+        customCategories: widget.customCategories,
+        onAddCategory: widget.onAddCategory);
     if (result == null) return;
     if (result.delete) {
       if (existing != null) widget.onChanged(_without(existing.id));

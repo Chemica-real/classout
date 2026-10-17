@@ -46,12 +46,12 @@ void main() {
     await tester.tap(find.text('+ 新建待办'));
     await tester.pumpAndSettle();
 
-    expect(find.text('展开 ▸'), findsOneWidget);
-    await tester.tap(find.text('展开 ▸'));
+    expect(find.text('展开 ▾'), findsOneWidget);
+    await tester.tap(find.text('展开 ▾'));
     await tester.pumpAndSettle();
 
     expect(noteExpanded, isTrue);
     expect(seen, isTrue);
-    expect(find.text('收起 ▾'), findsOneWidget);
+    expect(find.text('收起 ▴'), findsOneWidget);
   });
 }
