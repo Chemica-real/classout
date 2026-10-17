@@ -10,6 +10,7 @@
 // 数据整份写回仓库（`onChanged(bundle)`），与其它页面一致。
 
 import 'dart:async';
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -105,10 +106,18 @@ Future<void> showCourseManager(
     context: context,
     barrierDismissible: true,
     barrierLabel: '关闭课程管理',
-    barrierColor: const Color(0x990C1220),
+    // 薄纱自己画（鸿蒙 `showManager` 是**全屏 backdropBlur + SCRIM_COLOR**，
+    // 不是纯色遮罩）：这样底下的课表会变成"磨砂玻璃后面的柔和色块"。
+    barrierColor: Colors.transparent,
     transitionDuration: dur(durDrawer),
-    pageBuilder: (ctx, _, __) =>
-        _Manager(bundle: bundle, onChanged: onChanged, onImport: onImport),
+    pageBuilder: (ctx, _, __) => BackdropFilter(
+      filter: ImageFilter.blur(sigmaX: glassBlur, sigmaY: glassBlur),
+      child: ColoredBox(
+        color: const Color(0x6B080A14), // rgba(8,10,20,0.42) = 鸿蒙 SCRIM_COLOR
+        child: _Manager(
+            bundle: bundle, onChanged: onChanged, onImport: onImport),
+      ),
+    ),
     transitionBuilder: (ctx, anim, _, child) {
       final curved = CurvedAnimation(parent: anim, curve: drawerCurve);
       return FadeTransition(
@@ -171,167 +180,241 @@ class _ManagerState extends State<_Manager> {
   }
 
 
+  /// 「课程与学期」这一页现在和鸿蒙 `CourseManager` 一样是**整页换内容**：
+  /// 列表 / 学期设置 / 上课节次时间 / 备份与恢复 都画在同一个全屏页里，
+  /// 顶部是一条独立的玻璃 TopBar（左边「关闭」或「‹ 返回」），下面整块是内容 ——
+  /// 以前是"外层一张大玻璃卡 + 子页再叠一个弹窗"，真机截图一比就不一样。
+  String _mode = 'list';
+
+  /// 正在编辑的课程（null = 新增）
+  Course? _editing;
+
+  static const Map<String, String> _modeTitles = {
+    'semester': '学期设置',
+    'sections': '上课节次时间',
+    'backup': '备份与恢复',
+  };
+
   @override
   Widget build(BuildContext context) {
     return Material(
       type: MaterialType.transparency,
       child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(floatSide),
-          child: Glass(
-            sheet: true,
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // ---- 顶栏 ----
-                Row(
-                  children: [
-                    GestureDetector(
-                      onTap: () => Navigator.of(context).pop(),
-                      behavior: HitTestBehavior.opaque,
-                      // 鸿蒙 TopBar：左边「关闭」蓝字、中间标题 16 Medium
-                      child: const Padding(
-                        padding: EdgeInsets.only(right: 12, top: 6, bottom: 6),
-                        child: Text('关闭',
-                            style: TextStyle(fontSize: 15, color: accentBlue)),
-                      ),
-                    ),
-                    const Spacer(),
-                    const Text('课程与学期',
-                        style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                            color: inkPrimary)),
-                    const Spacer(),
-                    const SizedBox(width: 60),
-                  ],
+        child: Column(
+          children: [
+            _topBar(),
+            Expanded(child: _body()),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 顶栏（鸿蒙 `TopBar`）：全宽玻璃条（模糊 + 面板底色 + 1px 强描边，**没有圆角**），
+  /// 左「关闭」/「‹ 返回」15 号蓝字，中间标题 16 Medium，右侧留同样宽度占位。
+  Widget _topBar() {
+    final isList = _mode == 'list';
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: glassBlur, sigmaY: glassBlur),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          decoration: BoxDecoration(
+            color: glassTintPanel,
+            border: Border.all(color: glassEdgeStrong),
+          ),
+          child: Row(
+            children: [
+              GestureDetector(
+                onTap: isList
+                    ? () => Navigator.of(context).pop()
+                    : () => setState(() => _mode = 'list'),
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Text(isList ? '关闭' : '‹ 返回',
+                      style:
+                          const TextStyle(fontSize: 15, color: accentBlue)),
                 ),
-                const SizedBox(height: 6),
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.only(bottom: 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (_toast.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 4),
-                            child: Text(_toast,
-                                style: const TextStyle(
-                                    fontSize: 12, color: accentBlue)),
-                          ),
-                        // 鸿蒙列表首屏是**三张入口卡**：学期 / 上课节次时间 / 备份与恢复
-                        _entryRow(
-                          key: const ValueKey('entry-semester'),
-                          '学期',
-                          _b.semester == null
-                              ? ''
-                              : '${_b.semester!.name} · ${_b.semester!.startDate} 起 · '
-                                  '${_b.semester!.totalWeeks} 周',
-                          onTap: _openSemesterSheet,
-                        ),
-                        _entryRow(
-                          key: const ValueKey('entry-sections'),
-                          '上课节次时间',
-                          '${_b.sectionTimes.length} 节 · 可随意改',
-                          onTap: _openSections,
-                        ),
-                        _entryRow('备份与恢复', '导出 JSON / 整份恢复 / 诊断',
-                            key: const ValueKey('entry-backup'),
-                            onTap: _openBackupSheet),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Text('课程（${_b.courses.length}）',
-                                style: const TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w500,
-                                    color: inkPrimary)),
-                            const Spacer(),
-                            _PillAction(
-                              text: '+ 新增课程',
-                              onTap: () => _openCourse(null),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        if (_b.courses.isEmpty)
-                          const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 12),
-                            child: Text(
-                              '还没有课程。点右上角「新增课程」开始建立自己的课表；'
-                              '也可以用「备份与恢复」导入之前导出的备份。',
-                                style: TextStyle(
-                                    fontSize: 12, color: Color(0xFF8B97AC))),
-                          ),
-                        for (final c in _b.courses) _courseCard(c),
-                        // 清空本学期课程放在列表末尾（鸿蒙同位置），两次确认
-                        if (_b.courses.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          if (_confirmClear)
-                            Row(
-                              children: [
-                                const Expanded(
-                                  child: Text(
-                                      '确定清空本学期的全部课程？课程、上课时段与生成模板都会删掉，手改的内容会丢。',
-                                      style: TextStyle(
-                                          fontSize: 11,
-                                          color: Color(0xFFFF8A8A))),
-                                ),
-                                GestureDetector(
-                                  onTap: () =>
-                                      setState(() => _confirmClear = false),
-                                  behavior: HitTestBehavior.opaque,
-                                  child: const Padding(
-                                    padding:
-                                        EdgeInsets.symmetric(horizontal: 8),
-                                    child: Text('取消',
-                                        style: TextStyle(
-                                            fontSize: 12,
-                                            color: Color(0xFFA9B5C9))),
-                                  ),
-                                ),
-                                GestureDetector(
-                                  onTap: _clearSemesterCourses,
-                                  behavior: HitTestBehavior.opaque,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 10, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFD64545),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: const Text('确定重载',
-                                        style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.white)),
-                                  ),
-                                ),
-                              ],
-                            )
-                          else
-                            GestureDetector(
-                              onTap: () =>
-                                  setState(() => _confirmClear = true),
-                              behavior: HitTestBehavior.opaque,
-                              child: const Padding(
-                                padding: EdgeInsets.only(top: 8),
-                                child: Text('清空本学期课程',
-                                    style: TextStyle(
-                                        fontSize: 12,
-                                        color: Color(0xFF8B97AC))),
-                              ),
-                            ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
+              ),
+              const Spacer(),
+              Text(isList
+                      ? '课程与学期'
+                      : (_mode == 'course'
+                          ? (_editing == null ? '新增课程' : '编辑课程')
+                          : (_modeTitles[_mode] ?? '课程与学期')),
+                  style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                      color: inkPrimary)),
+              const Spacer(),
+              // 鸿蒙 TopBar 右侧塞的是四个空格（占位，保证标题居中）
+              const Text('    ', style: TextStyle(fontSize: 15)),
+            ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _body() {
+    switch (_mode) {
+      case 'course':
+        return _CourseEditor(
+          key: ValueKey('course-edit-${_editing?.id ?? 0}'),
+          b: _b,
+          existing: _editing,
+          onClose: () => setState(() {
+            _mode = 'list';
+            _editing = null;
+          }),
+          onDone: (res) {
+            _apply(res.bundle);
+            _showToast(res.deleted ? '课程已删除' : '已保存');
+            setState(() {
+              _mode = 'list';
+              _editing = null;
+            });
+          },
+        );
+      case 'sections':
+        final sem = _b.semester;
+        if (sem == null) return _listBody();
+        return SectionsEditorBody(
+          semesterId: sem.id,
+          sections:
+              _b.sectionTimes.where((s) => s.semesterId == sem.id).toList(),
+          onClose: () => setState(() => _mode = 'list'),
+          onDone: (next) {
+            final semId = sem.id;
+            _apply(_with(_b, sectionTimes: [
+              ..._b.sectionTimes.where((s) => s.semesterId != semId),
+              ...next,
+            ]));
+            _showToast('节次时间已保存');
+            setState(() => _mode = 'list');
+          },
+        );
+      case 'semester':
+        return _SemesterSheet(b: _b, onChanged: _apply);
+      case 'backup':
+        return _BackupSheet(
+          b: _b,
+          onChanged: _apply,
+          onImport: widget.onImport,
+        );
+      default:
+        return _listBody();
+    }
+  }
+
+  Widget _listBody() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (_toast.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(_toast,
+                  style: const TextStyle(fontSize: 12, color: accentBlue)),
+            ),
+          // 鸿蒙列表首屏是**三张入口卡**：学期 / 上课节次时间 / 备份与恢复
+          _entryRow(
+            '学期',
+            _b.semester == null
+                ? ''
+                : '${_b.semester!.name} · ${_b.semester!.startDate} 起 · '
+                    '${_b.semester!.totalWeeks} 周',
+            key: const ValueKey('entry-semester'),
+            onTap: () => setState(() => _mode = 'semester'),
+          ),
+          _entryRow(
+            key: const ValueKey('entry-sections'),
+            '上课节次时间',
+            '${_b.sectionTimes.length} 节 · 可随意改',
+            onTap: _openSections,
+          ),
+          _entryRow('备份与恢复', '导出 JSON / 整份恢复 / 诊断',
+              key: const ValueKey('entry-backup'),
+              onTap: () => setState(() => _mode = 'backup')),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Text('课程（${_b.courses.length}）',
+                  style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                      color: inkPrimary)),
+              const Spacer(),
+              _PillAction(
+                text: '+ 新增课程',
+                onTap: () => _openCourse(null),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (_b.courses.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Text('还没有课程。点右上角「新增课程」开始建立自己的课表；'
+                  '也可以用「备份与恢复」导入之前导出的备份。',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF8B97AC))),
+            ),
+          for (final c in _b.courses) _courseCard(c),
+          // 清空本学期课程放在列表末尾（鸿蒙同位置），两次确认
+          if (_b.courses.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            if (_confirmClear)
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                        '确定清空本学期的全部课程？课程、上课时段与生成模板都会删掉，手改的内容会丢。',
+                        style: TextStyle(
+                            fontSize: 11, color: Color(0xFFFF8A8A))),
+                  ),
+                  GestureDetector(
+                    onTap: () => setState(() => _confirmClear = false),
+                    behavior: HitTestBehavior.opaque,
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8),
+                      child: Text('取消',
+                          style: TextStyle(
+                              fontSize: 12, color: Color(0xFFA9B5C9))),
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: _clearSemesterCourses,
+                    behavior: HitTestBehavior.opaque,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFD64545),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Text('确定重载',
+                          style:
+                              TextStyle(fontSize: 12, color: Colors.white)),
+                    ),
+                  ),
+                ],
+              )
+            else
+              GestureDetector(
+                onTap: () => setState(() => _confirmClear = true),
+                behavior: HitTestBehavior.opaque,
+                child: const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text('清空本学期课程',
+                      style: TextStyle(
+                          fontSize: 12, color: Color(0xFF8B97AC))),
+                ),
+              ),
+          ],
+        ],
       ),
     );
   }
@@ -374,43 +457,9 @@ class _ManagerState extends State<_Manager> {
     );
   }
 
-  Future<void> _openSemesterSheet() async {
-    await showDialog<void>(
-      context: context,
-      barrierColor: const Color(0x990C1220),
-      builder: (ctx) => _SemesterSheet(
-        b: _b,
-        onChanged: (next) => _apply(next),
-      ),
-    );
-  }
-
-  Future<void> _openBackupSheet() async {
-    await showDialog<void>(
-      context: context,
-      barrierColor: const Color(0x990C1220),
-      builder: (ctx) => _BackupSheet(
-        b: _b,
-        onChanged: (next) => _apply(next),
-        onImport: widget.onImport,
-      ),
-    );
-  }
-
-
-  /// 「上课节次时间」子页（鸿蒙端 SectionsView）：改完立刻影响课表格子排布
-  Future<void> _openSections() async {
-    final sem = _b.semester;
-    if (sem == null) return;
-    final rows = _b.sectionTimes.where((s) => s.semesterId == sem.id).toList();
-    final next = await showSectionTimesEditor(context,
-        semesterId: sem.id, sections: rows);
-    if (next == null || !mounted) return;
-    _apply(_with(_b, sectionTimes: [
-      ..._b.sectionTimes.where((s) => s.semesterId != sem.id),
-      ...next,
-    ]));
-    _showToast('节次时间已保存');
+  void _openSections() {
+    if (_b.semester == null) return;
+    setState(() => _mode = 'sections');
   }
 
   /// 课程卡（鸿蒙 `lc-` 那张）：彩色简称胶囊 + 全名，下面逐条列时段与模板
@@ -544,15 +593,11 @@ class _ManagerState extends State<_Manager> {
 
 
 
-  Future<void> _openCourse(Course? existing) async {
-    final res = await showDialog<_CourseEditResult>(
-      context: context,
-      barrierColor: const Color(0x8C0C1220),
-      builder: (_) => _CourseEditor(b: _b, existing: existing),
-    );
-    if (res == null) return;
-    _apply(res.bundle);
-    _showToast(res.deleted ? '课程已删除' : '已保存');
+  void _openCourse(Course? existing) {
+    setState(() {
+      _editing = existing;
+      _mode = 'course';
+    });
   }
 }
 
@@ -586,7 +631,18 @@ class _PillAction extends StatelessWidget {
 class _CourseEditor extends StatefulWidget {
   final BackupBundle b;
   final Course? existing;
-  const _CourseEditor({required this.b, this.existing});
+
+  /// 「‹ 返回」= 放弃这一页的改动（鸿蒙 tops back 也是直接回列表）
+  final VoidCallback onClose;
+
+  /// 保存 / 删除完成（外壳负责写回 + 提示 + 回列表）
+  final void Function(_CourseEditResult res) onDone;
+  const _CourseEditor(
+      {super.key,
+      required this.b,
+      this.existing,
+      required this.onClose,
+      required this.onDone});
 
   @override
   State<_CourseEditor> createState() => _CourseEditorState();
@@ -692,7 +748,7 @@ class _CourseEditorState extends State<_CourseEditor> {
         ];
       }
     }
-    Navigator.of(context).pop(_CourseEditResult(
+    widget.onDone(_CourseEditResult(
         _with(_b, courses: courses, lessons: lessons, blocks: blocks)));
   }
 
@@ -701,7 +757,7 @@ class _CourseEditorState extends State<_CourseEditor> {
     final templates = _b.templates.where((t) => t.courseId != _id).toList();
     final lessons = _b.lessons.where((l) => l.courseId != _id).toList();
     final courses = _b.courses.where((c) => c.id != _id).toList();
-    Navigator.of(context).pop(_CourseEditResult(
+    widget.onDone(_CourseEditResult(
         _with(_b,
             courses: courses,
             rules: rules,
@@ -726,43 +782,14 @@ class _CourseEditorState extends State<_CourseEditor> {
     if (next != null) setState(() => _b = next);
   }
 
+  /// 鸿蒙 `CourseView` 是整页子页（顶栏由外壳画，标题「新增课程 / 编辑课程」）
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-      child: Glass(
-        sheet: true,
-        padding: const EdgeInsets.fromLTRB(18, 14, 18, 12),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 鸿蒙 CourseView 是子页：左「‹ 返回」、中「新增/编辑课程」
-            Row(
-              children: [
-                GestureDetector(
-                  onTap: () => Navigator.of(context).pop(),
-                  behavior: HitTestBehavior.opaque,
-                  child: const Text('‹ 返回',
-                      style: TextStyle(fontSize: 15, color: accentBlue)),
-                ),
-                const Spacer(),
-                Text(_id == 0 ? '新增课程' : '编辑课程',
-                    style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                        color: inkPrimary)),
-                const Spacer(),
-                const SizedBox(width: 44),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Flexible(
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
                     _field(_name, '课程名（全称）', '高等数学'),
                     if (_error != null)
                       Padding(
@@ -896,10 +923,6 @@ class _CourseEditorState extends State<_CourseEditor> {
                           },
                         ),
                     ],
-                  ],
-                ),
-              ),
-            ),
             const SizedBox(height: 8),
             const SizedBox(height: 20),
             Row(
@@ -953,17 +976,16 @@ class _CourseEditorState extends State<_CourseEditor> {
                 ],
               ],
             ),
-            if (_confirmDelete && _id > 0)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(
-                    '确定删除「${_short.text.isNotEmpty ? _short.text : _name.text}」'
-                    '及其所有时段、模板？',
-                    style: const TextStyle(
-                        fontSize: 11, color: Color(0xFFFF8A8A))),
-              ),
-          ],
-        ),
+          if (_confirmDelete && _id > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                  '确定删除「${_short.text.isNotEmpty ? _short.text : _name.text}」'
+                  '及其所有时段、模板？',
+                  style: const TextStyle(
+                      fontSize: 11, color: Color(0xFFFF8A8A))),
+            ),
+        ],
       ),
     );
   }
@@ -1250,12 +1272,13 @@ class _RuleDialogState extends State<_RuleDialog> {
               ),
               const _Label('周次（支持 1-16 / 1-8,10-16 / 1-16单 / 2-16双）'),
               _dialogInput(_weeks, '1-16'),
-              const SizedBox(height: 8),
+              // 鸿蒙：这一行 `margin({ top: 14 })`，文案「这是习题课」14 号
+              const SizedBox(height: 14),
               Row(
                 children: [
                   const Expanded(
-                    child: Text('习题课（课表上虚线框）',
-                        style: TextStyle(fontSize: 13, color: inkPrimary)),
+                    child: Text('这是习题课',
+                        style: TextStyle(fontSize: 14, color: inkPrimary)),
                   ),
                   Switch(
                       value: _quiz,
@@ -1874,48 +1897,17 @@ class _SemesterSheetState extends State<_SemesterSheet>
         : '已复制 $added 门课到当前学期');
   }
 
+  /// 鸿蒙 `SemesterView` 是**整页场景**（顶栏由外壳画，这里只有内容）；
+  /// 不是弹窗，所以这里不再自带标题与玻璃卡。
   @override
   Widget build(BuildContext context) {
     final sem = _b.semester;
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.all(floatSide),
-      child: Glass(
-        sheet: true,
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.82),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  GestureDetector(
-                    onTap: () => Navigator.of(context).pop(),
-                    behavior: HitTestBehavior.opaque,
-                    child: const Text('‹ 返回',
-                        style:
-                            TextStyle(fontSize: 15, color: Color(0xFF7FA8FF))),
-                  ),
-                  const Spacer(),
-                  const Text('学期设置',
-                      style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                          color: inkPrimary)),
-                  const Spacer(),
-                  const SizedBox(width: 44),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Expanded(
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      toastLine(),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          toastLine(),
                       const Text('学期名称',
                           style: TextStyle(
                               fontSize: 12, color: Color(0xFF94A0B5))),
@@ -2050,21 +2042,14 @@ class _SemesterSheetState extends State<_SemesterSheet>
                                 fontWeight: FontWeight.w500,
                                 color: inkPrimary)),
                       ),
-                      _NewSemesterForm(
-                        b: _b,
-                        onCreated: (next) {
-                          _apply(next);
-                          showToast(
-                              '已新建「${next.semester?.name ?? ''}」并切换');
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
+          _NewSemesterForm(
+            b: _b,
+            onCreated: (next) {
+              _apply(next);
+              showToast('已新建「${next.semester?.name ?? ''}」并切换');
+            },
           ),
-        ),
+        ],
       ),
     );
   }
@@ -2233,6 +2218,17 @@ class _BackupSheetState extends State<_BackupSheet>
   late final BackupBundle _b = widget.b;
   String? _exportPath;
 
+  /// 鸿蒙 `backupPath` 是一直显示在页上的；安卓导出前先显示目录
+  String _dirPath = '';
+
+  @override
+  void initState() {
+    super.initState();
+    backupDirPath().then((p) {
+      if (mounted) setState(() => _dirPath = p);
+    }).catchError((Object _) {});
+  }
+
   /// 刚恢复过：鸿蒙 `backupNote` —— 在页内显示一行蓝框「已从备份恢复：…」，
   /// 不是弹提示条、也不关掉这一页
   String _restored = '';
@@ -2249,47 +2245,15 @@ class _BackupSheetState extends State<_BackupSheet>
     }
   }
 
+  /// 鸿蒙 `BackupView` 同样是整页场景（顶栏由外壳画）
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.all(floatSide),
-      child: Glass(
-        sheet: true,
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.82),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  GestureDetector(
-                    onTap: () => Navigator.of(context).pop(),
-                    behavior: HitTestBehavior.opaque,
-                    child: const Text('‹ 返回',
-                        style:
-                            TextStyle(fontSize: 15, color: Color(0xFF7FA8FF))),
-                  ),
-                  const Spacer(),
-                  const Text('备份与恢复',
-                      style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                          color: inkPrimary)),
-                  const Spacer(),
-                  const SizedBox(width: 44),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Expanded(
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      toastLine(),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          toastLine(),
                       const Text(
                           '数据只在这台手机里。导出会把全部内容写成一个 JSON 文件放在应用文档目录，'
                           '恢复则用它整份覆盖当前数据。',
@@ -2313,53 +2277,57 @@ class _BackupSheetState extends State<_BackupSheet>
                       ],
                       const SizedBox(height: 12),
                       _sheetButton('导出备份到文件', _export),
-                      if (_exportPath != null) ...[
-                        const SizedBox(height: 10),
-                        const Text('备份文件路径',
-                            style: TextStyle(
-                                fontSize: 12, color: Color(0xFF94A0B5))),
-                        const SizedBox(height: 4),
-                        SelectableText(_exportPath!,
-                            style: const TextStyle(
-                                fontSize: 11, color: Color(0xFFC3CDDE))),
-                        const SizedBox(height: 6),
-                        _PillAction(
-                          text: '复制路径',
-                          onTap: () async {
-                            await Clipboard.setData(
-                                ClipboardData(text: _exportPath!));
-                            if (mounted) showToast('路径已复制');
-                          },
-                        ),
+                      const SizedBox(height: 14),
+                      // 鸿蒙 `BackupView` 的路径块是**一直显示**的（不是导出后才出现）
+                      const Text('备份文件路径',
+                          style: TextStyle(
+                              fontSize: 12, color: Color(0xFF94A0B5))),
+                      const SizedBox(height: 4),
+                      SelectableText(
+                          _exportPath ?? (_dirPath.isEmpty ? '（读取中…）' : _dirPath),
+                          style: const TextStyle(
+                              fontSize: 11, color: Color(0xFFC3CDDE))),
+                      const SizedBox(height: 6),
+                      _PillAction(
+                        text: '复制路径',
+                        onTap: () async {
+                          final p = _exportPath ?? _dirPath;
+                          if (p.isEmpty) return;
+                          await Clipboard.setData(ClipboardData(text: p));
+                          if (mounted) showToast('路径已复制');
+                        },
+                      ),
                         // 鸿蒙那边给的是 `./hdc.sh file recv …`；安卓的等价命令是 adb pull
-                        const Padding(
-                          padding: EdgeInsets.only(top: 10, bottom: 4),
-                          child: Text('想把它存到电脑上（或发给我排查问题），在这个项目目录里跑：',
-                              style: TextStyle(
-                                  fontSize: 11, color: Color(0xFF94A0B5))),
+                      const Padding(
+                        padding: EdgeInsets.only(top: 10, bottom: 4),
+                        child: Text('想把它存到电脑上（或发给我排查问题），在这个项目目录里跑：',
+                            style: TextStyle(
+                                fontSize: 11, color: Color(0xFF94A0B5))),
+                      ),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.10),
+                          borderRadius: BorderRadius.circular(6),
                         ),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.10),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: SelectableText(
-                              "adb pull '${_exportPath!}' ./",
-                              style: const TextStyle(
-                                  fontSize: 10, color: Color(0xFFCBD6E8))),
-                        ),
-                      ],
+                        child: SelectableText(
+                            "adb pull '${_exportPath ?? _dirPath}/' ./",
+                            style: const TextStyle(
+                                fontSize: 10, color: Color(0xFFCBD6E8))),
+                      ),
                       const SizedBox(height: 16),
                       if (widget.onImport != null)
-                        _sheetButton('从备份文件导入…', () async {
+                        // 鸿蒙：琥珀色「从备份恢复」；安卓要多一步选文件，所以文案写清楚是"文件"
+                        _sheetButton('从备份文件恢复…', () async {
                           final got = await widget.onImport!();
                           if (!mounted || got == null) return;
                           // 鸿蒙恢复完**留在本页**，在顶部显示这行蓝框（backupSummary 同款内容）
                           setState(() => _restored = '已从备份恢复：\n'
                               '${backupSummary(got)}');
-                        }, secondary: true, key: const ValueKey('manager-import')),
+                        },
+                            amber: true,
+                            key: const ValueKey('manager-import')),
                       const SizedBox(height: 22),
                       Row(
                         children: [
@@ -2374,19 +2342,11 @@ class _BackupSheetState extends State<_BackupSheet>
                         ],
                       ),
                       const SizedBox(height: 6),
-                      Text(backupSummary(_b),
-                          style: const TextStyle(
-                              fontSize: 11,
-                              height: 1.5,
-                              color: Color(0xFF8B97AC))),
-                      const SizedBox(height: 12),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
+          Text(backupSummary(_b),
+              style: const TextStyle(
+                  fontSize: 11, height: 1.5, color: Color(0xFF8B97AC))),
+          const SizedBox(height: 12),
+        ],
       ),
     );
   }
@@ -2415,7 +2375,15 @@ Widget _sheetInput(TextEditingController c, String hint) {
 
 /// 子页里的整宽蓝按钮
 Widget _sheetButton(String text, VoidCallback onTap,
-    {bool secondary = false, Key? key}) {
+    {bool secondary = false, bool amber = false, Key? key}) {
+  final Color bg = amber
+      ? const Color(0x33B26B00) // rgba(178,107,0,0.20)，鸿蒙「从备份恢复」
+      : (secondary
+          ? Colors.white.withValues(alpha: 0.14)
+          : const Color(0xFF2E6BE6));
+  final Color fg = amber
+      ? const Color(0xFFE8B25C)
+      : (secondary ? const Color(0xFFC3CDDE) : Colors.white);
   return GestureDetector(
     key: key,
     onTap: onTap,
@@ -2425,16 +2393,12 @@ Widget _sheetButton(String text, VoidCallback onTap,
       width: double.infinity,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: secondary
-            ? Colors.white.withValues(alpha: 0.14)
-            : const Color(0xFF2E6BE6),
+        color: bg,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(text,
           style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: secondary ? const Color(0xFFC3CDDE) : Colors.white)),
+              fontSize: 14, fontWeight: FontWeight.w500, color: fg)),
     ),
   );
 }

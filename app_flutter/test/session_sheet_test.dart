@@ -82,7 +82,7 @@ void main() {
     await tester.tap(find.text('＋补课'));
     await tester.pumpAndSettle();
     expect(find.text('补一节课'), findsOneWidget);
-    await tester.tap(find.text('加上这一节'));
+    await tester.tap(find.text('加上这节课'));
     await tester.pumpAndSettle();
 
     final saved = (await repo.load())!;

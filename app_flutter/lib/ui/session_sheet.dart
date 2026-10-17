@@ -632,23 +632,24 @@ class _ExtraSheetState extends State<_ExtraSheet> {
                 ],
               ),
               const SizedBox(height: 14),
+              // 鸿蒙 ExtraSheet：左边「取消」（灰）、右边「加上这节课」（实心蓝白字）
               Row(
                 children: [
-                  Expanded(
-                    child: _BigAction(
-                      text: '加上这一节',
-                      background: const Color(0x382E6BE6),
-                      color: accentBlue,
-                      onTap: _apply,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
                   Expanded(
                     child: _BigAction(
                       text: '取消',
                       background: Colors.white.withValues(alpha: 0.14),
                       color: const Color(0xFFC3CDDE),
                       onTap: () => Navigator.of(context).pop(),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _BigAction(
+                      text: '加上这节课',
+                      background: const Color(0xFF2E6BE6),
+                      color: Colors.white,
+                      onTap: _apply,
                     ),
                   ),
                 ],

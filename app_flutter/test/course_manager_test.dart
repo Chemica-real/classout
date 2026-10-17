@@ -349,4 +349,17 @@ void main() {
     expect(find.textContaining('adb pull'), findsOneWidget);
     expect(find.text('复制路径'), findsOneWidget);
   });
+
+  testWidgets('备份子页：路径块与「从备份文件恢复」一直都在（鸿蒙 BackupView 同款）',
+      (tester) async {
+    // 还没导出时 path_provider 读不到目录 → 显示占位；关键是这两块**不是导出后才出现**
+    await _pump(tester);
+    await _tapVisible(tester, find.byKey(const ValueKey('entry-backup')));
+    expect(find.text('备份文件路径'), findsOneWidget);
+    expect(find.text('从备份文件恢复…'), findsOneWidget);
+    expect(find.textContaining('adb pull'), findsOneWidget);
+    // 鸿蒙那颗按钮是琥珀色（rgba(178,107,0,0.20) 底 + #E8B25C 字）
+    final txt = tester.widget<Text>(find.text('从备份文件恢复…'));
+    expect(txt.style!.color, const Color(0xFFE8B25C));
+  });
 }

@@ -163,6 +163,15 @@ String backupFileName([DateTime? now]) {
 /// 测试可注入的目录（null = 真机走 path_provider；测试环境里没有原生实现）
 Directory? backupDirOverride;
 
+/// 备份目录（只查不写）。给「备份与恢复」页**还没导出时**显示路径用：
+/// 鸿蒙那边是一个固定文件，路径随时可见；安卓是"每次导出新文件"，
+/// 所以这里退一步显示目录，导出后再换成具体文件路径。
+Future<String> backupDirPath({Directory? dir}) async {
+  final target =
+      dir ?? backupDirOverride ?? await getApplicationDocumentsDirectory();
+  return target.path;
+}
+
 /// 写一份备份到应用文档目录，返回文件路径。
 /// [dir] 可注入（测试写临时目录，不碰真机沙箱）。
 Future<String> writeBackupFile(String json, {Directory? dir}) async {

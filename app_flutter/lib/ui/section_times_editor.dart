@@ -12,29 +12,92 @@ import '../model/types.dart';
 import 'app_frame.dart';
 import 'theme.dart';
 
+/// 整页子页（鸿蒙 `SectionsView`）的薄封装：弹一个只有这一页的外壳，
+/// 保存/返回时把结果交回来。课程管理里直接用 `SectionsEditorBody`（同一个整页）。
 Future<List<SectionTime>?> showSectionTimesEditor(
   BuildContext context, {
   required int semesterId,
   required List<SectionTime> sections,
-}) {
-  return showDialog<List<SectionTime>>(
+}) async {
+  List<SectionTime>? result;
+  await showDialog<void>(
     context: context,
     barrierColor: const Color(0x990C1220),
-    builder: (ctx) => _SectionsEditor(
-        semesterId: semesterId, sections: sections),
+    builder: (ctx) => Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.all(floatSide),
+      child: Glass(
+        sheet: true,
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.82),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  GestureDetector(
+                    onTap: () => Navigator.of(ctx).pop(),
+                    behavior: HitTestBehavior.opaque,
+                    child: const Text('‹ 返回',
+                        style:
+                            TextStyle(fontSize: 15, color: Color(0xFF7FA8FF))),
+                  ),
+                  const Spacer(),
+                  const Text('上课节次时间',
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                          color: inkPrimary)),
+                  const Spacer(),
+                  const SizedBox(width: 44),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Expanded(
+                child: SectionsEditorBody(
+                  semesterId: semesterId,
+                  sections: sections,
+                  onClose: () => Navigator.of(ctx).pop(),
+                  onDone: (next) {
+                    result = next;
+                    Navigator.of(ctx).pop();
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
   );
+  return result;
 }
 
-class _SectionsEditor extends StatefulWidget {
+class SectionsEditorBody extends StatefulWidget {
   final int semesterId;
   final List<SectionTime> sections;
-  const _SectionsEditor({required this.semesterId, required this.sections});
+
+  /// 「‹ 返回」= 不保存（鸿蒙 SectionsView 的返回也是直接回列表）
+  final VoidCallback onClose;
+
+  /// 保存：把新的一份节次时间交给调用方
+  final void Function(List<SectionTime> next) onDone;
+  const SectionsEditorBody({
+    super.key,
+    required this.semesterId,
+    required this.sections,
+    required this.onClose,
+    required this.onDone,
+  });
 
   @override
-  State<_SectionsEditor> createState() => _SectionsEditorState();
+  State<SectionsEditorBody> createState() => _SectionsEditorBodyState();
 }
 
-class _SectionsEditorState extends State<_SectionsEditor> {
+class _SectionsEditorBodyState extends State<SectionsEditorBody> {
   late List<SectionTime> _rows = [
     for (final s in widget.sections)
       SectionTime(
@@ -113,45 +176,11 @@ class _SectionsEditorState extends State<_SectionsEditor> {
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.all(floatSide),
-      child: Glass(
-        sheet: true,
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.82),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // TopBar：‹ 返回 + 居中标题
-              Row(
-                children: [
-                  GestureDetector(
-                    onTap: () => Navigator.of(context).pop(),
-                    behavior: HitTestBehavior.opaque,
-                    child: const Text('‹ 返回',
-                        style:
-                            TextStyle(fontSize: 15, color: Color(0xFF7FA8FF))),
-                  ),
-                  const Spacer(),
-                  const Text('上课节次时间',
-                      style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                          color: inkPrimary)),
-                  const Spacer(),
-                  const SizedBox(width: 44),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Expanded(
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
                       const Text(
                           '改这里会立刻影响课表格子的排布。北大校本部一天 12 节，第 9、12 节是机动节次（默认画得矮一点）。',
                           style: TextStyle(
@@ -273,15 +302,9 @@ class _SectionsEditorState extends State<_SectionsEditor> {
                         background: const Color(0xFF2E6BE6),
                         foreground: Colors.white,
                         onTap: () =>
-                            Navigator.of(context).pop(List.of(_rows)),
+                            widget.onDone(List.of(_rows)),
                       ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
+        ],
       ),
     );
   }

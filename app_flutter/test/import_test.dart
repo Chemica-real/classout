@@ -48,6 +48,12 @@ Future<void> _gotoTimetable(WidgetTester tester) async {
     await tester.tap(back.last, warnIfMissed: false);
     await tester.pumpAndSettle();
   }
+  // 再退一层「课程与学期」整页
+  final close = find.text('关闭');
+  if (close.evaluate().isNotEmpty) {
+    await tester.tap(close.last, warnIfMissed: false);
+    await tester.pumpAndSettle();
+  }
   await tester.pump(const Duration(seconds: 1));
   await tester.pumpAndSettle();
   final t = find.text('课表');

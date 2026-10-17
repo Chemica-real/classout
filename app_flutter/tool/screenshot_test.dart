@@ -21,6 +21,8 @@ import 'package:classout/ui/boot_screen.dart';
 import 'package:classout/ui/course_header.dart';
 import 'package:classout/ui/course_manager.dart';
 import 'package:classout/ui/guide_bar.dart';
+import 'package:classout/domain/timetable.dart';
+import 'package:classout/ui/session_sheet.dart';
 import 'package:classout/ui/theme.dart' as theme;
 import 'package:classout/ui/timetable_page.dart';
 import 'package:classout/data/settings.dart';
@@ -218,6 +220,125 @@ void main() {
     await tester.tap(mark);
     await tester.pumpAndSettle();
     await _capture(tester, 'ddl_panel');
+  });
+
+  testWidgets('单周调整弹窗截图（点课程块 → 换教室 / 调课 / 停课）', (tester) async {
+    final family = await _loadFonts();
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+          brightness: Brightness.dark, useMaterial3: true, fontFamily: family),
+      home: Scaffold(
+        body: AppFrame(tab: 0, onTab: (_) {}, child: const SizedBox.expand()),
+        bottomNavigationBar: null,
+      ),
+    ));
+    await tester.pumpAndSettle();
+    // 演示数据第 1 周的任意一节课（弹窗形态与具体哪门课无关）
+    final sem = demo.semester!;
+    final sessions = computeWeekSessions(
+        sem, demo.courses, demo.rules, demo.overrides, demo.sectionTimes, 1);
+    expect(sessions, isNotEmpty);
+    final s = sessions.first;
+    final ctx = tester.element(find.byType(AppFrame));
+    final fut = showSessionSheet(ctx,
+        bundle: demo, session: s, onChanged: (_) {});
+    await tester.pumpAndSettle();
+    await _capture(tester, 'session_sheet');
+    Navigator.of(ctx).pop();
+    await fut;
+  });
+
+  testWidgets('「＋补课」弹窗截图（补一节课）', (tester) async {
+    final family = await _loadFonts();
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+          brightness: Brightness.dark, useMaterial3: true, fontFamily: family),
+      home: Scaffold(body: AppFrame(tab: 0, onTab: (_) {}, child: const SizedBox.expand())),
+    ));
+    await tester.pumpAndSettle();
+    final ctx = tester.element(find.byType(AppFrame));
+    final fut =
+        showExtraSheet(ctx, bundle: demo, week: 1, onChanged: (_) {});
+    await tester.pumpAndSettle();
+    await _capture(tester, 'extra_sheet');
+    Navigator.of(ctx).pop();
+    await fut;
+  });
+
+  testWidgets('「备份与恢复」子页截图（导出 / 导入 / 诊断信息）', (tester) async {
+    final family = await _loadFonts();
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+          brightness: Brightness.dark, useMaterial3: true, fontFamily: family),
+      home: Scaffold(
+        body: AppFrame(tab: 0, onTab: (_) {}, child: const SizedBox.expand()),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    // 不要 await：浮层关掉 Future 才完成
+    unawaited(showCourseManager(tester.element(find.byType(AppFrame)),
+        bundle: demo, onChanged: (_) {}, onImport: () async => null));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('entry-backup')));
+    await tester.pumpAndSettle();
+    await _capture(tester, 'backup_sheet');
+  });
+
+  testWidgets('「学期设置」子页截图（整页，不是弹窗）', (tester) async {
+    final family = await _loadFonts();
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+          brightness: Brightness.dark, useMaterial3: true, fontFamily: family),
+      home: Scaffold(
+        body: AppFrame(tab: 0, onTab: (_) {}, child: const SizedBox.expand()),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    unawaited(showCourseManager(tester.element(find.byType(AppFrame)),
+        bundle: demo, onChanged: (_) {}, onImport: () async => null));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('entry-semester')));
+    await tester.pumpAndSettle();
+    await _capture(tester, 'semester_page');
+  });
+
+  testWidgets('课程编辑子页截图（整页，不是弹窗）', (tester) async {
+    final family = await _loadFonts();
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+          brightness: Brightness.dark, useMaterial3: true, fontFamily: family),
+      home: Scaffold(
+        body: AppFrame(tab: 0, onTab: (_) {}, child: const SizedBox.expand()),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    unawaited(showCourseManager(tester.element(find.byType(AppFrame)),
+        bundle: demo, onChanged: (_) {}, onImport: () async => null));
+    await tester.pumpAndSettle();
+    // 列表第一张课程卡 = demo 的第一门课
+    await tester.tap(find.text(demo.courses.first.name).last);
+    await tester.pumpAndSettle();
+    await _capture(tester, 'course_editor');
   });
 
   testWidgets('待办编辑器（右侧抽屉）截图', (tester) async {
