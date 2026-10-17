@@ -6961,3 +6961,7 @@ Flutter 要做这个得上 `AnimatedList`/`SliverAnimatedList`，改动面比收
 其余已核对：`_BigAction`（单周调整、计划块面板）13/16 与鸿蒙逐处一致；回执/提示文字不动。
 
 - `flutter test` **1305 passed**；golden 重出（`course_manager` / `semester_page` / `todo_editor` 等）。
+
+补充（§116.36 续）：设置页 `_PillBtn` 的默认字号也按鸿蒙改成 **16**（「从相册选一张 / 恢复默认渐变 /
+调整位置 / 区域 / 居中」以及不可排时段的整宽「添加」都是默认 Button）；
+例外两处照鸿蒙显式值：「开始演练」**14**、待办类型的行内「添加」**13**、标语的「恢复默认 / 保存」**12**（高 30）。

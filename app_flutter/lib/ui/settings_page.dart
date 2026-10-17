@@ -798,6 +798,7 @@ class _SettingsPageState extends State<SettingsPage>
         child: _PillBtn(
           key: const ValueKey('settings-guide'),
           text: '开始演练',
+          fontSize: 14, // 鸿蒙这颗显式写了 fontSize(14)
           background: const Color(0xFF2E6BE6),
           foreground: Colors.white,
           onTap: () => widget.onStartGuide?.call(),
@@ -1142,7 +1143,8 @@ class _PillBtn extends StatelessWidget {
     required this.foreground,
     required this.onTap,
     this.height = 40,
-    this.fontSize = 14,
+    // 鸿蒙这些整宽 Button 大多没写 fontSize（= 默认 16）
+    this.fontSize = 16,
   });
 
   @override
