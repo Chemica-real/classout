@@ -30,7 +30,7 @@ void main() {
     await _pump(tester, repo);
     expect(find.text('设置'), findsWidgets);
 
-    await tester.tap(find.text('15 分钟'));
+    await tester.tap(find.byKey(const ValueKey('sync-15')));
     await tester.pumpAndSettle();
     expect(await repo.getKv('sync_interval_min'), '15');
   });
@@ -40,9 +40,10 @@ void main() {
     await _pump(tester, repo);
 
     // 默认 07:00–24:00，点"开始时间 +"→ 07:30
-    final plusButtons = find.byIcon(Icons.add);
-    // 第一个 add 是"开始时间 +"（后面还有"新建类型"/"添加时段"的图标按键）
-    await tester.tap(plusButtons.first);
+    final plus = find.byIcon(Icons.add).first;
+    await tester.ensureVisible(plus); // 设置页变长了，目标可能在屏幕外
+    await tester.pumpAndSettle();
+    await tester.tap(plus);
     await tester.pumpAndSettle();
 
     final saved = parseWindow((await repo.getKv('plan_window'))!);
@@ -54,7 +55,10 @@ void main() {
     final repo = MemoryRepo();
     await _pump(tester, repo);
 
-    await tester.tap(find.text('新建类型'));
+    final chip = find.text('新建类型');
+    await tester.ensureVisible(chip);
+    await tester.pumpAndSettle();
+    await tester.tap(chip);
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).first, '社团');
     await tester.tap(find.widgetWithText(FilledButton, '保存'));
@@ -80,7 +84,10 @@ void main() {
     expect(find.textContaining('午休'), findsWidgets);
 
     final before = (await repo.load())?.restWindows.length ?? 0;
-    await tester.tap(find.text('删除').first);
+    final del = find.text('删除').first;
+    await tester.ensureVisible(del);
+    await tester.pumpAndSettle();
+    await tester.tap(del);
     await tester.pumpAndSettle();
     final after = (await repo.load())?.restWindows.length ?? 0;
     expect(after, before > 0 ? before - 1 : 0);

@@ -11,9 +11,10 @@ ClassOUT 是一款**纯离线鸿蒙原生（ArkTS）「课表 + 待办 + 计划�
 自动生成待办跑通、提醒已落入系统日历。
 
 **当前状态：v1.5.0（鸿蒙端，上架准备中，**尚未提交审核**）**；**iOS/Android 版（Dart+Flutter）
-正在开发中**，已完成规则层 + 数据层 + 四标签页 + 原生接线 + 提醒排期纯逻辑（**585 条测试**），
-见 **§36–§41**；下一步是「通知的平台通道」（需真机/CI）。
-⚠️ **§41.2 发现鸿蒙端一个待修的 bug**：提醒里仍给「考试」推"即将截止"。
+正在开发中**，已完成规则层 + 数据层 + 四标签页 + 原生接线 + 通知提醒（**592 条测试**），
+见 **§36–§42**。⚠️ 两件待办：① 通知的**真机行为**（权限/锁屏/免打扰）只能等 Mac/CI；
+② **§41.2 发现鸿蒙端一个待修的 bug**：提醒里仍给「考试」推"即将截止"。
+下一步：待办「编辑已有条目」（目标 ① 里的"编辑"还没做）+ 真机验证。
 ⚠️ git 历史**已重写并强推**（清掉 UDID + 真实课表，见 **§35**）—— 远端、tag、本地都是新 SHAs，
 旧 SHA 只在 `ClassOUT-history-backup-*.git` 那份镜像备份里。
 健康度：干净构建 `ERROR: 0`、警告 6 条（均为刻意保留）、离线断言 **524 项全绿**、
@@ -3933,3 +3934,41 @@ for (const t of todos) {              // ← 没有排除 category === 'exam'
    换时区/改了数据就整份重排（撤销旧的再排新的）。
 2. iOS：`Info.plist` 加用途说明；首次进设置页/启动时请求权限；被拒要有兜底文案。
 3. 这些**必须在真机/CI 上验**（权限弹窗、锁屏、免打扰），本机只能保证编译与纯逻辑。
+
+
+## 42. 2026-10-17 iOS/Android 版：通知提醒接线（里程碑 ⑤ 完成）
+
+### 42.1 做了什么
+
+| 东西 | 说明 |
+|---|---|
+| `notify/notifier.dart` | `ReminderNotifier` 接口 + `PlannedNotification`（id/at/title/body/kind） |
+| `notify/flutter_notifier.dart` | 真实现：`flutter_local_notifications 22.3.2`。iOS 走 `UNUserNotificationCenter`（`requestPermissions`），Android 走通知渠道 + `AndroidScheduleMode.exactAllowWhileIdle`；时区用 `timezone` 初始化（`Asia/Shanghai`） |
+| `notify/fake_notifier.dart` | 测试替身：记录 `cancelAll`/`schedule` 调用 |
+| `notify/scheduler.dart` | `syncNotifications()`：**先整份撤销 → 再逐条排**（id 从 1000 递增），没权限就一条不排 |
+| 设置页 | 新增「提醒」卡片：每日简报开关、简报时间（06:30/07:30/08:00/09:00）、上课提前（5/10/15/30/60 分钟）、**「立即重排提醒」**按钮（点完弹一句「已排 N 条提醒（系统待发 M 条）」） |
+| `AppSettings` | 加 `briefEnabled/briefMin/classLeadMin`，kv 键名与鸿蒙端一致：`brief_enabled` / `brief_time`（'HH:mm'）/ `class_lead`；坏值/越界回默认（与 `loadReminderSettings` 一致） |
+| 测试 | **592 条**：新增 7 条 —— 撤销→逐条排且 id 递增、无权限不排、待发 ≤ 预算（60 < 64 留余量）、关简报不排简报、提醒设置往返、坏值回默认、**设置页点「立即重排提醒」真的把计划交给通知系统并提示** |
+
+### 42.2 踩到的坑
+
+1. **web 构建炸在 `package:flutter_web_plugins`**：`flutter_local_notifications` 的 web 实现
+   要用它，但 pub 不会自动给你加。修法：`pubspec.yaml` 里显式写
+   `flutter_web_plugins: { sdk: flutter }`（SDK 自带，不额外下载）。
+2. **`initialize()` 在 v22 是命名参数**（`initialize(settings: ...)`），`zonedSchedule()` 也是
+   全命名参数（`id:` / `scheduledDate:` / `notificationDetails:` / `androidScheduleMode:`）——
+   网上的老示例是位置参数，照抄会编译不过。
+3. **两个卡片里都有「15 分钟」**：`find.text('15 分钟')` 会匹配到两个 → tap 报
+   "found multiple"。给 chip 加 `ValueKey('sync-15')` / `ValueKey('lead-15')` 才能精确点。
+4. **设置页变长之后，测试点不到屏幕外的控件**：先 `tester.ensureVisible(finder)` 再 `tap`。
+5. `await` 之后再用 `BuildContext` → 分析器报 `use_build_context_synchronously`。
+   修法：**先取 `ScaffoldMessenger.of(context)` 再 await**。
+
+### 42.3 ⚠️ 还没验的（必须有真机/CI 才能做）
+
+- **权限弹窗**、锁屏展示、免打扰、后台唤醒 —— 这些是系统行为，本机（无 iOS/Android 设备）
+  一条都验不了。现在能保证的只有：**编译通过、调用顺序正确、排期内容与纯逻辑一致**。
+- iOS 还需要在 `ios/Runner/Info.plist` 里补用途说明（`flutter_local_notifications` 的
+  README 有具体键名），并在提交审核时说明"本地通知用于上课/截止提醒"。
+- Android 端若要 `exact` 闹钟，需要在 `AndroidManifest.xml` 里声明
+  `SCHEDULE_EXACT_ALARM`/`USE_EXACT_ALARM`，并在设置里引导用户允许（Android 12+）。

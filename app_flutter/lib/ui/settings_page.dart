@@ -11,6 +11,7 @@ import '../data/settings.dart';
 import '../domain/categories.dart';
 import '../domain/dates.dart';
 import '../domain/plan_math.dart';
+import '../domain/reminders.dart';
 import '../domain/sync_cadence.dart';
 import '../model/types.dart';
 import 'app_frame.dart';
@@ -24,12 +25,16 @@ class SettingsPage extends StatefulWidget {
   final AppSettings settings;
   final void Function(AppSettings next) onSettingsChanged;
 
+  /// 立即重排提醒（由外壳注入：它才知道仓库与通知实现）；返回给用户看的结果文案
+  final Future<String> Function()? onResyncReminders;
+
   const SettingsPage({
     super.key,
     required this.bundle,
     required this.onChanged,
     required this.settings,
     required this.onSettingsChanged,
+    this.onResyncReminders,
   });
 
   @override
@@ -109,6 +114,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   children: [
                     for (final m in syncIntervalChoices)
                       ChoiceChip(
+                        key: ValueKey('sync-$m'),
                         label: Text('$m 分钟', style: const TextStyle(fontSize: 12)),
                         selected: _s.syncIntervalMin == m,
                         onSelected: (_) {
@@ -120,6 +126,68 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
                 Text('当前：每 ${_s.syncIntervalMin} 分钟（默认 $syncIntervalDefault 分钟）',
                     style: const TextStyle(fontSize: 11, color: inkTertiary)),
+
+                const _Title('提醒'),
+                const _Hint('每天一条简报 + 上课前提醒。提醒写在系统通知里（不是后台常驻）。'),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  value: _s.briefEnabled,
+                  title: const Text('每日简报', style: TextStyle(fontSize: 13, color: inkPrimary)),
+                  subtitle: const Text('今天几节课 + 今天截止什么',
+                      style: TextStyle(fontSize: 11, color: inkTertiary)),
+                  onChanged: (v) {
+                    _s.briefEnabled = v;
+                    _saveSettings();
+                  },
+                ),
+                const _Hint('简报时间'),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final t in const [6 * 60 + 30, 7 * 60 + 30, 8 * 60, 9 * 60])
+                      ChoiceChip(
+                        label: Text(minToHHmm(t), style: const TextStyle(fontSize: 12)),
+                        selected: _s.briefMin == t,
+                        onSelected: (_) {
+                          _s.briefMin = t;
+                          _saveSettings();
+                        },
+                      ),
+                  ],
+                ),
+                const _Hint('上课提前多久提醒'),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final m in const [5, 10, 15, 30, 60])
+                      ChoiceChip(
+                        key: ValueKey('lead-$m'),
+                        label: Text('$m 分钟', style: const TextStyle(fontSize: 12)),
+                        selected: _s.classLeadMin == m,
+                        onSelected: (_) {
+                          _s.classLeadMin = m;
+                          _saveSettings();
+                        },
+                      ),
+                  ],
+                ),
+                Text('当前：提前 ${_s.classLeadMin} 分钟（默认 $defaultClassLeadMin 分钟）',
+                    style: const TextStyle(fontSize: 11, color: inkTertiary)),
+                if (widget.onResyncReminders != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: TextButton.icon(
+                      onPressed: () async {
+                        final messenger = ScaffoldMessenger.of(context);
+                        final msg = await widget.onResyncReminders!();
+                        messenger.showSnackBar(SnackBar(content: Text(msg)));
+                      },
+                      icon: const Icon(Icons.notifications_active, size: 16),
+                      label: const Text('立即重排提醒', style: TextStyle(fontSize: 12)),
+                      style: TextButton.styleFrom(foregroundColor: accentBlue),
+                    ),
+                  ),
 
                 const _Title('计划页时间范围'),
                 const _Hint('网格从几点画到几点，按整半小时调。只影响显示，不改数据。'),

@@ -6,6 +6,10 @@ import 'package:flutter/material.dart';
 import '../data/backup.dart';
 import '../data/repo.dart';
 import '../data/settings.dart';
+import '../domain/reminders.dart';
+import '../notify/flutter_notifier.dart';
+import '../notify/notifier.dart';
+import '../notify/scheduler.dart';
 import 'app_frame.dart';
 import 'import_dialog.dart';
 import 'palette.dart';
@@ -20,7 +24,10 @@ class HomeShell extends StatefulWidget {
   /// 库是空的时，用这份兜底数据（演示版就是这么起来的）
   final BackupBundle? fallback;
 
-  const HomeShell({super.key, required this.repo, this.fallback});
+  /// 通知实现（默认真实插件；测试可注入 FakeNotifier）
+  final ReminderNotifier? notifier;
+
+  const HomeShell({super.key, required this.repo, this.fallback, this.notifier});
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -32,6 +39,7 @@ class _HomeShellState extends State<HomeShell> {
   bool _loading = true;
   String? _error;
   int _tab = 0;
+  late final ReminderNotifier _notifier = widget.notifier ?? FlutterNotifier();
 
   @override
   void initState() {
@@ -68,6 +76,32 @@ class _HomeShellState extends State<HomeShell> {
   Future<void> _apply(BackupBundle next) async {
     setState(() => _bundle = next);
     await widget.repo.replaceAll(next);
+  }
+
+  /// 立即重排提醒：算出计划 → 交给系统通知 → 返回一句人话
+  Future<String> _resyncReminders() async {
+    final bundle = _bundle;
+    if (bundle == null || bundle.semester == null) return '还没有课表，无法排提醒';
+    final sem = bundle.semester!;
+    final plan = planReminders(
+      sem: sem,
+      courses: bundle.courses,
+      rules: bundle.rules,
+      times: bundle.sectionTimes,
+      overrides: bundle.overrides,
+      todos: bundle.todos.where((t) => t.status == 'active').toList(),
+      blocks: bundle.blocks,
+      settings: _settings.reminderSettings,
+      now: DateTime.now(),
+    );
+    try {
+      final r = await syncNotifications(_notifier, plan);
+      if (!r.granted) return '没有通知权限，提醒没排上（去系统设置里开一下）';
+      final extra = r.skippedByBudget > 0 ? '，另有 ${r.skippedByBudget} 条超出额度' : '';
+      return '已排 ${r.scheduled} 条提醒（系统待发 ${r.pending} 条）$extra';
+    } catch (e) {
+      return '排提醒失败：$e';
+    }
   }
 
   Future<void> _applySettings(AppSettings next) async {
@@ -136,7 +170,8 @@ class _HomeShellState extends State<HomeShell> {
               bundle: bundle,
               onChanged: _apply,
               settings: _settings,
-              onSettingsChanged: _applySettings),
+              onSettingsChanged: _applySettings,
+              onResyncReminders: _resyncReminders),
         },
       ),
     );

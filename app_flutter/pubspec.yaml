@@ -9,10 +9,15 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # 通知插件的 web 实现要用它（Flutter SDK 自带，不额外下载）
+  flutter_web_plugins:
+    sdk: flutter
   # SQLite（iOS 自带 libsqlite3，直接 FFI 打开；Android 端以后加 sqlite3_flutter_libs）
   sqlite3: ^2.4.0
   # 只有 io 端用：取 App 数据目录（web 端不走这条路）
   path_provider: ^2.1.4
+  flutter_local_notifications: ^22.3.2
+  timezone: ^0.11.2
 
 dev_dependencies:
   flutter_test:
