@@ -29,7 +29,8 @@
 | `view/ChipButton.ets` | `_Choice`/`_Chip`/`_ChipButton`（各页面内） | 选中 = `#2E6BE6` 底 + 白字 |
 | `data/Prefs.ets`（`MOTTO_*`、`mottoUnits`、`clampMottoUnits`、`cleanMotto`） | `lib/domain/motto.dart` | 标语：按显示宽度 32（汉字 2 / 半角 1） |
 | `data/WallpaperRepo.ets` | `lib/data/wallpaper.dart` | 选图 → 拷进 App 私有目录 → kv `wallpaper_path` |
-| `data/*Repo.ets`（`TimetableRepo`/`TodoRepo`/`KvRepo`…） | `lib/data/sqlite_repo.dart` + `repo.dart` | 同一套 SQL schema（`shared/schema.sql`） |
+| `data/*Repo.ets`（`TimetableRepo`/`TodoRepo`/`KvRepo`…） | `lib/data/sqlite_repo.dart` + `repo.dart` | 同一套 SQL schema（`shared/schema.sql`）；`todo_template` 也读写 |
+| `domain/TodoGenerator.ets` | `lib/domain/todo_generator.dart` | 下课自动生成待办：`renderTitle`（%C/%c/%D/%d/%W/%T/%N/%R）、6 种 `computeDdl`、`nextSessionOfCourse`、`generateMissedTodos`（去重键 `course|date|template`、只看已下课、备注不带） |
 | `domain/*.ets`（`Timetable`/`PlanMath`/`TodoRules`/`Reminders`/`Validate`/`SyncCadence`…） | `lib/domain/*.dart` | 规则逐条搬运，用 `shared/fixtures` 对拍（`./tools/sync-contract.sh`） |
 
 ## 三、动效与反馈（逐个对应）
@@ -43,7 +44,7 @@
 
 ## 四、还缺的（按 HANDOFF §52.3 的优先级）
 
-1. 待办编辑器：右侧抽屉的表单完整度（考试日期/时间段的时间选择器）
+1. 课程管理（`CourseManager.ets`）：课程增删改 + 模板编辑（domain 已就绪，UI 未做）
 2. 计划页：待安排货架展开、按列截止标记 + 浮层、长按选中两步模型、双指缩放
 3. 单周调整（停课/换教室/调课/补课/撤销）、课程管理与模板、备份导出
 4. 启动加载页、页头/导航栏真正做成悬浮层

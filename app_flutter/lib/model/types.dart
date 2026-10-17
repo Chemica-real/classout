@@ -339,6 +339,64 @@ class CourseSession {
   });
 }
 
+/// 课程的待办模板（`todo_template` 表）：一节课下课后按它自动生成「待确认」待办。
+/// 字段与 `shared/schema.sql` / 鸿蒙端 `model/Types.ets` 一一对应。
+class TodoTemplate {
+  int id;
+  int courseId;
+  int sortOrder;
+  bool enabled;
+  String titleTemplate;
+  String ddlRule; // none / same_day / days / weekday / week_end / next_session
+  String ddlParam;
+  int estimateMin;
+  String category;
+  String submitChannel;
+  String note;
+
+  TodoTemplate({
+    this.id = 0,
+    this.courseId = 0,
+    this.sortOrder = 0,
+    this.enabled = true,
+    this.titleTemplate = '',
+    this.ddlRule = 'next_session',
+    this.ddlParam = '',
+    this.estimateMin = 60,
+    this.category = 'homework',
+    this.submitChannel = '',
+    this.note = '',
+  });
+
+  factory TodoTemplate.fromJson(Map<String, dynamic> j) => TodoTemplate(
+        id: _int(j['id']),
+        courseId: _int(j['courseId']),
+        sortOrder: _int(j['sortOrder']),
+        enabled: j['enabled'] == null ? true : _int(j['enabled']) != 0,
+        titleTemplate: _str(j['titleTemplate']),
+        ddlRule: _str(j['ddlRule']).isEmpty ? 'next_session' : _str(j['ddlRule']),
+        ddlParam: _str(j['ddlParam']),
+        estimateMin: _int(j['estimateMin']) == 0 ? 60 : _int(j['estimateMin']),
+        category: _str(j['category']).isEmpty ? 'homework' : _str(j['category']),
+        submitChannel: _str(j['submitChannel']),
+        note: _str(j['note']),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'courseId': courseId,
+        'sortOrder': sortOrder,
+        'enabled': enabled,
+        'titleTemplate': titleTemplate,
+        'ddlRule': ddlRule,
+        'ddlParam': ddlParam,
+        'estimateMin': estimateMin,
+        'category': category,
+        'submitChannel': submitChannel,
+        'note': note,
+      };
+}
+
 /// 不可排时段（午休/晚饭/睡觉…）；weekday 0 = 每天，1..7 = 周一..周日
 class RestWindow {
   int id;

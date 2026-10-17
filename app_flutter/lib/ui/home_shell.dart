@@ -9,6 +9,7 @@ import '../data/settings.dart';
 import '../domain/reminders.dart';
 import '../domain/dates.dart';
 import '../domain/timetable.dart';
+import '../domain/todo_generator.dart';
 import '../notify/flutter_notifier.dart';
 import '../notify/notifier.dart';
 import '../notify/scheduler.dart';
@@ -91,6 +92,8 @@ class _HomeShellState extends State<HomeShell> {
           _week = weekOfDate(sem, DateTime.now()).clamp(1, sem.totalWeeks);
         }
       });
+      // 打开 App 时静默补生成「已经下课」的待办（鸿蒙端 generateMissedTodos）
+      if (data != null) await _generateMissed(data);
     } catch (e) {
       debugPrint('[ClassOUT] load error: $e');
       if (!mounted) return;
@@ -153,6 +156,45 @@ class _HomeShellState extends State<HomeShell> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('「$what」还在移植中（鸿蒙端已有，这边下一步补齐）')),
     );
+  }
+
+  /// 下课自动生成待办：把 last_gen_date 到现在之间已经下课的课时，
+  /// 按课程模板生成「待确认」待办（去重键 course|date|template，见 domain/todo_generator.dart）
+  Future<void> _generateMissed(BackupBundle data) async {
+    final sem = data.semester;
+    if (sem == null || data.templates.isEmpty) return;
+    final last = await widget.repo.getKv('last_gen_date') ?? '';
+    final outcome = generateMissedTodos(
+      sem: sem,
+      courses: data.courses,
+      rules: data.rules,
+      overrides: data.overrides,
+      times: data.sectionTimes,
+      templates: data.templates,
+      todos: data.todos,
+      lastGenDate: last,
+      now: DateTime.now(),
+      nextId: data.todos.fold<int>(0, (m, t) => t.id > m ? t.id : m),
+    );
+    await widget.repo.setKv('last_gen_date', outcome.lastGenDate);
+    if (outcome.created.isEmpty || !mounted) return;
+    setState(() {
+      _bundle = BackupBundle(
+        app: data.app,
+        version: data.version,
+        exportedAt: data.exportedAt,
+        semesters: data.semesters,
+        sectionTimes: data.sectionTimes,
+        courses: data.courses,
+        rules: data.rules,
+        overrides: data.overrides,
+        todos: [...data.todos, ...outcome.created],
+        blocks: data.blocks,
+        restWindows: data.restWindows,
+        templates: data.templates,
+      );
+    });
+    await widget.repo.replaceAll(_bundle!);
   }
 
   /// 页头「⟳ 立即与日历同步」：走和「用到 n 分钟自动同步」同一套重排，
@@ -221,7 +263,13 @@ class _HomeShellState extends State<HomeShell> {
           Positioned.fill(
             child: AppFrame(
               tab: _tab,
-              onTab: (i) => setState(() => _tab = i),
+              onTab: (i) {
+                final was = _tab;
+                setState(() => _tab = i);
+                // 用户 2026-10-16：「每次切换到待办列时，立即补生成下课列表」
+                if (i == 1 && was != 1 && _bundle != null)
+                  _generateMissed(_bundle!);
+              },
               wallpaperPath: _settings.wallpaperPath,
               // 课表 / 待办 / 计划 三页共用同一条页头（鸿蒙端 FloatingBars），
               // 设置页没有它 —— 那些是课表页的导航控件。

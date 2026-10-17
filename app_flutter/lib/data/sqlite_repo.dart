@@ -38,6 +38,7 @@ class SqliteRepo implements ClassOutRepo {
       todos: _rows('todo').map(Todo.fromJson).toList(),
       blocks: _rows('plan_block').map(PlanBlock.fromJson).toList(),
       restWindows: _rows('rest_window').map(RestWindow.fromJson).toList(),
+      templates: _rows('todo_template').map(TodoTemplate.fromJson).toList(),
     );
   }
 
@@ -127,6 +128,21 @@ class SqliteRepo implements ClassOutRepo {
           'done_at': t.doneAt,
         });
       }
+      for (final t in b.templates) {
+        _insert('todo_template', {
+          if (t.id > 0) 'id': t.id,
+          'course_id': t.courseId,
+          'sort_order': t.sortOrder,
+          'enabled': t.enabled ? 1 : 0,
+          'title_template': t.titleTemplate,
+          'ddl_rule': t.ddlRule,
+          'ddl_param': t.ddlParam,
+          'estimate_min': t.estimateMin,
+          'category': t.category,
+          'submit_channel': t.submitChannel,
+          'note': t.note,
+        });
+      }
       for (final r in b.restWindows) {
         // ⚠️ id = 0 表示"还没入库"，必须让 AUTOINCREMENT 自己分配 ——
         //    显式写 0 会让第二行撞 UNIQUE(id)。鸿蒙端也只存 start/end/label。
@@ -182,6 +198,7 @@ class SqliteRepo implements ClassOutRepo {
     'section_time',
     'semester',
     'rest_window',
+    'todo_template',
   ];
 
   int _count(String table) =>

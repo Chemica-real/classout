@@ -20,6 +20,10 @@ class BackupBundle {
   final List<PlanBlock> blocks;
   final List<RestWindow> restWindows;
 
+  /// 课程待办模板（鸿蒙端 backup 里的 `templates`）——导入时必须保住，
+  /// 否则「下课自动生成待办」在 iOS/Android 上永远不会发生。
+  final List<TodoTemplate> templates;
+
   const BackupBundle({
     required this.app,
     required this.version,
@@ -32,6 +36,7 @@ class BackupBundle {
     required this.todos,
     required this.blocks,
     this.restWindows = const [],
+    this.templates = const [],
   });
 
   /// 当前学期（暂时取第一条；以后有学期切换再说）
@@ -64,6 +69,7 @@ class BackupBundle {
       todos: _list(j, 'todos', Todo.fromJson),
       blocks: _list(j, 'blocks', PlanBlock.fromJson),
       restWindows: _list(j, 'restWindows', RestWindow.fromJson),
+      templates: _list(j, 'templates', TodoTemplate.fromJson),
     );
   }
 

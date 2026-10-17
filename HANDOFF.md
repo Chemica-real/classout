@@ -4532,3 +4532,38 @@ iOS 侧这次改动**还需 CI 复核**（`DynamicLibrary.process()` + 插件同
 - `flutter test`：**686 passed**
 - **真机（OPPO A97）实测**：点「线代」→ 弹窗（起止节次/星期胶囊/三个按钮都在）→ 点「本周停课」
   → 线代从课表消失、页头出现琥珀色「本周调整 1」（截图核对）
+
+## 56. 2026-10-17 安卓版：下课自动生成待办（模板）+ 模板不再在导入时丢失
+
+鸿蒙端「下课自动生成待办 → 待确认 → 确认后生效」这条链路，安卓版以前**根本没有**：
+`todo_template` 表在 `shared/schema.sql` 里有、`BackupBundle` 里却没有 `templates`，
+于是**导入鸿蒙备份时模板被静默丢掉**，"待确认"那一段永远不会出现。
+
+### 56.1 补上的数据层
+
+- `model/types.dart`：新增 `TodoTemplate`（id/courseId/sortOrder/enabled/titleTemplate/ddlRule/
+  ddlParam/estimateMin/category/submitChannel/note），`fromJson/toJson` 与 schema 列一一对应
+- `data/backup.dart`：`BackupBundle.templates` 解析 `templates` 数组（默认空）
+- `data/sqlite_repo.dart`：`todo_template` 进 `_tableOrder`，`load()` 读、`replaceAll()` 写
+  （**导入 → 重启 → 再读到**的往返不再丢模板）
+
+### 56.2 新文件 `lib/domain/todo_generator.dart`（纯逻辑，照 `TodoGenerator.ets`）
+
+- `renderTitle`：`%C %c %D %d %W %T %N %R`（`%N` = 这门课已有模板待办数 + 1）
+- `sessionsOnDate` / `nextSessionOfCourse`（向前找 28 天）
+- `computeDdl`：`none / same_day / days:N / weekday:N / week_end / next_session`，坏参数回默认
+- `generateMissedTodos(...)`：从 kv `last_gen_date`（含）扫到今天，**只生成已经下课的课时**；
+  去重键 `courseId|date|templateId`；`course.autoTodoEnabled == false` 跳过；
+  状态 `pending`、`source = template`、**备注强制为空**（用户要求）
+- `HomeShell`：`_reload` 之后跑一次 `_generateMissed`，并把新的 `last_gen_date` 写回 kv；
+  **每次切到「待办」标签也补跑一次**（对应鸿蒙端 `refreshMissedTodos`）
+
+### 56.3 验证
+
+- 新增 `test/todo_generator_test.dart`（11 条）：模板变量、六种截止规则、未下课不生成、
+  重复触发去重、`autoTodoEnabled=false`、停课覆盖不生成、`last_gen_date` 为空只扫今天、
+  备份能读出 `templates`，以及一条**端到端**：MemoryRepo 里放一个过去学期 + 模板 → 打开 App
+  → kv 写入 `last_gen_date`、库里多出 pending 待办、切到待办页看得到「待确认」
+- `flutter test`：**696 passed**
+- 真机（OPPO A97）：新包装上后 `db opened` / `loaded: courses=4 todos=6 rules=6` 正常
+  （演示数据没有模板，所以不会凭空生成；模板链路由上面的测试覆盖）
