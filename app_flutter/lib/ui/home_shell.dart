@@ -84,6 +84,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   int _bootStep = 0;
   bool _bootReady = false;
 
+  /// 这一轮启动过场是"闲置后重新启动"（鸿蒙状态行显示「正在重新启动…」）
+  bool _bootRestarting = false;
+
   /// 过场层是否还在（true = 显示加载页/小球）
   bool _bootVisible = true;
 
@@ -141,7 +144,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           idle.inMilliseconds, _settings.syncIntervalMin)) {
         // 闲置太久 → 当成一次冷启动（鸿蒙端就是这么做的：重新走一遍启动流程）
         _activeSec = 0;
-        _reload(boot: true);
+        _reload(boot: true, restart: true);
       }
     } else {
       _lastActiveAt = DateTime.now();
@@ -162,13 +165,14 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   }
 
   /// [boot] = 是否重播启动过场（只有冷启动那一次；导入/演练/补生成之后只静默重读）
-  Future<void> _reload({bool boot = false}) async {
+  Future<void> _reload({bool boot = false, bool restart = false}) async {
     setState(() {
       _loading = true;
       if (boot) {
         _bootStep = 0;
         _bootReady = false;
         _bootVisible = true;
+        _bootRestarting = restart;
       }
     });
     try {
@@ -817,6 +821,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
               step: _bootStep,
               motto: normalMotto(_settings.motto),
               ready: _bootReady,
+              restarting: _bootRestarting,
               onReveal: () {}, // 应用本体一直挂在下层，扩张时自然露出
               onDone: () {
                 if (!mounted) return;

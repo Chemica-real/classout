@@ -42,6 +42,9 @@ class BootScreen extends StatefulWidget {
   /// 数据都就绪 → 开始播"浓缩成球 → 扩张"
   final bool ready;
 
+  /// 闲置太久触发的"重新启动"（鸿蒙 `restart()`：状态行写「正在重新启动…」）
+  final bool restarting;
+
   /// 扩张开始（应用界面该挂载了）
   final VoidCallback onReveal;
 
@@ -53,6 +56,7 @@ class BootScreen extends StatefulWidget {
     required this.step,
     required this.motto,
     required this.ready,
+    this.restarting = false,
     required this.onReveal,
     required this.onDone,
   });
@@ -91,7 +95,7 @@ class _BootScreenState extends State<BootScreen> with TickerProviderStateMixin {
       _spinBack.repeat();
       _pulse.repeat();
     }
-    _type('正在初始化…');
+    _type(widget.restarting ? '正在重新启动…' : '正在初始化…');
     if (widget.ready) _play();
   }
 

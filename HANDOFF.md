@@ -12,7 +12,7 @@ ClassOUT 是一款**纯离线**的「课表 + 待办 + 计划」三合一 App，
 |---|---|---|
 | 版本 | v1.5.1（上架准备中，未提审） | 0.2.0（Android 已装真机 OPPO A97） |
 | 页面 | 课表 / 待办 / 计划 / 设置 + 启动加载页 + 悬浮浮窗 | **同样四页 + 启动页 + 浮窗（§52–§68 逐页复刻）** |
-| 测试 | 离线断言 524 项（`tools/domain-check`） | **1337 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
+| 测试 | 离线断言 524 项（`tools/domain-check`） | **1339 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
 | 差异基准 | 本目录 `docs/manual/01..09.jpg`（真机截图） | `app_flutter/tool/goldens/*.png` 对照上面九张 + `shared/fixtures/`（1115 条规则用例） |
 
 **安卓版与鸿蒙版的 1:1 复刻已经完成**：主题 token 抄自 ArkTS（§52）、六个页面重做、
@@ -6320,7 +6320,7 @@ Material 关闭图标。连同下面几处一起对齐：
 ```bash
 ./tools/domain-check/run.sh          # 鸿蒙端离线断言：524 项
 cd app_flutter && flutter analyze    # 0 issue
-cd app_flutter && flutter test       # 1337 条（含 1115 条三端 fixture 逐条对拍）
+cd app_flutter && flutter test       # 1339 条（含 1115 条三端 fixture 逐条对拍）
 ```
 
 ---
@@ -6602,7 +6602,7 @@ cd app_flutter && flutter test       # 1337 条（含 1115 条三端 fixture 逐
 ```bash
 ./tools/domain-check/run.sh          # 鸿蒙端离线断言：524 项
 cd app_flutter && flutter analyze    # 0 issue
-cd app_flutter && flutter test       # 1337 条（含 1115 条三端 fixture 逐条对拍）
+cd app_flutter && flutter test       # 1339 条（含 1115 条三端 fixture 逐条对拍）
 cd app_flutter && flutter test --update-goldens tool/screenshot_test.dart   # 24 张 golden（1080×2400）
 ```
 
@@ -7329,3 +7329,14 @@ Flutter 要做这个得上 `AnimatedList`/`SliverAnimatedList`，改动面比收
 - 新增 `test/validate_extra_test.dart`（10 条纯函数用例）+ 3 条 UI 拦截用例
   （规则周次 / 模板未知变量 / 节次结束早于开始）。
 - `flutter test` **1337 passed**；24 张 golden 重出。
+
+## 124. 再抠两处文案/状态（对着 Index.ets 逐句核）
+
+- 页头没有学期时的兜底标题：鸿蒙 `EMPTY_SEMESTER.name = '未设置学期'`，安卓写成「还没有课表」→ 改成「未设置学期」。
+- 闲置超时重启（鸿蒙 `restart()`）会先写状态行「正在重新启动…」，安卓一律显示「正在初始化…」。
+  → `BootScreen` 加 `restarting`，`HomeShell._reload(boot:true, restart:true)`（只有闲置重启带 restart）。
+  新测试 `boot_screen_test.dart`（首启 / 闲置重启两句状态行）。
+
+同时把 `validate.dart` 的端口补了单测（`validate_extra_test.dart` 10 条）+ 3 条 UI 拦截用例。
+
+- `flutter test` **1339 passed**；golden 重出。

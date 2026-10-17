@@ -69,7 +69,7 @@ class CourseHeader extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(s?.name ?? '还没有课表',
+                      Text(s?.name ?? '未设置学期',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           // ArkUI 默认行高比 Flutter 紧：不写死的话整张页头卡高 10vp，
