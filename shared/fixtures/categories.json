@@ -1,0 +1,567 @@
+{
+ "module": "categories",
+ "note": "由 tools/fixtures/gen.js 从鸿蒙端实现生成（等价性基准，不是正确性证明）；iOS/Android 必须逐条一致。",
+ "generatedFrom": "entry/src/main/ets/domain/Categories.ets",
+ "cases": [
+  {
+   "fn": "categoryLabel",
+   "args": [
+    "homework",
+    []
+   ],
+   "expect": "作业"
+  },
+  {
+   "fn": "categoryLabel",
+   "args": [
+    "self",
+    []
+   ],
+   "expect": "自学"
+  },
+  {
+   "fn": "categoryLabel",
+   "args": [
+    "exam",
+    []
+   ],
+   "expect": "考试"
+  },
+  {
+   "fn": "categoryLabel",
+   "args": [
+    "none",
+    []
+   ],
+   "expect": ""
+  },
+  {
+   "fn": "categoryLabel",
+   "args": [
+    "other",
+    []
+   ],
+   "expect": "其他"
+  },
+  {
+   "fn": "categoryLabel",
+   "args": [
+    "学校琐事",
+    []
+   ],
+   "expect": "学校琐事"
+  },
+  {
+   "fn": "categoryLabel",
+   "args": [
+    "不存在的",
+    []
+   ],
+   "expect": "不存在的"
+  },
+  {
+   "fn": "allCategoryOptions",
+   "args": [
+    []
+   ],
+   "expect": [
+    {
+     "key": "homework",
+     "label": "作业",
+     "builtin": true
+    },
+    {
+     "key": "self",
+     "label": "自学",
+     "builtin": true
+    },
+    {
+     "key": "exam",
+     "label": "考试",
+     "builtin": true
+    },
+    {
+     "key": "none",
+     "label": "无",
+     "builtin": true
+    }
+   ]
+  },
+  {
+   "fn": "categoryLabel",
+   "args": [
+    "homework",
+    [
+     "学校琐事"
+    ]
+   ],
+   "expect": "作业"
+  },
+  {
+   "fn": "categoryLabel",
+   "args": [
+    "self",
+    [
+     "学校琐事"
+    ]
+   ],
+   "expect": "自学"
+  },
+  {
+   "fn": "categoryLabel",
+   "args": [
+    "exam",
+    [
+     "学校琐事"
+    ]
+   ],
+   "expect": "考试"
+  },
+  {
+   "fn": "categoryLabel",
+   "args": [
+    "none",
+    [
+     "学校琐事"
+    ]
+   ],
+   "expect": ""
+  },
+  {
+   "fn": "categoryLabel",
+   "args": [
+    "other",
+    [
+     "学校琐事"
+    ]
+   ],
+   "expect": "其他"
+  },
+  {
+   "fn": "categoryLabel",
+   "args": [
+    "学校琐事",
+    [
+     "学校琐事"
+    ]
+   ],
+   "expect": "学校琐事"
+  },
+  {
+   "fn": "categoryLabel",
+   "args": [
+    "不存在的",
+    [
+     "学校琐事"
+    ]
+   ],
+   "expect": "不存在的"
+  },
+  {
+   "fn": "allCategoryOptions",
+   "args": [
+    [
+     "学校琐事"
+    ]
+   ],
+   "expect": [
+    {
+     "key": "homework",
+     "label": "作业",
+     "builtin": true
+    },
+    {
+     "key": "self",
+     "label": "自学",
+     "builtin": true
+    },
+    {
+     "key": "exam",
+     "label": "考试",
+     "builtin": true
+    },
+    {
+     "key": "none",
+     "label": "无",
+     "builtin": true
+    },
+    {
+     "key": "学校琐事",
+     "label": "学校琐事",
+     "builtin": false
+    }
+   ]
+  },
+  {
+   "fn": "categoryLabel",
+   "args": [
+    "homework",
+    [
+     "学校琐事",
+     "个人",
+     "社交"
+    ]
+   ],
+   "expect": "作业"
+  },
+  {
+   "fn": "categoryLabel",
+   "args": [
+    "self",
+    [
+     "学校琐事",
+     "个人",
+     "社交"
+    ]
+   ],
+   "expect": "自学"
+  },
+  {
+   "fn": "categoryLabel",
+   "args": [
+    "exam",
+    [
+     "学校琐事",
+     "个人",
+     "社交"
+    ]
+   ],
+   "expect": "考试"
+  },
+  {
+   "fn": "categoryLabel",
+   "args": [
+    "none",
+    [
+     "学校琐事",
+     "个人",
+     "社交"
+    ]
+   ],
+   "expect": ""
+  },
+  {
+   "fn": "categoryLabel",
+   "args": [
+    "other",
+    [
+     "学校琐事",
+     "个人",
+     "社交"
+    ]
+   ],
+   "expect": "其他"
+  },
+  {
+   "fn": "categoryLabel",
+   "args": [
+    "学校琐事",
+    [
+     "学校琐事",
+     "个人",
+     "社交"
+    ]
+   ],
+   "expect": "学校琐事"
+  },
+  {
+   "fn": "categoryLabel",
+   "args": [
+    "不存在的",
+    [
+     "学校琐事",
+     "个人",
+     "社交"
+    ]
+   ],
+   "expect": "不存在的"
+  },
+  {
+   "fn": "allCategoryOptions",
+   "args": [
+    [
+     "学校琐事",
+     "个人",
+     "社交"
+    ]
+   ],
+   "expect": [
+    {
+     "key": "homework",
+     "label": "作业",
+     "builtin": true
+    },
+    {
+     "key": "self",
+     "label": "自学",
+     "builtin": true
+    },
+    {
+     "key": "exam",
+     "label": "考试",
+     "builtin": true
+    },
+    {
+     "key": "none",
+     "label": "无",
+     "builtin": true
+    },
+    {
+     "key": "学校琐事",
+     "label": "学校琐事",
+     "builtin": false
+    },
+    {
+     "key": "个人",
+     "label": "个人",
+     "builtin": false
+    },
+    {
+     "key": "社交",
+     "label": "社交",
+     "builtin": false
+    }
+   ]
+  },
+  {
+   "fn": "builtinLabel",
+   "args": [
+    "homework"
+   ],
+   "expect": "作业"
+  },
+  {
+   "fn": "builtinLabel",
+   "args": [
+    "self"
+   ],
+   "expect": "自学"
+  },
+  {
+   "fn": "builtinLabel",
+   "args": [
+    "exam"
+   ],
+   "expect": "考试"
+  },
+  {
+   "fn": "builtinLabel",
+   "args": [
+    "none"
+   ],
+   "expect": "无"
+  },
+  {
+   "fn": "builtinLabel",
+   "args": [
+    "other"
+   ],
+   "expect": ""
+  },
+  {
+   "fn": "builtinLabel",
+   "args": [
+    "xyz"
+   ],
+   "expect": ""
+  },
+  {
+   "fn": "validateCategoryName",
+   "args": [
+    "",
+    [
+     "学校琐事"
+    ]
+   ],
+   "expect": {
+    "ok": false,
+    "message": "类型名不能为空"
+   }
+  },
+  {
+   "fn": "validateCategoryName",
+   "args": [
+    "  ",
+    [
+     "学校琐事"
+    ]
+   ],
+   "expect": {
+    "ok": false,
+    "message": "类型名不能为空"
+   }
+  },
+  {
+   "fn": "validateCategoryName",
+   "args": [
+    "学校琐事",
+    [
+     "学校琐事"
+    ]
+   ],
+   "expect": {
+    "ok": false,
+    "message": "这个类型已经有了"
+   }
+  },
+  {
+   "fn": "validateCategoryName",
+   "args": [
+    "这是一个特别特别长的名字",
+    [
+     "学校琐事"
+    ]
+   ],
+   "expect": {
+    "ok": false,
+    "message": "类型名最多 8 个字"
+   }
+  },
+  {
+   "fn": "validateCategoryName",
+   "args": [
+    "aaaaaaaa",
+    [
+     "学校琐事"
+    ]
+   ],
+   "expect": {
+    "ok": true,
+    "message": ""
+   }
+  },
+  {
+   "fn": "validateCategoryName",
+   "args": [
+    "个人",
+    [
+     "学校琐事"
+    ]
+   ],
+   "expect": {
+    "ok": true,
+    "message": ""
+   }
+  },
+  {
+   "fn": "addCustomCategory",
+   "args": [
+    [],
+    "个人"
+   ],
+   "expect": [
+    "个人"
+   ]
+  },
+  {
+   "fn": "addCustomCategory",
+   "args": [
+    [
+     "个人"
+    ],
+    "社交"
+   ],
+   "expect": [
+    "个人",
+    "社交"
+   ]
+  },
+  {
+   "fn": "addCustomCategory",
+   "args": [
+    [
+     "个人"
+    ],
+    "个人"
+   ],
+   "expect": [
+    "个人"
+   ]
+  },
+  {
+   "fn": "addCustomCategory",
+   "args": [
+    [
+     "个人"
+    ],
+    "  "
+   ],
+   "expect": [
+    "个人"
+   ]
+  },
+  {
+   "fn": "removeCustomCategory",
+   "args": [
+    [
+     "学校琐事",
+     "个人"
+    ],
+    "学校琐事"
+   ],
+   "expect": [
+    "个人"
+   ]
+  },
+  {
+   "fn": "parseCustomCategories",
+   "args": [
+    ""
+   ],
+   "expect": []
+  },
+  {
+   "fn": "parseCustomCategories",
+   "args": [
+    "学校琐事"
+   ],
+   "expect": [
+    "学校琐事"
+   ]
+  },
+  {
+   "fn": "parseCustomCategories",
+   "args": [
+    "学校琐事,个人"
+   ],
+   "expect": [
+    "学校琐事,个人"
+   ]
+  },
+  {
+   "fn": "parseCustomCategories",
+   "args": [
+    "学校琐事|个人"
+   ],
+   "expect": [
+    "学校琐事|个人"
+   ]
+  },
+  {
+   "fn": "serializeCustomCategories",
+   "args": [
+    []
+   ],
+   "expect": ""
+  },
+  {
+   "fn": "serializeCustomCategories",
+   "args": [
+    [
+     "学校琐事"
+    ]
+   ],
+   "expect": "学校琐事"
+  },
+  {
+   "fn": "serializeCustomCategories",
+   "args": [
+    [
+     "学校琐事",
+     "个人"
+    ]
+   ],
+   "expect": "学校琐事\n个人"
+  }
+ ]
+}

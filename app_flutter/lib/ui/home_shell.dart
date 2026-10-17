@@ -5,9 +5,11 @@ import 'package:flutter/material.dart';
 
 import '../data/backup.dart';
 import '../data/repo.dart';
+import 'app_frame.dart';
 import 'import_dialog.dart';
 import 'palette.dart';
 import 'timetable_page.dart';
+import 'todo_page.dart';
 
 class HomeShell extends StatefulWidget {
   final ClassOutRepo repo;
@@ -25,6 +27,7 @@ class _HomeShellState extends State<HomeShell> {
   BackupBundle? _bundle;
   bool _loading = true;
   String? _error;
+  int _tab = 0;
 
   @override
   void initState() {
@@ -53,6 +56,12 @@ class _HomeShellState extends State<HomeShell> {
         _error = '$e';
       });
     }
+  }
+
+  /// 页面改了数据（勾完成/新建待办…）：先更新界面，再整份写回仓库
+  Future<void> _apply(BackupBundle next) async {
+    setState(() => _bundle = next);
+    await widget.repo.replaceAll(next);
   }
 
   Future<void> _import() async {
@@ -97,6 +106,37 @@ class _HomeShellState extends State<HomeShell> {
         ),
       );
     }
-    return TimetablePage(bundle: bundle, onImport: _import);
+    return Scaffold(
+      body: AppFrame(
+        tab: _tab,
+        onTab: (i) => setState(() => _tab = i),
+        child: switch (_tab) {
+          0 => TimetablePage(bundle: bundle, onImport: _import),
+          1 => TodoPage(bundle: bundle, onChanged: _apply),
+          2 => const _ComingSoon('计划'),
+          _ => const _ComingSoon('设置'),
+        },
+      ),
+    );
+  }
+}
+
+class _ComingSoon extends StatelessWidget {
+  final String name;
+  const _ComingSoon(this.name);
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(name, style: const TextStyle(fontSize: 22, color: inkPrimary)),
+          const SizedBox(height: 6),
+          const Text('还没做：正在按 待办 → 计划 → 设置 的顺序推进',
+              style: TextStyle(fontSize: 12, color: inkTertiary)),
+        ],
+      ),
+    );
   }
 }

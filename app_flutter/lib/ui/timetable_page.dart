@@ -3,14 +3,13 @@
 // 还没做的（下一步）：点格子改课、单周调整、跨周切换动画、玻璃态细节、
 // 待办/计划/设置三个标签页、真实数据库（现在数据来自内存里的 BackupBundle）。
 
-import 'dart:ui' show ImageFilter;
-
 import 'package:flutter/material.dart';
 
 import '../data/backup.dart';
 import '../domain/dates.dart';
 import '../domain/timetable.dart';
 import '../model/types.dart';
+import 'app_frame.dart';
 import 'palette.dart';
 
 class TimetablePage extends StatefulWidget {
@@ -61,17 +60,7 @@ class _TimetablePageState extends State<TimetablePage> {
     final times = [...widget.bundle.sectionTimes]..sort((a, b) => a.section.compareTo(b.section));
     final showWeekend = _sem.showWeekend;
 
-    return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF101826), Color(0xFF1B2436), Color(0xFF241F33)],
-          ),
-        ),
-        child: SafeArea(
-          child: Column(
+    return Column(
             children: [
               _Header(
                 sem: _sem,
@@ -101,12 +90,8 @@ class _TimetablePageState extends State<TimetablePage> {
                   ),
                 ),
               ),
-              _BottomBar(),
             ],
-          ),
-        ),
-      ),
-    );
+          );
   }
 }
 
@@ -133,7 +118,7 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _Glass(
+    return Glass(
       margin: const EdgeInsets.fromLTRB(10, 8, 10, 10),
       padding: const EdgeInsets.fromLTRB(16, 12, 12, 10),
       child: Column(
@@ -284,7 +269,7 @@ class _Grid extends StatelessWidget {
   Widget build(BuildContext context) {
     final days = showWeekend ? 7 : 5;
     final rows = times.length;
-    return _Glass(
+    return Glass(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: SizedBox(
         height: rows * rowH + 12,
@@ -393,73 +378,3 @@ class _SessionBlock extends StatelessWidget {
   }
 }
 
-// ---------------- 底部导航（暂时只是样子） ----------------
-
-class _BottomBar extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return _Glass(
-      margin: const EdgeInsets.fromLTRB(10, 4, 10, 8),
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: const [
-          _TabLabel('课表', true),
-          _TabLabel('待办', false),
-          _TabLabel('计划', false),
-          _TabLabel('设置', false),
-        ],
-      ),
-    );
-  }
-}
-
-class _TabLabel extends StatelessWidget {
-  final String text;
-  final bool active;
-  const _TabLabel(this.text, this.active);
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(text,
-        style: TextStyle(
-            fontSize: 13,
-            fontWeight: active ? FontWeight.w700 : FontWeight.w400,
-            color: active ? inkPrimary : inkTertiary));
-  }
-}
-
-// ---------------- 玻璃底板 ----------------
-
-class _Glass extends StatelessWidget {
-  final Widget child;
-  final EdgeInsets margin;
-  final EdgeInsets padding;
-  const _Glass({
-    required this.child,
-    this.margin = EdgeInsets.zero,
-    this.padding = const EdgeInsets.all(12),
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: margin,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(18),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-          child: Container(
-            padding: padding,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.07),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
-            ),
-            child: child,
-          ),
-        ),
-      ),
-    );
-  }
-}

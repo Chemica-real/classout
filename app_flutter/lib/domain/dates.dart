@@ -28,3 +28,55 @@ int weekdayOf(DateTime d) => d.weekday; // Dart: 周一=1 … 周日=7
 
 /// 分钟数 → 'HH:mm'
 String minToHHmm(int min) => '${_pad2((min ~/ 60))}:${_pad2(min % 60)}';
+
+// ---------------- 文案（与鸿蒙端逐字一致）----------------
+
+/// 相对今天的自然语言：今天 / 明天 / 后天 / N 天后 / 逾期 N 天
+String relativeDayText(DateTime target, DateTime from) {
+  final d = diffDays(target, from);
+  if (d == 0) return '今天';
+  if (d == 1) return '明天';
+  if (d == 2) return '后天';
+  if (d > 0) return '$d 天后';
+  return '逾期 ${-d} 天';
+}
+
+/// 'M.D'（用于 %D 变量）
+String monthDayText(DateTime d) => '${d.month}.${d.day}';
+
+/// 考试倒计时文案；[from] 显式传入，保证是纯函数（能进 fixtures）
+String countdownText(DateTime target, DateTime from) {
+  final d = diffDays(target, from);
+  if (d > 1) return '还有 $d 天';
+  if (d == 1) return '明天';
+  if (d == 0) return '就是今天';
+  return '已结束 ${-d} 天';
+}
+
+/// 最近的周一：周一原样、周二往回 1、周四往回 3、周五往后 3、周日往后 1
+DateTime nearestMonday(DateTime d) {
+  final wd = weekdayOf(d); // 1..7
+  switch (wd) {
+    case 1:
+      return DateTime(d.year, d.month, d.day);
+    case 2:
+      return addDays(d, -1);
+    case 3:
+      return addDays(d, -2);
+    case 4:
+      return addDays(d, -3);
+    case 5:
+      return addDays(d, 3);
+    case 6:
+      return addDays(d, 2);
+    default:
+      return addDays(d, 1);
+  }
+}
+
+DateTime today() {
+  final n = DateTime.now();
+  return DateTime(n.year, n.month, n.day);
+}
+
+String todayStr() => formatDate(today());

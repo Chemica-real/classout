@@ -219,11 +219,60 @@ for (const se of [[1, 2], [5, 6], [12, 12], [9, 10]]) {
   }, 'timetable');
 }
 
+// ================= DateUtil（纯日期文案）=================
+const iso = (d) => DU.formatDate(d);
+for (const t of [['2026-10-18', '2026-10-16'], ['2026-10-17', '2026-10-16'],
+                 ['2026-10-16', '2026-10-16'], ['2026-10-15', '2026-10-16'],
+                 ['2026-11-30', '2026-10-16'], ['2027-01-01', '2026-12-31']]) {
+  add('countdownText', [t[0], t[1]],
+    DU.countdownText(DU.parseDate(t[0]), DU.parseDate(t[1])), 'dates');
+}
+for (const d of ['2026-01-05', '2026-10-16', '2026-12-31']) {
+  add('monthDayText', [d], DU.monthDayText(DU.parseDate(d)), 'dates');
+}
+for (const d of ['2026-10-12', '2026-10-13', '2026-10-14', '2026-10-15',
+                 '2026-10-16', '2026-10-17', '2026-10-18', '2026-10-19']) {
+  add('nearestMonday', [d], iso(DU.nearestMonday(DU.parseDate(d))), 'dates');
+  add('weekdayOf', [d], DU.weekdayOf(DU.parseDate(d)), 'dates');
+}
+
+// ================= Categories（待办类型）=================
+const CT = require(path.join(DIST, 'Categories.js'));
+{
+  const customs = [[], ['学校琐事'], ['学校琐事', '个人', '社交']];
+  for (const c of customs) {
+    for (const k of ['homework', 'self', 'exam', 'none', 'other', '学校琐事', '不存在的']) {
+      add('categoryLabel', [k, c], CT.categoryLabel(k, c), 'categories');
+    }
+    add('allCategoryOptions', [c], CT.allCategoryOptions(c), 'categories');
+  }
+  for (const k of ['homework', 'self', 'exam', 'none', 'other', 'xyz']) {
+    add('builtinLabel', [k], CT.builtinLabel(k), 'categories');
+  }
+  for (const n of ['', '  ', '学校琐事', '这是一个特别特别长的名字', 'a'.repeat(8), '个人']) {
+    add('validateCategoryName', [n, ['学校琐事']], CT.validateCategoryName(n, ['学校琐事']), 'categories');
+  }
+  // ⚠️ args 必须和实际调用的输入**一模一样**，否则 fixture 记的是别的东西
+  for (const pair of [[[], '个人'], [['个人'], '社交'], [['个人'], '个人'], [['个人'], '  ']]) {
+    add('addCustomCategory', [pair[0], pair[1]], CT.addCustomCategory(pair[0], pair[1]), 'categories');
+  }
+  add('removeCustomCategory', [['学校琐事', '个人'], '学校琐事'],
+    CT.removeCustomCategory(['学校琐事', '个人'], '学校琐事'), 'categories');
+  for (const raw of ['', '学校琐事', '学校琐事,个人', '学校琐事|个人']) {
+    add('parseCustomCategories', [raw], CT.parseCustomCategories(raw), 'categories');
+  }
+  for (const list of [[], ['学校琐事'], ['学校琐事', '个人']]) {
+    add('serializeCustomCategories', [list], CT.serializeCustomCategories(list), 'categories');
+  }
+}
+
 const SOURCE = {
   plan_math: 'entry/src/main/ets/domain/PlanMath.ets',
   sync_cadence: 'entry/src/main/ets/domain/SyncCadence.ets',
   validate: 'entry/src/main/ets/domain/Validate.ets',
-  timetable: 'entry/src/main/ets/domain/Timetable.ets'
+  timetable: 'entry/src/main/ets/domain/Timetable.ets',
+  dates: 'entry/src/main/ets/util/DateUtil.ets',
+  categories: 'entry/src/main/ets/domain/Categories.ets'
 };
 fs.mkdirSync(OUT, { recursive: true });
 for (const mod of Object.keys(SOURCE)) {

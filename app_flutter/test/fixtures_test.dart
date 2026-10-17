@@ -10,6 +10,7 @@ import 'dart:io';
 import 'package:test/test.dart';
 
 import 'package:classout/domain/plan_math.dart';
+import 'package:classout/domain/categories.dart';
 import 'package:classout/domain/dates.dart';
 import 'package:classout/domain/sync_cadence.dart';
 import 'package:classout/domain/timetable.dart';
@@ -155,6 +156,34 @@ Object? _call(String fn, List<dynamic> a) {
         'list': plan.list.map((o) => {'id': o.id, 'kind': o.kind, 'newLocation': o.newLocation}).toList(),
         'deleteIds': plan.deleteIds,
       };
+
+    // ---- DateUtil ----
+    case 'countdownText':
+      return countdownText(parseDate(a[0] as String), parseDate(a[1] as String));
+    case 'monthDayText':
+      return monthDayText(parseDate(a[0] as String));
+    case 'nearestMonday':
+      return formatDate(nearestMonday(parseDate(a[0] as String)));
+    case 'weekdayOf':
+      return weekdayOf(parseDate(a[0] as String));
+
+    // ---- Categories ----
+    case 'categoryLabel':
+      return categoryLabel(a[0] as String, (a[1] as List).cast<String>());
+    case 'builtinLabel':
+      return builtinLabel(a[0] as String);
+    case 'allCategoryOptions':
+      return allCategoryOptions((a[0] as List).cast<String>()).map((o) => o.toJson()).toList();
+    case 'validateCategoryName':
+      return validateCategoryName(a[0] as String, (a[1] as List).cast<String>()).toJson();
+    case 'addCustomCategory':
+      return addCustomCategory((a[0] as List).cast<String>(), a[1] as String);
+    case 'removeCustomCategory':
+      return removeCustomCategory((a[0] as List).cast<String>(), a[1] as String);
+    case 'parseCustomCategories':
+      return parseCustomCategories(a[0] as String);
+    case 'serializeCustomCategories':
+      return serializeCustomCategories((a[0] as List).cast<String>());
 
     default:
       throw StateError('fixture 里有本端还没实现的函数：$fn');

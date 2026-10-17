@@ -19,7 +19,7 @@ void main() {
     tester.view.devicePixelRatio = 3.0;
     addTearDown(tester.view.reset);
 
-    await tester.pumpWidget(MaterialApp(home: TimetablePage(bundle: bundle)));
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: TimetablePage(bundle: bundle))));
     await tester.pumpAndSettle();
 
     // 学期名 + 周次
@@ -43,7 +43,7 @@ void main() {
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 3.0;
     addTearDown(tester.view.reset);
-    await tester.pumpWidget(MaterialApp(home: TimetablePage(bundle: _demo())));
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: TimetablePage(bundle: _demo()))));
     await tester.pumpAndSettle();
 
     final sem = _demo().semester!;

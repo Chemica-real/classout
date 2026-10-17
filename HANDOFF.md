@@ -10,9 +10,10 @@ ClassOUT 是一款**纯离线鸿蒙原生（ArkTS）「课表 + 待办 + 计划�
 已成功签名并**安装在用户的真机（华为 nova 15）上运行**，启动无崩溃、种子课表渲染正确、
 自动生成待办跑通、提醒已落入系统日历。
 
-**当前状态：v1.5.0（上架准备中，**尚未提交审核**）**。⚠️ git 历史**已重写并强推**
-（清掉 UDID + 真实课表，见 **§35**）—— 远端、tag、本地都是新 SHAs，旧 SHA 只在
-`ClassOUT-history-backup-*.git` 那份镜像备份里。
+**当前状态：v1.5.0（鸿蒙端，上架准备中，**尚未提交审核**）**；**iOS/Android 版（Dart+Flutter）
+正在开发中**，已完成规则层 + 数据层 + 课表页 + 待办页，见 **§36 / §37**。
+⚠️ git 历史**已重写并强推**（清掉 UDID + 真实课表，见 **§35**）—— 远端、tag、本地都是新 SHAs，
+旧 SHA 只在 `ClassOUT-history-backup-*.git` 那份镜像备份里。
 健康度：干净构建 `ERROR: 0`、警告 6 条（均为刻意保留）、离线断言 **524 项全绿**、
 工作区干净。已推的 tag：`v1.4.0`（`v1.0.0` 那次错位与强推见 §22.7 / §23.7，**v1.0.0 保持不动**）。
 最新提交用 `git log -1` 看。
@@ -3667,3 +3668,96 @@ Dart 和 ArkTS 在**边界**上不是同一个语义，直接"照抄函数名"�
      （每搬一个就在 `tools/fixtures/gen.js` 里加一节，然后 `./tools/sync-contract.sh`）
   5. 最后才是 UI：ArkUI → Flutter（玻璃态用 `BackdropFilter`；
      `BackStack` → `WillPopScope` / `Navigator`；`@StorageLink` → `InheritedNotifier` / provider）
+
+
+## 37. 2026-10-17 iOS/Android 版（Dart+Flutter）：待办页 + 数据层
+
+用户给了一个长期目标：「把 iOS/Android 版继续做完」，并按
+**① 待办页 → ② 计划页 → ③ 设置页 → ④ 原生接线 → ⑤ 通知提醒** 的顺序推进，
+每个里程碑要求：fixtures 对齐 + 测试全绿 + golden 截图 + 更新本文档 + 提交推送。
+（上下文快不够时先把交接写进这一节，再继续。）
+
+### 37.1 现在的仓库结构
+
+```
+ClassOUT/
+├── entry/                鸿蒙端（ArkTS，v1.5.0，已上真机）
+├── shared/               ★ 三端唯一权威：schema.sql / backup-v1.md / fixtures/*.json
+├── tools/
+│   ├── domain-check/     鸿蒙端 524 条离线断言
+│   ├── fixtures/gen.js   从**鸿蒙端实现**生成 fixtures（等价性基准）
+│   └── sync-contract.sh  一条命令：跑断言 + 重抽 schema + 重生成 fixtures
+└── app_flutter/          iOS/Android 版（Dart + Flutter 3.47.2）
+    ├── lib/domain/       plan_math / validate / sync_cadence / timetable / week_mask
+    │                     / dates / categories / todo_list / js_compat
+    ├── lib/data/         backup(解析) / repo(接口+MemoryRepo) / sqlite_repo / sqlite_open
+    ├── lib/model/        types.dart（Todo/Course/SessionRule/… 的 fromJson）
+    ├── lib/ui/           app_frame(外壳+四标签+Glass) / timetable_page / todo_page
+    │                     / todo_editor / import_dialog / home_shell / palette
+    ├── test/             fixtures(452 条) / db / import / todo_page / todo_list
+    │                     / timetable_widget
+    └── tool/             screenshot_test.dart（golden 截图生成器）+ goldens/
+```
+
+### 37.2 这一轮完成的（里程碑 ① 待办页 + 数据层）
+
+| 东西 | 说明 |
+|---|---|
+| `data/sqlite_repo.dart` | 按 `shared/schema.sql` 建库；`replaceAll()` 事务内清空→写入；`load()` 读回 |
+| `data/sqlite_open.dart` | FFI 打开 SQLite；Linux 只有 `libsqlite3.so.0` 时用官方 `open.overrideFor` |
+| `data/repo.dart` | `ClassOutRepo` 抽象 + `MemoryRepo`（web/演示） |
+| `ui/import_dialog.dart` | 粘贴备份 JSON → 对话框内校验 → 整份替换 |
+| `ui/home_shell.dart` | 读仓库 → 画当前标签页 → 改动写回仓库；空库用演示备份兜底 |
+| `ui/app_frame.dart` | 渐变背景 + 底部四标签 + 共用 `Glass` 底板 |
+| `ui/todo_page.dart` | 四段（待确认/即将考试/待办/已完成）+ 确认/完成/恢复 + 新建 |
+| `domain/todo_list.dart` | 分组、两种排序、三种文案（ddlText/examTimeText/doneAtText） |
+| `domain/categories.dart` | 内置四类 + 自定义类型 + 显示名（含退役 'other' 兜底） |
+| fixtures | 452 条（新增 dates 25 / categories 45 / timetable 29） |
+| 测试 | **484 条**：fixtures 452 + TimeAxis 4 + 数据层 8 + 导入 3 + 待办页 4 + 待办规则 6 + 课表页 2 + 非空 1 |
+
+golden 截图：`app_flutter/tool/goldens/{timetable,todos}.png`。
+
+### 37.3 这轮踩到的坑（都值得记住）
+
+1. **fixture 的 args 必须和实际调用的输入一模一样**。我写过一个
+   `add('addCustomCategory', [[''], '个人'], CT.addCustomCategory([], '个人'))` ——
+   记录的是 A 的输入、B 的输出，Dart 端照做就"不一致"了。
+2. **Dart 的 `const` 列表不能 `add`**：`builtinCategoryOptions()` 返回 `const [...]`，
+   `allCategoryOptions` 里直接 `out.add(...)` → `Unsupported operation`。fixtures 抓到的。
+3. **页面不再自带 Scaffold 之后，`InkWell` 找不到 Material 祖先**：测试要包
+   `MaterialApp(home: Scaffold(body: …))`，否则报 "No Material widget found"。
+4. **`flutter_test` 的默认字体没有中文、也没有 Material 图标**（全是豆腐块）。
+   `tool/screenshot_test.dart` 手动 `FontLoader` 装系统的文泉驿 + SDK 里的
+   `MaterialIcons-Regular.otf`，才出得了可看的截图。**这条路是 Linux 上唯一能"看见"界面的办法**。
+5. **SQLite 读出来是 snake_case**：不转 camelCase 的话 `courseId` 静默变 0、`ddl` 变空串，
+   课表错乱但不报错（变异测试：去掉转换 → 3 条 FAIL）。
+6. **排序别重写两遍**：Dart 比较器直接和 SQLite 的 `ORDER BY ...` 对拍
+   （`test/todo_list_test.dart` 里那条"逐条等价"），比肉眼比更可靠。
+7. **7 列课表格子只有 ~42vp 宽**：教室名 5 个汉字放得下，6 个会被截成「教学…」。
+   演示数据里用 `A101` 这种短码；真实数据截断是可接受行为。
+
+### 37.4 还没做 / 下一步
+
+1. **计划页**（日/三日网格 + 待安排托盘 + ⚡找空档 + 截止标记）：`PlanMath` 已经移植并有
+   122 条 fixtures，纯 UI 活。
+2. **设置页**：同步节奏（`SyncCadence` 已移植 63 条 fixtures）、待办类型（`Categories` ✓）、
+   不可排时段、计划时间范围（`PlanMath.normalizeWindow` ✓）。
+3. **原生接线**：`SqliteRepo` 已实现并测过，但没接到 App 启动 —— 原生端要用
+   `path_provider` 取 App 数据目录；web 用 `MemoryRepo`（现在就是）。建议用条件导出
+   （`repo_factory_io.dart if (dart.library.js_interop) repo_factory_web.dart`）。
+4. **选文件导入**：现在只有"粘贴 JSON"。iOS 上要接 `file_picker`（`UIDocumentPickerViewController`），
+   安卓是 SAF；两者都需要真机/CI 才能验。
+5. **通知提醒**：iOS 用 `UNUserNotificationCenter`，**待发上限 64 条**，
+   正好可以复用鸿蒙端 `ReminderScheduler` 的预算截断思路（鸿蒙那边配额也是 64）。
+6. 待办页还缺：编辑已有条目、考试的时间段选择、备注（可折叠）、预计耗时、删除。
+
+### 37.5 怎么在本机继续（命令都在 `app_flutter/README.md`）
+
+```bash
+export PATH=/home/chemica/ChemicaWorkspace/toolchain/flutter-sdk/bin:$PATH
+cd app_flutter && flutter test          # 484 条
+flutter test --update-goldens tool/screenshot_test.dart   # 重新出图
+flutter build web --release && (cd build/web && python3 -m http.server 8081)  # 预览
+# 规则改了之后：
+./tools/domain-check/run.sh && ./tools/sync-contract.sh   # 断言 + fixture 一条龙
+```
