@@ -1974,16 +1974,23 @@ class _Tray extends StatelessWidget {
                         fontSize: 14,
                         fontWeight: FontWeight.w500,
                         color: inkPrimary)),
-                const Spacer(),
-                Text(
-                    selectedId > 0
-                        ? '已选中，点网格空白处放下'
-                        : '拖动 / 点选 / ⚡ 一键找空档',
-                    style: TextStyle(
-                        fontSize: 12,
-                        color: selectedId > 0
-                            ? accentBlue
-                            : const Color(0xFF8B97AC))),
+                // 鸿蒙：未选中时那句提示是 `LAYOUT.tray = 14`，
+                // 「已选中…」那句是 `LAYOUT.cardSub = 12`；
+                // 窄屏（测试 360vp）放不下时省略号收尾，不溢出
+                Expanded(
+                  child: Text(
+                      selectedId > 0
+                          ? '已选中，点网格空白处放下'
+                          : '拖动 / 点选 / ⚡ 一键找空档',
+                      textAlign: TextAlign.right,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: selectedId > 0 ? 12 : 14,
+                          color: selectedId > 0
+                              ? accentBlue
+                              : const Color(0xFF8B97AC))),
+                ),
                 const Padding(
                   padding: EdgeInsets.only(left: 10),
                   child: Text('收起 ▾',

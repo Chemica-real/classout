@@ -6736,3 +6736,15 @@ cd app_flutter && flutter build apk --debug && adb -s 7D7PAQ9PORLR79Z9 install -
 顺带把「鸿蒙漏了考试排除」那句过时注释改掉 —— 鸿蒙现在也跳过考试，两边一致。
 
 - 测试 +1（`该上「线代 第 2 讲」了`）。`flutter test` **1293 passed**。
+
+### 116.22 计划页待安排货架：提示语字号按 `LAYOUT.tray` 调回 14
+
+鸿蒙 `TodoPool` 的标题行是：「待安排」(14 Medium) + 右侧提示 + 「收起 ▾」(12)；
+其中**未选中**那句「拖动 / 点选 / ⚡ 一键找空档」用 `LAYOUT.tray = 14`，
+**已选中**那句「已选中，点网格空白处放下」用 `LAYOUT.cardSub = 12`。
+安卓原来两句都是 12。
+
+改成按状态取 12/14，并把提示放进 `Expanded`（`maxLines:1` + 省略号）——
+14 号在 360vp 的测试视口里会顶出 30px，鸿蒙那边靠 ArkUI 自己换行/压缩，Flutter 得显式收一下。
+
+- `flutter test`：**1293 passed**；golden 重出（`plan.png`）。
