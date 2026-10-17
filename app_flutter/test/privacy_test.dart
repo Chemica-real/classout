@@ -54,6 +54,7 @@ void main() {
     expect(find.text('隐私政策'), findsNWidgets(2));
     expect(find.text('一句话结论'), findsOneWidget);
     expect(find.textContaining('不收集'), findsWidgets);
-    expect(find.textContaining('更新于'), findsOneWidget);
+    expect(find.textContaining('更新日期：'), findsOneWidget);
+    expect(find.text('关闭'), findsOneWidget, reason: '鸿蒙底部有整宽「关闭」');
   });
 }

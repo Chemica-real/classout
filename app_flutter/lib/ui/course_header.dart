@@ -83,9 +83,9 @@ class CourseHeader extends StatelessWidget {
                 ),
                 _Tap(
                   onTap: onPrev,
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                  child: const Icon(Icons.chevron_left,
-                      size: 26, color: accentBlue),
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: const Text('‹',
+                      style: TextStyle(fontSize: 22, color: accentBlue)),
                 ),
                 Text('第 $week 周',
                     style: const TextStyle(
@@ -94,9 +94,9 @@ class CourseHeader extends StatelessWidget {
                         color: inkPrimary)),
                 _Tap(
                   onTap: onNext,
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                  child: const Icon(Icons.chevron_right,
-                      size: 26, color: accentBlue),
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: const Text('›',
+                      style: TextStyle(fontSize: 22, color: accentBlue)),
                 ),
               ],
             ),
@@ -135,15 +135,9 @@ class CourseHeader extends StatelessWidget {
                   _Tap(
                     onTap: () => onSync!(),
                     padding: const EdgeInsets.fromLTRB(8, 2, 2, 2),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.sync, size: 13, color: goodGreen),
-                        SizedBox(width: 3),
-                        Text('立即与日历同步',
-                            style: TextStyle(fontSize: 12, color: goodGreen)),
-                      ],
-                    ),
+                    // 鸿蒙端是「⟳ 立即与日历同步」一行字，不是图标 + 文字
+                    child: const Text('⟳ 立即与日历同步',
+                        style: TextStyle(fontSize: 12, color: goodGreen)),
                   ),
               ],
             ),

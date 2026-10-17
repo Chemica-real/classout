@@ -55,7 +55,7 @@ void main() {
     final start = weekOfDate(sem, DateTime.now()).clamp(1, sem.totalWeeks);
     expect(find.text('第 $start 周'), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.chevron_right));
+    await tester.tap(find.text('›'));
     await tester.pumpAndSettle();
     final next = (start + 1).clamp(1, sem.totalWeeks);
     expect(find.text('第 $next 周'), findsOneWidget);

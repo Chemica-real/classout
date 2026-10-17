@@ -754,7 +754,9 @@ class _EditorBodyState extends State<_EditorBody> {
 
   String _ddlText(String ddl) {
     final min = ddlMinuteOf(ddl);
-    return '${ddl.substring(5, 10)} ${minToHHmm(min)}';
+    // 鸿蒙：`10/16 23:59 · 今天`（末尾带相对日）
+    return '${ddl.substring(5, 10)} ${minToHHmm(min)} · '
+        '${relativeDayText(parseDate(ddl.substring(0, 10)), today())}';
   }
 
   Future<void> _pickCustomDdl() async {
