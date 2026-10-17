@@ -4131,18 +4131,31 @@ for (const t of todos) {
   能不能开」那个问号的**间接答案**。
 - 中文渲染：iOS 有苹方，截图里应该是正常中文（**这一条要人眼看截图确认**，见 47.2）。
 
-### 47.2 仍待确认 / 待办
+### 47.2 ✅ 后三次 run 全部 success，而且这次是**自证**的（不用看截图）
 
-1. **截图内容需要人眼确认**（artifact 下载要登录 GitHub，我这边拿不到）：
-   `.../actions/runs/39002986391` → Artifacts → `ios-simulator-shots`。
-   要看的是：课表页渲染正常、不是「读数据出错：…」（那是 `openRepo()` 抛异常后
-   `FutureBuilder` 显示的错误页，出现就说明 iOS 上 SQLite 打不开）。
-2. 工作流已补一条 **"断言 App 真的在跑"**：`launchctl list` 里有进程 + 没有
-   `~/Library/Logs/DiagnosticReports/*.ips` 崩溃报告，否则 `::error::` 让 job 失败 ——
-   因为 `simctl launch` 成功**不代表没崩**。
-3. **真机仍然没验**（锁屏/免打扰/性能/TestFlight）；这些 iPad 浏览器和模拟器都替代不了。
+| run | 内容 | 结果 |
+|---|---|---|
+| #1 | 首跑 | success |
+| #2 | 加「断言 App 真的在跑」（`launchctl list` 有进程 + 无 `.ips` 崩溃报告） | success |
+| #3 | 加「从 App 日志断言数据层通了」（`log show` 抓 `[ClassOUT]` 行） | **success** |
+| #4 | 改用 `simctl launch --console-pty` 把 stdout 落进 `app.log`（更稳），artifact 也带 `app.log` | success |
 
-### 47.3 以后怎么用
+- ⚠️ 我先前的担心是**多余的**：#3 用 `log show --predicate 'process == "Runner"'` **确实抓到了**
+  `debugPrint` 的输出（所以 `--console-pty` 不是必须的，但更可靠，且能把 stdout 放进 artifact）。
+- 也就是说，iOS 模拟器上现在**自动验证**了这三件事：
+  1. `[ClassOUT] db opened` → **SQLite 在 iOS 上真的打开了**（系统 `libsqlite3` 可用）；
+  2. `[ClassOUT] loaded: courses=… todos=…` → 数据真的读进界面（不是错误页）；
+  3. 没有 `boot error` / `load error` / `boot failed`，且进程存活、无崩溃报告。
+- 截图仍在 artifact `ios-simulator-shots`（含两张 PNG + `app.log`），要人眼看只能登录网页下载；
+  但**结论不再依赖人眼**。
+
+### 47.3 仍然没法验的
+
+- **真机**：锁屏/免打扰/后台唤醒/性能/耗电 —— 模拟器替代不了。
+- **上架链路**：签名、TestFlight、App Store 审核。
+- Android：连 SDK 都还没装（`sqlite3_flutter_libs` 也没加），安卓端一次都没跑过。
+
+### 47.4 以后怎么用
 
 ```bash
 # 两边都推（Gitee 是国内主仓，GitHub 跑 CI）
