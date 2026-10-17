@@ -24,7 +24,9 @@ if (!fs.existsSync(path.join(DIST, 'PlanMath.js'))) {
 const PM = require(path.join(DIST, 'PlanMath.js'));
 
 const cases = [];
-const add = (fn, args, expect) => cases.push({ fn, args, expect });
+/** module = 该函数所属的源文件（决定写到 shared/fixtures/<module>.json） */
+const add = (fn, args, expect, module) =>
+  cases.push({ fn, args, expect, module: module || 'plan_math' });
 
 for (const v of [0, 7, 8, 14, 15, 22, 23, 30, 37, 45, 52, 53, 58, 60, 90, -3, -8]) {
   add('snap', [v], PM.snap(v));
@@ -105,13 +107,69 @@ add('sortPoolTodos', [todos], PM.sortPoolTodos(todos).map((t) => t.id));
 add('selectPoolTodos', [poolTodos, blocks], PM.selectPoolTodos(poolTodos, blocks).map((t) => t.id));
 add('selectPoolTodos', [todos, blocks], PM.selectPoolTodos(todos, blocks).map((t) => t.id));
 
-const fixture = {
-  module: 'PlanMath',
-  note: '由 tools/fixtures/gen.js 从鸿蒙端实现生成；iOS/Android 实现必须逐条一致。',
-  generatedFrom: 'entry/src/main/ets/domain/PlanMath.ets',
-  cases: cases
+// ================= SyncCadence =================
+const SC = require(path.join(DIST, 'SyncCadence.js'));
+for (const raw of [0, -5, 1, 5, 10, 180, 181, 10.4, 7.6, 1000, 2.5]) {
+  add('normalizeSyncInterval', [raw], SC.normalizeSyncInterval(raw), 'sync_cadence');
+}
+for (const a of [0, -1, 1, 5, 10, 14, 15, 30, 59, 60, 120, 300]) {
+  for (const n of [5, 10, 15]) add('isSyncBoundary', [a, n], SC.isSyncBoundary(a, n), 'sync_cadence');
+}
+for (const ms of [0, 1000, 299999, 300000, 300001, 600000, 3600000, -5]) {
+  for (const n of [5, 10]) add('shouldRestartAfterIdle', [ms, n], SC.shouldRestartAfterIdle(ms, n), 'sync_cadence');
+}
+
+// ================= Validate =================
+const VD = require(path.join(DIST, 'Validate.js'));
+for (const v of [-5, 0, 3, 5, 7, 10, 15, 20, 45, 600]) {
+  for (const st of [5, 15, 0, -5]) add('isStepMultiple', [v, st], VD.isStepMultiple(v, st), 'validate');
+}
+for (const raw of [-1, 0, 1, 7, 14, 15, 18, 20, 23, 57, 60, 61, 599, 600, 601, 750, 5000]) {
+  for (const ex of [false, true]) {
+    add('normalizeEstimate', [raw, ex], VD.normalizeEstimate(raw, ex), 'validate');
+    add('migrateEstimate', [raw, ex], VD.migrateEstimate(raw, ex), 'validate');
+    add('validateEstimate', [raw, ex], VD.validateEstimate(raw, ex), 'validate');
+  }
+}
+for (const c of ['homework', 'self', 'exam', 'none', 'other', '']) add('isExamCategory', [c], VD.isExamCategory(c), 'validate');
+for (const t of [[480, 540, 1440], [480, 470, 1440], [480, 480, 1440], [480, 1430, 1440], [480, 1500, 1440], [1425, 1440, 1440]]) {
+  add('resizeEndTo', [t[0], t[1], t[2]], VD.resizeEndTo(t[0], t[1], t[2]), 'validate');
+}
+for (const t of [[480, 540, 2, 1440], [480, 540, 0.5, 1440], [480, 540, 1, 1440], [480, 1440, 2, 1440], [480, 540, 0, 1440], [480, 540, -1, 1440]]) {
+  add('pinchEnd', [t[0], t[1], t[2], t[3]], VD.pinchEnd(t[0], t[1], t[2], t[3]), 'validate');
+}
+for (const d of [-30, -5, 0, 5, 30]) add('pinchDeltaLabel', [d], VD.pinchDeltaLabel(d), 'validate');
+{
+  // ⚠️ 必须带 startMin/endMin：漏了会算出 NaN，JSON 里变成 null，等于没测
+  const b2 = [
+    { id: 1, todoId: 1, date: '2026-10-18', startMin: 480, endMin: 540, done: 0 },
+    { id: 2, todoId: 1, date: '2026-10-19', startMin: 600, endMin: 630, done: 1 },
+    { id: 3, todoId: 2, date: '2026-10-18', startMin: 900, endMin: 1000, done: 0 }
+  ];
+  add('totalBlockMinutes', [b2, 1], VD.totalBlockMinutes(b2, 1), 'validate');
+  add('totalBlockMinutes', [b2, 2], VD.totalBlockMinutes(b2, 2), 'validate');
+  add('totalBlockMinutes', [b2, 9], VD.totalBlockMinutes(b2, 9), 'validate');
+}
+
+const SOURCE = {
+  plan_math: 'entry/src/main/ets/domain/PlanMath.ets',
+  sync_cadence: 'entry/src/main/ets/domain/SyncCadence.ets',
+  validate: 'entry/src/main/ets/domain/Validate.ets'
 };
 fs.mkdirSync(OUT, { recursive: true });
-const file = path.join(OUT, 'plan_math.json');
-fs.writeFileSync(file, JSON.stringify(fixture, null, 1) + '\n', 'utf8');
-console.log('写入 ' + path.relative(process.cwd(), file) + '：' + cases.length + ' 条用例');
+for (const mod of Object.keys(SOURCE)) {
+  const group = cases.filter((c) => c.module === mod).map((c) => ({ fn: c.fn, args: c.args, expect: c.expect }));
+  if (group.length === 0) continue;
+  const fixture = {
+    module: mod,
+    note: '由 tools/fixtures/gen.js 从鸿蒙端实现生成（等价性基准，不是正确性证明）；iOS/Android 必须逐条一致。',
+    generatedFrom: SOURCE[mod],
+    cases: group
+  };
+  const file = path.join(OUT, mod + '.json');
+  fs.writeFileSync(file, JSON.stringify(fixture, null, 1) + '\n', 'utf8');
+  console.log('  ' + mod + '.json：' + group.length + ' 条');
+}
+const stale = path.join(OUT, 'plan_math_old.json');
+if (fs.existsSync(stale)) fs.unlinkSync(stale);
+console.log('合计 ' + cases.length + ' 条');

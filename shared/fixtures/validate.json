@@ -1,0 +1,1535 @@
+{
+ "module": "validate",
+ "note": "由 tools/fixtures/gen.js 从鸿蒙端实现生成（等价性基准，不是正确性证明）；iOS/Android 必须逐条一致。",
+ "generatedFrom": "entry/src/main/ets/domain/Validate.ets",
+ "cases": [
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    -5,
+    5
+   ],
+   "expect": true
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    -5,
+    15
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    -5,
+    0
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    -5,
+    -5
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    0,
+    5
+   ],
+   "expect": true
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    0,
+    15
+   ],
+   "expect": true
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    0,
+    0
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    0,
+    -5
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    3,
+    5
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    3,
+    15
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    3,
+    0
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    3,
+    -5
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    5,
+    5
+   ],
+   "expect": true
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    5,
+    15
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    5,
+    0
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    5,
+    -5
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    7,
+    5
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    7,
+    15
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    7,
+    0
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    7,
+    -5
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    10,
+    5
+   ],
+   "expect": true
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    10,
+    15
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    10,
+    0
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    10,
+    -5
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    15,
+    5
+   ],
+   "expect": true
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    15,
+    15
+   ],
+   "expect": true
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    15,
+    0
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    15,
+    -5
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    20,
+    5
+   ],
+   "expect": true
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    20,
+    15
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    20,
+    0
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    20,
+    -5
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    45,
+    5
+   ],
+   "expect": true
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    45,
+    15
+   ],
+   "expect": true
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    45,
+    0
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    45,
+    -5
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    600,
+    5
+   ],
+   "expect": true
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    600,
+    15
+   ],
+   "expect": true
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    600,
+    0
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isStepMultiple",
+   "args": [
+    600,
+    -5
+   ],
+   "expect": false
+  },
+  {
+   "fn": "normalizeEstimate",
+   "args": [
+    -1,
+    false
+   ],
+   "expect": 60
+  },
+  {
+   "fn": "migrateEstimate",
+   "args": [
+    -1,
+    false
+   ],
+   "expect": 60
+  },
+  {
+   "fn": "validateEstimate",
+   "args": [
+    -1,
+    false
+   ],
+   "expect": {
+    "ok": false,
+    "message": "时长至少 15 分钟"
+   }
+  },
+  {
+   "fn": "normalizeEstimate",
+   "args": [
+    -1,
+    true
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "migrateEstimate",
+   "args": [
+    -1,
+    true
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "validateEstimate",
+   "args": [
+    -1,
+    true
+   ],
+   "expect": {
+    "ok": true,
+    "message": ""
+   }
+  },
+  {
+   "fn": "normalizeEstimate",
+   "args": [
+    0,
+    false
+   ],
+   "expect": 60
+  },
+  {
+   "fn": "migrateEstimate",
+   "args": [
+    0,
+    false
+   ],
+   "expect": 60
+  },
+  {
+   "fn": "validateEstimate",
+   "args": [
+    0,
+    false
+   ],
+   "expect": {
+    "ok": false,
+    "message": "时长至少 15 分钟"
+   }
+  },
+  {
+   "fn": "normalizeEstimate",
+   "args": [
+    0,
+    true
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "migrateEstimate",
+   "args": [
+    0,
+    true
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "validateEstimate",
+   "args": [
+    0,
+    true
+   ],
+   "expect": {
+    "ok": true,
+    "message": ""
+   }
+  },
+  {
+   "fn": "normalizeEstimate",
+   "args": [
+    1,
+    false
+   ],
+   "expect": 15
+  },
+  {
+   "fn": "migrateEstimate",
+   "args": [
+    1,
+    false
+   ],
+   "expect": 15
+  },
+  {
+   "fn": "validateEstimate",
+   "args": [
+    1,
+    false
+   ],
+   "expect": {
+    "ok": false,
+    "message": "时长至少 15 分钟"
+   }
+  },
+  {
+   "fn": "normalizeEstimate",
+   "args": [
+    1,
+    true
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "migrateEstimate",
+   "args": [
+    1,
+    true
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "validateEstimate",
+   "args": [
+    1,
+    true
+   ],
+   "expect": {
+    "ok": true,
+    "message": ""
+   }
+  },
+  {
+   "fn": "normalizeEstimate",
+   "args": [
+    7,
+    false
+   ],
+   "expect": 15
+  },
+  {
+   "fn": "migrateEstimate",
+   "args": [
+    7,
+    false
+   ],
+   "expect": 15
+  },
+  {
+   "fn": "validateEstimate",
+   "args": [
+    7,
+    false
+   ],
+   "expect": {
+    "ok": false,
+    "message": "时长至少 15 分钟"
+   }
+  },
+  {
+   "fn": "normalizeEstimate",
+   "args": [
+    7,
+    true
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "migrateEstimate",
+   "args": [
+    7,
+    true
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "validateEstimate",
+   "args": [
+    7,
+    true
+   ],
+   "expect": {
+    "ok": true,
+    "message": ""
+   }
+  },
+  {
+   "fn": "normalizeEstimate",
+   "args": [
+    14,
+    false
+   ],
+   "expect": 15
+  },
+  {
+   "fn": "migrateEstimate",
+   "args": [
+    14,
+    false
+   ],
+   "expect": 15
+  },
+  {
+   "fn": "validateEstimate",
+   "args": [
+    14,
+    false
+   ],
+   "expect": {
+    "ok": false,
+    "message": "时长至少 15 分钟"
+   }
+  },
+  {
+   "fn": "normalizeEstimate",
+   "args": [
+    14,
+    true
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "migrateEstimate",
+   "args": [
+    14,
+    true
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "validateEstimate",
+   "args": [
+    14,
+    true
+   ],
+   "expect": {
+    "ok": true,
+    "message": ""
+   }
+  },
+  {
+   "fn": "normalizeEstimate",
+   "args": [
+    15,
+    false
+   ],
+   "expect": 15
+  },
+  {
+   "fn": "migrateEstimate",
+   "args": [
+    15,
+    false
+   ],
+   "expect": 15
+  },
+  {
+   "fn": "validateEstimate",
+   "args": [
+    15,
+    false
+   ],
+   "expect": {
+    "ok": true,
+    "message": ""
+   }
+  },
+  {
+   "fn": "normalizeEstimate",
+   "args": [
+    15,
+    true
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "migrateEstimate",
+   "args": [
+    15,
+    true
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "validateEstimate",
+   "args": [
+    15,
+    true
+   ],
+   "expect": {
+    "ok": true,
+    "message": ""
+   }
+  },
+  {
+   "fn": "normalizeEstimate",
+   "args": [
+    18,
+    false
+   ],
+   "expect": 20
+  },
+  {
+   "fn": "migrateEstimate",
+   "args": [
+    18,
+    false
+   ],
+   "expect": 20
+  },
+  {
+   "fn": "validateEstimate",
+   "args": [
+    18,
+    false
+   ],
+   "expect": {
+    "ok": false,
+    "message": "时长必须是 5 分钟的整数倍"
+   }
+  },
+  {
+   "fn": "normalizeEstimate",
+   "args": [
+    18,
+    true
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "migrateEstimate",
+   "args": [
+    18,
+    true
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "validateEstimate",
+   "args": [
+    18,
+    true
+   ],
+   "expect": {
+    "ok": true,
+    "message": ""
+   }
+  },
+  {
+   "fn": "normalizeEstimate",
+   "args": [
+    20,
+    false
+   ],
+   "expect": 20
+  },
+  {
+   "fn": "migrateEstimate",
+   "args": [
+    20,
+    false
+   ],
+   "expect": 20
+  },
+  {
+   "fn": "validateEstimate",
+   "args": [
+    20,
+    false
+   ],
+   "expect": {
+    "ok": true,
+    "message": ""
+   }
+  },
+  {
+   "fn": "normalizeEstimate",
+   "args": [
+    20,
+    true
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "migrateEstimate",
+   "args": [
+    20,
+    true
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "validateEstimate",
+   "args": [
+    20,
+    true
+   ],
+   "expect": {
+    "ok": true,
+    "message": ""
+   }
+  },
+  {
+   "fn": "normalizeEstimate",
+   "args": [
+    23,
+    false
+   ],
+   "expect": 25
+  },
+  {
+   "fn": "migrateEstimate",
+   "args": [
+    23,
+    false
+   ],
+   "expect": 25
+  },
+  {
+   "fn": "validateEstimate",
+   "args": [
+    23,
+    false
+   ],
+   "expect": {
+    "ok": false,
+    "message": "时长必须是 5 分钟的整数倍"
+   }
+  },
+  {
+   "fn": "normalizeEstimate",
+   "args": [
+    23,
+    true
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "migrateEstimate",
+   "args": [
+    23,
+    true
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "validateEstimate",
+   "args": [
+    23,
+    true
+   ],
+   "expect": {
+    "ok": true,
+    "message": ""
+   }
+  },
+  {
+   "fn": "normalizeEstimate",
+   "args": [
+    57,
+    false
+   ],
+   "expect": 55
+  },
+  {
+   "fn": "migrateEstimate",
+   "args": [
+    57,
+    false
+   ],
+   "expect": 55
+  },
+  {
+   "fn": "validateEstimate",
+   "args": [
+    57,
+    false
+   ],
+   "expect": {
+    "ok": false,
+    "message": "时长必须是 5 分钟的整数倍"
+   }
+  },
+  {
+   "fn": "normalizeEstimate",
+   "args": [
+    57,
+    true
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "migrateEstimate",
+   "args": [
+    57,
+    true
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "validateEstimate",
+   "args": [
+    57,
+    true
+   ],
+   "expect": {
+    "ok": true,
+    "message": ""
+   }
+  },
+  {
+   "fn": "normalizeEstimate",
+   "args": [
+    60,
+    false
+   ],
+   "expect": 60
+  },
+  {
+   "fn": "migrateEstimate",
+   "args": [
+    60,
+    false
+   ],
+   "expect": 60
+  },
+  {
+   "fn": "validateEstimate",
+   "args": [
+    60,
+    false
+   ],
+   "expect": {
+    "ok": true,
+    "message": ""
+   }
+  },
+  {
+   "fn": "normalizeEstimate",
+   "args": [
+    60,
+    true
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "migrateEstimate",
+   "args": [
+    60,
+    true
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "validateEstimate",
+   "args": [
+    60,
+    true
+   ],
+   "expect": {
+    "ok": true,
+    "message": ""
+   }
+  },
+  {
+   "fn": "normalizeEstimate",
+   "args": [
+    61,
+    false
+   ],
+   "expect": 60
+  },
+  {
+   "fn": "migrateEstimate",
+   "args": [
+    61,
+    false
+   ],
+   "expect": 60
+  },
+  {
+   "fn": "validateEstimate",
+   "args": [
+    61,
+    false
+   ],
+   "expect": {
+    "ok": false,
+    "message": "时长必须是 5 分钟的整数倍"
+   }
+  },
+  {
+   "fn": "normalizeEstimate",
+   "args": [
+    61,
+    true
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "migrateEstimate",
+   "args": [
+    61,
+    true
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "validateEstimate",
+   "args": [
+    61,
+    true
+   ],
+   "expect": {
+    "ok": true,
+    "message": ""
+   }
+  },
+  {
+   "fn": "normalizeEstimate",
+   "args": [
+    599,
+    false
+   ],
+   "expect": 600
+  },
+  {
+   "fn": "migrateEstimate",
+   "args": [
+    599,
+    false
+   ],
+   "expect": 600
+  },
+  {
+   "fn": "validateEstimate",
+   "args": [
+    599,
+    false
+   ],
+   "expect": {
+    "ok": false,
+    "message": "时长必须是 5 分钟的整数倍"
+   }
+  },
+  {
+   "fn": "normalizeEstimate",
+   "args": [
+    599,
+    true
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "migrateEstimate",
+   "args": [
+    599,
+    true
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "validateEstimate",
+   "args": [
+    599,
+    true
+   ],
+   "expect": {
+    "ok": true,
+    "message": ""
+   }
+  },
+  {
+   "fn": "normalizeEstimate",
+   "args": [
+    600,
+    false
+   ],
+   "expect": 600
+  },
+  {
+   "fn": "migrateEstimate",
+   "args": [
+    600,
+    false
+   ],
+   "expect": 600
+  },
+  {
+   "fn": "validateEstimate",
+   "args": [
+    600,
+    false
+   ],
+   "expect": {
+    "ok": true,
+    "message": ""
+   }
+  },
+  {
+   "fn": "normalizeEstimate",
+   "args": [
+    600,
+    true
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "migrateEstimate",
+   "args": [
+    600,
+    true
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "validateEstimate",
+   "args": [
+    600,
+    true
+   ],
+   "expect": {
+    "ok": true,
+    "message": ""
+   }
+  },
+  {
+   "fn": "normalizeEstimate",
+   "args": [
+    601,
+    false
+   ],
+   "expect": 600
+  },
+  {
+   "fn": "migrateEstimate",
+   "args": [
+    601,
+    false
+   ],
+   "expect": 600
+  },
+  {
+   "fn": "validateEstimate",
+   "args": [
+    601,
+    false
+   ],
+   "expect": {
+    "ok": false,
+    "message": "时长最多 600 分钟"
+   }
+  },
+  {
+   "fn": "normalizeEstimate",
+   "args": [
+    601,
+    true
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "migrateEstimate",
+   "args": [
+    601,
+    true
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "validateEstimate",
+   "args": [
+    601,
+    true
+   ],
+   "expect": {
+    "ok": true,
+    "message": ""
+   }
+  },
+  {
+   "fn": "normalizeEstimate",
+   "args": [
+    750,
+    false
+   ],
+   "expect": 600
+  },
+  {
+   "fn": "migrateEstimate",
+   "args": [
+    750,
+    false
+   ],
+   "expect": 750
+  },
+  {
+   "fn": "validateEstimate",
+   "args": [
+    750,
+    false
+   ],
+   "expect": {
+    "ok": false,
+    "message": "时长最多 600 分钟"
+   }
+  },
+  {
+   "fn": "normalizeEstimate",
+   "args": [
+    750,
+    true
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "migrateEstimate",
+   "args": [
+    750,
+    true
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "validateEstimate",
+   "args": [
+    750,
+    true
+   ],
+   "expect": {
+    "ok": true,
+    "message": ""
+   }
+  },
+  {
+   "fn": "normalizeEstimate",
+   "args": [
+    5000,
+    false
+   ],
+   "expect": 600
+  },
+  {
+   "fn": "migrateEstimate",
+   "args": [
+    5000,
+    false
+   ],
+   "expect": 5000
+  },
+  {
+   "fn": "validateEstimate",
+   "args": [
+    5000,
+    false
+   ],
+   "expect": {
+    "ok": false,
+    "message": "时长最多 600 分钟"
+   }
+  },
+  {
+   "fn": "normalizeEstimate",
+   "args": [
+    5000,
+    true
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "migrateEstimate",
+   "args": [
+    5000,
+    true
+   ],
+   "expect": 0
+  },
+  {
+   "fn": "validateEstimate",
+   "args": [
+    5000,
+    true
+   ],
+   "expect": {
+    "ok": true,
+    "message": ""
+   }
+  },
+  {
+   "fn": "isExamCategory",
+   "args": [
+    "homework"
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isExamCategory",
+   "args": [
+    "self"
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isExamCategory",
+   "args": [
+    "exam"
+   ],
+   "expect": true
+  },
+  {
+   "fn": "isExamCategory",
+   "args": [
+    "none"
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isExamCategory",
+   "args": [
+    "other"
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isExamCategory",
+   "args": [
+    ""
+   ],
+   "expect": false
+  },
+  {
+   "fn": "resizeEndTo",
+   "args": [
+    480,
+    540,
+    1440
+   ],
+   "expect": 540
+  },
+  {
+   "fn": "resizeEndTo",
+   "args": [
+    480,
+    470,
+    1440
+   ],
+   "expect": 495
+  },
+  {
+   "fn": "resizeEndTo",
+   "args": [
+    480,
+    480,
+    1440
+   ],
+   "expect": 495
+  },
+  {
+   "fn": "resizeEndTo",
+   "args": [
+    480,
+    1430,
+    1440
+   ],
+   "expect": 1430
+  },
+  {
+   "fn": "resizeEndTo",
+   "args": [
+    480,
+    1500,
+    1440
+   ],
+   "expect": 1440
+  },
+  {
+   "fn": "resizeEndTo",
+   "args": [
+    1425,
+    1440,
+    1440
+   ],
+   "expect": 1440
+  },
+  {
+   "fn": "pinchEnd",
+   "args": [
+    480,
+    540,
+    2,
+    1440
+   ],
+   "expect": 600
+  },
+  {
+   "fn": "pinchEnd",
+   "args": [
+    480,
+    540,
+    0.5,
+    1440
+   ],
+   "expect": 510
+  },
+  {
+   "fn": "pinchEnd",
+   "args": [
+    480,
+    540,
+    1,
+    1440
+   ],
+   "expect": 540
+  },
+  {
+   "fn": "pinchEnd",
+   "args": [
+    480,
+    1440,
+    2,
+    1440
+   ],
+   "expect": 1440
+  },
+  {
+   "fn": "pinchEnd",
+   "args": [
+    480,
+    540,
+    0,
+    1440
+   ],
+   "expect": 540
+  },
+  {
+   "fn": "pinchEnd",
+   "args": [
+    480,
+    540,
+    -1,
+    1440
+   ],
+   "expect": 540
+  },
+  {
+   "fn": "pinchDeltaLabel",
+   "args": [
+    -30
+   ],
+   "expect": "-30 min"
+  },
+  {
+   "fn": "pinchDeltaLabel",
+   "args": [
+    -5
+   ],
+   "expect": "-5 min"
+  },
+  {
+   "fn": "pinchDeltaLabel",
+   "args": [
+    0
+   ],
+   "expect": "±0 min"
+  },
+  {
+   "fn": "pinchDeltaLabel",
+   "args": [
+    5
+   ],
+   "expect": "+5 min"
+  },
+  {
+   "fn": "pinchDeltaLabel",
+   "args": [
+    30
+   ],
+   "expect": "+30 min"
+  },
+  {
+   "fn": "totalBlockMinutes",
+   "args": [
+    [
+     {
+      "id": 1,
+      "todoId": 1,
+      "date": "2026-10-18",
+      "startMin": 480,
+      "endMin": 540,
+      "done": 0
+     },
+     {
+      "id": 2,
+      "todoId": 1,
+      "date": "2026-10-19",
+      "startMin": 600,
+      "endMin": 630,
+      "done": 1
+     },
+     {
+      "id": 3,
+      "todoId": 2,
+      "date": "2026-10-18",
+      "startMin": 900,
+      "endMin": 1000,
+      "done": 0
+     }
+    ],
+    1
+   ],
+   "expect": 90
+  },
+  {
+   "fn": "totalBlockMinutes",
+   "args": [
+    [
+     {
+      "id": 1,
+      "todoId": 1,
+      "date": "2026-10-18",
+      "startMin": 480,
+      "endMin": 540,
+      "done": 0
+     },
+     {
+      "id": 2,
+      "todoId": 1,
+      "date": "2026-10-19",
+      "startMin": 600,
+      "endMin": 630,
+      "done": 1
+     },
+     {
+      "id": 3,
+      "todoId": 2,
+      "date": "2026-10-18",
+      "startMin": 900,
+      "endMin": 1000,
+      "done": 0
+     }
+    ],
+    2
+   ],
+   "expect": 100
+  },
+  {
+   "fn": "totalBlockMinutes",
+   "args": [
+    [
+     {
+      "id": 1,
+      "todoId": 1,
+      "date": "2026-10-18",
+      "startMin": 480,
+      "endMin": 540,
+      "done": 0
+     },
+     {
+      "id": 2,
+      "todoId": 1,
+      "date": "2026-10-19",
+      "startMin": 600,
+      "endMin": 630,
+      "done": 1
+     },
+     {
+      "id": 3,
+      "todoId": 2,
+      "date": "2026-10-18",
+      "startMin": 900,
+      "endMin": 1000,
+      "done": 0
+     }
+    ],
+    9
+   ],
+   "expect": -1
+  }
+ ]
+}

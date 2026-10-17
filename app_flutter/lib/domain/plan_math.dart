@@ -5,10 +5,11 @@
 //    鸿蒙端那条规则要是改了，先改 fixtures 再改这里，别直接改这里。
 //
 // ⚠️ 两个 JS 兼容闸门：ArkTS 的 `Math.round` / `parseInt` 和 Dart 的同名函数在
-//    边界上不一致（负数取整方向、字符串前缀解析），所以用 _jsRound / _jsParseInt 复刻。
+//    边界上不一致（负数取整方向、字符串前缀解析），所以用 js_compat.dart 里的 jsRound / jsParseInt 复刻。
 //    测试里 snap(-8) 这类用例就是在盯这个。
 
 import '../model/types.dart';
+import 'js_compat.dart';
 
 // ---------------- 常量 ----------------
 
@@ -24,14 +25,7 @@ const int windowSnapMin = 30;
 
 // ---------------- JS 兼容闸门 ----------------
 
-/// 等价于 JS `Math.round`：.5 一律向 **+∞** 取整（Dart 的 `round()` 是远离零）。
-int _jsRound(num x) => (x + 0.5).floor();
-
-/// 等价于 JS `parseInt(s, 10)`：解析**前缀**数字，失败返回 null（Dart 的 `int.parse` 不接受尾巴）。
-int? _jsParseInt(String s) {
-  final m = RegExp(r'^\s*([+-]?\d+)').firstMatch(s);
-  return m == null ? null : int.parse(m.group(1)!);
-}
+// JS 兼容闸门统一放在 js_compat.dart（Math.round / parseInt 的边界差异）
 
 int _clamp(int v, int lo, int hi) => v < lo ? lo : (v > hi ? hi : v);
 
@@ -63,9 +57,9 @@ int _asInt(Object? v) => v is num ? v.toInt() : 0;
 const TimeWindow defaultWindow = TimeWindow(7 * 60, 24 * 60);
 
 /// 吸附到 15 分钟刻度
-int snap(int v) => _jsRound(v / snapMin) * snapMin;
+int snap(int v) => jsRound(v / snapMin) * snapMin;
 
-int _snapTo(int v, int step) => _jsRound(v / step) * step;
+int _snapTo(int v, int step) => jsRound(v / step) * step;
 
 /// 合法的时间窗：吸附到 30 分钟并夹进可用范围（不足 1 小时就撑到 1 小时）
 TimeWindow normalizeWindow(TimeWindow w) {
@@ -96,8 +90,8 @@ String formatWindow(TimeWindow w) {
 TimeWindow parseWindow(String raw) {
   final parts = raw.split(',');
   if (parts.length != 2) return defaultWindow;
-  final s = _jsParseInt(parts[0]);
-  final e = _jsParseInt(parts[1]);
+  final s = jsParseInt(parts[0]);
+  final e = jsParseInt(parts[1]);
   if (s == null || e == null) return defaultWindow;
   return normalizeWindow(TimeWindow(s, e));
 }
@@ -252,8 +246,8 @@ class DdlGroup {
 /// 'YYYY-MM-DD HH:mm' → 当天分钟数；没有时刻 / 解析不出 → -1
 int ddlMinuteOf(String ddl) {
   if (ddl.length < 16) return -1;
-  final h = _jsParseInt(ddl.substring(11, 13));
-  final m = _jsParseInt(ddl.substring(14, 16));
+  final h = jsParseInt(ddl.substring(11, 13));
+  final m = jsParseInt(ddl.substring(14, 16));
   if (h == null || m == null) return -1;
   return h * 60 + m;
 }

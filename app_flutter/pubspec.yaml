@@ -1,0 +1,14 @@
+# ⚠️ 临时：现在只有**纯 Dart** 依赖，为了能在没装 Flutter 的机器上先验证规则层
+#    （`dart pub get && dart test`）。
+# 等 Flutter SDK 到位后，按 `flutter create` 生成的模板补上：
+#     dependencies: { flutter: { sdk: flutter } }
+#     dev_dependencies: { flutter_test: { sdk: flutter } }
+# lib/domain、lib/model、test/fixtures_test.dart 都不用改。
+name: classout
+description: ClassOUT —— 课表 + 待办 + 计划（iOS / Android 用 Dart 实现；鸿蒙端是 ArkTS）
+publish_to: 'none'
+version: 0.1.0
+environment:
+  sdk: '>=3.4.0 <4.0.0'
+dev_dependencies:
+  test: ^1.25.0

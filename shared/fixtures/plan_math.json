@@ -1,6 +1,6 @@
 {
- "module": "PlanMath",
- "note": "由 tools/fixtures/gen.js 从鸿蒙端实现生成；iOS/Android 实现必须逐条一致。",
+ "module": "plan_math",
+ "note": "由 tools/fixtures/gen.js 从鸿蒙端实现生成（等价性基准，不是正确性证明）；iOS/Android 必须逐条一致。",
  "generatedFrom": "entry/src/main/ets/domain/PlanMath.ets",
  "cases": [
   {

@@ -57,12 +57,23 @@ class Todo {
       );
 }
 
-class PlanBlock {
+/// 只要「待办 id + 起止分钟」的窄接口（validate.totalBlockMinutes 用，
+/// 免得把那个纯函数绑死在完整的 PlanBlock 上）
+abstract class PlanBlockLike {
+  int get todoId;
+  int get startMin;
+  int get endMin;
+}
+
+class PlanBlock implements PlanBlockLike {
   int id;
+  @override
   int todoId;
   int lessonId;
   String date;
+  @override
   int startMin;
+  @override
   int endMin;
   bool done;
 

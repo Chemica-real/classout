@@ -16,12 +16,12 @@ ArkTS 的代码**不能**跑在 iOS/Android 上，所以"同步开发"同步的�
 | 文件 | 作用 | 谁生成 |
 |---|---|---|
 | `schema.sql` | 12 张表的权威 DDL（19 条语句含索引） | `tools/sync-contract.sh` 从 `data/Schema.ets` 抽，**别手改** |
-| `fixtures/*.json` | **规则的标准答案**：每条是 `{fn, args, expect}` | `tools/fixtures/gen.js` 从鸿蒙端编译产物生成 |
+| `fixtures/*.json` | **规则的标准答案**：每条 `{fn, args, expect}`，按模块分文件（现 3 个模块、353 条） | `tools/fixtures/gen.js` 从鸿蒙端编译产物生成 |
 | `backup-v1.md` | 备份 JSON 的字段规范（跨平台挪数据的通道） | 手写 |
 
 ## 改规则的工作流（照做就不会漂）
 
-1. 改 `shared/fixtures/*.json` 里的期望值（**先让它红**）；
+1. 改 `shared/fixtures/*.json` 里的期望值（**先让它红**）—— 或直接在 `tools/fixtures/gen.js` 里加输入，再重新生成；
 2. 改鸿蒙端 `domain/*.ets`；
 3. `./tools/sync-contract.sh`（跑 524 条断言 + 重新生成 fixtures，看是否一致）；
 4. 改 Dart 端 `app_flutter/lib/domain/*.dart`；

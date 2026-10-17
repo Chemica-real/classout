@@ -3626,7 +3626,7 @@ ArkTS 代码不能复用，能同步的是**规则**。`shared/` 就是规则本
 | 文件 | 内容 | 谁生成 |
 |---|---|---|
 | `shared/schema.sql` | 19 条权威 DDL（12 表 + 7 索引） | `tools/sync-contract.sh` 从 `data/Schema.ets` 抽 |
-| `shared/fixtures/plan_math.json` | **122 条** `{fn, args, expect}` | `tools/fixtures/gen.js` 从**已验证的**鸿蒙端实现冻结 |
+| `shared/fixtures/*.json` | **353 条** `{fn, args, expect}`，按模块分文件：`plan_math`(122) / `sync_cadence`(63) / `validate`(168) | `tools/fixtures/gen.js` 从**已验证的**鸿蒙端实现冻结 |
 | `shared/backup-v1.md` | 备份 JSON 字段规范 + 导入 5 条规则（外键重映射/前向兼容/整份替换） | 手写 |
 | `shared/README.md` | 改规则的工作流（先改 fixtures 变红 → 两端实现 → 两端绿） | 手写 |
 

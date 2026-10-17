@@ -1,0 +1,500 @@
+{
+ "module": "sync_cadence",
+ "note": "由 tools/fixtures/gen.js 从鸿蒙端实现生成（等价性基准，不是正确性证明）；iOS/Android 必须逐条一致。",
+ "generatedFrom": "entry/src/main/ets/domain/SyncCadence.ets",
+ "cases": [
+  {
+   "fn": "normalizeSyncInterval",
+   "args": [
+    0
+   ],
+   "expect": 10
+  },
+  {
+   "fn": "normalizeSyncInterval",
+   "args": [
+    -5
+   ],
+   "expect": 10
+  },
+  {
+   "fn": "normalizeSyncInterval",
+   "args": [
+    1
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "normalizeSyncInterval",
+   "args": [
+    5
+   ],
+   "expect": 5
+  },
+  {
+   "fn": "normalizeSyncInterval",
+   "args": [
+    10
+   ],
+   "expect": 10
+  },
+  {
+   "fn": "normalizeSyncInterval",
+   "args": [
+    180
+   ],
+   "expect": 180
+  },
+  {
+   "fn": "normalizeSyncInterval",
+   "args": [
+    181
+   ],
+   "expect": 180
+  },
+  {
+   "fn": "normalizeSyncInterval",
+   "args": [
+    10.4
+   ],
+   "expect": 10
+  },
+  {
+   "fn": "normalizeSyncInterval",
+   "args": [
+    7.6
+   ],
+   "expect": 8
+  },
+  {
+   "fn": "normalizeSyncInterval",
+   "args": [
+    1000
+   ],
+   "expect": 180
+  },
+  {
+   "fn": "normalizeSyncInterval",
+   "args": [
+    2.5
+   ],
+   "expect": 3
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    0,
+    5
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    0,
+    10
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    0,
+    15
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    -1,
+    5
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    -1,
+    10
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    -1,
+    15
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    1,
+    5
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    1,
+    10
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    1,
+    15
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    5,
+    5
+   ],
+   "expect": true
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    5,
+    10
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    5,
+    15
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    10,
+    5
+   ],
+   "expect": true
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    10,
+    10
+   ],
+   "expect": true
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    10,
+    15
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    14,
+    5
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    14,
+    10
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    14,
+    15
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    15,
+    5
+   ],
+   "expect": true
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    15,
+    10
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    15,
+    15
+   ],
+   "expect": true
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    30,
+    5
+   ],
+   "expect": true
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    30,
+    10
+   ],
+   "expect": true
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    30,
+    15
+   ],
+   "expect": true
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    59,
+    5
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    59,
+    10
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    59,
+    15
+   ],
+   "expect": false
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    60,
+    5
+   ],
+   "expect": true
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    60,
+    10
+   ],
+   "expect": true
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    60,
+    15
+   ],
+   "expect": true
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    120,
+    5
+   ],
+   "expect": true
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    120,
+    10
+   ],
+   "expect": true
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    120,
+    15
+   ],
+   "expect": true
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    300,
+    5
+   ],
+   "expect": true
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    300,
+    10
+   ],
+   "expect": true
+  },
+  {
+   "fn": "isSyncBoundary",
+   "args": [
+    300,
+    15
+   ],
+   "expect": true
+  },
+  {
+   "fn": "shouldRestartAfterIdle",
+   "args": [
+    0,
+    5
+   ],
+   "expect": false
+  },
+  {
+   "fn": "shouldRestartAfterIdle",
+   "args": [
+    0,
+    10
+   ],
+   "expect": false
+  },
+  {
+   "fn": "shouldRestartAfterIdle",
+   "args": [
+    1000,
+    5
+   ],
+   "expect": false
+  },
+  {
+   "fn": "shouldRestartAfterIdle",
+   "args": [
+    1000,
+    10
+   ],
+   "expect": false
+  },
+  {
+   "fn": "shouldRestartAfterIdle",
+   "args": [
+    299999,
+    5
+   ],
+   "expect": false
+  },
+  {
+   "fn": "shouldRestartAfterIdle",
+   "args": [
+    299999,
+    10
+   ],
+   "expect": false
+  },
+  {
+   "fn": "shouldRestartAfterIdle",
+   "args": [
+    300000,
+    5
+   ],
+   "expect": false
+  },
+  {
+   "fn": "shouldRestartAfterIdle",
+   "args": [
+    300000,
+    10
+   ],
+   "expect": false
+  },
+  {
+   "fn": "shouldRestartAfterIdle",
+   "args": [
+    300001,
+    5
+   ],
+   "expect": true
+  },
+  {
+   "fn": "shouldRestartAfterIdle",
+   "args": [
+    300001,
+    10
+   ],
+   "expect": false
+  },
+  {
+   "fn": "shouldRestartAfterIdle",
+   "args": [
+    600000,
+    5
+   ],
+   "expect": true
+  },
+  {
+   "fn": "shouldRestartAfterIdle",
+   "args": [
+    600000,
+    10
+   ],
+   "expect": false
+  },
+  {
+   "fn": "shouldRestartAfterIdle",
+   "args": [
+    3600000,
+    5
+   ],
+   "expect": true
+  },
+  {
+   "fn": "shouldRestartAfterIdle",
+   "args": [
+    3600000,
+    10
+   ],
+   "expect": true
+  },
+  {
+   "fn": "shouldRestartAfterIdle",
+   "args": [
+    -5,
+    5
+   ],
+   "expect": false
+  },
+  {
+   "fn": "shouldRestartAfterIdle",
+   "args": [
+    -5,
+    10
+   ],
+   "expect": false
+  }
+ ]
+}
