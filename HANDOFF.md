@@ -7298,3 +7298,13 @@ Flutter 要做这个得上 `AnimatedList`/`SliverAnimatedList`，改动面比收
 截图生成器里给它注入了固定 `now`（10/16 12:00）→ 现在稳定显示「今天」。
 
 - `flutter test` **1324 passed**；24 张 golden 重出。
+
+### 122.8 课程编辑器的色板（同一门课双机对照）
+
+鸿蒙 `Flex(wrap)` 里每个色点是 **30×30、选中 3px `#F2F5FA` 环、未选中 1px 白 0.12**，
+外加 `margin right/bottom 8`；安卓是 26×26、只有选中态画 2px 白环（未选中没描边），
+于是 10 个色点被挤成"9 + 1"两行，鸿蒙是"8 + 2"。
+
+→ 按鸿蒙改成 30×30、选中 3px / 未选 1px（白 0.12）。重装后双机同页：色板换行一致（8 + 2）。
+
+- `flutter test` 1324 passed；golden 重出（`course_editor` / `course_manager`）。

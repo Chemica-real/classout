@@ -850,15 +850,19 @@ class _CourseEditorState extends State<_CourseEditor> {
                         for (var i = 0; i < courseColors.length; i++)
                           GestureDetector(
                             onTap: () => setState(() => _color = i),
+                            // 鸿蒙：30×30、选中 3px #F2F5FA 环 / 未选中 1px 白 0.12
                             child: Container(
-                              width: 26,
-                              height: 26,
+                              width: 30,
+                              height: 30,
                               decoration: BoxDecoration(
                                 color: courseColors[i],
                                 shape: BoxShape.circle,
                                 border: Border.all(
-                                    width: _color == i ? 2 : 0,
-                                    color: Colors.white),
+                                    width: _color == i ? 3 : 1,
+                                    color: _color == i
+                                        ? const Color(0xFFF2F5FA)
+                                        : Colors.white
+                                            .withValues(alpha: 0.12)),
                               ),
                             ),
                           ),
