@@ -54,8 +54,9 @@ class CourseHeader extends StatelessWidget {
     final s = sem;
     final inSem = s == null ? false : (week >= 1 && week <= s.totalWeeks);
     return Padding(
-      padding:
-          const EdgeInsets.fromLTRB(floatSide, floatTop, floatSide, floatGap),
+      // 鸿蒙页头浮窗只在上方留 `FLOAT_TOP`，下方**不留**：页头与内容之间那条缝
+      // 由各页滚动内容的 `topInset + FLOAT_GAP` 提供（两处都留就变成 20vp 了）
+      padding: const EdgeInsets.fromLTRB(floatSide, floatTop, floatSide, 0),
       child: Glass(
         // 鸿蒙页头卡：`padding({ left: 16, right: 16, top: 12, bottom: 10 })`
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
@@ -71,14 +72,19 @@ class CourseHeader extends StatelessWidget {
                       Text(s?.name ?? '还没有课表',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
+                          // ArkUI 默认行高比 Flutter 紧：不写死的话整张页头卡高 10vp，
+                          // 和鸿蒙一起截图时下面所有内容都跟着往下错位
                           style: const TextStyle(
                               fontSize: 22,
+                              height: 1.15,
                               fontWeight: FontWeight.bold,
                               color: inkPrimary)),
                       const SizedBox(height: 2),
                       Text(_range(),
                           style: const TextStyle(
-                              fontSize: 12, color: Color(0xFF94A0B5))),
+                              fontSize: 12,
+                              height: 1.2,
+                              color: Color(0xFF94A0B5))),
                     ],
                   ),
                 ),
@@ -91,6 +97,7 @@ class CourseHeader extends StatelessWidget {
                 Text('第 $week 周',
                     style: const TextStyle(
                         fontSize: 14,
+                        height: 1.2,
                         fontWeight: FontWeight.w500,
                         color: inkPrimary)),
                 _Tap(

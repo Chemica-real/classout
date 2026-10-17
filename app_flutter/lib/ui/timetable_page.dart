@@ -157,6 +157,7 @@ class _WeekdayHeader extends StatelessWidget {
                       Text('周${weekdayCnList[d - 1]}',
                           style: TextStyle(
                             fontSize: 12,
+                            height: 1.2,
                             color: isToday ? accentBlue : _weekdayText,
                             fontWeight:
                                 isToday ? FontWeight.bold : FontWeight.normal,
@@ -165,6 +166,7 @@ class _WeekdayHeader extends StatelessWidget {
                       Text('${dt.month}/${dt.day}',
                           style: TextStyle(
                               fontSize: 10,
+                              height: 1.2,
                               color: isToday ? accentBlue : inkTertiary)),
                     ],
                   );

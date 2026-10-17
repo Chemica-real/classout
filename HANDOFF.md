@@ -6748,3 +6748,26 @@ cd app_flutter && flutter build apk --debug && adb -s 7D7PAQ9PORLR79Z9 install -
 14 号在 360vp 的测试视口里会顶出 30px，鸿蒙那边靠 ArkUI 自己换行/压缩，Flutter 得显式收一下。
 
 - `flutter test`：**1293 passed**；golden 重出（`plan.png`）。
+
+### 116.23 页头卡与周条的高度/间距按参考图逐像素对齐 + 新增「沙箱四页」golden
+
+把 `docs/manual/01-timetable.jpg` 和安卓的 golden 都缩到 360 宽后逐行量边界（卡片上下沿、周条上下沿），
+发现三处偏差：
+
+| 量出来的 | 鸿蒙 | 安卓（改前 → 改后） |
+|---|---|---|
+| 页头卡高度 | 104vp | 114 → **106** |
+| 页头卡底 → 周条顶 | 17vp | 17（本来就对） |
+| 周条高度 | 39vp | 45 → **40** |
+
+原因两条：
+1. **页头浮窗多留了一条下边距**：鸿蒙 `Header` 外层只有 `padding({ top: FLOAT_TOP })`，
+   页头与内容之间那条缝由各页滚动内容的 `topInset + FLOAT_GAP` 提供；安卓的 `Glass` 自带 10vp
+   bottom margin，两处都留就变成 20vp。已把页头卡的 bottom margin 去掉。
+2. **行高**：ArkUI 默认行高比 Flutter 紧，同字号下每行高 1~3vp。给页头标题 1.15、日期/「第 N 周」1.2、
+   周条两行 1.2 之后，卡片与周条高度就和参考图对上了（差 1~2vp，属于字体度量）。
+
+顺带新增 4 张 **「沙箱四页」golden**（`sandbox_timetable / sandbox_todos / sandbox_plan / sandbox_settings`）：
+用 `buildDemoSandbox(now: 2026-10-16)` 生成和 `docs/manual/01..04.jpg` **完全同一条件**的数据
+（演练学期、第 1 周、10/12–10/18、同样的 4 门课与 4 条待办），以后对比不用先跑一遍演练。
+golden 总数 19 → **23**；`flutter test` **1293 passed**。

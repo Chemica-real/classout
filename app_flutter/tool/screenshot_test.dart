@@ -26,6 +26,7 @@ import 'package:classout/ui/session_sheet.dart';
 import 'package:classout/ui/block_editor.dart';
 import 'package:classout/ui/privacy_page.dart';
 import 'package:classout/domain/plan_math.dart';
+import 'package:classout/domain/demo_sandbox.dart';
 import 'package:classout/ui/theme.dart' as theme;
 import 'package:classout/ui/timetable_page.dart';
 import 'package:classout/data/settings.dart';
@@ -118,6 +119,97 @@ void main() {
         ],
       ),
       'timetable',
+      family,
+    );
+  });
+
+  // ---------------- 演练沙箱状态（= docs/manual/01..04 的同一份数据）----------------
+  // 鸿蒙那四张参考图就是"演练学期 · 第 1 周（10/12–10/18）"的状态；用 buildDemoSandbox
+  // 固定到 2026-10-16（周五）生成，就能和 docs/manual/*.jpg 按同一条件对照。
+  final sandbox = buildDemoSandbox(now: DateTime(2026, 10, 16, 9, 30));
+
+  testWidgets('沙箱课表截图（对照 01-timetable.jpg）', (tester) async {
+    final family = await _loadFonts();
+    await _shot(
+      tester,
+      Column(
+        children: [
+          CourseHeader(
+            sem: sandbox.semester,
+            week: 1,
+            onPrev: () {},
+            onNext: () {},
+            onToday: () {},
+            onSync: () async {},
+          ),
+          Expanded(child: TimetablePage(bundle: sandbox, week: 1)),
+        ],
+      ),
+      'sandbox_timetable',
+      family,
+    );
+  });
+
+  testWidgets('沙箱待办页截图（对照 02-todo.jpg）', (tester) async {
+    final family = await _loadFonts();
+    await _shot(
+      tester,
+      Column(children: [
+        CourseHeader(
+          sem: sandbox.semester,
+          week: 1,
+          adjustCount: 0,
+          onPrev: () {},
+          onNext: () {},
+          onToday: () {},
+          onSync: () async {},
+        ),
+        Expanded(child: TodoPage(bundle: sandbox, onChanged: (_) {})),
+      ]),
+      'sandbox_todos',
+      family,
+    );
+  });
+
+  testWidgets('沙箱计划页截图（对照 03-plan.jpg，10/16 周五）', (tester) async {
+    final family = await _loadFonts();
+    await _shot(
+      tester,
+      Column(children: [
+        CourseHeader(
+          sem: sandbox.semester,
+          week: 1,
+          adjustCount: 0,
+          onPrev: () {},
+          onNext: () {},
+          onToday: () {},
+          onSync: () async {},
+        ),
+        Expanded(
+          child: PlanPage(
+            bundle: sandbox,
+            onChanged: (_) {},
+            initialDay: DateTime(2026, 10, 16),
+            now: () => DateTime(2026, 10, 16, 12, 0),
+          ),
+        ),
+      ]),
+      'sandbox_plan',
+      family,
+    );
+  });
+
+  testWidgets('沙箱设置页截图（对照 04-settings.jpg）', (tester) async {
+    final family = await _loadFonts();
+    await _shot(
+      tester,
+      SettingsPage(
+        bundle: sandbox,
+        onChanged: (_) {},
+        settings: AppSettings(syncIntervalMin: 10),
+        onSettingsChanged: (_) {},
+      ),
+      'sandbox_settings',
       family,
     );
   });
