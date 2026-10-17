@@ -204,33 +204,37 @@ class _BootScreenState extends State<BootScreen> with TickerProviderStateMixin {
                 ),
               ),
 
-              // ⑤ 白球：浓缩时成形，小球停留，然后扩张
+              // ⑤ 白球：鸿蒙 `36×36` + 一圈柔光（radius 40 / 白 0.55）；
+              //    浓缩时 0.01 → 1 成形，小球停留期间保持 1，扩张时 1 → 70 并淡出
               if (_phase >= 1)
                 Center(
                   child: Transform.scale(
                     scale: _phase < 3
-                        ? (0.2 + 0.8 * collapseT)
-                        : (1 + 34 * Curves.easeOutCubic.transform(expandT)),
+                        ? (0.01 + 0.99 * collapseT)
+                        : (1 + 69 * Curves.easeOutCubic.transform(expandT)),
                     child: Opacity(
                       opacity: _phase < 3 ? 1 : 1 - expandT,
                       child: Container(
-                        width: 44,
-                        height: 44,
-                        decoration: const BoxDecoration(
-                            color: Colors.white, shape: BoxShape.circle),
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.white.withValues(alpha: 0.55),
+                              blurRadius: 40,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 ),
 
-              // 喷射粒子（小球停留期间飞出去）
-              if (_phase >= 2)
-                Center(
-                  child: Transform.scale(
-                    scale: 1 + 34 * Curves.easeOutCubic.transform(expandT),
-                    child: _spray(_sprayCtrl.value),
-                  ),
-                ),
+              // 喷射粒子：**不跟着白球一起缩放**（鸿蒙里它们是兄弟节点），
+              // 自己按 SPRAY_R 的半径飞散
+              if (_phase >= 2) Center(child: _spray(_sprayCtrl.value)),
             ],
           ),
         );
