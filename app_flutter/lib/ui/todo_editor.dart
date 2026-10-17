@@ -761,6 +761,7 @@ class _EditorBodyState extends State<_EditorBody> {
         '${relativeDayText(parseDate(ddl.substring(0, 10)), today())}';
   }
 
+  /// 自定义截止：日期 + 时间（鸿蒙端 `pickDateTime`，分钟不限）
   Future<void> _pickCustomDdl() async {
     final base = _ddl.isEmpty ? today() : parseDate(_ddl.substring(0, 10));
     final picked = await showDatePicker(
@@ -769,8 +770,16 @@ class _EditorBodyState extends State<_EditorBody> {
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
     );
-    if (picked == null) return;
-    setState(() => _ddl = '${formatDate(picked)} 23:59');
+    if (picked == null || !mounted) return;
+    final hm = _ddl.length >= 16
+        ? TimeOfDay(
+            hour: int.tryParse(_ddl.substring(11, 13)) ?? 23,
+            minute: int.tryParse(_ddl.substring(14, 16)) ?? 59)
+        : const TimeOfDay(hour: 23, minute: 59);
+    final time = await showTimePicker(context: context, initialTime: hm);
+    if (time == null || !mounted) return;
+    setState(() => _ddl = '${formatDate(picked)} '
+        '${minToHHmm(time.hour * 60 + time.minute)}');
   }
 }
 

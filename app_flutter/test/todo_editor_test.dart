@@ -129,4 +129,45 @@ void main() {
     expect(result, isNotNull);
     expect(result!.delete, isTrue);
   });
+
+  testWidgets('截止「自定义…」→ 先选日期再选时间（鸿蒙 pickDateTime）', (tester) async {
+    final demo = _demo();
+    TodoEditorResult? result;
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Builder(
+          builder: (ctx) => TextButton(
+            onPressed: () async {
+              result = await showTodoEditor(ctx, courses: demo.courses);
+            },
+            child: const Text('open'),
+          ),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+        find.byKey(const ValueKey('todo-title')), '自定义截止');
+    final custom = find.text('自定义…');
+    await tester.ensureVisible(custom);
+    await tester.pumpAndSettle();
+    await tester.tap(custom);
+    await tester.pumpAndSettle();
+    // 日期选择器 → OK；时间选择器 → OK
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('截止：'), findsWidgets);
+    await tester.tap(find.byKey(const ValueKey('todo-save')));
+    await tester.pumpAndSettle();
+    expect(result!.todo!.ddl.length, 16);
+  });
 }
