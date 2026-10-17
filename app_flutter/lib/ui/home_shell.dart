@@ -5,10 +5,12 @@ import 'package:flutter/material.dart';
 
 import '../data/backup.dart';
 import '../data/repo.dart';
+import '../data/settings.dart';
 import 'app_frame.dart';
 import 'import_dialog.dart';
 import 'palette.dart';
 import 'plan_page.dart';
+import 'settings_page.dart';
 import 'timetable_page.dart';
 import 'todo_page.dart';
 
@@ -26,6 +28,7 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   BackupBundle? _bundle;
+  AppSettings _settings = AppSettings();
   bool _loading = true;
   String? _error;
   int _tab = 0;
@@ -39,6 +42,7 @@ class _HomeShellState extends State<HomeShell> {
   Future<void> _reload() async {
     setState(() => _loading = true);
     try {
+      final settings = await AppSettings.load(widget.repo);
       var data = await widget.repo.load();
       if (data == null && widget.fallback != null) {
         await widget.repo.replaceAll(widget.fallback!);
@@ -47,6 +51,7 @@ class _HomeShellState extends State<HomeShell> {
       if (!mounted) return;
       setState(() {
         _bundle = data;
+        _settings = settings;
         _loading = false;
         _error = null;
       });
@@ -63,6 +68,11 @@ class _HomeShellState extends State<HomeShell> {
   Future<void> _apply(BackupBundle next) async {
     setState(() => _bundle = next);
     await widget.repo.replaceAll(next);
+  }
+
+  Future<void> _applySettings(AppSettings next) async {
+    setState(() => _settings = next);
+    await next.save(widget.repo);
   }
 
   Future<void> _import() async {
@@ -113,31 +123,23 @@ class _HomeShellState extends State<HomeShell> {
         onTab: (i) => setState(() => _tab = i),
         child: switch (_tab) {
           0 => TimetablePage(bundle: bundle, onImport: _import),
-          1 => TodoPage(bundle: bundle, onChanged: _apply),
-          2 => PlanPage(bundle: bundle, onChanged: _apply),
-          _ => const _ComingSoon('设置'),
+          1 => TodoPage(
+              bundle: bundle,
+              onChanged: _apply,
+              customCategories: _settings.customCategories),
+          2 => PlanPage(
+              bundle: bundle,
+              onChanged: _apply,
+              window: _settings.planWindow,
+              restWindows: bundle.restWindows),
+          _ => SettingsPage(
+              bundle: bundle,
+              onChanged: _apply,
+              settings: _settings,
+              onSettingsChanged: _applySettings),
         },
       ),
     );
   }
 }
 
-class _ComingSoon extends StatelessWidget {
-  final String name;
-  const _ComingSoon(this.name);
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(name, style: const TextStyle(fontSize: 22, color: inkPrimary)),
-          const SizedBox(height: 6),
-          const Text('还没做：正在按 待办 → 计划 → 设置 的顺序推进',
-              style: TextStyle(fontSize: 12, color: inkTertiary)),
-        ],
-      ),
-    );
-  }
-}

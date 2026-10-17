@@ -18,6 +18,7 @@ class BackupBundle {
   final List<SessionOverride> overrides;
   final List<Todo> todos;
   final List<PlanBlock> blocks;
+  final List<RestWindow> restWindows;
 
   const BackupBundle({
     required this.app,
@@ -30,6 +31,7 @@ class BackupBundle {
     required this.overrides,
     required this.todos,
     required this.blocks,
+    this.restWindows = const [],
   });
 
   /// 当前学期（暂时取第一条；以后有学期切换再说）
@@ -60,6 +62,7 @@ class BackupBundle {
       overrides: _list(j, 'overrides', SessionOverride.fromJson),
       todos: _list(j, 'todos', Todo.fromJson),
       blocks: _list(j, 'blocks', PlanBlock.fromJson),
+      restWindows: _list(j, 'restWindows', RestWindow.fromJson),
     );
   }
 

@@ -18,6 +18,12 @@ class PlanPage extends StatefulWidget {
   final BackupBundle bundle;
   final void Function(BackupBundle next) onChanged;
 
+  /// 计划页画哪一段（设置页可改）
+  final TimeWindow window;
+
+  /// 不可排时段：优先用库里的，空则用默认值
+  final List<RestWindow> restWindows;
+
   /// 打开时看哪天 / 是不是三日视图（默认今天、单日）——截图和测试要用
   final DateTime? initialDay;
   final bool initialThreeDay;
@@ -25,6 +31,8 @@ class PlanPage extends StatefulWidget {
     super.key,
     required this.bundle,
     required this.onChanged,
+    this.window = defaultWindow,
+    this.restWindows = const [],
     this.initialDay,
     this.initialThreeDay = false,
   });
@@ -49,7 +57,7 @@ class _PlanPageState extends State<PlanPage> {
 
   Semester get _sem => widget.bundle.semester!;
 
-  TimeAxis get _axis => TimeAxis(defaultWindow);
+  TimeAxis get _axis => TimeAxis(widget.window);
 
   List<DateTime> get _days {
     if (!_threeDay) return [_day];
@@ -77,6 +85,14 @@ class _PlanPageState extends State<PlanPage> {
   /// 某天的截止分组（★ 考试不算截止，这条在 ddlGroupsOn 里）
   List<DdlGroup> _ddlOn(DateTime day) => ddlGroupsOn(widget.bundle.todos, formatDate(day),
       _axis.startMin, _axis.endMin);
+
+  /// 库里有就用库里的，空则退回默认（午休/晚饭/睡觉）
+  List<List<int>> _restRanges() {
+    if (widget.restWindows.isNotEmpty) {
+      return [for (final w in widget.restWindows) [w.startMin, w.endMin]];
+    }
+    return [for (final w in defaultRestWindows()) [w.$1, w.$2]];
+  }
 
   List<Todo> get _pool => sortPoolTodos(
       selectPoolTodos(widget.bundle.todos, widget.bundle.blocks));
@@ -132,7 +148,7 @@ class _PlanPageState extends State<PlanPage> {
       for (final b in _blocksOn(day)) [b.startMin, b.endMin],
     ];
     final rest = <List<int>>[
-      for (final w in defaultRestWindows()) [w.$1, w.$2],
+      for (final w in _restRanges()) [w[0], w[1]],
     ];
     final from = day == today()
         ? (DateTime.now().hour * 60 + DateTime.now().minute)

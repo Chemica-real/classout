@@ -11,11 +11,16 @@ abstract class ClassOutRepo {
   Future<void> replaceAll(BackupBundle bundle);
 
   Future<void> close();
+
+  /// 设置项（对应鸿蒙端的 kv 表）
+  Future<String?> getKv(String key);
+  Future<void> setKv(String key, String value);
 }
 
 /// 内存实现：给 web 预览和测试用；重启即丢（演示版行为）
 class MemoryRepo implements ClassOutRepo {
   BackupBundle? _data;
+  final Map<String, String> _kv = {};
 
   MemoryRepo([this._data]);
 
@@ -29,4 +34,12 @@ class MemoryRepo implements ClassOutRepo {
 
   @override
   Future<void> close() async {}
+
+  @override
+  Future<String?> getKv(String key) async => _kv[key];
+
+  @override
+  Future<void> setKv(String key, String value) async {
+    _kv[key] = value;
+  }
 }

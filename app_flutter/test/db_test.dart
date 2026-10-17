@@ -160,6 +160,38 @@ void main() {
     }
   });
 
+  test('不可排时段（restWindows）能往返', () async {
+    final repo = SqliteRepo.withSchema(schemaSql: _schemaText());
+    addTearDown(repo.close);
+    final demo = _demo();
+    final windows = [
+      RestWindow(id: 0, weekday: 0, startMin: 12 * 60, endMin: 13 * 60, label: '午休'),
+      RestWindow(id: 0, weekday: 0, startMin: 23 * 60 + 30, endMin: 24 * 60, label: '睡觉'),
+    ];
+    await repo.replaceAll(BackupBundle(
+      app: demo.app, version: demo.version, exportedAt: demo.exportedAt,
+      semesters: demo.semesters, sectionTimes: demo.sectionTimes, courses: demo.courses,
+      rules: demo.rules, overrides: demo.overrides, todos: demo.todos,
+      blocks: demo.blocks, restWindows: windows,
+    ));
+    final back = (await repo.load())!.restWindows;
+    expect(back.length, 2);
+    expect(back.map((w) => w.label), ['午休', '睡觉']);
+    expect(back.first.startMin, 12 * 60);
+  });
+
+  test('kv 设置项能读写、能覆盖', () async {
+    final repo = SqliteRepo.withSchema(schemaSql: _schemaText());
+    addTearDown(repo.close);
+    expect(await repo.getKv('sync_interval_min'), isNull);
+    await repo.setKv('sync_interval_min', '15');
+    expect(await repo.getKv('sync_interval_min'), '15');
+    await repo.setKv('sync_interval_min', '30');
+    expect(await repo.getKv('sync_interval_min'), '30', reason: '要覆盖而不是插入两行');
+    await repo.setKv('motto', '离线课表');
+    expect(await repo.getKv('motto'), '离线课表');
+  });
+
   test('空库返回 null', () async {
     final repo = SqliteRepo.withSchema(schemaSql: _schemaText());
     addTearDown(repo.close);

@@ -17,9 +17,17 @@ class TodoPage extends StatelessWidget {
   final BackupBundle bundle;
   final void Function(BackupBundle next) onChanged;
 
-  const TodoPage({super.key, required this.bundle, required this.onChanged});
+  /// 自定义待办类型（设置页里加的）
+  final List<String> customCategories;
 
-  List<String> get _customCategories => const []; // 自定义类型接 kv 后再填
+  const TodoPage({
+    super.key,
+    required this.bundle,
+    required this.onChanged,
+    this.customCategories = const [],
+  });
+
+  List<String> get _customCategories => customCategories;
 
   @override
   Widget build(BuildContext context) {

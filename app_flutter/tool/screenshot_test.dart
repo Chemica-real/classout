@@ -17,7 +17,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:classout/data/backup.dart';
 import 'package:classout/ui/app_frame.dart';
 import 'package:classout/ui/timetable_page.dart';
+import 'package:classout/data/settings.dart';
 import 'package:classout/ui/plan_page.dart';
+import 'package:classout/ui/settings_page.dart';
 import 'package:classout/ui/todo_page.dart';
 
 const _cjkCandidates = <String>[
@@ -61,7 +63,7 @@ Future<void> _shot(WidgetTester tester, Widget page, String name, String? family
   await tester.pumpWidget(MaterialApp(
     debugShowCheckedModeBanner: false,
     theme: ThemeData(brightness: Brightness.dark, useMaterial3: true, fontFamily: family),
-    home: Scaffold(body: AppFrame(tab: name == 'todos' ? 1 : (name == 'plan' ? 2 : 0), onTab: (_) {}, child: page)),
+    home: Scaffold(body: AppFrame(tab: name == 'todos' ? 1 : (name == 'plan' ? 2 : (name == 'settings' ? 3 : 0)), onTab: (_) {}, child: page)),
   ));
   await tester.pumpAndSettle();
   await expectLater(
@@ -87,6 +89,21 @@ void main() {
       tester,
       TodoPage(bundle: demo, onChanged: (_) {}),
       'todos',
+      family,
+    );
+  });
+
+  testWidgets('设置页截图', (tester) async {
+    final family = await _loadFonts();
+    await _shot(
+      tester,
+      SettingsPage(
+        bundle: demo,
+        onChanged: (_) {},
+        settings: AppSettings(syncIntervalMin: 10),
+        onSettingsChanged: (_) {},
+      ),
+      'settings',
       family,
     );
   });

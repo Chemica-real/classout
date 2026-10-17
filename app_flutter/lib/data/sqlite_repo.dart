@@ -36,6 +36,7 @@ class SqliteRepo implements ClassOutRepo {
       overrides: _rows('session_override').map(SessionOverride.fromJson).toList(),
       todos: _rows('todo').map(Todo.fromJson).toList(),
       blocks: _rows('plan_block').map(PlanBlock.fromJson).toList(),
+      restWindows: _rows('rest_window').map(RestWindow.fromJson).toList(),
     );
   }
 
@@ -92,6 +93,15 @@ class SqliteRepo implements ClassOutRepo {
           'confirmed_at': t.confirmedAt, 'done_at': t.doneAt,
         });
       }
+      for (final r in b.restWindows) {
+        // ⚠️ id = 0 表示"还没入库"，必须让 AUTOINCREMENT 自己分配 ——
+        //    显式写 0 会让第二行撞 UNIQUE(id)。鸿蒙端也只存 start/end/label。
+        _insert('rest_window', {
+          if (r.id > 0) 'id': r.id,
+          'weekday': r.weekday, 'start_min': r.startMin,
+          'end_min': r.endMin, 'label': r.label,
+        });
+      }
       for (final p in b.blocks) {
         _insert('plan_block', {
           'id': p.id, 'todo_id': p.todoId, 'lesson_id': p.lessonId, 'date': p.date,
@@ -108,12 +118,23 @@ class SqliteRepo implements ClassOutRepo {
   @override
   Future<void> close() async => db.dispose();
 
+  @override
+  Future<String?> getKv(String key) async {
+    final rs = db.select('SELECT v FROM kv WHERE k = ?', [key]);
+    return rs.isEmpty ? null : rs.first['v'] as String;
+  }
+
+  @override
+  Future<void> setKv(String key, String value) async {
+    db.execute('INSERT OR REPLACE INTO kv (k, v) VALUES (?, ?)', [key, value]);
+  }
+
   // ---------------- 内部 ----------------
 
   /// 清库顺序无所谓（schema 没建外键约束），但读的顺序要稳定
   static const List<String> _tableOrder = [
     'plan_block', 'todo', 'session_override', 'session_rule', 'course',
-    'section_time', 'semester',
+    'section_time', 'semester', 'rest_window',
   ];
 
   int _count(String table) =>

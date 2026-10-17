@@ -11,8 +11,8 @@ ClassOUT 是一款**纯离线鸿蒙原生（ArkTS）「课表 + 待办 + 计划�
 自动生成待办跑通、提醒已落入系统日历。
 
 **当前状态：v1.5.0（鸿蒙端，上架准备中，**尚未提交审核**）**；**iOS/Android 版（Dart+Flutter）
-正在开发中**，已完成规则层 + 数据层 + 课表页 + 待办页 + 计划页（560 条测试），
-见 **§36 / §37 / §38**；下一步是设置页。
+正在开发中**，已完成规则层 + 数据层 + 课表页 + 待办页 + 计划页 + 设置页（568 条测试），
+见 **§36–§39**；下一步是「原生接线（SqliteRepo 进启动流程）+ 通知提醒」。
 ⚠️ git 历史**已重写并强推**（清掉 UDID + 真实课表，见 **§35**）—— 远端、tag、本地都是新 SHAs，
 旧 SHA 只在 `ClassOUT-history-backup-*.git` 那份镜像备份里。
 健康度：干净构建 `ERROR: 0`、警告 6 条（均为刻意保留）、离线断言 **524 项全绿**、
@@ -3805,3 +3805,42 @@ flutter build web --release && (cd build/web && python3 -m http.server 8081)  # 
 - 不可排时段：现在 `defaultRestWindows()` 是写死的默认值，**要改成从库里读**
   （表 `rest_window` 已经在 `shared/schema.sql` 里，备份里也有 `restWindows`）
 - 首页标语 / 动画开关 / 壁纸：鸿蒙端用 kv，这边先做前两个（字符串/布尔），壁纸最后
+
+
+## 39. 2026-10-17 iOS/Android 版：设置页（里程碑 ③）
+
+### 39.1 做了什么
+
+| 东西 | 说明 |
+|---|---|
+| `data/settings.dart` | `AppSettings`（同步节奏 / 计划时间范围 / 自定义类型 / 标语），键名与鸿蒙端 kv 一致：`sync_interval_min` / `plan_window` / `todo_categories` / `motto` |
+| `data/repo.dart` | 接口新增 `getKv` / `setKv`；`MemoryRepo` 用 Map，`SqliteRepo` 用 `kv` 表（列名是 **`k`/`v`**，不是 key/value！） |
+| `data/backup.dart` + `sqlite_repo.dart` | 备份里的 `restWindows` 现在真的会进 `rest_window` 表并读回（`id = 0` 时必须**省略 id** 让 AUTOINCREMENT 分配，否则第二行撞 `UNIQUE(id)`） |
+| `ui/settings_page.dart` | 同步节奏（5/10/15/30/60）、计划时间范围（±30 分钟，走 `normalizeWindow`）、待办类型（内置不可删 + 自定义增删，走 `Categories` 的校验）、不可排时段（增删，写回 bundle）、关于（版本/离线说明） |
+| 下发 | `HomeShell` 加载 `AppSettings` 后传下去：计划页用 `window` + `restWindows`，待办页用 `customCategories`，改完即 `save()` 到 kv |
+| 测试 | **568 条**（新增 settings 6 条：同步节奏写 kv、时间范围规范化、新建类型写 kv、内置类型不可删、删不可排时段写回数据、AppSettings 默认值/越界/坏值） |
+| golden | `tool/goldens/settings.png` |
+
+### 39.2 踩到的坑
+
+1. **`kv` 表的列名是 `k` / `v`**（`shared/schema.sql`），我按 key/value 写，报 `no such column: value` 之前先被自己看出来了。
+2. **`rest_window` 的 id 是 AUTOINCREMENT**：导入时如果照抄 `id: 0` 写进去，第二条就
+   `UNIQUE constraint failed: rest_window.id`。规则：**`id > 0` 才带 id，否则省略**。
+3. 设置页测"删一条"这类断言要用 `find.textContaining` —— 列表项把标签和时段拼在
+   同一个 `Text` 里（`午休　12:00 – 13:00`），`find.text('午休')` 匹配不到。
+4. 私有 widget 类在测试里拿不到类型，所以"找某个按钮"要么靠 `find.text`，
+   要么给它加 `ValueKey`（计划页的 `plan-day-*` / `pool-*` / `find-slot` 就是这么来的）。
+
+### 39.3 下一步（里程碑 ④⑤）
+
+4. **原生接线**：`SqliteRepo` 已经完整（含 kv / rest_window），但 App 启动还在用
+   `MemoryRepo`（web 预览需要）。接线方式：
+   - `repo_factory.dart`（条件导出）：
+     `export 'repo_factory_web.dart' if (dart.library.io) 'repo_factory_io.dart';`
+   - io 版：`path_provider` 取 `getApplicationSupportDirectory()` → `SqliteRepo.withSchema`
+   - 需要在真机/CI 上验；本机只能用 `flutter test` 验 repo 本身
+5. **通知提醒**：iOS `UNUserNotificationCenter`（**待发上限 64 条**）+ Android
+   `AlarmManager`/`WorkManager`。鸿蒙端 `ReminderScheduler` 的预算截断思路可以直接照搬
+   （那边配额也是 64）。注意 iOS 需要在 `Info.plist` 里加用途说明、首次请求通知权限。
+6. 还差的小东西：待办编辑已有条目 / 考试时间段 / 备注折叠 / 预计耗时；计划页的拖动与缩放
+   （`dropRange`/`moveRange`/`resizeRange` 已移植并有 fixtures，只差手势）。

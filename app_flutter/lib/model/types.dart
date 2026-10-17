@@ -334,3 +334,29 @@ class CourseSession {
     required this.isExtra,
   });
 }
+
+
+/// 不可排时段（午休/晚饭/睡觉…）；weekday 0 = 每天，1..7 = 周一..周日
+class RestWindow {
+  int id;
+  int weekday;
+  int startMin;
+  int endMin;
+  String label;
+
+  RestWindow({
+    this.id = 0,
+    this.weekday = 0,
+    this.startMin = 0,
+    this.endMin = 0,
+    this.label = '',
+  });
+
+  factory RestWindow.fromJson(Map<String, dynamic> j) => RestWindow(
+        id: _int(j['id']),
+        weekday: _int(j['weekday']),
+        startMin: _int(j['startMin']),
+        endMin: _int(j['endMin']),
+        label: _str(j['label']),
+      );
+}
