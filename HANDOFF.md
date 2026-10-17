@@ -4103,3 +4103,50 @@ for (const t of todos) {
 - 镜像命令写在 `app_flutter/README.md` 的「怎么验 iOS」一节。
 - 如果 CI 里 App 启动失败：先看是不是 `sqlite3` 打不开（截图会显示"读数据出错：…"，
   那是 `openRepo()` 抛的异常被 FutureBuilder 捕获后显示出来的），再看 CocoaPods 日志。
+
+
+## 47. 2026-10-17 ✅ **iOS CI 第一次跑通**（GitHub Actions，macOS 14）
+
+镜像仓库：`github.com/Chemica-real/classout`（public；SSH key 已加）。
+工作流 `.github/workflows/ios-sim.yml` 首跑 **result = success**（run #1，
+`.../actions/runs/39002986391`，总耗时约 8 分钟）：
+
+| 步骤 | 结果 |
+|---|---|
+| 装 Flutter（subosito/flutter-action, stable, cache） | ✅ |
+| `flutter pub get` | ✅ |
+| `flutter analyze` | ✅ |
+| `flutter test`（**593 条，在 macOS 上跑**） | ✅ |
+| `flutter build ios --simulator --no-codesign --debug` | ✅ **iOS 编译通过** |
+| 模拟器 boot → `simctl install` → `simctl launch com.chemica.classout` → 截图 ×2 | ✅ |
+| 上传 artifact `ios-simulator-shots`（1.0 MB） | ✅ |
+
+### 47.1 这一次证明了什么
+
+- **iOS 能编译**：包括 CocoaPods 拉 `path_provider`、`flutter_local_notifications`、`sqlite3`；
+  `Info.plist` 不需要额外用途说明（本地通知不用 usage string）。
+- **App 能装进模拟器并启动**（`simctl launch` 返回成功，进程存活检查后加）。
+- **593 条测试在 macOS 上同样全绿** —— 说明 `db_test` 里的 sqlite3 在 macOS 走系统
+  `libsqlite3.dylib` 也能打开（与 iOS 同一套默认加载逻辑），这是之前「iOS 上 SQLite
+  能不能开」那个问号的**间接答案**。
+- 中文渲染：iOS 有苹方，截图里应该是正常中文（**这一条要人眼看截图确认**，见 47.2）。
+
+### 47.2 仍待确认 / 待办
+
+1. **截图内容需要人眼确认**（artifact 下载要登录 GitHub，我这边拿不到）：
+   `.../actions/runs/39002986391` → Artifacts → `ios-simulator-shots`。
+   要看的是：课表页渲染正常、不是「读数据出错：…」（那是 `openRepo()` 抛异常后
+   `FutureBuilder` 显示的错误页，出现就说明 iOS 上 SQLite 打不开）。
+2. 工作流已补一条 **"断言 App 真的在跑"**：`launchctl list` 里有进程 + 没有
+   `~/Library/Logs/DiagnosticReports/*.ips` 崩溃报告，否则 `::error::` 让 job 失败 ——
+   因为 `simctl launch` 成功**不代表没崩**。
+3. **真机仍然没验**（锁屏/免打扰/性能/TestFlight）；这些 iPad 浏览器和模拟器都替代不了。
+
+### 47.3 以后怎么用
+
+```bash
+# 两边都推（Gitee 是国内主仓，GitHub 跑 CI）
+git push origin master --tags
+git push github master --tags
+```
+只有 `app_flutter/**` 或 `shared/**` 有改动时才触发，省 macOS 分钟。

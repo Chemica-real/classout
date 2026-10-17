@@ -66,6 +66,23 @@ jobs:
           sleep 6
           xcrun simctl io "$UDID" screenshot shot-2.png
 
+      - name: 断言 App 真的在跑（而不是启动即崩）
+        run: |
+          set -euo pipefail
+          UDID=$(xcrun simctl list devices available | grep -E "iPhone" | head -1 | sed -E 's/.*\(([0-9A-Fa-f-]{36})\).*/\1/')
+          # 1) 进程还在（simctl launch 成功不代表没崩）
+          if ! xcrun simctl spawn "$UDID" launchctl list | grep -q com.chemica.classout; then
+            echo "::error::App 启动后进程不在了（很可能是崩溃）"
+            exit 1
+          fi
+          # 2) 没有崩溃报告
+          if ls ~/Library/Logs/DiagnosticReports/*.ips >/dev/null 2>&1; then
+            echo "::error::发现了崩溃报告"
+            ls ~/Library/Logs/DiagnosticReports/*.ips | tail -3
+            exit 1
+          fi
+          echo "App 在运行、无崩溃报告 ✓"
+
       - name: 抓 App 日志（看有没有崩溃/SQLite 报错）
         if: always()
         run: |
