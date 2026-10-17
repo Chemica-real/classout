@@ -186,4 +186,23 @@ void main() {
     expect(find.text('开始演练'), findsOneWidget);
     expect(find.text('新手引导'), findsOneWidget);
   });
+
+  testWidgets('提示条在内容顶部（鸿蒙同款蓝底小字），不是 SnackBar', (tester) async {
+    final repo = MemoryRepo();
+    await _pump(tester, repo);
+
+    // 关掉「界面动画」→ 顶部出现一行提示
+    final sw = find.descendant(
+        of: find.ancestor(
+            of: find.text('界面动画'), matching: find.byType(Row)).first,
+        matching: find.byType(Switch));
+    await _tapUnderBar(tester, sw);
+    expect(find.text('动画已关闭（所有动效直接切换）'), findsOneWidget);
+    expect(await repo.getKv('motionOn'), '0');
+
+    // 2.2 秒后自己消失
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+    expect(find.text('动画已关闭（所有动效直接切换）'), findsNothing);
+  });
 }

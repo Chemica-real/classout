@@ -319,4 +319,19 @@ void main() {
     // 草稿里的标题被保存下来
     expect(find.text('课程（4）'), findsOneWidget);
   });
+
+  testWidgets('保存课程后列表顶部出现鸿蒙同款提示「已保存」', (tester) async {
+    await _pump(tester);
+    await _tapVisible(tester, find.byKey(const ValueKey('course-4')));
+    await _tapVisible(tester, find.byKey(const ValueKey('course-save')));
+    expect(find.text('已保存'), findsOneWidget);
+  });
+
+  testWidgets('清空本学期课程后有提示「已清空本学期的课程」', (tester) async {
+    await _pump(tester);
+    await _tapVisible(tester, find.text('清空本学期课程'));
+    await _tapVisible(tester, find.text('确定重载'));
+    expect(find.text('已清空本学期的课程'), findsOneWidget);
+    expect(find.text('课程（0）'), findsOneWidget);
+  });
 }

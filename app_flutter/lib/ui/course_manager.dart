@@ -9,6 +9,8 @@
 //
 // 数据整份写回仓库（`onChanged(bundle)`），与其它页面一致。
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -131,11 +133,36 @@ class _Manager extends StatefulWidget {
   State<_Manager> createState() => _ManagerState();
 }
 
+/// 课程编辑子页的结果：改好后的整份数据 + 是不是"删除"（列表要用它决定提示语）
+class _CourseEditResult {
+  final BackupBundle bundle;
+  final bool deleted;
+  const _CourseEditResult(this.bundle, {this.deleted = false});
+}
+
 class _ManagerState extends State<_Manager> {
   late BackupBundle _b = widget.bundle;
 
   /// 「清空本学期课程」的二次确认状态
   bool _confirmClear = false;
+
+  /// 列表顶部的提示条（鸿蒙 CourseManager 的 `toast`：一行蓝字，2.2 秒消失）
+  String _toast = '';
+  Timer? _toastTimer;
+
+  void _showToast(String text) {
+    _toastTimer?.cancel();
+    setState(() => _toast = text);
+    _toastTimer = Timer(const Duration(milliseconds: 2200), () {
+      if (mounted) setState(() => _toast = '');
+    });
+  }
+
+  @override
+  void dispose() {
+    _toastTimer?.cancel();
+    super.dispose();
+  }
 
   void _apply(BackupBundle next) {
     setState(() => _b = next);
@@ -186,6 +213,13 @@ class _ManagerState extends State<_Manager> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        if (_toast.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Text(_toast,
+                                style: const TextStyle(
+                                    fontSize: 12, color: accentBlue)),
+                          ),
                         // 鸿蒙列表首屏是**三张入口卡**：学期 / 上课节次时间 / 备份与恢复
                         _entryRow(
                           key: const ValueKey('entry-semester'),
@@ -375,6 +409,7 @@ class _ManagerState extends State<_Manager> {
       ..._b.sectionTimes.where((s) => s.semesterId != sem.id),
       ...next,
     ]));
+    _showToast('节次时间已保存');
   }
 
   /// 课程卡（鸿蒙 `lc-` 那张）：彩色简称胶囊 + 全名，下面逐条列时段与模板
@@ -500,6 +535,7 @@ class _ManagerState extends State<_Manager> {
           _b.templates.where((t) => !doomed.contains(t.courseId)).toList(),
       lessons: _b.lessons.where((l) => !doomed.contains(l.courseId)).toList(),
     ));
+    _showToast('已清空本学期的课程');
   }
 
 
@@ -508,12 +544,14 @@ class _ManagerState extends State<_Manager> {
 
 
   Future<void> _openCourse(Course? existing) async {
-    final next = await showDialog<BackupBundle>(
+    final res = await showDialog<_CourseEditResult>(
       context: context,
       barrierColor: const Color(0x8C0C1220),
       builder: (_) => _CourseEditor(b: _b, existing: existing),
     );
-    if (next != null) _apply(next);
+    if (res == null) return;
+    _apply(res.bundle);
+    _showToast(res.deleted ? '课程已删除' : '已保存');
   }
 }
 
@@ -653,8 +691,8 @@ class _CourseEditorState extends State<_CourseEditor> {
         ];
       }
     }
-    Navigator.of(context)
-        .pop(_with(_b, courses: courses, lessons: lessons, blocks: blocks));
+    Navigator.of(context).pop(_CourseEditResult(
+        _with(_b, courses: courses, lessons: lessons, blocks: blocks)));
   }
 
   void _delete() {
@@ -662,8 +700,13 @@ class _CourseEditorState extends State<_CourseEditor> {
     final templates = _b.templates.where((t) => t.courseId != _id).toList();
     final lessons = _b.lessons.where((l) => l.courseId != _id).toList();
     final courses = _b.courses.where((c) => c.id != _id).toList();
-    Navigator.of(context).pop(_with(_b,
-        courses: courses, rules: rules, templates: templates, lessons: lessons));
+    Navigator.of(context).pop(_CourseEditResult(
+        _with(_b,
+            courses: courses,
+            rules: rules,
+            templates: templates,
+            lessons: lessons),
+        deleted: true));
   }
 
   Future<void> _editRule(SessionRule? r) async {

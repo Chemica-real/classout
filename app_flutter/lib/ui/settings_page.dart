@@ -4,6 +4,7 @@
 //  - **kv 类**（同步节奏、时间范围、自定义类型、标语）→ AppSettings，经 repo 持久化；
 //  - **数据类**（不可排时段 rest_window 表）→ 跟 bundle 一起整份写回。
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -109,6 +110,24 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() {});
   }
 
+  /// 鸿蒙设置页的提示条：滚动内容顶部一行蓝底小字，2.2 秒自动消失（不是 SnackBar）
+  String _toast = '';
+  Timer? _toastTimer;
+
+  void _showToast(String text) {
+    _toastTimer?.cancel();
+    setState(() => _toast = text);
+    _toastTimer = Timer(const Duration(milliseconds: 2200), () {
+      if (mounted) setState(() => _toast = '');
+    });
+  }
+
+  @override
+  void dispose() {
+    _toastTimer?.cancel();
+    super.dispose();
+  }
+
   BackupBundle _withRest(List<RestWindow> rest) {
     final b = widget.bundle;
     return BackupBundle(
@@ -144,6 +163,22 @@ class _SettingsPageState extends State<SettingsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (_toast.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0x382E6BE6), // rgba(46,107,230,0.22)
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(_toast,
+                          style: const TextStyle(
+                              fontSize: 12, color: Color(0xFFEAF0FA))),
+                    ),
+                  ),
                 _WallpaperCard(
                   path: _s.wallpaperPath,
                   focus: _s.wallpaperFocus,
@@ -152,17 +187,15 @@ class _SettingsPageState extends State<SettingsPage> {
                   onAdjust: _adjustWallpaper,
                   onCenter: _centerWallpaper,
                 ),
-                _MottoCard(settings: _s, onSave: _saveSettings),
+                _MottoCard(
+                    settings: _s, onSave: _saveSettings, onToast: _showToast),
                 _MotionCard(
                   enabled: _s.motionEnabled,
                   onChanged: (v) {
                     _s.motionEnabled = v;
                     theme.motionOn = v;
                     _saveSettings();
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                        content: Text(v
-                            ? '动画已开启'
-                            : '动画已关闭（所有动效直接切换）')));
+                    _showToast(v ? '动画已开启' : '动画已关闭（所有动效直接切换）');
                   },
                 ),
                 _reminderCard(),
@@ -305,15 +338,12 @@ class _SettingsPageState extends State<SettingsPage> {
     _s.briefMin = _briefMin;
     _s.classLeadMin = _classLead;
     _saveSettings();
-    final messenger = ScaffoldMessenger.of(context);
     final resync = widget.onResyncReminders;
     if (resync == null) {
-      messenger.showSnackBar(const SnackBar(content: Text('提醒设置已保存')));
+      _showToast('提醒设置已保存');
       return;
     }
-    resync().then((msg) {
-      messenger.showSnackBar(SnackBar(content: Text('提醒设置已保存 · $msg')));
-    });
+    resync().then((msg) => _showToast('提醒设置已保存 · $msg'));
   }
 
   Future<void> _reminderDiagnostics() async {
@@ -866,8 +896,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _restError = '';
     });
     _saveRest();
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('已添加不可排时段')));
+    _showToast('已添加不可排时段');
   }
 
   void _addCategory() {
@@ -895,10 +924,10 @@ class _SettingsPageState extends State<SettingsPage> {
       _s.wallpaperPath = path;
       _saveSettings();
       if (old.isNotEmpty && old != path) await clearWallpaper(old);
+      _showToast('背景已换（所有玻璃面跟着变）');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('选图失败：$e')));
+      _showToast('选图失败：$e');
     }
   }
 
@@ -910,6 +939,7 @@ class _SettingsPageState extends State<SettingsPage> {
     if (next == null) return;
     _s.wallpaperFocus = next;
     _saveSettings();
+    _showToast('背景位置已保存（所有页面立刻生效）');
   }
 
   /// 「居中」：位置归零、缩放回 1
@@ -923,6 +953,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _s.wallpaperPath = '';
     _saveSettings();
     await clearWallpaper(old);
+    _showToast('已恢复默认渐变背景');
   }
 
   void _shiftWindow({int start = 0, int end = 0}) {
@@ -1303,7 +1334,9 @@ class _WallpaperCard extends StatelessWidget {
 class _MottoCard extends StatefulWidget {
   final AppSettings settings;
   final VoidCallback onSave;
-  const _MottoCard({required this.settings, required this.onSave});
+  final void Function(String text) onToast;
+  const _MottoCard(
+      {required this.settings, required this.onSave, required this.onToast});
 
   @override
   State<_MottoCard> createState() => _MottoCardState();
@@ -1402,8 +1435,7 @@ class _MottoCardState extends State<_MottoCard> {
   void _save() {
     widget.settings.motto = normalMotto(_ctrl.text);
     widget.onSave();
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('首页标语已保存')));
+    widget.onToast('首页标语已保存');
   }
 }
 
