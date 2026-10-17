@@ -12,7 +12,9 @@ ClassOUT 是一款**纯离线鸿蒙原生（ArkTS）「课表 + 待办 + 计划�
 
 **当前状态：v1.5.1（鸿蒙端，上架准备中，**尚未提交审核**）**；**iOS/Android 版（Dart+Flutter）
 正在开发中**，**iOS/Android 版目标 ①–⑤ 全部实现**（规则层 + 数据层 + 四标签页 + 原生接线 + 通知提醒，
-**593 条测试**），见 **§36–§43**。
+**593 条测试**），见 **§36–§43**；**iOS 已在 GitHub Actions 的模拟器上自动验证**
+（§47：#1–#9 里 7 次绿，含 `db opened` + `loaded:` 自检）；**Android APK 也已能打包**
+（§48，模拟器运行验证降级为手动）。
 ⚠️ 仍然缺的都是**只能靠真机/CI** 的东西：通知权限弹窗/锁屏/免打扰、iOS 上
 `path_provider` 与系统 `libsqlite3` 的真实行为（§42.3 / §43.3）。
 另一件待办：**§41.2 鸿蒙端一个小 bug**（提醒里仍给「考试」推"即将截止"），等用户确认再改。
@@ -4163,3 +4165,61 @@ git push origin master --tags
 git push github master --tags
 ```
 只有 `app_flutter/**` 或 `shared/**` 有改动时才触发，省 macOS 分钟。
+
+
+## 48. 2026-10-17 Android：APK 能打包了；模拟器验证降级为手动
+
+### 48.1 真报错是 ci-logs 分支给我的
+
+CI 失败后**拿不到 job 日志**（GitHub 的 log API 要登录）。于是给两个工作流加了
+「失败时把诊断推到 `ci-logs` 分支」：
+先只放 `build-*.log`，第二次起 iOS 放 `launchctl listapps` / `Runner` 日志 / 崩溃 `.ips`，
+Android 放 `adb devices` / `logcat` / `logcat -b crash` / 失败截图。
+**然后我就能 `git clone -b ci-logs` 直接读了**（走代理，无需 token）。
+
+拿到的 Android 真报错：
+
+```
+Dependency ':flutter_local_notifications' requires core library desugaring to be enabled for :app.
+```
+
+修法（`android/app/build.gradle.kts`）：
+
+```kotlin
+compileOptions { isCoreLibraryDesugaringEnabled = true }
+dependencies { coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4") }
+```
+
+→ **Android APK 打包通过**（run #3 的「打包 debug APK」= success）。
+
+### 48.2 ★ sqlite3_flutter_libs 把 iOS 搞崩了 —— 已移除
+
+| run | 是否带 `sqlite3_flutter_libs` | iOS 结果 |
+|---|---|---|
+| #1–#3、#9 | 不带 | ✅ 绿 |
+| #7、#8 | 带（0.5.x, SPM 静态链接 CSQLite） | ❌ 挂在「App 进程存活」断言，`app.log` 只有一行 Runner 警告、无 Dart 输出 |
+
+**结论：iOS 上不需要它**（系统自带 `libsqlite3`），带上反而让 App 启动即退出（大概率静态
+链接的 CSQLite 与系统库冲突）。已从 `pubspec.yaml` 移除 → **iOS #9 复绿**。
+
+> 另外记一笔：`sqlite3_flutter_libs` **0.6.x 是官方 EOL 的空壳**
+> （README 原文 "no longer does anything"），它对应 `sqlite3` 3.x 的 native-assets 迁移；
+> 我们还在 `sqlite3 2.4`，所以真要它就得用 0.5.x 那条线。
+
+### 48.3 Android 运行期验证：模拟器不可靠，降级为手动
+
+- `reactivecircus/android-emulator-runner@v2`（最新 2.38.0）在 GitHub runner 上**两次都不行**：
+  #3 在模拟器步骤失败、#4 跑了 36 分钟没结束（job 超时 45 分钟）。
+- 所以把 `android-emu.yml` 拆成两个 job：
+  - `build`：每次 push 都跑 `flutter build apk --debug` + 上传 APK artifact（稳定、快）；
+  - `emulator`：**只在 `workflow_dispatch` 手动触发**、`continue-on-error: true`、
+    `api-level` 降到 30、加 `-no-snapshot -gpu swiftshader_indirect`、boot-timeout 900s。
+- **结论**：Android「能不能构建」现在由 CI 守着；「运行时能不能跑」仍然需要**真机**
+  （`adb install app-debug.apk`）或以后调通模拟器。
+
+### 48.4 本机 Android 工具链（顺手装好了）
+
+`~/ChemicaWorkspace/toolchain/android-sdk`：cmdline-tools + platform-tools（adb 1.0.41）+
+platforms 34/36 + build-tools 34/36，`flutter config --android-sdk` 已指向它。
+⚠️ 本地 `flutter build apk` 会下 **1 GB 的 NDK**（200 KB/s → 不划算），所以本地没跑完，
+用 CI 验的构建。

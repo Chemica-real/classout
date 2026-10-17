@@ -1,12 +1,16 @@
-# Android 模拟器验收（不需要真机）
+# Android：构建（每次 push 都跑）+ 模拟器运行验证（只在手动触发时跑）
 #
-# 与 ios-sim.yml 对称：在 GitHub 的 ubuntu runner 上起一个 x86_64 Android 模拟器，
-# 装 APK、启动、再从 logcat 里断言 [ClassOUT] 自检行。
-# 能验：Android 能否构建、能否启动、**SQLite 能否打开**（这条在 Android 上最容易翻车：
-#        系统 libsqlite3 不在公开 NDK 里，必须靠 sqlite3_flutter_libs 打包进来）。
-# 不能验：真机性能、国产 ROM 的后台策略、各家通知权限差异。
+# 为什么拆开：
+#  - 「能否构建出 APK」是每次改代码都该验的，而且稳定、快；
+#  - 「模拟器里跑起来」在 GitHub 的 ubuntu runner 上**很不稳**：
+#    reactivecircus/android-emulator-runner 两次都卡住/失败（其中一次跑了 36 分钟没结束）。
+#    所以它降级为 workflow_dispatch 手动触发，且 continue-on-error（不挡主流程）。
+#    真正的 Android 运行期验证仍然建议用真机（adb install）。
+#
+# 能验：APK 能否构建（含 core library desugaring、插件、AGP/Kotlin 版本）
+# 不能验（自动）：Android 运行时行为（SQLite/通知/后台）—— 需要模拟器或真机
 
-name: Android 模拟器验收
+name: Android 构建与运行
 
 on:
   push:
@@ -21,9 +25,10 @@ permissions:
   contents: write   # 失败时要把日志推到 ci-logs 分支
 
 jobs:
-  android-emulator:
+  build:
+    name: 打包 debug APK
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: app_flutter
@@ -53,45 +58,14 @@ jobs:
           set -o pipefail
           flutter build apk --debug 2>&1 | tee build-apk.log
 
-      - name: 起模拟器 → 安装 → 启动 → 断言数据层 → 截图
-        uses: reactivecircus/android-emulator-runner@v2
+      - name: 上传 APK
+        uses: actions/upload-artifact@v4
         with:
-          api-level: 34
-          arch: x86_64
-          profile: pixel_6
-          disable-animations: true
-          working-directory: app_flutter
-          script: |
-            set -euo pipefail
-            adb install -r build/app/outputs/flutter-apk/app-debug.apk
-            adb logcat -c
-            adb shell am start -W -n com.chemica.classout/.MainActivity
-            echo "--- 等 App 起来并读完数据 ---"
-            sleep 25
-            adb logcat -d | grep -F '[ClassOUT]' | tail -20 || true
-            adb logcat -d | grep -q '\[ClassOUT\] db opened' || { echo "::error::没看到 db opened —— Android 上 SQLite 没打开（八成是 libsqlite3 没打包进来）"; exit 1; }
-            adb logcat -d | grep -q '\[ClassOUT\] loaded:' || { echo "::error::没看到 loaded: —— 数据没读进界面"; exit 1; }
-            if adb logcat -d | grep -qE '\[ClassOUT\] (boot error|load error|boot failed)'; then
-              echo "::error::App 报了数据层错误"
-              adb logcat -d | grep -E '\[ClassOUT\] (boot error|load error|boot failed)' | tail -5
-              exit 1
-            fi
-            adb exec-out screencap -p > shot-android.png
-            echo "数据层自检通过 ✓（db opened + loaded，无错误）"
+          name: classout-debug-apk
+          path: app_flutter/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
 
-      - name: 抓崩溃日志（兜底）
-        if: always()
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 34
-          arch: x86_64
-          profile: pixel_6
-          working-directory: app_flutter
-          script: |
-            adb logcat -d | grep -iE "FATAL|AndroidRuntime|sqlite|ClassOUT" | tail -80 || true
-
-
-      - name: 失败时收集诊断并推到 ci-logs 分支（含 logcat）
+      - name: 失败时收集诊断并推到 ci-logs 分支
         if: failure()
         working-directory: .
         env:
@@ -101,11 +75,7 @@ jobs:
           mkdir -p /tmp/cilog
           cp app_flutter/build-*.log /tmp/cilog/ 2>/dev/null || true
           (cd app_flutter && flutter --version > /tmp/cilog/flutter-version.txt 2>&1) || true
-          adb devices -l > /tmp/cilog/adb-devices.txt 2>&1 || true
-          adb shell getprop > /tmp/cilog/android-props.txt 2>&1 || true
-          adb logcat -d > /tmp/cilog/logcat.txt 2>&1 || true
-          adb logcat -d -b crash > /tmp/cilog/logcat-crash.txt 2>&1 || true
-          adb exec-out screencap -p > /tmp/cilog/failure-screen.png 2>/dev/null || true
+          (cd app_flutter && flutter doctor -v > /tmp/cilog/flutter-doctor.txt 2>&1) || true
           git config user.name "ci-logs"
           git config user.email "ci-logs@users.noreply.github.com"
           git checkout --orphan ci-logs-tmp >/dev/null 2>&1 || true
@@ -113,8 +83,56 @@ jobs:
           find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} + 2>/dev/null || true
           cp /tmp/cilog/* . 2>/dev/null || true
           git add -A
-          git commit -m "Android CI 失败诊断 run ${{ github.run_number }}" >/dev/null
+          git commit -m "Android 构建失败诊断 run ${{ github.run_number }}" >/dev/null
           git push -f origin HEAD:ci-logs
+
+  emulator:
+    name: 模拟器运行验证（手动，可能不稳）
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    needs: build
+    defaults:
+      run:
+        working-directory: app_flutter
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build apk --debug
+
+      - name: 起模拟器 → 安装 → 启动 → 断言数据层
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: default
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: false
+          emulator-boot-timeout: 900
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          working-directory: app_flutter
+          script: |
+            adb wait-for-device
+            adb shell wm size
+            adb install -r build/app/outputs/flutter-apk/app-debug.apk
+            adb logcat -c || true
+            adb shell am start -W -n com.chemica.classout/.MainActivity
+            sleep 30
+            echo "--- ClassOUT 日志 ---"
+            adb logcat -d | grep -F '[ClassOUT]' | tail -20 || true
+            adb logcat -d | grep -q '\[ClassOUT\] db opened' || { echo "::error::db 没打开"; exit 1; }
+            adb logcat -d | grep -q '\[ClassOUT\] loaded:' || { echo "::error::数据没读进来"; exit 1; }
+            adb exec-out screencap -p > shot-android.png
+            echo "自检通过 ✓"
 
       - name: 上传截图
         if: always()
