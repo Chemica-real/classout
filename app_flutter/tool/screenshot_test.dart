@@ -80,8 +80,10 @@ Future<void> _shot(WidgetTester tester, Widget page, String name, String? family
     home: Scaffold(body: AppFrame(tab: name == 'todos' ? 1 : (name == 'plan' ? 2 : (name == 'settings' ? 3 : 0)), onTab: (_) {}, child: page)),
   ));
   await tester.pumpAndSettle();
+  // 统一截整棵 MaterialApp：这样所有 golden 都是 1080×2400（DPR 3），
+  // 和真机截图/参考图对比时不用再考虑"有的图是逻辑分辨率"这回事
   await expectLater(
-      find.byType(AppFrame), matchesGoldenFile('goldens/$name.png'));
+      find.byType(MaterialApp), matchesGoldenFile('goldens/$name.png'));
 }
 
 /// 直接截当前这棵树（用于"点开某个面板之后"的截图）
@@ -266,7 +268,9 @@ void main() {
     // 直接在这个 navigator 上弹导入框
     final fut = showImportDialog(nav.currentContext!, picker: const _NoopPicker());
     await tester.pumpAndSettle();
-    await expectLater(find.byType(Dialog), matchesGoldenFile('goldens/import_dialog.png'));
+    // 和其它 golden 一样截整棵树（1080×2400），不要只截 Dialog（那会按逻辑分辨率出图）
+    await expectLater(
+        find.byType(MaterialApp), matchesGoldenFile('goldens/import_dialog.png'));
     Navigator.of(nav.currentContext!).pop();
     await fut;
   });

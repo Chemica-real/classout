@@ -6998,3 +6998,14 @@ Flutter 要做这个得上 `AnimatedList`/`SliverAnimatedList`，改动面比收
 
 补充 2：弹窗外边距统一成鸿蒙的「整屏 `.padding(16)` 居中」——
 单周调整三弹窗（16/24 → 16）、课程规则的 RuleDialog / TemplateDialog（20/40 → 16）。
+
+### 116.39 golden 全部统一到 1080×2400（与真机/参考图同分辨率）
+
+以前 `_shot` 截的是 `AppFrame` 这个 finder，flutter_test 会按**逻辑分辨率**出图（360×800），
+而 `_capture` 截 `MaterialApp` 出的是 1080×2400 —— 同一个目录里两种尺寸，和 `docs/manual/*.jpg`
+（1084×2412）对比时还得先换算。
+
+现在 `_shot` 与导入对话框那张都改成截 `MaterialApp`，**23 张 golden 全部 1080×2400（DPR 3）**。
+以后按"同一张参考图/同一页 golden"逐像素量边界时，缩放比固定是 3，不用再猜。
+
+- `flutter test` **1305 passed**；golden 全部重出。
