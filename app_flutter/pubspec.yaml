@@ -16,6 +16,10 @@ dev_dependencies:
   # 规则层测试用 package:test 写，这样「没装 Flutter 也能 dart test」——
   # 装了 Flutter 之后同一份测试照样能 flutter test（两条路都验过）。
   test: ^1.25.0
+  flutter_lints: ^5.0.0
 
 flutter:
   uses-material-design: true
+  assets:
+    # 演示用备份：通用演示数据（高数/英语/计导/线代），不含任何个人信息
+    - assets/demo_backup.json

@@ -10,7 +10,10 @@ import 'dart:io';
 import 'package:test/test.dart';
 
 import 'package:classout/domain/plan_math.dart';
+import 'package:classout/domain/dates.dart';
 import 'package:classout/domain/sync_cadence.dart';
+import 'package:classout/domain/timetable.dart';
+import 'package:classout/domain/week_mask.dart';
 import 'package:classout/domain/validate.dart';
 import 'package:classout/model/types.dart';
 
@@ -40,6 +43,9 @@ List<Map<String, dynamic>> _allCases() {
 
 List<Todo> _todos(Object? raw) =>
     (raw as List).map((e) => Todo.fromJson(e as Map<String, dynamic>)).toList();
+
+List<SectionTime> _sectionTimes(Object? raw) =>
+    (raw as List).map((e) => SectionTime.fromJson(e as Map<String, dynamic>)).toList();
 
 List<PlanBlock> _blocks(Object? raw) =>
     (raw as List).map((e) => PlanBlock.fromJson(e as Map<String, dynamic>)).toList();
@@ -110,6 +116,45 @@ Object? _call(String fn, List<dynamic> a) {
       return pinchDeltaLabel(_n(a[0]));
     case 'totalBlockMinutes':
       return totalBlockMinutes(_blocks(a[0]), _n(a[1]));
+
+    // ---- Timetable ----
+    case 'weekOfDate':
+      return weekOfDate(Semester.fromJson(a[0] as Map<String, dynamic>), parseDate(a[1] as String));
+    case 'dateOfWeekday':
+      return formatDate(dateOfWeekday(
+          Semester.fromJson(a[0] as Map<String, dynamic>), _n(a[1]), _n(a[2])));
+    case 'maskHas':
+      return maskHas(a[0] as String, _n(a[1]));
+    case 'sectionMinutes':
+      return sectionMinutes(buildSectionMap(_sectionTimes(a[0])), _n(a[1]), _n(a[2]));
+    case 'computeWeekSessions':
+      return computeWeekSessions(
+        Semester.fromJson(a[0] as Map<String, dynamic>),
+        (a[1] as List).map((e) => Course.fromJson(e as Map<String, dynamic>)).toList(),
+        (a[2] as List).map((e) => SessionRule.fromJson(e as Map<String, dynamic>)).toList(),
+        (a[3] as List).map((e) => SessionOverride.fromJson(e as Map<String, dynamic>)).toList(),
+        _sectionTimes(a[4]),
+        _n(a[5]),
+      ).map((s) => {
+            'date': s.date,
+            'courseId': s.course.id,
+            'weekday': s.weekday,
+            'startSection': s.startSection,
+            'endSection': s.endSection,
+            'startMin': s.startMin,
+            'endMin': s.endMin,
+            'location': s.location,
+            'isQuiz': s.isQuiz ? 1 : 0,
+            'isExtra': s.isExtra ? 1 : 0,
+            'fromOverride': s.fromOverride ? 1 : 0,
+          }).toList();
+    case 'mergeRoomOverrides':
+      final plan = mergeRoomOverrides(
+          (a[0] as List).map((e) => SessionOverride.fromJson(e as Map<String, dynamic>)).toList());
+      return {
+        'list': plan.list.map((o) => {'id': o.id, 'kind': o.kind, 'newLocation': o.newLocation}).toList(),
+        'deleteIds': plan.deleteIds,
+      };
 
     default:
       throw StateError('fixture 里有本端还没实现的函数：$fn');

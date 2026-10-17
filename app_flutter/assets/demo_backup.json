@@ -1,0 +1,227 @@
+{
+ "app": "ClassOUT",
+ "version": 1,
+ "exportedAt": "2026-10-17",
+ "semesters": [
+  {
+   "id": 1,
+   "name": "演示学期",
+   "startDate": "2026-10-12",
+   "totalWeeks": 16,
+   "firstDayOfWeek": 1,
+   "showWeekend": 1
+  }
+ ],
+ "sectionTimes": [
+  {
+   "semesterId": 1,
+   "section": 1,
+   "startMin": 480,
+   "endMin": 530,
+   "flexible": 0
+  },
+  {
+   "semesterId": 1,
+   "section": 2,
+   "startMin": 540,
+   "endMin": 590,
+   "flexible": 0
+  },
+  {
+   "semesterId": 1,
+   "section": 3,
+   "startMin": 610,
+   "endMin": 660,
+   "flexible": 0
+  },
+  {
+   "semesterId": 1,
+   "section": 4,
+   "startMin": 670,
+   "endMin": 720,
+   "flexible": 0
+  },
+  {
+   "semesterId": 1,
+   "section": 5,
+   "startMin": 780,
+   "endMin": 830,
+   "flexible": 0
+  },
+  {
+   "semesterId": 1,
+   "section": 6,
+   "startMin": 840,
+   "endMin": 890,
+   "flexible": 0
+  },
+  {
+   "semesterId": 1,
+   "section": 7,
+   "startMin": 910,
+   "endMin": 960,
+   "flexible": 0
+  },
+  {
+   "semesterId": 1,
+   "section": 8,
+   "startMin": 970,
+   "endMin": 1020,
+   "flexible": 0
+  },
+  {
+   "semesterId": 1,
+   "section": 9,
+   "startMin": 1030,
+   "endMin": 1080,
+   "flexible": 0
+  },
+  {
+   "semesterId": 1,
+   "section": 10,
+   "startMin": 1120,
+   "endMin": 1170,
+   "flexible": 0
+  },
+  {
+   "semesterId": 1,
+   "section": 11,
+   "startMin": 1180,
+   "endMin": 1230,
+   "flexible": 0
+  },
+  {
+   "semesterId": 1,
+   "section": 12,
+   "startMin": 1240,
+   "endMin": 1290,
+   "flexible": 0
+  }
+ ],
+ "courses": [
+  {
+   "id": 1,
+   "semesterId": 1,
+   "name": "高等数学",
+   "shortName": "高数",
+   "teacher": "王老师",
+   "location": "明理101",
+   "colorIndex": 2,
+   "autoTodoEnabled": 1,
+   "isVirtual": 0,
+   "note": ""
+  },
+  {
+   "id": 2,
+   "semesterId": 1,
+   "name": "大学英语",
+   "shortName": "英语",
+   "teacher": "李老师",
+   "location": "明理203",
+   "colorIndex": 1,
+   "autoTodoEnabled": 1,
+   "isVirtual": 0,
+   "note": ""
+  },
+  {
+   "id": 3,
+   "semesterId": 1,
+   "name": "计算机导论",
+   "shortName": "计导",
+   "teacher": "张老师",
+   "location": "明理305",
+   "colorIndex": 3,
+   "autoTodoEnabled": 1,
+   "isVirtual": 0,
+   "note": ""
+  },
+  {
+   "id": 4,
+   "semesterId": 1,
+   "name": "线性代数",
+   "shortName": "线代",
+   "teacher": "刘老师",
+   "location": "明理408",
+   "colorIndex": 0,
+   "autoTodoEnabled": 1,
+   "isVirtual": 0,
+   "note": ""
+  }
+ ],
+ "rules": [
+  {
+   "id": 1,
+   "courseId": 1,
+   "weekday": 1,
+   "startSection": 1,
+   "endSection": 2,
+   "weeksMask": "1111111111111111",
+   "location": "",
+   "isQuiz": 0
+  },
+  {
+   "id": 2,
+   "courseId": 1,
+   "weekday": 3,
+   "startSection": 3,
+   "endSection": 4,
+   "weeksMask": "1111111111111111",
+   "location": "",
+   "isQuiz": 0
+  },
+  {
+   "id": 3,
+   "courseId": 1,
+   "weekday": 3,
+   "startSection": 10,
+   "endSection": 11,
+   "weeksMask": "1111111111111111",
+   "location": "",
+   "isQuiz": 1
+  },
+  {
+   "id": 4,
+   "courseId": 2,
+   "weekday": 2,
+   "startSection": 5,
+   "endSection": 6,
+   "weeksMask": "1111111111111111",
+   "location": "",
+   "isQuiz": 0
+  },
+  {
+   "id": 5,
+   "courseId": 3,
+   "weekday": 4,
+   "startSection": 7,
+   "endSection": 8,
+   "weeksMask": "1111111111111111",
+   "location": "",
+   "isQuiz": 0
+  },
+  {
+   "id": 6,
+   "courseId": 4,
+   "weekday": 5,
+   "startSection": 3,
+   "endSection": 4,
+   "weeksMask": "1111111111111111",
+   "location": "",
+   "isQuiz": 0
+  }
+ ],
+ "overrides": [],
+ "templates": [],
+ "todos": [],
+ "lessons": [],
+ "blocks": [],
+ "restWindows": [
+  {
+   "id": 1,
+   "weekday": 0,
+   "startMin": 720,
+   "endMin": 780,
+   "label": "午休"
+  }
+ ]
+}

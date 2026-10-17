@@ -1,9 +1,13 @@
-// ClassOUT（iOS / Android）—— UI 还没开始写，这里先放一个占位壳，
-// 让 `flutter run -d web-server` / `flutter build ios` 有东西可跑。
+// ClassOUT（iOS / Android）—— 第一版：备份 JSON → 周课表。
 //
-// 已完成的规则层在 lib/domain/：plan_math / validate / sync_cadence，
-// 与鸿蒙端的一致性由 test/fixtures_test.dart 守（353 条 fixture）。
+// 现在数据来自打包进来的演示备份（assets/demo_backup.json）；
+// 下一步是「从文件导入用户的备份」+ 接本地数据库（schema 见 ../shared/schema.sql）。
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
+
+import 'data/backup.dart';
+import 'ui/timetable_page.dart';
 
 void main() => runApp(const ClassOutApp());
 
@@ -14,35 +18,51 @@ class ClassOutApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'ClassOUT',
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        colorSchemeSeed: const Color(0xFF7FA8FF),
-        useMaterial3: true,
-      ),
-      home: const _Placeholder(),
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(brightness: Brightness.dark, useMaterial3: true),
+      home: const _Boot(),
     );
   }
 }
 
-class _Placeholder extends StatelessWidget {
-  const _Placeholder();
+class _Boot extends StatefulWidget {
+  const _Boot();
+
+  @override
+  State<_Boot> createState() => _BootState();
+}
+
+class _BootState extends State<_Boot> {
+  Future<BackupBundle>? _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = rootBundle
+        .loadString('assets/demo_backup.json')
+        .then(BackupBundle.decode);
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: const [
-            Text('ClassOUT', style: TextStyle(fontSize: 34, fontWeight: FontWeight.w700)),
-            SizedBox(height: 10),
-            Text('iOS / Android 版（UI 待实现）'),
-            SizedBox(height: 6),
-            Text('规则层已与鸿蒙端对齐：353 条 fixture 全绿',
-                style: TextStyle(fontSize: 12, color: Colors.white60)),
-          ],
-        ),
-      ),
+    return FutureBuilder<BackupBundle>(
+      future: _future,
+      builder: (context, snap) {
+        if (snap.hasError) {
+          return Scaffold(
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text('读不出演示数据：\n${snap.error}', textAlign: TextAlign.center),
+              ),
+            ),
+          );
+        }
+        if (!snap.hasData) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+        return TimetablePage(bundle: snap.data!);
+      },
     );
   }
 }

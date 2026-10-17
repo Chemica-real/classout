@@ -151,10 +151,79 @@ for (const d of [-30, -5, 0, 5, 30]) add('pinchDeltaLabel', [d], VD.pinchDeltaLa
   add('totalBlockMinutes', [b2, 9], VD.totalBlockMinutes(b2, 9), 'validate');
 }
 
+// ================= Timetable =================
+const TB = require(path.join(DIST, 'Timetable.js'));
+const WM = require(path.join(DIST, 'WeekMask.js'));
+const DU = require(path.join(DIST, 'DateUtil.js'));
+
+// 合成数据：节次时间是通用的上课时间，不含任何个人信息
+const sem = { id: 1, name: '演示学期', startDate: '2026-10-12', totalWeeks: 16, firstDayOfWeek: 1, showWeekend: 1 };
+const schedTimes = [];
+for (let n = 1; n <= 12; n++) {
+  const start = 8 * 60 + (n - 1) * 100;
+  schedTimes.push({ semesterId: 1, section: n, startMin: start, endMin: start + 45, flexible: 0 });
+}
+const schedCourses = [
+  { id: 1, semesterId: 1, name: '课程甲', shortName: '课甲', teacher: '老师甲', location: '教学楼101', colorIndex: 0, autoTodoEnabled: 1, isVirtual: 0, note: '' },
+  { id: 2, semesterId: 1, name: '课程乙', shortName: '课乙', teacher: '老师乙', location: '教学楼202', colorIndex: 1, autoTodoEnabled: 1, isVirtual: 0, note: '' }
+];
+const mkMask = (from, to) => Array.from({ length: 16 }, (_, i) => (i + 1 >= from && i + 1 <= to ? '1' : '0')).join('');
+const schedRules = [
+  { id: 1, courseId: 1, weekday: 1, startSection: 1, endSection: 2, weeksMask: mkMask(1, 16), location: '', isQuiz: 0 },
+  { id: 2, courseId: 1, weekday: 3, startSection: 5, endSection: 6, weeksMask: mkMask(1, 8), location: '教学楼303', isQuiz: 0 },
+  { id: 3, courseId: 2, weekday: 5, startSection: 3, endSection: 4, weeksMask: mkMask(1, 16), location: '', isQuiz: 1 }
+];
+const schedOv = [
+  { id: 1, courseId: 1, date: '2026-10-19', kind: 'cancel', newDate: '', newStartSection: 0, newEndSection: 0, newLocation: '' },
+  { id: 2, courseId: 2, date: '2026-10-23', kind: 'move', newDate: '2026-10-22', newStartSection: 7, newEndSection: 8, newLocation: '教学楼404' },
+  { id: 3, courseId: 1, date: '2026-10-21', kind: 'room', newDate: '', newStartSection: 0, newEndSection: 0, newLocation: '教学楼505' },
+  { id: 4, courseId: 2, date: '2026-11-06', kind: 'extra', newDate: '2026-11-06', newStartSection: 9, newEndSection: 10, newLocation: '教学楼606' },
+  { id: 5, courseId: 2, date: '2026-10-16', kind: 'move', newDate: '2026-10-30', newStartSection: 0, newEndSection: 0, newLocation: '' }
+];
+const compactSess = (ss) => ss.map((s) => ({
+  date: s.date, courseId: s.course.id, weekday: s.weekday,
+  startSection: s.startSection, endSection: s.endSection,
+  startMin: s.startMin, endMin: s.endMin, location: s.location,
+  isQuiz: s.isQuiz ? 1 : 0, isExtra: s.isExtra ? 1 : 0, fromOverride: s.fromOverride ? 1 : 0
+}));
+for (const week of [1, 2, 3, 4, 5, 9]) {
+  add('computeWeekSessions', [sem, schedCourses, schedRules, schedOv, schedTimes, week],
+    compactSess(TB.computeWeekSessions(sem, schedCourses, schedRules, schedOv, schedTimes, week)), 'timetable');
+}
+for (const d of ['2026-10-12', '2026-10-18', '2026-10-19', '2026-11-02', '2026-10-05', '2027-01-01']) {
+  add('weekOfDate', [sem, d], TB.weekOfDate(sem, DU.parseDate(d)), 'timetable');
+}
+for (const w of [[1, 1], [1, 7], [2, 3], [16, 7], [3, 5]]) {
+  add('dateOfWeekday', [sem, w[0], w[1]], DU.formatDate(TB.dateOfWeekday(sem, w[0], w[1])), 'timetable');
+}
+for (const m of [['1000000000000000', 1], ['1000000000000000', 2], ['1111111100000000', 8],
+                 ['1111111100000000', 9], ['', 1], ['1', 1], ['1', 2]]) {
+  add('maskHas', [m[0], m[1]], WM.maskHas(m[0], m[1]), 'timetable');
+}
+for (const se of [[1, 2], [5, 6], [12, 12], [9, 10]]) {
+  add('sectionMinutes', [schedTimes, se[0], se[1]],
+    TB.sectionMinutes(TB.buildSectionMap(schedTimes), se[0], se[1]), 'timetable');
+}
+{
+  const mergeIn = [
+    { id: 10, courseId: 1, date: '2026-10-19', kind: 'extra', newDate: '2026-10-19', newStartSection: 9, newEndSection: 10, newLocation: '教学楼101' },
+    { id: 11, courseId: 1, date: '2026-10-19', kind: 'room', newDate: '', newStartSection: 0, newEndSection: 0, newLocation: '教学楼707' },
+    { id: 12, courseId: 2, date: '2026-10-20', kind: 'move', newDate: '2026-10-21', newStartSection: 0, newEndSection: 0, newLocation: '' },
+    { id: 13, courseId: 2, date: '2026-10-20', kind: 'room', newDate: '', newStartSection: 0, newEndSection: 0, newLocation: '教学楼808' },
+    { id: 14, courseId: 3, date: '2026-10-22', kind: 'room', newDate: '', newStartSection: 0, newEndSection: 0, newLocation: '教学楼909' }
+  ];
+  const plan = TB.mergeRoomOverrides(mergeIn);
+  add('mergeRoomOverrides', [mergeIn], {
+    list: plan.list.map((o) => ({ id: o.id, kind: o.kind, newLocation: o.newLocation })),
+    deleteIds: plan.deleteIds
+  }, 'timetable');
+}
+
 const SOURCE = {
   plan_math: 'entry/src/main/ets/domain/PlanMath.ets',
   sync_cadence: 'entry/src/main/ets/domain/SyncCadence.ets',
-  validate: 'entry/src/main/ets/domain/Validate.ets'
+  validate: 'entry/src/main/ets/domain/Validate.ets',
+  timetable: 'entry/src/main/ets/domain/Timetable.ets'
 };
 fs.mkdirSync(OUT, { recursive: true });
 for (const mod of Object.keys(SOURCE)) {
