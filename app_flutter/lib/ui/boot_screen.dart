@@ -443,14 +443,18 @@ class _Dot extends StatelessWidget {
     // 每点相位错开 0.14（与鸿蒙端 delay 140ms / 660ms 的比例一致）
     final p = (phase - index * 0.14) % 1.0;
     final glow = (math.sin(p * math.pi)).clamp(0.0, 1.0);
-    return Container(
-      width: 9,
-      height: 9,
-      margin: EdgeInsets.only(right: index < 4 ? 12 : 0),
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: const Color(0xFF7FA8FF)
-            .withValues(alpha: ambientMotion ? 0.18 + 0.82 * glow : 0.55),
+    // 鸿蒙：亮度 0.18 ↔ 1、缩放 0.85 ↔ 1.18 同步呼吸（点本身 9×9、间距 12）
+    return Transform.scale(
+      scale: 0.85 + 0.33 * glow,
+      child: Container(
+        width: 9,
+        height: 9,
+        margin: EdgeInsets.only(right: index < 4 ? 12 : 0),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: const Color(0xFF7FA8FF)
+              .withValues(alpha: ambientMotion ? 0.18 + 0.82 * glow : 0.55),
+        ),
       ),
     );
   }

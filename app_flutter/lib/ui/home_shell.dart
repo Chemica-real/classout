@@ -968,9 +968,12 @@ class _SyncToastState extends State<_SyncToast>
                         child: Container(
                           width: 8,
                           height: 8,
-                          decoration: const BoxDecoration(
-                              color: Color(0xFF7FA8FF),
-                              shape: BoxShape.circle),
+                          decoration: BoxDecoration(
+                            // 鸿蒙：亮度 0.18 ↔ 1 与缩放同步呼吸
+                            color: const Color(0xFF7FA8FF).withValues(
+                                alpha: theme.motionOn ? _dotPhase(i) : 0.55),
+                            shape: BoxShape.circle,
+                          ),
                         ),
                       ),
                     ],
