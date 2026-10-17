@@ -12,7 +12,7 @@ ClassOUT 是一款**纯离线**的「课表 + 待办 + 计划」三合一 App，
 |---|---|---|
 | 版本 | v1.5.1（上架准备中，未提审） | 0.2.0（Android 已装真机 OPPO A97） |
 | 页面 | 课表 / 待办 / 计划 / 设置 + 启动加载页 + 悬浮浮窗 | **同样四页 + 启动页 + 浮窗（§52–§68 逐页复刻）** |
-| 测试 | 离线断言 524 项（`tools/domain-check`） | **1283 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
+| 测试 | 离线断言 524 项（`tools/domain-check`） | **1284 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
 | 差异基准 | 本目录 `docs/manual/01..09.jpg`（真机截图） | `app_flutter/tool/goldens/*.png` 对照上面九张 + `shared/fixtures/`（1115 条规则用例） |
 
 **安卓版与鸿蒙版的 1:1 复刻已经完成**：主题 token 抄自 ArkTS（§52）、六个页面重做、
@@ -6641,3 +6641,17 @@ cd app_flutter && flutter build apk --debug && adb -s 7D7PAQ9PORLR79Z9 install -
 - `_BigAction` 增加 `fontSize`（默认 **16**），「对半分」显式 14；二次确认行的「取消 / 删除待办」13 → 14。
 - 内容变高后 `block_editor_test` 的「对半分」用例加了 `ensureVisible`（抽屉内部滚动，鸿蒙同款）。
 - `flutter test`：**1283 passed**；golden 新增 `block_editor` / `adjust_sheet` / `privacy` 三张（共 19 张）。
+
+### 116.16 演练沙箱里的偏好也回到默认值（鸿蒙沙箱是一个全新的库）
+
+上一轮只做了"沙箱里改的偏好不脏真库"（`sandbox_prefs` 快照），但**进沙箱时**没有重置：
+安卓会继续显示用户自己的壁纸和标语，而鸿蒙的沙箱库是全新的 → 默认渐变壁纸、默认标语
+（`04-settings.jpg` 里那张就是沙箱状态，背景卡里写着「默认渐变」、标语 22/32）。
+
+现在 `_startGuide` 在快照之后写一份 `AppSettings()` 默认值（壁纸路径清空、标语清空=显示默认、
+自定义类型清空、同步节奏/提醒/动效都回默认），退出或冷启动时再由 `sandbox_prefs` 整份还原。
+
+- 新增测试：进沙箱后 `AppSettings.load()` 的 motto / wallpaperPath / customCategories 都是默认值。
+- 真机（OPPO A97）对照 `04-settings.jpg`：沙箱设置页现在也是「默认渐变 + 从相册选一张 + 标语 22/32」，
+  退出后壁纸/标语/动效都回到用户自己的值（logcat 里能看到 `restored prefs from sandbox snapshot`）。
+- `flutter test`：**1284 passed**。

@@ -463,9 +463,9 @@ Future<void> showAdjustSheet(
                               Navigator.of(ctx).pop();
                             },
                             behavior: HitTestBehavior.opaque,
+                            // 鸿蒙：`.padding({ left: 10, right: 4 })`
                             child: const Padding(
-                              padding: EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 2),
+                              padding: EdgeInsets.only(left: 10, right: 4),
                               child: Text('撤销',
                                   style: TextStyle(
                                       fontSize: 12, color: dangerRed)),
@@ -475,7 +475,8 @@ Future<void> showAdjustSheet(
                       ),
                     ),
                   ),
-                const SizedBox(height: 6),
+                // 鸿蒙 `Button('关闭')` 是 `margin({ top: 12 })`
+                const SizedBox(height: 12),
                 _BigAction(
                   text: '关闭',
                   background: Colors.white.withValues(alpha: 0.14),

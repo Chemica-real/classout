@@ -454,6 +454,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       await widget.repo.setKv(sandboxBackupKey, backupToJson(current));
     }
     await _snapshotPrefs();
+    // 鸿蒙沙箱是一个**全新的库**，所以演练里看到的偏好都是默认值
+    // （默认渐变壁纸、默认标语、默认同步节奏、没有自定义类型…）。
+    // 安卓共用一个 kv，这里显式把偏好写回默认值，退出时再整份还原（见 _restorePrefs）。
+    await AppSettings().save(widget.repo);
     // 演练沙箱按"今天"现造（鸿蒙 `GuideRepo.seedDemoData` 同款），不是固定日期的演示备份
     final demo = buildDemoSandbox();
     await widget.repo.replaceAll(demo);

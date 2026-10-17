@@ -158,6 +158,28 @@ void main() {
     expect(await repo.getKv(sandboxBackupKey), '');
   });
 
+  testWidgets('进沙箱时偏好回到默认值（鸿蒙是一个全新的库）', (tester) async {
+    guidePromptEnabled = true;
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+
+    final repo = MemoryRepo(_demo());
+    await repo.setKv('motto', '真实标语');
+    await repo.setKv('wallpaper_path', '/data/user/0/x/wall.jpg');
+    await repo.setKv('todo_categories', '["我的类型"]');
+    await tester.pumpWidget(MaterialApp(home: HomeShell(repo: repo)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('开始演练'));
+    await tester.pumpAndSettle();
+
+    // 鸿蒙沙箱是另一个 .db：壁纸/标语/自定义类型都回到默认
+    final s = await AppSettings.load(repo);
+    expect(s.motto, '', reason: '演练里应该是默认标语（显示层再兜底）');
+    expect(s.wallpaperPath, '');
+    expect(s.customCategories, isEmpty);
+  });
+
   testWidgets('选「先自己用用」→ 不进沙箱、也记下问过了', (tester) async {
     guidePromptEnabled = true;
     tester.view.physicalSize = const Size(1080, 2400);
