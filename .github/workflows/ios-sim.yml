@@ -60,11 +60,16 @@ jobs:
           APP=build/ios/iphonesimulator/Runner.app
           ls -d "$APP"
           xcrun simctl install "$UDID" "$APP"
-          xcrun simctl launch "$UDID" com.chemica.classout
-          sleep 12
+          # ⚠️ 必须带 --console-pty：App 里的 debugPrint 走 stdout，
+          #    `log show --predicate process==Runner` 抓不到它。
+          xcrun simctl terminate "$UDID" com.chemica.classout 2>/dev/null || true
+          ( xcrun simctl launch --console-pty "$UDID" com.chemica.classout > app.log 2>&1 & )
+          sleep 15
           xcrun simctl io "$UDID" screenshot shot-1.png
           sleep 6
           xcrun simctl io "$UDID" screenshot shot-2.png
+          echo "--- app.log（App 的 stdout）---"
+          cat app.log || true
 
       - name: 断言 App 真的在跑（而不是启动即崩）
         run: |
@@ -87,21 +92,22 @@ jobs:
         run: |
           set -euo pipefail
           UDID=$(xcrun simctl list devices available | grep -E "iPhone" | head -1 | sed -E 's/.*\(([0-9A-Fa-f-]{36})\).*/\1/')
-          # App 用 debugPrint 打了 [ClassOUT] 自检行；等它们落进系统日志
-          sleep 3
-          LOG=$(xcrun simctl spawn "$UDID" log show --last 5m --predicate 'process == "Runner"' 2>/dev/null || true)
-          echo "$LOG" | grep -F '[ClassOUT]' | tail -20 || true
-          if ! echo "$LOG" | grep -q '\[ClassOUT\] db opened'; then
+          # 主来源：--console-pty 抓到的 app.log；兜底再查系统日志
+          LOG="$(cat app.log 2>/dev/null || true)"
+          LOGS="$(xcrun simctl spawn "$UDID" log show --last 5m --predicate 'process == "Runner"' 2>/dev/null || true)"
+          ALL="$LOG$LOGS"
+          echo "$ALL" | grep -F '[ClassOUT]' | tail -20 || true
+          if ! echo "$ALL" | grep -q '\[ClassOUT\] db opened'; then
             echo "::error::没看到 'db opened' —— SQLite 在 iOS 上没能打开"
             exit 1
           fi
-          if ! echo "$LOG" | grep -q '\[ClassOUT\] loaded:'; then
+          if ! echo "$ALL" | grep -q '\[ClassOUT\] loaded:'; then
             echo "::error::没看到 'loaded:' —— 数据没读进界面"
             exit 1
           fi
-          if echo "$LOG" | grep -qE '\[ClassOUT\] (boot error|load error|boot failed)'; then
+          if echo "$ALL" | grep -qE '\[ClassOUT\] (boot error|load error|boot failed)'; then
             echo "::error::App 报了数据层错误"
-            echo "$LOG" | grep -E '\[ClassOUT\] (boot error|load error|boot failed)' | tail -5
+            echo "$ALL" | grep -E '\[ClassOUT\] (boot error|load error|boot failed)' | tail -5
             exit 1
           fi
           echo "数据层自检通过 ✓（db opened + loaded，无错误）"
@@ -121,4 +127,5 @@ jobs:
           path: |
             app_flutter/shot-1.png
             app_flutter/shot-2.png
+            app_flutter/app.log
           if-no-files-found: warn
