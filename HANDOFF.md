@@ -6913,3 +6913,14 @@ golden 总数 19 → **23**；`flutter test` **1293 passed**。
 另外记一条**已知未做**的差异（§117.2 追加第 7 条）：鸿蒙列表项增删有
 `transition(OPACITY + translate y -10, 240ms)`，安卓是即时增删（只有待确认卡的碎裂/收起有动画）。
 Flutter 要做这个得上 `AnimatedList`/`SliverAnimatedList`，改动面比收益大，先记录。
+
+### 116.33 课程管理里两张"小卡"的底色/描边/阴影按 `.glassCard()` 补齐
+
+鸿蒙 `SemesterView` 的"所有学期"小卡是 `.padding(10).glassCard().borderRadius(8).margin(bottom 6)`，
+`CourseView` 的时段/模板行也是 `.padding(10).glassCard().borderRadius(8)` + 行间 `margin bottom 6`。
+`glassCard()` = `GLASS_TINT_ROW`（白 0.10）+ 1px 软描边 + 阴影。
+
+安卓这两处原来是"白 0.06、无阴影（学期卡有描边、时段行连描边都没有）"。
+现已统一成 `glassTintRow + glassEdgeSoft + glassShadowRow`、圆角 8、行距 6。
+
+- `flutter test` **1302 passed**；golden 重出（`semester_page` / `course_editor` 等）。

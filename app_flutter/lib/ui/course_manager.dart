@@ -1085,12 +1085,15 @@ class _CourseEditorState extends State<_CourseEditor> {
       required VoidCallback onDelete,
       String editLabel = '改'}) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
+      // 鸿蒙：`.padding(10).glassCard().borderRadius(8)` + 整行 margin bottom 6
+      padding: const EdgeInsets.only(bottom: 6),
       child: Container(
         padding: const EdgeInsets.fromLTRB(10, 6, 6, 6),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.06),
+          color: glassTintRow,
           borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: glassEdgeSoft),
+          boxShadow: glassShadowRow,
         ),
         child: Row(
           children: [
@@ -1981,10 +1984,13 @@ class _SemesterSheetState extends State<_SemesterSheet>
                             width: double.infinity,
                             padding: const EdgeInsets.all(10),
                             margin: const EdgeInsets.only(bottom: 6),
+                            // 鸿蒙：`.padding(10).glassCard().borderRadius(8)` ——
+                            // 底色是 GLASS_TINT_ROW(白 0.10)、带阴影，圆角 8
                             decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.06),
+                              color: glassTintRow,
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(color: glassEdgeSoft),
+                              boxShadow: glassShadowRow,
                             ),
                             child: Row(
                               children: [
