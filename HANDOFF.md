@@ -6473,3 +6473,30 @@ cd app_flutter && flutter test       # 1268 条（含 1115 条三端 fixture 逐
   （后两个覆盖"子页整页"与"补课弹窗"的形态）。
 - 真机（OPPO A97）：管理课程 → 学期设置 / 上课节次时间 / 备份与恢复 / 编辑课程
   逐个点进去看过，顶栏、路径、诊断信息都对；返回/关闭都回到列表。
+
+### 116.8 文案/抽屉几何的对拍收尾（脚本审计 + 两份真机参考图）
+
+1. **截止文案的日期格式**：鸿蒙 `ddlText` / `ddlShort` 是 **`10/16 23:59 · 今天`**（月/日**斜线**），
+   安卓的待办编辑器里自己写了一份 `'${ddl.substring(5,10)} …'`，渲染成 **`10-16`**（短横线）。
+   已改成复用 `domain/todo_list.dart → ddlText`（去掉编辑器里的私有副本），`ddlShort` 也按
+   `substring(5,7)/substring(8,10)` 输出斜线；空截止仍是「截止：无」。
+2. **两个右侧抽屉的外框几何**：鸿蒙 `EditorPanel` / 计划块面板外层是
+   `.padding({ right: FLOAT_SIDE, top: 10, bottom: 10 })` + `glassShell()`（`GLASS_RADIUS = 20`）；
+   安卓是 `(0, floatTop, 0, floatGap)` + 圆角 18 —— 右边贴着屏幕、圆角也小一号。
+   现在两边都改成 `(0, 10, floatSide, 10)` + `glassRadius`，真机上能看见右边那条缝了
+   （就是 `06-new-todo.jpg` 里"底下还有一页"的暗示）。改完把 `todo_editor_test` 的那条
+   保存用例加了 `ensureVisible`（抽屉内容变高后保存按钮要滚一下才点得到，鸿蒙也是抽屉内滚动）。
+3. **文案审计脚本**（这一轮新加的做法，以后可以直接跑）：把鸿蒙各 view 的 `Text(...)` / `Button(...)`
+   里的中文字面量与 `app_flutter/lib` 全量文本对比，剔掉注释和带 `${}` 的插值：
+
+   ```python
+   import re, glob
+   pat = re.compile(r'(?:Text|Button)\(\s*[`\'\"]([^`\'\"\n]{1,80})[`\'\"]')
+   # 鸿蒙端去掉 /* */ 与 // 注释后抽字面量，再检查是否出现在 Flutter 全量源码里
+   ```
+
+   结果：`Index.ets` / `TodoInbox.ets` / `SettingsPage.ets` / `PlanDayView.ets` **0 缺失**；
+   `CourseManager.ets` 只剩 2 处**有意差异**——「应用沙箱」→「应用文档目录」（安卓沙箱不可共享）、
+   以及恢复备份的二次确认（安卓的导入对话框会先预览要覆盖的内容，那一步就是确认）。
+4. 真机（OPPO A97）复看：待办列表的 `10/18 23:59 · 今天` 是斜线了；编辑抽屉右侧有缝、圆角 20；
+   管理课程/学期设置/节次时间/备份/编辑课程都是整页。

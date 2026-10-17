@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 import '../data/note_pref.dart';
 import '../domain/categories.dart';
 import '../domain/dates.dart';
-import '../domain/plan_math.dart' show ddlMinuteOf;
+import '../domain/todo_list.dart' show ddlText;
 import '../domain/validate.dart';
 import '../model/types.dart';
 import 'app_frame.dart';
@@ -100,10 +100,12 @@ class _DrawerHost extends StatelessWidget {
           widthFactor: drawerWidthFactor,
           heightFactor: 1,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(0, floatTop, 0, floatGap),
+            // 鸿蒙 EditorPanel 外层：`.padding({ right: FLOAT_SIDE, top: 10, bottom: 10 })`
+            // —— 右边留一条缝（能看出"底下还有一页"），四角大圆角
+            padding: const EdgeInsets.fromLTRB(0, 10, floatSide, 10),
             child: Glass(
               sheet: true,
-              radius: 18,
+              radius: glassRadius,
               padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
               child: _EditorBody(
                 ctx: ctx,
@@ -522,7 +524,7 @@ class _EditorBodyState extends State<_EditorBody> {
                       ),
                     ],
                   ),
-                  Text(_ddl.isEmpty ? '截止：无' : '截止：${_ddlText(_ddl)}',
+                  Text(_ddl.isEmpty ? '截止：无' : '截止：${ddlText(_ddl)}',
                       style: const TextStyle(
                           fontSize: 11, color: Color(0xFF8B97AC))),
                   _Label('预计耗时'),
@@ -750,15 +752,10 @@ class _EditorBodyState extends State<_EditorBody> {
   }
 
   String _ddlShort(String ddl) {
+    // 鸿蒙 `ddlShort`：'2026-10-15 14:07' → '10/15 14:07'（**斜线**，不是 10-15）
     if (ddl.length < 16) return '自定义…';
-    return '${ddl.substring(5, 10)} ${ddl.substring(11, 16)}';
-  }
-
-  String _ddlText(String ddl) {
-    final min = ddlMinuteOf(ddl);
-    // 鸿蒙：`10/16 23:59 · 今天`（末尾带相对日）
-    return '${ddl.substring(5, 10)} ${minToHHmm(min)} · '
-        '${relativeDayText(parseDate(ddl.substring(0, 10)), today())}';
+    return '${ddl.substring(5, 7)}/${ddl.substring(8, 10)} '
+        '${ddl.substring(11, 16)}';
   }
 
   /// 自定义截止：日期 + 时间（鸿蒙端 `pickDateTime`，分钟不限）

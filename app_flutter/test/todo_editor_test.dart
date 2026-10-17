@@ -88,7 +88,11 @@ void main() {
     await tester.enterText(
         find.byKey(const ValueKey('todo-est-input')), '25');
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('todo-save')));
+    // 抽屉内容一多就滚（鸿蒙也是抽屉内滚动），保存按钮在滚动区末尾
+    final save = find.byKey(const ValueKey('todo-save'));
+    await tester.ensureVisible(save);
+    await tester.pumpAndSettle();
+    await tester.tap(save);
     await tester.pumpAndSettle();
 
     expect(result!.todo!.estimateMin, 25);

@@ -100,10 +100,11 @@ class _Host extends StatelessWidget {
           widthFactor: drawerWidthFactor,
           heightFactor: 1,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(0, floatTop, 0, floatGap),
+            // 鸿蒙计划块面板外层：`.padding({ right: FLOAT_SIDE, top: 10, bottom: 10 })`
+            padding: const EdgeInsets.fromLTRB(0, 10, floatSide, 10),
             child: Glass(
               sheet: true,
-              radius: 18,
+              radius: glassRadius,
               padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
               child: _Body(
                 ctx: ctx,
