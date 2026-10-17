@@ -19,6 +19,7 @@ import '../domain/guide.dart';
 import '../domain/motto.dart';
 import '../domain/timetable.dart';
 import '../domain/todo_generator.dart';
+import '../model/types.dart' show Todo;
 import '../notify/flutter_notifier.dart';
 import '../notify/notifier.dart';
 import '../notify/scheduler.dart';
@@ -35,6 +36,7 @@ import 'course_manager.dart';
 import 'session_sheet.dart';
 import 'theme.dart' as theme;
 import 'timetable_page.dart';
+import 'todo_editor.dart';
 import 'todo_page.dart';
 
 class HomeShell extends StatefulWidget {
@@ -212,6 +214,60 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   Future<void> _apply(BackupBundle next) async {
     setState(() => _bundle = next);
     await widget.repo.replaceAll(next);
+  }
+
+  /// 在待办编辑窗里新建的类型 → 回写设置页那份列表
+  void _addCustomCategory(String name) {
+    _settings.customCategories =
+        addCustomCategory(_settings.customCategories, name);
+    _settings.save(widget.repo).then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  /// 计划页「截止标记」点一条 → 打开那条待办的编辑窗（鸿蒙 DdlExpandPanel 的行为）
+  Future<void> _openTodoById(int id) async {
+    final b = _bundle;
+    if (b == null) return;
+    Todo? existing;
+    for (final t in b.todos) {
+      if (t.id == id) existing = t;
+    }
+    if (existing == null) return;
+    final result = await showTodoEditor(
+      context,
+      courses: b.courses,
+      existing: existing,
+      customCategories: _settings.customCategories,
+      onAddCategory: _addCustomCategory,
+      onNotePref: (on) {
+        noteExpanded = on;
+        saveNoteExpanded(widget.repo, on);
+      },
+    );
+    if (!mounted || result == null) return;
+    final List<Todo> todos;
+    if (result.delete) {
+      todos = b.todos.where((t) => t.id != id).toList();
+    } else {
+      final draft = result.todo!;
+      todos = b.todos.map((t) => t.id == id ? draft : t).toList();
+    }
+    await _apply(BackupBundle(
+      app: b.app,
+      version: b.version,
+      exportedAt: b.exportedAt,
+      semesters: b.semesters,
+      sectionTimes: b.sectionTimes,
+      courses: b.courses,
+      rules: b.rules,
+      overrides: b.overrides,
+      todos: todos,
+      blocks: b.blocks,
+      restWindows: b.restWindows,
+      templates: b.templates,
+      lessons: b.lessons,
+    ));
   }
 
   /// 立即重排提醒：算出计划 → 交给系统通知 → 返回一句人话
@@ -618,7 +674,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                                 onChanged: _apply,
                                 topInset: _headerH,
                                 window: _settings.planWindow,
-                                restWindows: bundle.restWindows),
+                                restWindows: bundle.restWindows,
+                                onOpenTodo: _openTodoById),
                           },
                         ),
                         Positioned(

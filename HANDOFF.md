@@ -12,7 +12,7 @@ ClassOUT 是一款**纯离线**的「课表 + 待办 + 计划」三合一 App，
 |---|---|---|
 | 版本 | v1.5.1（上架准备中，未提审） | 0.2.0（Android 已装真机 OPPO A97） |
 | 页面 | 课表 / 待办 / 计划 / 设置 + 启动加载页 + 悬浮浮窗 | **同样四页 + 启动页 + 浮窗（§52–§68 逐页复刻）** |
-| 测试 | 离线断言 524 项（`tools/domain-check`） | **1262 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
+| 测试 | 离线断言 524 项（`tools/domain-check`） | **1263 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
 | 差异基准 | 本目录 `docs/manual/01..09.jpg`（真机截图） | `app_flutter/tool/goldens/*.png` 对照上面九张 + `shared/fixtures/`（1115 条规则用例） |
 
 **安卓版与鸿蒙版的 1:1 复刻已经完成**：主题 token 抄自 ArkTS（§52）、六个页面重做、
@@ -6157,3 +6157,19 @@ Material 关闭图标。连同下面几处一起对齐：
 
 - `test/todo_editor_test.dart`：+1 条（走完日期/时间两个系统选择器 → 保存后 ddl 是 `YYYY-MM-DD HH:mm`）。
 - **1262 passed**；golden 重出。
+
+---
+
+## 107. 计划页「截止标记」点条目 → 打开那条待办的编辑窗
+
+鸿蒙的 `DdlExpandPanel` 点一条会**跳到待办页那条的编辑窗**（`onOpenTodo`），安卓原来只弹一个
+只读列表（底部「知道了」）。现在：
+
+- `PlanPage` 新增 `onOpenTodo` 回调；截止面板的每一行可点 → 关面板 + 调回调；
+- `HomeShell._openTodoById(id)`：用待办编辑窗（同一套自定义类型 / 备注开关回调）打开该条，
+  - 保存 → 用新值替换（其它 field 原样保留）；
+  - 删除 → 从 `todos` 里摘掉（计划块保留，和待办页的删除行为一致）。
+- 编辑窗里新建的类型仍回写设置页（`_addCustomCategory`，与待办页同一份列表）。
+
+- `test/plan_page_test.dart`：+1 条（10/17 的 ⚑ 背 40 个单词 → 点开 → 回调收到 id=4）。
+- **1263 passed**；golden 重出。

@@ -38,6 +38,10 @@ class PlanPage extends StatefulWidget {
   /// 备注展开状态变了（外壳负责写 kv）
   final void Function(bool on)? onNotePref;
 
+  /// 「截止标记」里点一条待办 → 打开它的编辑窗（鸿蒙 DdlExpandPanel 的行为；
+  /// 编辑窗在待办页，由外壳统一提供）
+  final Future<void> Function(int todoId)? onOpenTodo;
+
   /// 打开时看哪天 / 是不是三日视图（默认今天、单日）——截图和测试要用
   final DateTime? initialDay;
   final bool initialThreeDay;
@@ -55,6 +59,7 @@ class PlanPage extends StatefulWidget {
     this.restWindows = const [],
     this.topInset = 0,
     this.onNotePref,
+    this.onOpenTodo,
     this.initialDay,
     this.initialThreeDay = false,
     this.now = DateTime.now,
@@ -466,6 +471,7 @@ class _PlanPageState extends State<PlanPage> {
                   },
                   onTapBlock: _onBlockTap,
                   onToggleDone: _toggleBlockDone,
+                  onOpenTodo: widget.onOpenTodo,
                   selectedBlockId: _selectedBlockId,
                   courseLabelOf: (id) {
                     final c = widget.bundle.courses
@@ -975,6 +981,9 @@ class _Grid extends StatelessWidget {
   /// 课程 id → 简称（块的副文字/紧凑标题用）
   final String Function(int) courseLabelOf;
 
+  /// 截止面板点一条 → 打开待办编辑窗
+  final Future<void> Function(int todoId)? onOpenTodo;
+
   // 拖动 / 缩放
   final int dragId;
   final bool dragResize;
@@ -1006,6 +1015,7 @@ class _Grid extends StatelessWidget {
     required this.onToggleDone,
     required this.selectedBlockId,
     required this.courseLabelOf,
+    required this.onOpenTodo,
     required this.dragId,
     required this.dragResize,
     required this.dragDeltaMin,
@@ -1078,6 +1088,7 @@ class _Grid extends StatelessWidget {
                         onToggleDone: onToggleDone,
                         selectedBlockId: selectedBlockId,
                         courseLabelOf: courseLabelOf,
+                        onOpenTodo: onOpenTodo,
                       ),
                     ),
                 ],
@@ -1116,6 +1127,7 @@ class _DayColumn extends StatelessWidget {
   final void Function(PlanBlock) onToggleDone;
   final int selectedBlockId;
   final String Function(int) courseLabelOf;
+  final Future<void> Function(int todoId)? onOpenTodo;
 
   const _DayColumn({
     super.key,
@@ -1143,6 +1155,7 @@ class _DayColumn extends StatelessWidget {
     required this.onToggleDone,
     required this.selectedBlockId,
     required this.courseLabelOf,
+    this.onOpenTodo,
   });
 
   @override
@@ -1213,7 +1226,8 @@ class _DayColumn extends StatelessWidget {
                 label: g.todos.length > 1
                     ? '⚑ ${g.todos.length} 项截止'
                     : '⚑ ${g.todos.first.title} 截止',
-                onTap: () => _showDdlList(context, g),
+                onTap: () =>
+                    _showDdlList(context, g, onOpenTodo: onOpenTodo),
               ),
           ],
         ),
@@ -1591,7 +1605,12 @@ class _DdlMark extends StatelessWidget {
 }
 
 /// 截止标记的展开列表（鸿蒙端是 bindPopup 浮层；这里用深色弹窗，效果一致）
-Future<void> _showDdlList(BuildContext context, DdlGroup g) {
+/// 点条目 = 打开那条待办的编辑窗（由外壳注入 `onOpenTodo`）。
+Future<void> _showDdlList(
+  BuildContext context,
+  DdlGroup g, {
+  Future<void> Function(int todoId)? onOpenTodo,
+}) {
   return showDialog<void>(
     context: context,
     builder: (ctx) => Dialog(
@@ -1608,21 +1627,31 @@ Future<void> _showDdlList(BuildContext context, DdlGroup g) {
                 style: const TextStyle(fontSize: 12, color: Color(0xFFFF8A8A))),
             const SizedBox(height: 6),
             for (final t in g.todos)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 5),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(t.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style:
-                              const TextStyle(fontSize: 14, color: inkPrimary)),
-                    ),
-                    Text(ddlText(t.ddl),
-                        style: const TextStyle(
-                            fontSize: 11, color: Color(0xFF9BA7BD))),
-                  ],
+              GestureDetector(
+                onTap: onOpenTodo == null
+                    ? null
+                    : () async {
+                        final nav = Navigator.of(ctx);
+                        nav.pop();
+                        await onOpenTodo(t.id);
+                      },
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 5),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(t.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 14, color: inkPrimary)),
+                      ),
+                      Text(ddlText(t.ddl),
+                          style: const TextStyle(
+                              fontSize: 11, color: Color(0xFF9BA7BD))),
+                    ],
+                  ),
                 ),
               ),
             Align(

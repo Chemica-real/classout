@@ -527,4 +527,33 @@ void main() {
     expect(after.date, '2026-10-17');
     expect(after.startMin, before.startMin, reason: '跨天只改日期、不改时间');
   });
+
+  testWidgets('截止标记：点一条 → 回调外壳打开那条待办的编辑窗', (tester) async {
+    int? opened;
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: PlanPage(
+          bundle: _demo(),
+          onChanged: (_) {},
+          initialDay: DateTime(2026, 10, 17),
+          now: _fixedNow,
+          onOpenTodo: (id) async => opened = id,
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    final mark = find.textContaining('截止');
+    await tester.ensureVisible(mark.first);
+    await tester.pumpAndSettle();
+    await tester.tap(mark.first);
+    await tester.pumpAndSettle();
+    expect(find.text('背 40 个单词'), findsWidgets);
+    await tester.tap(find.text('背 40 个单词').last);
+    await tester.pumpAndSettle();
+    expect(opened, 4, reason: 'demo 里 10/17 截止的是 id=4');
+  });
 }
