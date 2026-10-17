@@ -6320,7 +6320,7 @@ Material 关闭图标。连同下面几处一起对齐：
 ```bash
 ./tools/domain-check/run.sh          # 鸿蒙端离线断言：524 项
 cd app_flutter && flutter analyze    # 0 issue
-cd app_flutter && flutter test       # 1268 条（含 1115 条三端 fixture 逐条对拍）
+cd app_flutter && flutter test       # 1305 条（含 1115 条三端 fixture 逐条对拍）
 ```
 
 ---
@@ -6602,8 +6602,8 @@ cd app_flutter && flutter test       # 1268 条（含 1115 条三端 fixture 逐
 ```bash
 ./tools/domain-check/run.sh          # 鸿蒙端离线断言：524 项
 cd app_flutter && flutter analyze    # 0 issue
-cd app_flutter && flutter test       # 1281 条（含 1115 条三端 fixture 逐条对拍）
-cd app_flutter && flutter test --update-goldens tool/screenshot_test.dart   # 15 张 golden
+cd app_flutter && flutter test       # 1305 条（含 1115 条三端 fixture 逐条对拍）
+cd app_flutter && flutter test --update-goldens tool/screenshot_test.dart   # 23 张 golden（1080×2400）
 ```
 
 真机（OPPO A97）安装：
