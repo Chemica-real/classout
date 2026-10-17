@@ -19,6 +19,7 @@ import 'palette.dart';
 import 'plan_page.dart';
 import 'settings_page.dart';
 import 'course_header.dart';
+import 'session_sheet.dart';
 import 'theme.dart' as theme;
 import 'timetable_page.dart';
 import 'todo_page.dart';
@@ -246,13 +247,22 @@ class _HomeShellState extends State<HomeShell> {
                               weekOfDate(bundle.semester!, DateTime.now())
                                   .clamp(1, _totalWeeks)),
                           onSync: _manualSync,
-                          onExtra: () => _notReady('补课'),
+                          onExtra: () => showExtraSheet(context,
+                              bundle: bundle, week: _week, onChanged: _apply),
                           onManage: () => _notReady('管理课程'),
-                          onOpenAdjust: () => _notReady('本周调整'),
+                          onOpenAdjust: () => showAdjustSheet(context,
+                              bundle: bundle, onChanged: _apply),
                         ),
                         Expanded(
                           child: switch (_tab) {
-                            0 => TimetablePage(bundle: bundle, week: _week),
+                            0 => TimetablePage(
+                                bundle: bundle,
+                                week: _week,
+                                onOpenSession: (s) => showSessionSheet(context,
+                                    bundle: bundle,
+                                    session: s,
+                                    onChanged: _apply),
+                              ),
                             1 => TodoPage(
                                 bundle: bundle,
                                 onChanged: _apply,
