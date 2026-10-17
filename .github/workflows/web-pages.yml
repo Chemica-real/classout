@@ -1,0 +1,76 @@
+# 把 Flutter 的 web 构建发布到 GitHub Pages —— 同学用 iPhone Safari 打开就能试用，
+# 不需要安装、不需要 iOS 签名、不需要 Apple 账号。
+#
+# ⚠️ 需要你在仓库里点一次：Settings → Pages → Build and deployment → Source: **GitHub Actions**
+#    （这一步只能由仓库管理员在网页上做，API 也改不了，所以我替代不了。）
+#
+# 局限（真机 web 版做不到的）：本地 SQLite（数据在内存，刷新回演示数据）、系统通知。
+
+name: 发布 web 版到 GitHub Pages
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'app_flutter/**'
+      - 'shared/**'
+      - '.github/workflows/web-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 装 Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: 依赖
+        working-directory: app_flutter
+        run: flutter pub get
+
+      - name: 构建 web（base-href 要带仓库名，否则资源 404）
+        working-directory: app_flutter
+        run: |
+          set -o pipefail
+          flutter build web --release --pwa-strategy=none \
+            --base-href "/${GITHUB_REPOSITORY#*/}/" 2>&1 | tee build-web.log
+
+      - name: 关掉 service worker（避免同学拿到旧缓存）
+        run: |
+          set -euo pipefail
+          f=app_flutter/build/web/flutter_bootstrap.js
+          if [ -f "$f" ]; then
+            # 官方支持：build 时用 --pwa-strategy=none 就不会注册 SW；这里再兜底删掉脚本
+            rm -f app_flutter/build/web/flutter_service_worker.js
+            sed -i 's/serviceWorkerVersion:null/serviceWorkerVersion:null/' "$f" || true
+          fi
+          ls app_flutter/build/web | head
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: app_flutter/build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
