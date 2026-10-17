@@ -56,6 +56,9 @@ class _HomeShellState extends State<HomeShell> {
         await widget.repo.replaceAll(widget.fallback!);
         data = await widget.repo.load();
       }
+      // CI 自检：这一行出现 = 数据层真的读通了
+      debugPrint('[ClassOUT] loaded: courses=${data?.courses.length} '
+          'todos=${data?.todos.length} rules=${data?.rules.length}');
       if (!mounted) return;
       setState(() {
         _bundle = data;
@@ -64,6 +67,7 @@ class _HomeShellState extends State<HomeShell> {
         _error = null;
       });
     } catch (e) {
+      debugPrint('[ClassOUT] load error: $e');
       if (!mounted) return;
       setState(() {
         _loading = false;

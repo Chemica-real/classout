@@ -6,7 +6,7 @@
 //   web   → MemoryRepo（刷新即回到演示数据）
 //   原生  → SqliteRepo（App 数据目录下的 classout.db，schema 来自 assets/schema.sql）
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
@@ -51,9 +51,18 @@ class _BootState extends State<_Boot> {
   void initState() {
     super.initState();
     _future = () async {
-      final repo = await openRepo();
-      final demo = BackupBundle.decode(await rootBundle.loadString('assets/demo_backup.json'));
-      return (repo, demo);
+      try {
+        final repo = await openRepo();
+        // --- 给 CI 看的自检日志（GitHub Actions 里 grep 这几行判断真跑起来了）---
+        debugPrint('[ClassOUT] db opened');
+        final demo =
+            BackupBundle.decode(await rootBundle.loadString('assets/demo_backup.json'));
+        debugPrint('[ClassOUT] demo bundle ok: courses=${demo.courses.length}');
+        return (repo, demo);
+      } catch (e) {
+        debugPrint('[ClassOUT] boot error: $e');
+        rethrow;
+      }
     }();
   }
 
@@ -63,6 +72,7 @@ class _BootState extends State<_Boot> {
       future: _future,
       builder: (context, snap) {
         if (snap.hasError) {
+          debugPrint('[ClassOUT] boot failed: ${snap.error}');
           return Scaffold(
             body: Center(
               child: Padding(
