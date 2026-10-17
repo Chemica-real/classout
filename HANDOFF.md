@@ -12,7 +12,7 @@ ClassOUT 是一款**纯离线**的「课表 + 待办 + 计划」三合一 App，
 |---|---|---|
 | 版本 | v1.5.1（上架准备中，未提审） | 0.2.0（Android 已装真机 OPPO A97） |
 | 页面 | 课表 / 待办 / 计划 / 设置 + 启动加载页 + 悬浮浮窗 | **同样四页 + 启动页 + 浮窗（§52–§68 逐页复刻）** |
-| 测试 | 离线断言 524 项（`tools/domain-check`） | **1288 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
+| 测试 | 离线断言 524 项（`tools/domain-check`） | **1292 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
 | 差异基准 | 本目录 `docs/manual/01..09.jpg`（真机截图） | `app_flutter/tool/goldens/*.png` 对照上面九张 + `shared/fixtures/`（1115 条规则用例） |
 
 **安卓版与鸿蒙版的 1:1 复刻已经完成**：主题 token 抄自 ArkTS（§52）、六个页面重做、
@@ -6701,3 +6701,24 @@ cd app_flutter && flutter build apk --debug && adb -s 7D7PAQ9PORLR79Z9 install -
 - 顺带补了 `Todo.copyWith` / `TodoTemplate.copyWith` / `BackupBundle.copyWith`
   （以前这些地方都是手抄 15 个字段，容易漏）。
 - 测试 +3（`test/migrate_test.dart`：时长归一化 / 「其他」退役 / 幂等）。`flutter test` **1288 passed**。
+
+### 116.20 补上「删掉的自动待办不再生成」黑名单（鸿蒙 `todo_blacklist` 表）
+
+鸿蒙有一条一直没被搬过来的规则：模板在下课时自动生成待办，用户如果**明确删掉**了其中一条，
+`TodoRepo.blacklist(generationKey)` 会把它记进 `todo_blacklist` 表，之后
+`generateForSession` 逐条 `isBlacklisted` 跳过 —— 否则下次补生成又冒出来。
+
+安卓之前完全没有这一层（`grep blacklist` 为空），删掉的自动待办会在下次启动/切页补生成时"复活"。
+
+- 新增 `lib/data/blacklist.dart`：kv `todo_blacklist` 存 JSON 数组（键 = `generationKey`），
+  `loadBlacklist` / `addToBlacklist` / `blacklistFromRaw`；坏数据当空集合、不抛。
+- `HomeShell._apply` 统一处理（这是所有"用户改数据"的汇合点）：
+  ① 对比前后 bundle，**消失的**自动生成待办（`generationKey` 非空）→ 进黑名单；
+  ② 若某条又被造出来但键在黑名单里 → 丢掉（等价于鸿蒙生成前 `isBlacklisted`）。
+- `generateMissedTodos` / `generateForLesson` 都接受 `blacklist` 并在生成时跳过；
+  `_generateMissed` 从 kv 读出来传进去。
+- 与鸿蒙一致的三条边界：**导入备份**时清空黑名单（鸿蒙 `restore` 有 `DELETE FROM todo_blacklist`）；
+  **进沙箱**时黑名单与 `last_gen_date` 一起清掉（沙箱是全新库，退出由 `sandbox_prefs` 还原）；
+  只有 `generationKey` 非空的（模板生成的）才记。
+- 测试 +4（kv 解析 / 幂等写入 / 删掉后进黑名单且不再补生成 / 生成器黑名单过滤）。
+  `flutter test` **1292 passed**；`flutter analyze` 无问题。

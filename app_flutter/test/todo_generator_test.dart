@@ -48,6 +48,7 @@ GenerationOutcome _run(
   List<Todo> todos = const [],
   String last = '2026-10-16',
   DateTime? now,
+  Set<String> blacklist = const <String>{},
 }) =>
     generateMissedTodos(
       sem: b.semester!,
@@ -59,6 +60,7 @@ GenerationOutcome _run(
       todos: todos,
       lastGenDate: last,
       now: now ?? _week1Friday,
+      blacklist: blacklist,
     );
 
 void main() {
@@ -103,6 +105,17 @@ void main() {
     final first = _run(b);
     expect(first.created.length, 1);
     final again = _run(b, todos: first.created, last: first.lastGenDate);
+    expect(again.created, isEmpty);
+  });
+
+  test('黑名单里的去重键不再生成（鸿蒙 isBlacklisted）', () {
+    final b = _demo();
+    final first = _run(b);
+    expect(first.created.length, 1);
+    final key = first.created.first.generationKey;
+    expect(key.isNotEmpty, isTrue);
+    // 删掉的那条进了黑名单 → 就算 todos 里没有它，也不会再造出来
+    final again = _run(b, todos: const [], blacklist: {key});
     expect(again.created, isEmpty);
   });
 

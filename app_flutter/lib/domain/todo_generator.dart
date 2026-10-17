@@ -145,6 +145,8 @@ GenerationOutcome generateMissedTodos({
   required String lastGenDate,
   required DateTime now,
   int nextId = 0,
+  /// 黑名单（鸿蒙 `todo_blacklist` 表）：用户删掉过的自动生成待办，不再重新生成
+  Set<String> blacklist = const <String>{},
 }) {
   final endDate = DateTime(now.year, now.month, now.day);
   var startDate = endDate;
@@ -175,6 +177,8 @@ GenerationOutcome generateMissedTodos({
         if (t.courseId != s.course.id || !t.enabled) continue;
         final key = templateKey(s.course.id, s.date, t.id);
         if (keys.contains(key)) continue;
+        // 被删过的（进了黑名单）不再生成 —— 鸿蒙 `isBlacklisted` 同款
+        if (blacklist.contains(key)) continue;
         final n = todos.where((x) => x.courseId == s.course.id).length + 1;
         final week = weekOfDate(sem, parseDate(s.date));
         id++;
@@ -224,6 +228,7 @@ GenerationOutcome generateForLesson({
   required int startMin,
   required int endMin,
   int nextId = 0,
+  Set<String> blacklist = const <String>{},
 }) {
   Course? course;
   for (final c in courses) {
@@ -244,6 +249,8 @@ GenerationOutcome generateForLesson({
   final out = <Todo>[];
   var id = nextId;
   for (final p in planned) {
+    // 黑名单里的不再生成（鸿蒙 `generateForSession` 里逐条 `isBlacklisted`）
+    if (blacklist.contains(p.key)) continue;
     id++;
     out.add(Todo(
       id: id,

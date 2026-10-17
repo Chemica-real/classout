@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../data/backup.dart';
+import '../data/blacklist.dart';
 import '../data/backup_export.dart';
 import '../data/note_pref.dart';
 import '../data/repo.dart';
@@ -243,8 +244,36 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
   /// 页面改了数据（勾完成/新建待办…）：先更新界面，再整份写回仓库
   Future<void> _apply(BackupBundle next) async {
-    setState(() => _bundle = next);
-    await widget.repo.replaceAll(next);
+    var b = next;
+    final prev = _bundle;
+    if (prev != null) {
+      final black = await loadBlacklist(widget.repo);
+      // ① 用户删掉的**自动生成**待办 → 进黑名单，下次补生成不再回来
+      final before = {
+        for (final t in prev.todos)
+          if (t.generationKey.isNotEmpty) t.generationKey
+      };
+      final after = {
+        for (final t in next.todos)
+          if (t.generationKey.isNotEmpty) t.generationKey
+      };
+      final removed = before.difference(after);
+      if (removed.isNotEmpty) await addToBlacklist(widget.repo, removed);
+      // ② 万一某条被重新造出来了，但它的键在黑名单里 → 丢掉
+      //    （虚拟课时那条生成路径在 block_editor 里，先在这里兜一层，效果与
+      //    鸿蒙 `generateForSession` 的 `isBlacklisted` 相同）
+      if (black.isNotEmpty) {
+        final kept = next.todos
+            .where((t) =>
+                t.generationKey.isEmpty || !black.contains(t.generationKey))
+            .toList();
+        if (kept.length != next.todos.length) {
+          b = next.copyWith(todos: kept);
+        }
+      }
+    }
+    setState(() => _bundle = b);
+    await widget.repo.replaceAll(b);
   }
 
   /// 在待办编辑窗里新建的类型 → 回写设置页那份列表
@@ -469,6 +498,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     // （默认渐变壁纸、默认标语、默认同步节奏、没有自定义类型…）。
     // 安卓共用一个 kv，这里显式把偏好写回默认值，退出时再整份还原（见 _restorePrefs）。
     await AppSettings().save(widget.repo);
+    // 鸿蒙沙箱是**全新的库**：没有黑名单、也没有 last_gen_date
+    await widget.repo.removeKv(todoBlacklistKv);
+    await widget.repo.removeKv('last_gen_date');
     // 演练沙箱按"今天"现造（鸿蒙 `GuideRepo.seedDemoData` 同款），不是固定日期的演示备份
     final demo = buildDemoSandbox();
     await widget.repo.replaceAll(demo);
@@ -518,6 +550,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     final sem = data.semester;
     if (sem == null || data.templates.isEmpty) return;
     final last = await widget.repo.getKv('last_gen_date') ?? '';
+    final black = await loadBlacklist(widget.repo);
     final outcome = generateMissedTodos(
       sem: sem,
       courses: data.courses,
@@ -529,6 +562,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       lastGenDate: last,
       now: DateTime.now(),
       nextId: data.todos.fold<int>(0, (m, t) => t.id > m ? t.id : m),
+      blacklist: black,
     );
     await widget.repo.setKv('last_gen_date', outcome.lastGenDate);
     if (outcome.created.isEmpty || !mounted) return;
@@ -603,6 +637,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     final bundle = await showImportDialog(context, picker: widget.backupPicker);
     if (bundle == null) return null;
     await widget.repo.replaceAll(bundle);
+    // 鸿蒙 `BackupRepo.restore` 会 `DELETE FROM todo_blacklist`：整份覆盖时黑名单一起清
+    await widget.repo.removeKv(todoBlacklistKv);
     await _reload();
     return bundle;
   }
