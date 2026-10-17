@@ -12,7 +12,7 @@ ClassOUT 是一款**纯离线**的「课表 + 待办 + 计划」三合一 App，
 |---|---|---|
 | 版本 | v1.5.1（上架准备中，未提审） | 0.2.0（Android 已装真机 OPPO A97） |
 | 页面 | 课表 / 待办 / 计划 / 设置 + 启动加载页 + 悬浮浮窗 | **同样四页 + 启动页 + 浮窗（§52–§68 逐页复刻）** |
-| 测试 | 离线断言 524 项（`tools/domain-check`） | **1324 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
+| 测试 | 离线断言 524 项（`tools/domain-check`） | **1337 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
 | 差异基准 | 本目录 `docs/manual/01..09.jpg`（真机截图） | `app_flutter/tool/goldens/*.png` 对照上面九张 + `shared/fixtures/`（1115 条规则用例） |
 
 **安卓版与鸿蒙版的 1:1 复刻已经完成**：主题 token 抄自 ArkTS（§52）、六个页面重做、
@@ -6320,7 +6320,7 @@ Material 关闭图标。连同下面几处一起对齐：
 ```bash
 ./tools/domain-check/run.sh          # 鸿蒙端离线断言：524 项
 cd app_flutter && flutter analyze    # 0 issue
-cd app_flutter && flutter test       # 1324 条（含 1115 条三端 fixture 逐条对拍）
+cd app_flutter && flutter test       # 1337 条（含 1115 条三端 fixture 逐条对拍）
 ```
 
 ---
@@ -6602,7 +6602,7 @@ cd app_flutter && flutter test       # 1324 条（含 1115 条三端 fixture 逐
 ```bash
 ./tools/domain-check/run.sh          # 鸿蒙端离线断言：524 项
 cd app_flutter && flutter analyze    # 0 issue
-cd app_flutter && flutter test       # 1324 条（含 1115 条三端 fixture 逐条对拍）
+cd app_flutter && flutter test       # 1337 条（含 1115 条三端 fixture 逐条对拍）
 cd app_flutter && flutter test --update-goldens tool/screenshot_test.dart   # 24 张 golden（1080×2400）
 ```
 
@@ -7308,3 +7308,24 @@ Flutter 要做这个得上 `AnimatedList`/`SliverAnimatedList`，改动面比收
 → 按鸿蒙改成 30×30、选中 3px / 未选 1px（白 0.12）。重装后双机同页：色板换行一致（8 + 2）。
 
 - `flutter test` 1324 passed；golden 重出（`course_editor` / `course_manager`）。
+
+## 123. 把 ArkTS `domain/Validate.ets` 剩下的校验全搬过来（逻辑对齐）
+
+`validate.dart` 之前只有时长 / 不可排时段 / 缩放那几条；鸿蒙还有一组"输入合法性检验"，
+安卓的课程管理/待办编辑一直没有对应拦截（能存进不合法数据）。这次整组移植：
+
+| 函数 | 拦什么 | 接到哪 |
+|---|---|---|
+| `validateSectionTime` / `validateSectionTimes` | 节次编号从 1 开始、时间在 00:00–24:00、结束晚于开始、编号不重复、至少 1 节 | 上课节次时间子页「保存节次时间」→ 红字、不写库 |
+| `spanOfRule` / `validateSessionRule` | 星期 1–7、起止节次存在且不倒置、周次掩码非空且至少一周、算出来的时段落在一天内 | 规则弹窗「保存」→ 红字、弹窗不关 |
+| `findRuleConflicts` | 同日 + 周次相交 + 时间重叠（**只提示、不阻断**，鸿蒙同语义） | 纯函数 + 单测（UI 暂未展示，鸿蒙也只在保存后 toast） |
+| `validateTemplateTitle` | 空 / 超 60 字 / 未知 `%X`（给出 `%C %c %D %d %W %T %N %R` 清单） | 模板弹窗「保存」→ 红字 |
+| `validateTemplateDdl` | `days` 1–365、`weekday` 1–7 | 模板弹窗「保存」→ 红字 |
+| `validateExamRange` / `examRangeOf` | 考试起止都要填、必须同一天、结束晚于开始 | 待办编辑窗保存 → 红字（鸿蒙 `editExamError`）；`_syncExamBlock` 复用它 |
+
+⚠️ 有个容易误测的点：`maskFromText` 对**解析不出来**的文本故意返回全 1（"宁可全上"），
+所以"周次填 0"才是"一周都没有"的可复现输入（填乱码反而合法）。
+
+- 新增 `test/validate_extra_test.dart`（10 条纯函数用例）+ 3 条 UI 拦截用例
+  （规则周次 / 模板未知变量 / 节次结束早于开始）。
+- `flutter test` **1337 passed**；24 张 golden 重出。

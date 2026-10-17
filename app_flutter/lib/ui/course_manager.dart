@@ -19,6 +19,7 @@ import '../data/backup.dart';
 import '../data/backup_export.dart';
 import '../domain/dates.dart';
 import '../domain/todo_generator.dart' show renderTitle;
+import '../domain/validate.dart';
 import '../domain/week_mask.dart';
 import '../model/types.dart';
 import 'app_frame.dart';
@@ -1226,6 +1227,9 @@ class _RuleDialogState extends State<_RuleDialog> {
           maskAll(widget.b.semester?.totalWeeks ?? 16)));
   late bool _quiz = widget.existing?.isQuiz ?? false;
 
+  /// 输入不合法时的红字（鸿蒙是把 verdict.message 放到页面 toast；弹窗里就地显示更直观）
+  String _error = '';
+
   @override
   void dispose() {
     _location.dispose();
@@ -1248,6 +1252,12 @@ class _RuleDialogState extends State<_RuleDialog> {
       location: _location.text.trim(),
       isQuiz: _quiz,
     );
+    // 鸿蒙 `doSaveRule`：先过 validateSessionRule（节次存在 / 起止 / 周次非空 / 时间落在一天内）
+    final verdict = validateSessionRule(rule, b.sectionTimes);
+    if (!verdict.ok) {
+      setState(() => _error = verdict.message);
+      return;
+    }
     final rules = widget.existing == null
         ? [...b.rules, rule]
         : b.rules.map((r) => r.id == id ? rule : r).toList();
@@ -1333,6 +1343,13 @@ class _RuleDialogState extends State<_RuleDialog> {
                       onChanged: (v) => setState(() => _quiz = v)),
                 ],
               ),
+              if (_error.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(_error,
+                      style: const TextStyle(
+                          fontSize: 11, color: Color(0xFFFF8080))),
+                ),
               const SizedBox(height: 10),
               // 鸿蒙规则弹窗：取消 / 保存 都是**默认 Button**（40 高、16 号、等宽）
               Row(
@@ -1435,8 +1452,15 @@ class _TemplateDialogState extends State<_TemplateDialog> {
   }
 
   void _save() {
-    if (_title.text.trim().isEmpty) {
-      setState(() => _error = '标题模板不能为空');
+    // 鸿蒙 `doSaveTemplate`：validateTemplateTitle（空 / 超长 / 未知 %变量）+ validateTemplateDdl
+    final titleCheck = validateTemplateTitle(_title.text);
+    if (!titleCheck.ok) {
+      setState(() => _error = titleCheck.message);
+      return;
+    }
+    final ddlCheck = validateTemplateDdl(_rule, _param.text.trim());
+    if (!ddlCheck.ok) {
+      setState(() => _error = ddlCheck.message);
       return;
     }
     final b = widget.b;

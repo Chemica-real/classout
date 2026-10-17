@@ -172,6 +172,9 @@ class _EditorBodyState extends State<_EditorBody> {
   /// 删除的二次确认（编辑已有条目时才有）
   bool _confirmDelete = false;
 
+  /// 考试起止不合法时的红字（鸿蒙 `editExamError`）
+  String _examError = '';
+
   static const List<int> _presetEstimates = [15, 30, 60, 90, 120, 180];
 
 
@@ -267,6 +270,14 @@ class _EditorBodyState extends State<_EditorBody> {
     final title = _title.text.trim().isEmpty ? '未命名待办' : _title.text.trim();
     final e = widget.existing;
     final isExam = _category == TodoCategory.exam;
+    if (isExam) {
+      // 鸿蒙 `validateExamRange`：开始/结束都要填、同一天、结束晚于开始
+      final verdict = validateExamRange('$_examDate $_examStart', '$_examDate $_examEnd');
+      if (!verdict.ok) {
+        setState(() => _examError = verdict.message);
+        return;
+      }
+    }
     Navigator.of(widget.ctx).pop(TodoEditorResult(Todo(
       id: e?.id ?? 0, // 新建时由调用方分配
       title: title,
@@ -488,12 +499,12 @@ class _EditorBodyState extends State<_EditorBody> {
                   _timeRow('结束', examEndText,
                       () => _pickExamTime(start: false)),
                   Text(
-                      _estError.isNotEmpty
-                          ? _estError
+                      _examError.isNotEmpty
+                          ? _examError
                           : '保存后会自动排进计划视图（与已有的块重叠也照排）',
                       style: TextStyle(
                           fontSize: 10,
-                          color: _estError.isNotEmpty
+                          color: _examError.isNotEmpty
                               ? const Color(0xFFFF8A8A)
                               : const Color(0xFF8B97AC))),
                 ] else ...[
@@ -740,6 +751,7 @@ class _EditorBodyState extends State<_EditorBody> {
     if (t == null || !mounted) return;
     setState(() {
       _examDate = formatDate(d);
+      _examError = ''; // 重新选过时间就清掉上一次的红字
       final hhmm = minToHHmm(t.hour * 60 + t.minute);
       if (start) {
         _examStart = hhmm;

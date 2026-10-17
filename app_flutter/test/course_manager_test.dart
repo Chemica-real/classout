@@ -77,6 +77,63 @@ void main() {
     expect(saved.rules.last.courseId, 4);
   });
 
+  testWidgets('时段规则：周次填不出任何一周 → 拒绝保存并说明原因（鸿蒙 validateSessionRule）',
+      (tester) async {
+    final repo = await _pump(tester);
+    final before = (await repo.load())!.rules.length;
+    await _tapVisible(tester, find.byKey(const ValueKey('course-4')));
+    await _tapVisible(tester, find.text('+ 添加时段'));
+    expect(find.text('添加上课时段'), findsOneWidget);
+    // 周次输入框：找 hint 为 1-16 的那个
+    // 填一个能解析、但一周都不命中的值（maskFromText：解析不出来时故意回全 1）
+    await tester.enterText(
+        find.widgetWithText(TextField, '1-16'), '0');
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.text('保存').last);
+    // 弹窗还开着 + 红字，且没有写库
+    expect(find.text('添加上课时段'), findsOneWidget);
+    expect(find.textContaining('至少要勾选一个上课周次'), findsOneWidget);
+    expect((await repo.load())!.rules.length, before);
+  });
+
+  testWidgets('生成模板：未知 %变量 → 拒绝保存并给出可用清单（鸿蒙 validateTemplateTitle）',
+      (tester) async {
+    final repo = await _pump(tester);
+    final before = (await repo.load())!.templates.length;
+    await _tapVisible(tester, find.byKey(const ValueKey('course-4')));
+    await _tapVisible(tester, find.text('+ 添加模板'));
+    expect(find.text('添加生成模板'), findsOneWidget);
+    // 标题输入框是**弹窗里**第一个 TextField（页面后面的课程名也是 TextField，别抓错）
+    final titleField = find
+        .descendant(of: find.byType(Dialog), matching: find.byType(TextField))
+        .first;
+    await tester.enterText(titleField, '%M作业');
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.text('保存').last);
+    expect(find.text('添加生成模板'), findsOneWidget);
+    expect(find.textContaining('不是支持的变量'), findsOneWidget);
+    expect(find.textContaining('%C %c %D %d %W %T %N %R'), findsOneWidget);
+    expect((await repo.load())!.templates.length, before);
+  });
+
+  testWidgets('节次时间：结束早于开始 → 拒绝保存并说明原因（鸿蒙 validateSectionTimes）',
+      (tester) async {
+    final repo = await _pump(tester);
+    await _tapVisible(tester, find.byKey(const ValueKey('entry-sections')));
+    expect(find.text('上课节次时间'), findsWidgets);
+    // 第 1 行：开始 08:00、结束 08:50 → 把结束改成 07:00（早于开始）
+    final fields = find.byType(TextField);
+    await tester.enterText(fields.at(1), '07:00');
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.byKey(const ValueKey('sections-save')));
+    // 还停在这一页 + 红字；库里没被写坏
+    expect(find.text('保存节次时间'), findsOneWidget);
+    expect(find.textContaining('第 1 节的结束时间必须晚于开始时间'), findsOneWidget);
+    final saved = (await repo.load())!;
+    expect(saved.sectionTimes.first.startMin, 480);
+    expect(saved.sectionTimes.first.endMin, 530);
+  });
+
   testWidgets('加一个模板 → 写回仓库，模板能被生成器用', (tester) async {
     final repo = await _pump(tester);
     await _tapVisible(tester, find.byKey(const ValueKey('course-4')));

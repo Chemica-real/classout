@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 
 import '../domain/dates.dart';
 import '../domain/timetable.dart';
+import '../domain/validate.dart';
 import '../model/types.dart';
 import 'app_frame.dart';
 import 'theme.dart';
@@ -107,6 +108,9 @@ class _SectionsEditorBodyState extends State<SectionsEditorBody> {
           endMin: s.endMin,
           flexible: s.flexible),
   ];
+
+  /// 保存时校验失败的说明（鸿蒙 `doSaveSections` 用 toast 显示同一句话）
+  String _error = '';
 
   late List<TextEditingController> _starts = _controllers(true);
   late List<TextEditingController> _ends = _controllers(false);
@@ -295,14 +299,28 @@ class _SectionsEditorBodyState extends State<SectionsEditorBody> {
                           ),
                         ],
                       ),
+                      if (_error.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Text(_error,
+                              style: const TextStyle(
+                                  fontSize: 11, color: Color(0xFFFF8080))),
+                        ),
                       const SizedBox(height: 12),
                       _Pill(
                         key: const ValueKey('sections-save'),
                         text: '保存节次时间',
                         background: const Color(0xFF2E6BE6),
                         foreground: Colors.white,
-                        onTap: () =>
-                            widget.onDone(List.of(_rows)),
+                        onTap: () {
+                          // 鸿蒙 `doSaveSections`：validateSectionTimes，坏输入明确报错、不写库
+                          final verdict = validateSectionTimes(_rows);
+                          if (!verdict.ok) {
+                            setState(() => _error = verdict.message);
+                            return;
+                          }
+                          widget.onDone(List.of(_rows));
+                        },
                       ),
         ],
       ),
