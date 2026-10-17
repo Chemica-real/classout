@@ -128,8 +128,9 @@ class _WeekdayHeader extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: floatSide),
       child: Glass(
-        radius: glassRadiusShelf,
-        padding: const EdgeInsets.fromLTRB(0, 6, 0, 6),
+        // HOS 周条更扁：圆角 12、上下 padding 5
+        radius: 12,
+        padding: const EdgeInsets.fromLTRB(0, 3, 0, 3),
         child: Row(
           children: [
             const SizedBox(width: axisW),
@@ -271,8 +272,8 @@ class _Grid extends StatelessWidget {
                         : const <CourseSession>[]))
                       Positioned(
                         top: _offsetOf(times, s.startSection),
-                        left: 1.5,
-                        right: 1.5,
+                        left: 2,
+                        right: 2,
                         height:
                             _blockHeight(times, s.startSection, s.endSection),
                         child: _SessionBlock(
@@ -329,7 +330,8 @@ class _SessionBlock extends StatelessWidget {
               child: Text(s.location,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 9, color: _blockSub)),
+                  // 8.5 号：真机对比发现 9 号时「二教407」会被截成「二教4…」
+                  style: const TextStyle(fontSize: 8.5, color: _blockSub)),
             ),
           if (showTeacher)
             Text(s.course.teacher,

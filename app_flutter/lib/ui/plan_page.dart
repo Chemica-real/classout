@@ -387,7 +387,7 @@ class _PlanPageState extends State<PlanPage> {
             padding: EdgeInsets.fromLTRB(10, dayBarBlock, 10, trayBlock),
             child: Column(
               children: [
-                _DayTitles(days: days, axisW: _axisW),
+                if (days.length > 1) _DayTitles(days: days, axisW: _axisW),
                 _Grid(
                   key: _gridKey,
                   axis: _axis,
@@ -597,9 +597,8 @@ class _DayBar extends StatelessWidget {
     final wd = names[weekdayOf(day) - 1];
     return Glass(
       sheet: true,
-      margin:
-          const EdgeInsets.fromLTRB(floatSide, floatTop, floatSide, floatGap),
-      padding: const EdgeInsets.fromLTRB(8, 10, 12, 8),
+      margin: const EdgeInsets.fromLTRB(floatSide, 4, floatSide, 4),
+      padding: const EdgeInsets.fromLTRB(8, 8, 12, 6),
       child: Row(
         children: [
           _BarTap(
@@ -794,7 +793,9 @@ class _Grid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final h = axis.height();
-    return Glass(
+    // ⚠️ 必须是**透明**的（对照鸿蒙端真机：网格底下是壁纸，只有细横线）：
+    // 之前套了一层 Glass，壁纸被灰白面板盖住，双机对比时一眼就看出来。
+    return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: SizedBox(
         height: h + 12,
@@ -810,8 +811,9 @@ class _Grid extends StatelessWidget {
                       top: (m - axis.startMin).toDouble(),
                       right: 4,
                       child: Text(minToHHmm(m),
-                          style:
-                              const TextStyle(fontSize: 9, color: inkTertiary)),
+                          // 鸿蒙端 LAYOUT.hour=12、颜色 #CBD6E8（时间刻度是最不能含糊的）
+                          style: const TextStyle(
+                              fontSize: 12, color: Color(0xFFCBD6E8))),
                     ),
                 ],
               ),
@@ -935,7 +937,7 @@ class _DayColumn extends StatelessWidget {
                 left: 0,
                 right: 0,
                 child: Container(
-                    height: 1, color: Colors.white.withValues(alpha: 0.05)),
+                    height: 1, color: Colors.white.withValues(alpha: 0.12)),
               ),
             // 课表灰带（鸿蒙端 ClassBlock：白 0.10 + 左对齐 12/11 号字）
             for (final s in sessions)
@@ -1375,7 +1377,7 @@ class _Tray extends StatelessWidget {
                     fontWeight: FontWeight.w500,
                     color: inkPrimary)),
             const SizedBox(width: 6),
-            Text('${pool.length}',
+            Text('${pool.length + lessons.length}',
                 style: const TextStyle(fontSize: 12, color: accentBlue)),
             const Spacer(),
             const Text('展开',

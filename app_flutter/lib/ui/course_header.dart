@@ -57,7 +57,7 @@ class CourseHeader extends StatelessWidget {
       padding:
           const EdgeInsets.fromLTRB(floatSide, floatTop, floatSide, floatGap),
       child: Glass(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

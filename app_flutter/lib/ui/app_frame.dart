@@ -78,7 +78,11 @@ class _AppFrameState extends State<AppFrame>
                 child:
                     ColoredBox(color: Color(0x9E060810)), // rgba(6,8,16,0.62)
               ),
-            // 两个装饰光晕：压在内容之下（照片/墙纸也在这层之下，见 Glass.ets）
+            // 两个装饰光晕：**只在没有自定义壁纸时**画。鸿蒙端的 PageBackground 把光晕放在
+            // 照片**之下**，设了照片就看不见了 —— 我们之前把光晕画在照片之上，
+            // 结果安卓端壁纸整体偏粉/偏亮（双机对比一眼可见）。
+            if (!(widget.wallpaperPath.isNotEmpty &&
+                File(widget.wallpaperPath).existsSync()))
             Positioned.fill(
               child: IgnorePointer(
                 child: AnimatedBuilder(

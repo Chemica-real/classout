@@ -5433,3 +5433,49 @@ boolean → 0 → 课程被当成"关了自动生成"。
 ### 83.2 验证
 
 - `flutter test`：**897 passed**（fixtures 775 条逐条对拍）
+
+## 84. 2026-10-18 ★ 双机同屏对比第一轮：真实数据 + 用户壁纸进安卓，课表/计划对齐
+
+用户把**鸿蒙机也接上了**（hdc 可用：`6CT9K26408015757`），要求"以 UI 与逻辑的像为优先"。
+这轮第一次做**双机同屏逐项对照**，并把用户真实数据/壁纸搬进安卓。
+
+### 84.1 数据与壁纸（真机已验证）
+
+- 鸿蒙端沙箱文件可以直接用 hdc 读：`/data/app/el2/100/base/com.chemica.classout/haps/entry/files/`
+  - `classout-backup.json`（2026-10-16，20 KB）→ 拉到 `/tmp/hos_backup.json`
+  - `wallpaper_1791912557058.jpg`（222 KB，用户壁纸）→ 拉到 `/tmp/hos_wallpaper.jpg`
+- 用 §82 的 `tools/backup-to-db.py` 建库，再补 kv（壁纸路径 / 标语 `CHEMICA_SAVES_THE_WORLD`
+  / 动画开关 / 引导已问过 / 简报设置），`run-as` 覆盖 `files/classout.db`；
+  壁纸 likewise `cat > files/wallpaper.jpg`
+- 安卓重启后：`loaded: courses=13 todos=26 rules=16`，课表页显示「大一上 / 第 6 周」真实安排，
+  **壁纸也透出来了** —— 和鸿蒙端放到一起看已经是"同一张脸"。
+
+### 84.2 双机对比发现的差异（这轮已修的）
+
+| 差异 | 改法 |
+|---|---|
+| 计划页网格是一块**灰白玻璃**，把壁纸全盖住了 | `_Grid` 去掉 `Glass`，改回透明底 + 细横线（HOS 网格下面是壁纸） |
+| 单日视图还画了「周日 10/18」列头（HOS 只有三日视图才画） | `if (days.length > 1)` 才渲染 `_DayTitles` |
+| 待安排计数只算了待办（HOS 是待办+课时） | 计数改 `pool.length + lessons.length` |
+| 计划页时间刻度 **9 号灰字**、整点线 0.05 | 改 12 号 `#CBD6E8`、线 0.12（HOS `LAYOUT.hour=12`） |
+| 页头比 HOS 高 ~16px、与周条/内容的缝是 10vp（HOS ~4vp） | 页头 padding 12/10→8/8，行间 8/6→4/2，底部 margin `floatGap`→4 |
+| 周条比 HOS 高 ~6vp | Glass 圆角 20→12、上下 padding 6→3 |
+| 课程卡片左右各缩 1.5，导致「二教407」被截成「二教4…」 | 缩进 2、地点字号 9→8.5 |
+| **有壁纸时光晕仍画在照片之上**（整页偏粉/偏亮） | 鸿蒙端光晕在照片**之下**；改成"有壁纸就不画光晕" |
+| 时间轴刻度居中 | 右对齐（HOS `width 40 + textAlign End`） |
+
+### 84.3 方法（以后每轮都这么做）
+
+1. `hdc shell snapshot_display -f /data/local/tmp/x.jpeg` + `hdc file recv` 拿鸿蒙截图；
+   `adb exec-out screencap -p` 拿安卓截图
+2. `PIL` 把两张拼成一张（左右各半）逐项看；`uitest dumpLayout` / `uiautomator dump`
+   量出真实 px 坐标（比目测准）
+3. 改 Flutter → `flutter build apk --debug` → `adb install -r` → 重截 → 再拼
+4. 鸿蒙端**8 分钟不操作就熄屏锁屏**（用户 2026-10-18 提醒），所以对比要趁热；
+   安卓是 28 分钟。
+
+### 84.4 验证
+
+- `flutter test`：**897 passed**；golden 重出
+- 双机截图（真机）对比：课表页/计划页的页头、周条、网格起始、卡片宽度、透明度已基本一致；
+  遗留小差异：安卓时间轴整体比鸿蒙右移约 10–15vp（下一轮量出来再修）
