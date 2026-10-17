@@ -57,7 +57,8 @@ class CourseHeader extends StatelessWidget {
       padding:
           const EdgeInsets.fromLTRB(floatSide, floatTop, floatSide, floatGap),
       child: Glass(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+        // 鸿蒙页头卡：`padding({ left: 16, right: 16, top: 12, bottom: 10 })`
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -101,27 +102,36 @@ class CourseHeader extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
+            // 鸿蒙这一行用的是**每个字自己的 padding**（不是 SizedBox 间隔）：
+            // ＋补课 left 8 / right 10、本周调整 right 10、管理课程 right 12、今天 0
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                _TextAction(text: '＋补课', onTap: onExtra),
-                if (adjustCount > 0)
-                  Padding(
-                    padding: const EdgeInsets.only(left: 8),
-                    child: _TextAction(
-                      text: '本周调整 $adjustCount',
-                      color: const Color(0xFFE8B25C),
-                      onTap: onOpenAdjust,
-                    ),
-                  ),
-                Padding(
-                  padding: const EdgeInsets.only(left: 8),
-                  child: _TextAction(text: '管理课程', onTap: onManage),
+                _Tap(
+                  onTap: onExtra ?? () {},
+                  padding: const EdgeInsets.only(left: 8, right: 10),
+                  child: const Text('＋补课',
+                      style: TextStyle(fontSize: 12, color: accentBlue)),
                 ),
-                Padding(
-                  padding: const EdgeInsets.only(left: 12),
-                  child:
-                      _TextAction(text: inSem ? '今天' : '回到本周', onTap: onToday),
+                if (adjustCount > 0)
+                  _Tap(
+                    onTap: onOpenAdjust ?? () {},
+                    padding: const EdgeInsets.only(right: 10),
+                    child: Text('本周调整 $adjustCount',
+                        style: const TextStyle(
+                            fontSize: 12, color: Color(0xFFE8B25C))),
+                  ),
+                _Tap(
+                  onTap: onManage ?? () {},
+                  padding: const EdgeInsets.only(right: 12),
+                  child: const Text('管理课程',
+                      style: TextStyle(fontSize: 12, color: accentBlue)),
+                ),
+                _Tap(
+                  onTap: onToday,
+                  padding: EdgeInsets.zero,
+                  child: Text(inSem ? '今天' : '回到本周',
+                      style: const TextStyle(fontSize: 12, color: accentBlue)),
                 ),
               ],
             ),
@@ -144,21 +154,6 @@ class CourseHeader extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _TextAction extends StatelessWidget {
-  final String text;
-  final Color color;
-  final VoidCallback? onTap;
-  const _TextAction({required this.text, this.color = accentBlue, this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return _Tap(
-      onTap: onTap ?? () {},
-      child: Text(text, style: TextStyle(fontSize: 12, color: color)),
     );
   }
 }

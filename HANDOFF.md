@@ -6552,3 +6552,12 @@ cd app_flutter && flutter test       # 1268 条（含 1115 条三端 fixture 逐
 顺手对齐：课表里每节课的色块外层左右内边距 **1.5**（原来是 2，鸿蒙 `SessionBlock` 外层就是 1.5）。
 
 - `flutter test`：**1281 passed**；`flutter analyze` 无问题；golden 全部重出；真机复看课表页头与周条之间已有空行。
+
+### 116.13 课表页头卡：内边距与"＋补课 / 本周调整 / 管理课程 / 今天"那一行的间距
+
+- 页头卡内边距：鸿蒙 `.padding({ left: 16, right: 16, top: 12, bottom: 10 })`，安卓是 8/8 →
+  照抄（页头总高由 `MeasureSize` 量给各页，所以下面的内容自动跟着让位）。
+- 那一行操作字：鸿蒙是**每个字自己的 padding**（＋补课 left 8 / right 10、本周调整 right 10、
+  管理课程 right 12、今天 0），安卓原来是"每个字右 10 + SizedBox 8/8/12" 叠加，间隔比鸿蒙宽 8~10vp。
+  现在逐个改成同样的 padding，并删掉多余的 `_TextAction`。
+- `flutter test`：**1281 passed**；golden 重出。
