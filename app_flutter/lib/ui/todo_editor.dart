@@ -7,8 +7,12 @@ import '../domain/dates.dart';
 import '../model/types.dart';
 import 'palette.dart';
 
-Future<Todo?> showTodoEditor(BuildContext context, {required List<Course> courses}) {
-  return showDialog<Todo>(context: context, builder: (_) => _Editor(courses: courses));
+Future<Todo?> showTodoEditor(BuildContext context,
+    {required List<Course> courses, Todo? existing}) {
+  return showDialog<Todo>(
+    context: context,
+    builder: (_) => _Editor(courses: courses, existing: existing),
+  );
 }
 
 /// 四个快捷截止（与鸿蒙端一致：今天 / 明天 / 本周日 / 3 天后，都是 23:59）
@@ -25,18 +29,34 @@ List<(String, String)> ddlPresets() {
 
 class _Editor extends StatefulWidget {
   final List<Course> courses;
-  const _Editor({required this.courses});
+
+  /// 不为空 = 编辑已有条目（保留 id/status/时间戳等，只改用户改得动的字段）
+  final Todo? existing;
+
+  const _Editor({required this.courses, this.existing});
 
   @override
   State<_Editor> createState() => _EditorState();
 }
 
 class _EditorState extends State<_Editor> {
-  final _title = TextEditingController();
-  String _category = TodoCategory.homework;
-  String _ddl = '';
-  int _courseId = 0;
+  late final TextEditingController _title;
+  late String _category;
+  late String _ddl;
+  late int _courseId;
+  late int _estimateMin;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.existing;
+    _title = TextEditingController(text: e?.title ?? '');
+    _category = e?.category ?? TodoCategory.homework;
+    _ddl = e?.ddl ?? '';
+    _courseId = e?.courseId ?? 0;
+    _estimateMin = e?.estimateMin ?? 60;
+  }
 
   @override
   void dispose() {
@@ -50,13 +70,27 @@ class _EditorState extends State<_Editor> {
       setState(() => _error = '标题不能为空');
       return;
     }
+    final e = widget.existing;
     Navigator.of(context).pop(Todo(
+      id: e?.id ?? 0, // 新建时由调用方分配
       title: title,
       category: _category,
       ddl: _ddl,
       courseId: _courseId,
-      status: TodoStatus.active,
-      createdAt: DateTime.now().millisecondsSinceEpoch,
+      estimateMin: _category == TodoCategory.exam ? 0 : _estimateMin,
+      // 以下字段编辑时原样保留
+      endAt: e?.endAt ?? '',
+      status: e?.status ?? TodoStatus.active,
+      priority: e?.priority ?? 1,
+      note: e?.note ?? '',
+      source: e?.source ?? 'manual',
+      generationKey: e?.generationKey ?? '',
+      submitChannel: e?.submitChannel ?? '',
+      repeatRule: e?.repeatRule ?? '',
+      photos: e?.photos ?? '',
+      createdAt: e?.createdAt ?? DateTime.now().millisecondsSinceEpoch,
+      confirmedAt: e?.confirmedAt ?? 0,
+      doneAt: e?.doneAt ?? 0,
     ));
   }
 
@@ -64,7 +98,7 @@ class _EditorState extends State<_Editor> {
   Widget build(BuildContext context) {
     final presets = ddlPresets();
     return AlertDialog(
-      title: const Text('新建待办'),
+      title: Text(widget.existing == null ? '新建待办' : '编辑待办'),
       content: SizedBox(
         width: 420,
         child: SingleChildScrollView(
@@ -98,6 +132,7 @@ class _EditorState extends State<_Editor> {
                   for (final o in [
                     (TodoCategory.homework, '作业'),
                     (TodoCategory.self, '自学'),
+                    (TodoCategory.exam, '考试'),
                     (TodoCategory.none, '无'),
                   ])
                     ChoiceChip(
@@ -107,6 +142,13 @@ class _EditorState extends State<_Editor> {
                     ),
                 ],
               ),
+              if (_category == TodoCategory.exam)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text('考试的「截止」就是开考时刻；时间段建议在计划页里看。',
+                      style: TextStyle(fontSize: 11, color: inkTertiary)),
+                ),
+              if (_category != TodoCategory.exam) ...[
               const SizedBox(height: 12),
               const Text('截止', style: TextStyle(fontSize: 12, color: inkSecondary)),
               const SizedBox(height: 6),
@@ -126,6 +168,7 @@ class _EditorState extends State<_Editor> {
                     ),
                 ],
               ),
+              ],
               if (widget.courses.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 const Text('所属课程', style: TextStyle(fontSize: 12, color: inkSecondary)),

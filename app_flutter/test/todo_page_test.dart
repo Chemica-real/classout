@@ -85,6 +85,44 @@ void main() {
     expect(find.text('待确认'), findsNothing);
   });
 
+  testWidgets('点卡片正文 → 编辑已有条目（id/状态/时间戳都保留）', (tester) async {
+    BackupBundle? last;
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: StatefulBuilder(
+          builder: (context, setState) => TodoPage(
+            bundle: last ?? _demo(),
+            onChanged: (next) => setState(() => last = next),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    final before = _byId(_demo(), 3);
+    await tester.tap(find.text('实验报告'));
+    await tester.pumpAndSettle();
+    expect(find.text('编辑待办'), findsOneWidget, reason: '点正文应该进编辑窗');
+
+    await tester.enterText(find.byType(TextField).first, '实验报告（改）');
+    await tester.tap(find.widgetWithText(FilledButton, '保存'));
+    await tester.pumpAndSettle();
+
+    expect(last, isNotNull);
+    final after = _byId(last!, 3);
+    expect(after.title, '实验报告（改）');
+    expect(after.id, before.id, reason: 'id 不能变');
+    expect(after.status, before.status, reason: '状态不能因为编辑被重置');
+    expect(after.createdAt, before.createdAt);
+    expect(after.estimateMin, before.estimateMin);
+    // 没新建第二条
+    expect(last!.todos.where((t) => t.title == '实验报告（改）').length, 1);
+    expect(last!.todos.length, _demo().todos.length);
+  });
+
   testWidgets('新建待办 → 出现在「待办」段里', (tester) async {
     BackupBundle? last;
     tester.view.physicalSize = const Size(1080, 2400);

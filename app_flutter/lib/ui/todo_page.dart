@@ -50,6 +50,7 @@ class TodoPage extends StatelessWidget {
                     t: t,
                     course: courses[t.courseId],
                     categoryText: categoryLabel(t.category, _customCategories),
+                    onEdit: () => _openEditor(context, existing: t),
                     actionLabel: '确认',
                     onAction: () => onChanged(_mutate(t.id, (x) {
                       x.status = TodoStatus.active;
@@ -80,6 +81,7 @@ class TodoPage extends StatelessWidget {
                     t: t,
                     course: courses[t.courseId],
                     categoryText: categoryLabel(t.category, _customCategories),
+                    onEdit: () => _openEditor(context, existing: t),
                     onToggle: () => onChanged(_mutate(t.id, (x) {
                       x.status = TodoStatus.done;
                       x.doneAt = DateTime.now().millisecondsSinceEpoch;
@@ -93,6 +95,7 @@ class TodoPage extends StatelessWidget {
                     categoryText: categoryLabel(t.category, _customCategories),
                     done: true,
                     subtitle: doneAtText(t),
+                    onEdit: () => _openEditor(context, existing: t),
                     onToggle: () => onChanged(_mutate(t.id, (x) {
                       x.status = TodoStatus.active;
                       x.doneAt = 0;
@@ -142,12 +145,20 @@ class TodoPage extends StatelessWidget {
         blocks: bundle.blocks,
       );
 
-  Future<void> _openEditor(BuildContext context) async {
-    final draft = await showTodoEditor(context, courses: bundle.courses);
+  Future<void> _openEditor(BuildContext context, {Todo? existing}) async {
+    final draft = await showTodoEditor(context,
+        courses: bundle.courses, existing: existing);
     if (draft == null) return;
-    final nextId = bundle.todos.fold<int>(0, (m, t) => t.id > m ? t.id : m) + 1;
-    draft.id = nextId;
-    onChanged(_copyWith(todos: [...bundle.todos, draft]));
+    if (existing == null) {
+      final nextId = bundle.todos.fold<int>(0, (m, t) => t.id > m ? t.id : m) + 1;
+      draft.id = nextId;
+      onChanged(_copyWith(todos: [...bundle.todos, draft]));
+      return;
+    }
+    // 编辑：按 id 替换
+    onChanged(_copyWith(todos: [
+      for (final t in bundle.todos) if (t.id == draft.id) draft else t,
+    ]));
   }
 }
 
@@ -220,6 +231,7 @@ class _TodoCard extends StatelessWidget {
   final String? actionLabel;
   final VoidCallback? onAction;
   final VoidCallback? onToggle;
+  final VoidCallback? onEdit;
 
   const _TodoCard({
     required this.t,
@@ -230,6 +242,7 @@ class _TodoCard extends StatelessWidget {
     this.actionLabel,
     this.onAction,
     this.onToggle,
+    this.onEdit,
   });
 
   @override
@@ -254,7 +267,10 @@ class _TodoCard extends StatelessWidget {
               ),
             ),
             Expanded(
-              child: Column(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onEdit,
+                child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
@@ -305,6 +321,7 @@ class _TodoCard extends StatelessWidget {
                     ],
                   ),
                 ],
+              ),
               ),
             ),
             if (actionLabel != null)

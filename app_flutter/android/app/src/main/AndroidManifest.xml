@@ -1,4 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 本地通知：Android 13+ 需要 POST_NOTIFICATIONS；12+ 的精确闹钟需要
+         SCHEDULE_EXACT_ALARM（用户可在系统设置里收回） -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <application
         android:label="classout"
         android:name="${applicationName}"
