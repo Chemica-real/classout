@@ -7,6 +7,8 @@
 //
 // 数值全部来自 theme.dart（= 鸿蒙端 Glass.ets / Index.ets 的原始常量）。
 
+import 'dart:ui' show ImageFilter;
+
 import 'package:flutter/material.dart';
 
 import '../data/backup.dart';
@@ -125,13 +127,20 @@ class _WeekdayHeader extends StatelessWidget {
     final days = showWeekend ? 7 : 5;
     final todayWeek = weekOfDate(sem, now);
     final todayWd = weekdayOf(now);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: floatSide),
-      child: Glass(
-        // HOS 周条更扁：圆角 12、上下 padding 5
-        radius: 12,
-        padding: const EdgeInsets.fromLTRB(0, 3, 0, 3),
-        child: Row(
+    // ⚠️ 周条**不是悬浮浮窗**（用户 2026-10-14 明确："周一到周日不要做成悬浮窗了，会出去"）：
+    // 它必须和网格 7 列严格对齐，悬浮面板要留边、再被外层 padding 缩一次，列宽就越偏越远。
+    // 鸿蒙 `WeekHeaderRow`：全宽 `.glassPanel()`（模糊 + 面板底 + 1px 描边、**没有圆角**）+
+    // `TT_GRID_PAD`(4) 左右、6 上下，和网格用同一套几何。
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: glassBlur, sigmaY: glassBlur),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(gridPad, 6, gridPad, 6),
+          decoration: BoxDecoration(
+            color: glassTintPanel,
+            border: Border.all(color: glassEdgeStrong),
+          ),
+          child: Row(
           children: [
             const SizedBox(width: axisW),
             for (var d = 1; d <= days; d++)
@@ -158,6 +167,7 @@ class _WeekdayHeader extends StatelessWidget {
                 }),
               ),
           ],
+          ),
         ),
       ),
     );

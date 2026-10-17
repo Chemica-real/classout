@@ -6513,3 +6513,15 @@ cd app_flutter && flutter test       # 1268 条（含 1115 条三端 fixture 逐
   托盘里多一行（比如有虚拟课时）时底部就对不上。现在托盘也包了 `MeasureSize`，`_trayH` 实测值参与滚动区 padding，
   再加上 §116.1 的 `DDL_MARK_ALLOW`。
 - `flutter test`：**1281 passed**；golden 重出；真机（OPPO A97）复看计划页间距正常。
+
+### 116.10 课表页周条改成鸿蒙的"表格表头"（不是悬浮小卡）
+
+鸿蒙 `WeekHeaderRow` 上有一段明确的用户要求：**"周一到周日不要做成悬浮窗了，会出去"** ——
+它必须和网格 7 列严格对齐，所以回到**滚动内容里**当表头，样式是 `glassPanel()`
+（模糊 + 面板底 + 1px 描边、**没有圆角、没有左右留边**）+ `TT_GRID_PAD(4)` 左右、6 上下。
+
+安卓原来把它做成了一个**悬浮小玻璃卡**（左右各 10vp 外边距、圆角 12、上下 3），
+列宽比网格窄、还对不齐。现在按鸿蒙改成全宽 `BackdropFilter` 面板 + 4/6 内边距，
+跟着表格一起滚（`docs/manual/01-timetable.jpg` 里就是贴着屏幕两边的色条）。
+
+- `flutter test`：**1281 passed**；golden 重出；真机（OPPO A97）周条现在是通栏贴边。
