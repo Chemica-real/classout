@@ -12,7 +12,7 @@ ClassOUT 是一款**纯离线鸿蒙原生（ArkTS）「课表 + 待办 + 计划�
 
 **当前状态：v1.5.1（鸿蒙端，上架准备中，**尚未提交审核**）**；**iOS/Android 版（Dart+Flutter）
 正在开发中**，**iOS/Android 版目标 ①–⑤ 全部实现**（规则层 + 数据层 + 四标签页 + 原生接线 + 通知提醒，
-**682 条测试**，含 web/iPad 的「从文件导入」、计划页拖动/缩放**），见 **§36–§43、§49、§50**；**iOS 已在 GitHub Actions 的模拟器上自动验证**
+**683 条测试**，含 web/iPad 的「从文件导入」、计划页拖动/缩放**），见 **§36–§43、§49、§50**；**iOS 已在 GitHub Actions 的模拟器上自动验证**
 （§47：#1–#9 里 7 次绿，含 `db opened` + `loaded:` 自检）；**Android APK 也已能打包**
 （§48，模拟器运行验证降级为手动）。
 ⚠️ 仍然缺的都是**只能靠真机/CI** 的东西：通知权限弹窗/锁屏/免打扰、iOS 上
@@ -4302,3 +4302,16 @@ final bytes = await files.first.readAsBytes();        // 也有 readAsByteStream
 
 > 教训写在这里：**"手势没反应"先怀疑竞技场**（用 `Listener` 打点确认指针到底有没有到）；
 > **"跟手但不准"先算滚动量**。这两件事在真机上用眼睛是分不出来的。
+
+### 50.3 变异测试（这两组新 fixtures 真的有效）
+
+- 把 `dragOffsetWithScroll` 的 `+` 改回鸿蒙端当年那个 bug 的 `-` → **2 条 FAIL**；
+- 把 `edgeScrollStep` 的"不足 1 时至少给 1"改成 `return 0` → **2 条 FAIL**
+  （为此专门补了 `depth=0/1` 两条用例，否则这条规则没被覆盖 —— 616 条 fixtures）；
+- 还原后 **683 条全绿**。
+
+### 50.4 目标 ⑤（鸿蒙 v1.5.1 装机）：**仍未验**
+
+`hdc list targets` 一直是 `[Empty]`（手机没插 USB）。v1.5.1 的包已经构建好、tag 也推了
+（§45），**只差插线跑 `./sign-and-install.sh --install`**。装完看日志里
+`reminder plan: {...}` 的 `ddl` 计数比之前少 1 即可确认「考试即将截止」那条没了。

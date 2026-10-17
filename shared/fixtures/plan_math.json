@@ -4506,6 +4506,15 @@
   {
    "fn": "edgeScrollStep",
    "args": [
+    1,
+    60,
+    12
+   ],
+   "expect": 1
+  },
+  {
+   "fn": "edgeScrollStep",
+   "args": [
     5,
     60,
     12

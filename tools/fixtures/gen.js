@@ -196,7 +196,8 @@ for (const d of [-30, -5, 0, 5, 30]) add('pinchDeltaLabel', [d], VD.pinchDeltaLa
         PM.edgeScrollDepth(y, view[0], view[1], zone));
     }
   }
-  for (const d of [0, 5, 30, 60, 120]) {
+  // 注意带上 depth=0 / 1：这两条钉住"按比例算出来不足 1 时至少给 1"那条规则
+  for (const d of [0, 1, 5, 30, 60, 120]) {
     add('edgeScrollStep', [d, 60, 12], PM.edgeScrollStep(d, 60, 12));
   }
   for (const [a, b] of [[10, 0], [10, 25], [-10, 25], [-10, 0], [0, 40]]) {
