@@ -6995,3 +6995,6 @@ Flutter 要做这个得上 `AnimatedList`/`SliverAnimatedList`，改动面比收
 补充：单周调整三个弹窗（`SessionSheet` / `AdjustSheet` / `ExtraSheet`）的遮罩同样从
 `0x8C0C1220` 统一成鸿蒙的 `rgba(12,18,28,0.45)`（`0x730C121C`）。现在全 App 的弹层遮罩只有两种：
 抽屉/弹窗 `0.45`、课程管理那层薄纱 `SCRIM_COLOR 0.42 + blur`（与鸿蒙一致）。
+
+补充 2：弹窗外边距统一成鸿蒙的「整屏 `.padding(16)` 居中」——
+单周调整三弹窗（16/24 → 16）、课程规则的 RuleDialog / TemplateDialog（20/40 → 16）。

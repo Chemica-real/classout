@@ -1219,7 +1219,8 @@ class _RuleDialogState extends State<_RuleDialog> {
     const names = ['一', '二', '三', '四', '五', '六', '日'];
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
+      // 鸿蒙 RuleDialog / TemplateDialog：整屏 `.padding(16)` 居中
+      insetPadding: const EdgeInsets.all(16),
       child: Glass(
         sheet: true,
         padding: const EdgeInsets.all(18),
@@ -1430,7 +1431,8 @@ class _TemplateDialogState extends State<_TemplateDialog> {
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
+      // 鸿蒙 RuleDialog / TemplateDialog：整屏 `.padding(16)` 居中
+      insetPadding: const EdgeInsets.all(16),
       child: Glass(
         sheet: true,
         padding: const EdgeInsets.all(18),

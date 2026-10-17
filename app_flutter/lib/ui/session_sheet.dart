@@ -252,7 +252,8 @@ class _SessionSheetState extends State<_SessionSheet> {
         s.course.shortName.isNotEmpty ? s.course.shortName : s.course.name;
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      // 鸿蒙：整屏 `.padding(16)` 居中（不是 16/24）
+      insetPadding: const EdgeInsets.all(16),
       child: Glass(
         sheet: true,
         padding: const EdgeInsets.all(18),
@@ -417,8 +418,7 @@ Future<void> showAdjustSheet(
         final list = bundle.overrides;
         return Dialog(
           backgroundColor: Colors.transparent,
-          insetPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          insetPadding: const EdgeInsets.all(16),
           child: Glass(
             sheet: true,
             padding: const EdgeInsets.all(18),
@@ -559,7 +559,8 @@ class _ExtraSheetState extends State<_ExtraSheet> {
     const names = ['一', '二', '三', '四', '五', '六', '日'];
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      // 鸿蒙：整屏 `.padding(16)` 居中（不是 16/24）
+      insetPadding: const EdgeInsets.all(16),
       child: Glass(
         sheet: true,
         padding: const EdgeInsets.all(18),
