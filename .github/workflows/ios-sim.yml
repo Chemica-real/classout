@@ -68,13 +68,14 @@ jobs:
           # ⚠️ 必须带 --console-pty：App 里的 debugPrint 走 stdout，
           #    `log show --predicate process==Runner` 抓不到它。
           xcrun simctl terminate "$UDID" com.chemica.classout 2>/dev/null || true
-          ( xcrun simctl launch --console-pty "$UDID" com.chemica.classout > app.log 2>&1 & )
+          # ⚠️ 不要用 --console-pty：它把 App 绑在这个步骤的 pty 上，步骤结束 pty 关闭时
+          #    App 会被一起带走，后面步骤的"进程存活"断言就会误判失败（#7 就是这么挂的）。
+          #    普通 launch 之后用 `log show` 抓 debugPrint —— #3 已证明能抓到。
+          xcrun simctl launch "$UDID" com.chemica.classout
           sleep 15
           xcrun simctl io "$UDID" screenshot shot-1.png
           sleep 6
           xcrun simctl io "$UDID" screenshot shot-2.png
-          echo "--- app.log（App 的 stdout）---"
-          cat app.log || true
 
       - name: 断言 App 真的在跑（而不是启动即崩）
         run: |
@@ -83,6 +84,10 @@ jobs:
           # 1) 进程还在（simctl launch 成功不代表没崩）
           if ! xcrun simctl spawn "$UDID" launchctl list | grep -q com.chemica.classout; then
             echo "::error::App 启动后进程不在了（很可能是崩溃）"
+            echo "--- 现场：模拟器里的 chemica 相关进程 ---"
+            xcrun simctl spawn "$UDID" launchctl list | grep -i chemica || true
+            echo "--- 现场：已安装的 App ---"
+            xcrun simctl listapps "$UDID" | grep -i -A2 chemica || true
             exit 1
           fi
           # 2) 没有崩溃报告
