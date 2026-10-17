@@ -6561,3 +6561,56 @@ cd app_flutter && flutter test       # 1268 条（含 1115 条三端 fixture 逐
   管理课程 right 12、今天 0），安卓原来是"每个字右 10 + SizedBox 8/8/12" 叠加，间隔比鸿蒙宽 8~10vp。
   现在逐个改成同样的 padding，并删掉多余的 `_TextAction`。
 - `flutter test`：**1281 passed**；golden 重出。
+
+---
+
+## 117. 本轮收尾：现在还剩什么（给下一次接手的人）
+
+### 117.1 已经对拍过的（这一轮新增）
+
+| 块 | 结论 |
+|---|---|
+| 计划页截止浮层 | 改成鸿蒙 `bindPopup` 形态（无遮罩、点外关、再点收起、展开加深）§116.1 |
+| 演练沙箱偏好 | 进沙箱前整张 kv 快照、退出/冷启动整份还原 §116.2 |
+| 退出演练 / 手动同步 / 恢复备份的提示 | 按鸿蒙改成静默 / 白框 / 留在本页 §116.3 |
+| 课程管理 | 整页换内容（`_mode`）+ 顶栏玻璃条 + 全屏薄纱 §116.7 |
+| 备份页 | 路径块常驻、琥珀色「从备份文件恢复…」§116.7 |
+| 文案 | `M/D` 斜线日期；「这是习题课」；「加上这节课」§116.8 |
+| 抽屉几何 | 待办编辑 / 计划块面板：右缝 10、圆角 20 §116.8 |
+| 计划页浮窗 | 日期条与网格 10vp 空行、托盘高度实测、`DDL_MARK_ALLOW` §116.9 |
+| 课表周条 | 通栏玻璃面板（不是悬浮小卡）、跟内容滚 §116.10 |
+| 待办页行动托盘 | 改成浮层、列表滑到它下面 §116.11 |
+| 各页滚动 padding | 全部按 `topInset/bottomInset/+FLOAT_GAP` 重算 §116.12 |
+| 课表页头卡 | 内边距 16/12/16/10、操作字各自 padding §116.13 |
+
+### 117.2 仍然没做/做不了的
+
+1. **鸿蒙机双机同屏最后一遍复核** —— 鸿蒙机从 2026-10-18 02:30 起一直锁屏（没有 PIN）。
+   解锁后按 §84.3 的流程把四页各截一张，和 `app_flutter/tool/goldens/` + 真机截图对照。
+   这是唯一还挡在"1:1 完成"前面的东西。
+2. **双指缩放真机手测** —— `adb input` 只能单指、`sendevent` 被 SELinux 拒；逻辑有单测 + fixtures。
+3. **玻璃浮窗滚动时的偶发重影** —— Impeller/BackdropFilter 瞬态（§111），切页即消失，不是布局。
+4. **备份入口形态** —— 安卓没有可共享的沙箱目录，导入走系统文件选择（预览即确认）；
+   恢复后的表现已经和鸿蒙一致（留在本页 + 蓝框）。
+5. **版本号** —— 安卓 `0.2.0`、鸿蒙 `v1.5.1`，两端各自的版本号，不是抄错。
+6. **提醒诊断（长按「保存提醒设置」）** —— 安卓专属的排查入口（§86.2），鸿蒙没有。
+
+### 117.3 验证命令（每次改动后跑一遍）
+
+```bash
+./tools/domain-check/run.sh          # 鸿蒙端离线断言：524 项
+cd app_flutter && flutter analyze    # 0 issue
+cd app_flutter && flutter test       # 1281 条（含 1115 条三端 fixture 逐条对拍）
+cd app_flutter && flutter test --update-goldens tool/screenshot_test.dart   # 15 张 golden
+```
+
+真机（OPPO A97）安装：
+
+```bash
+export JAVA_HOME=/home/chemica/ChemicaWorkspace/toolchain/jdk
+export PATH="/home/chemica/ChemicaWorkspace/toolchain/flutter-sdk/bin:/home/chemica/ChemicaWorkspace/toolchain/android-sdk/platform-tools:$PATH"
+cd app_flutter && flutter build apk --debug && adb -s 7D7PAQ9PORLR79Z9 install -r build/app/outputs/flutter-apk/app-debug.apk
+```
+
+⚠️ 这台 OPPO 有个「数字健康 / 应用限时」的系统挡板（`ExpireTimeCoverActivity`），
+偶尔会在连续调试很久之后冒出来写着「停用中，无法使用」——**不是 App 崩了**，按返回或点「解除限制」即可。
