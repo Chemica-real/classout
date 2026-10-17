@@ -16,7 +16,11 @@ import '../domain/timetable.dart';
 import '../model/types.dart';
 import 'app_frame.dart';
 import 'block_editor.dart';
+import 'timetable_page.dart' show gridPad;
 import 'palette.dart';
+
+/// 三日视图列头高度（鸿蒙 `H_COLHEAD = 34`）
+const double colHeadH = 34;
 
 class PlanPage extends StatefulWidget {
   final BackupBundle bundle;
@@ -671,7 +675,8 @@ class _DayBar extends StatelessWidget {
     return Glass(
       sheet: true,
       margin: const EdgeInsets.fromLTRB(floatSide, 4, floatSide, 4),
-      padding: const EdgeInsets.fromLTRB(8, 8, 12, 6),
+      // 鸿蒙 DayBarFloat：padding 左 8 / 右 12 / 上 10 / 下 8
+      padding: const EdgeInsets.fromLTRB(8, 10, 12, 8),
       child: Row(
         children: [
           _BarTap(
@@ -775,32 +780,49 @@ class _DayTitles extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const names = ['一', '二', '三', '四', '五', '六', '日'];
     final now = formatDate(today());
-    return Padding(
-      padding: EdgeInsets.only(left: axisW, bottom: 6),
-      child: Row(
-        children: [
-          for (final d in days)
-            Expanded(
-              child: Column(
-                children: [
-                  Text('周${names[weekdayOf(d) - 1]}',
-                      style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: formatDate(d) == now
-                              ? accentBlue
-                              : inkSecondary)),
-                  Text('${d.month}/${d.day}',
-                      style: TextStyle(
-                          fontSize: 10,
-                          color:
-                              formatDate(d) == now ? accentBlue : inkTertiary)),
-                ],
+    // 鸿蒙 ColHeadRow：玻璃条 + 轴宽占位 + 三列等分；**中间那列**是当前查看日的高亮
+    final center = days.length ~/ 2;
+    return Glass(
+      radius: 0,
+      padding: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: gridPad),
+        child: Row(
+          children: [
+            SizedBox(width: axisW, height: colHeadH),
+            for (var i = 0; i < days.length; i++)
+              Expanded(
+                child: Container(
+                  height: colHeadH,
+                  color: i == center
+                      ? const Color(0x1AFFFFFF) // rgba(255,255,255,0.10)
+                      : const Color(0x08FFFFFF), // rgba(255,255,255,0.03)
+                  alignment: Alignment.center,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                          '${days[i].month}/${days[i].day} '
+                          '周${weekdayCn[weekdayOf(days[i]) - 1]}',
+                          style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: i == center
+                                  ? FontWeight.w500
+                                  : FontWeight.normal,
+                              color: i == center
+                                  ? inkPrimary
+                                  : const Color(0xFFA9B5C9))),
+                      if (formatDate(days[i]) == now)
+                        const Text('今天',
+                            style: TextStyle(
+                                fontSize: 12, color: Color(0xFF7FA8FF))),
+                    ],
+                  ),
+                ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }

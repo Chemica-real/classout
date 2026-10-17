@@ -89,7 +89,7 @@ class _BootScreenState extends State<BootScreen> with TickerProviderStateMixin {
       _spinBack.repeat();
       _pulse.repeat();
     }
-    _type('正在读取本地数据…');
+    _type('正在初始化…');
     if (widget.ready) _play();
   }
 
@@ -103,7 +103,7 @@ class _BootScreenState extends State<BootScreen> with TickerProviderStateMixin {
   static String _statusFor(int step) {
     switch (step) {
       case 0:
-        return '正在读取本地数据…';
+        return '正在初始化…';
       case 1:
         return '正在排课…';
       case 2:
@@ -111,7 +111,8 @@ class _BootScreenState extends State<BootScreen> with TickerProviderStateMixin {
       case 3:
         return '正在重排提醒…';
       default:
-        return '已就绪';
+        // 鸿蒙端这一步不换文案：打字机那行停在「正在重排提醒…」直到过场结束
+        return '正在重排提醒…';
     }
   }
 
