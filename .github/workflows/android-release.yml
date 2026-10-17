@@ -1,0 +1,92 @@
+# 打 tag（android-v*）时自动构建 release APK 并挂到 GitHub Release —— 这样才有公开下载链接。
+#
+# 为什么不在仓库里放 APK：72 MB 的二进制会永久留在 git 历史里，clone 会越来越慢。
+# Release 附件既能公开下载，又不进仓库历史。
+#
+# 注意：现在用的是 build.gradle.kts 里默认的 **debug 签名**（Flutter 模板自带的写法），
+# 只适合测试分发；正式发布要换成自己的 release keystore。
+
+name: Android APK 发布
+
+on:
+  push:
+    tags: ['android-v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write   # 发 Release 需要
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 装 Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: 依赖
+        working-directory: app_flutter
+        run: flutter pub get
+
+      - name: 构建 release APK
+        working-directory: app_flutter
+        run: |
+          set -o pipefail
+          flutter build apk --release 2>&1 | tee build-apk-release.log
+
+      - name: 改名（带上 tag 与版本号）
+        id: pack
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME:-manual}"
+          VERSION=$(grep -m1 '^version:' app_flutter/pubspec.yaml | awk '{print $2}')
+          OUT="ClassOUT-android-${TAG}-v${VERSION%%+*}.apk"
+          cp app_flutter/build/app/outputs/flutter-apk/app-release.apk "$OUT"
+          ls -lh "$OUT"
+          echo "file=$OUT" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: 发布到 GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.pack.outputs.tag }}"
+          FILE="${{ steps.pack.outputs.file }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$FILE" --clobber
+          else
+            gh release create "$TAG" "$FILE" \
+              --title "ClassOUT Android $TAG" \
+              --notes-file .github/release-notes-android.md
+          fi
+          gh release view "$TAG" --json url -q .url
+
+      - name: 失败时把日志推到 ci-logs
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+          mkdir -p /tmp/cilog
+          cp app_flutter/build-apk-release.log /tmp/cilog/ 2>/dev/null || true
+          git config user.name "ci-logs"
+          git config user.email "ci-logs@users.noreply.github.com"
+          git checkout --orphan ci-logs-tmp >/dev/null 2>&1 || true
+          git rm -rf --cached . >/dev/null 2>&1 || true
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} + 2>/dev/null || true
+          cp /tmp/cilog/* . 2>/dev/null || true
+          git add -A
+          git commit -m "Android release CI 失败 run ${{ github.run_number }}" >/dev/null
+          git push -f origin HEAD:ci-logs
