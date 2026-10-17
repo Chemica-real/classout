@@ -12,7 +12,7 @@ ClassOUT 是一款**纯离线**的「课表 + 待办 + 计划」三合一 App，
 |---|---|---|
 | 版本 | v1.5.1（上架准备中，未提审） | 0.2.0（Android 已装真机 OPPO A97） |
 | 页面 | 课表 / 待办 / 计划 / 设置 + 启动加载页 + 悬浮浮窗 | **同样四页 + 启动页 + 浮窗（§52–§68 逐页复刻）** |
-| 测试 | 离线断言 524 项（`tools/domain-check`） | **1292 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
+| 测试 | 离线断言 524 项（`tools/domain-check`） | **1293 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
 | 差异基准 | 本目录 `docs/manual/01..09.jpg`（真机截图） | `app_flutter/tool/goldens/*.png` 对照上面九张 + `shared/fixtures/`（1115 条规则用例） |
 
 **安卓版与鸿蒙版的 1:1 复刻已经完成**：主题 token 抄自 ArkTS（§52）、六个页面重做、
@@ -6722,3 +6722,17 @@ cd app_flutter && flutter build apk --debug && adb -s 7D7PAQ9PORLR79Z9 install -
   只有 `generationKey` 非空的（模板生成的）才记。
 - 测试 +4（kv 解析 / 幂等写入 / 删掉后进黑名单且不再补生成 / 生成器黑名单过滤）。
   `flutter test` **1292 passed**；`flutter analyze` 无问题。
+
+### 116.21 提醒：虚拟课时块的到点文案（`该上「X 第 N 讲」了`）
+
+鸿蒙 `ReminderScheduler.syncReminders()` 排「计划块到点提醒」时会分两种：
+- `lessonId > 0` → `该上「${课程简称} 第 ${seq} 讲」了`（找不到课就叫「虚拟课程」）；
+- 否则找 `todoId` 对应的待办 → `该做「标题」了`；都没有才 `该做这件事了`。
+
+安卓只实现了后一种，虚拟课时块到点只会弹「该做这件事了」。现在把 `lessons` 传进
+`buildReminderCandidates` / `planReminders`（默认空列表），按鸿蒙同样的分支取标题；
+`HomeShell._resyncReminders` 传 `bundle.lessons`。
+
+顺带把「鸿蒙漏了考试排除」那句过时注释改掉 —— 鸿蒙现在也跳过考试，两边一致。
+
+- 测试 +1（`该上「线代 第 2 讲」了`）。`flutter test` **1293 passed**。

@@ -96,6 +96,8 @@ List<PlannedReminder> buildReminderCandidates({
   required List<PlanBlock> blocks,
   required ReminderSettings settings,
   required DateTime now,
+  /// 虚拟课时（计划块的 `lessonId` 指向它们 → 到点提醒说「该上第 N 讲了」）
+  List<VirtualLesson> lessons = const <VirtualLesson>[],
   int windowDays = reminderWindowDays,
   int blockDays = blockWindowDays,
 }) {
@@ -142,8 +144,8 @@ List<PlannedReminder> buildReminderCandidates({
   for (final t in todos) {
     // ⚠️ **考试不排「即将截止」**。考试的 ddl 存的是它的**开始时刻**，
     //    排成"XX 即将截止"语义就错了（用户 2026-10-16：「考试无需显示截止」）。
-    //    鸿蒙端 `ReminderScheduler.syncReminders()` 里**漏了这一条**（见 HANDOFF §41），
-    //    所以这边是有意与它不一致的修正 —— 考试的提醒交给它的计划块（到点提醒）。
+    //    鸿蒙端 `ReminderScheduler.syncReminders()` 现在也跳过了（§41 记的那个 bug 已修），
+    //    两边一致：考试的提醒交给它的计划块（到点提醒）。
     if (t.category == TodoCategory.exam) continue;
     final due = ddlDateTime(t.ddl);
     if (due == null || !due.isAfter(now)) continue;
@@ -165,9 +167,21 @@ List<PlannedReminder> buildReminderCandidates({
       final at =
           DateTime(d.year, d.month, d.day, b.startMin ~/ 60, b.startMin % 60);
       if (!at.isAfter(now)) continue;
+      // 鸿蒙：课时块说「该上『X 第 N 讲』了」，待办块说「该做『…』了」，都没有就「该做这件事了」
       var title = '该做这件事了';
-      for (final t in todos) {
-        if (t.id == b.todoId) title = '该做「${t.title}」了';
+      if (b.lessonId > 0) {
+        for (final l in lessons) {
+          if (l.id != b.lessonId) continue;
+          final c = courseMap[l.courseId];
+          final name = c == null
+              ? '虚拟课程'
+              : (c.shortName.isNotEmpty ? c.shortName : c.name);
+          title = '该上「$name 第 ${l.seq} 讲」了';
+        }
+      } else {
+        for (final t in todos) {
+          if (t.id == b.todoId) title = '该做「${t.title}」了';
+        }
       }
       out.add(PlannedReminder(at, title,
           '计划 ${minToHHmm(b.startMin)}-${minToHHmm(b.endMin)}', 'block'));
@@ -189,6 +203,7 @@ ReminderPlanResult planReminders({
   required List<PlanBlock> blocks,
   required ReminderSettings settings,
   required DateTime now,
+  List<VirtualLesson> lessons = const <VirtualLesson>[],
   int windowDays = reminderWindowDays,
   int blockDays = blockWindowDays,
   int budget = reminderBudget,
@@ -203,6 +218,7 @@ ReminderPlanResult planReminders({
     blocks: blocks,
     settings: settings,
     now: now,
+    lessons: lessons,
     windowDays: windowDays,
     blockDays: blockDays,
   );

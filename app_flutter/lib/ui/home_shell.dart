@@ -343,6 +343,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       overrides: bundle.overrides,
       todos: bundle.todos.where((t) => t.status == 'active').toList(),
       blocks: bundle.blocks,
+      lessons: bundle.lessons,
       settings: _settings.reminderSettings,
       now: DateTime.now(),
     );

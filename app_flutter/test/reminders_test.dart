@@ -11,6 +11,7 @@ import 'package:classout/data/backup.dart';
 import 'package:classout/domain/dates.dart';
 import 'package:classout/domain/reminders.dart';
 import 'package:classout/domain/timetable.dart';
+import 'package:classout/model/types.dart';
 
 BackupBundle _demo() =>
     BackupBundle.decode(File('assets/demo_backup.json').readAsStringSync());
@@ -19,7 +20,10 @@ BackupBundle _demo() =>
 final DateTime _now = DateTime(2026, 10, 14, 20, 0);
 
 ReminderPlanResult _plan(BackupBundle b,
-    {ReminderSettings? settings, DateTime? now, int budget = reminderBudget}) {
+    {ReminderSettings? settings,
+    DateTime? now,
+    int budget = reminderBudget,
+    List<VirtualLesson> lessons = const <VirtualLesson>[]}) {
   return planReminders(
     sem: b.semester!,
     courses: b.courses,
@@ -28,6 +32,7 @@ ReminderPlanResult _plan(BackupBundle b,
     overrides: b.overrides,
     todos: b.todos.where((t) => t.status == 'active').toList(),
     blocks: b.blocks,
+    lessons: lessons,
     settings: settings ?? ReminderSettings(),
     now: now ?? _now,
     budget: budget,
@@ -35,6 +40,29 @@ ReminderPlanResult _plan(BackupBundle b,
 }
 
 void main() {
+  test('虚拟课时块：到点提醒说「该上「X 第 N 讲」了」（鸿蒙同款文案）', () {
+    final b = _demo();
+    final lessons = [
+      VirtualLesson(id: 7, courseId: 4, seq: 2, title: '第 2 讲'),
+    ];
+    final block = PlanBlock(
+        id: 99, todoId: 0, lessonId: 7, date: '2026-10-14', startMin: 21 * 60, endMin: 22 * 60);
+    final r = planReminders(
+      sem: b.semester!,
+      courses: b.courses,
+      rules: b.rules,
+      times: b.sectionTimes,
+      overrides: b.overrides,
+      todos: const [],
+      blocks: [block],
+      lessons: lessons,
+      settings: ReminderSettings(),
+      now: _now,
+    );
+    final blk = r.published.firstWhere((x) => x.kind == 'block');
+    expect(blk.title, '该上「线代 第 2 讲」了');
+  });
+
   test('简报：今天那条如果已过就不排（现在 20:00，今天 07:30 已过）', () {
     final r = _plan(_demo());
     expect(r.briefs, 7, reason: 'offset 0..7 共 8 天，但今天的 07:30 已经过去');
