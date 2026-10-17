@@ -12,7 +12,7 @@ ClassOUT 是一款**纯离线**的「课表 + 待办 + 计划」三合一 App，
 |---|---|---|
 | 版本 | v1.5.1（上架准备中，未提审） | 0.2.0（Android 已装真机 OPPO A97） |
 | 页面 | 课表 / 待办 / 计划 / 设置 + 启动加载页 + 悬浮浮窗 | **同样四页 + 启动页 + 浮窗（§52–§68 逐页复刻）** |
-| 测试 | 离线断言 524 项（`tools/domain-check`） | **1293 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
+| 测试 | 离线断言 524 项（`tools/domain-check`） | **1294 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
 | 差异基准 | 本目录 `docs/manual/01..09.jpg`（真机截图） | `app_flutter/tool/goldens/*.png` 对照上面九张 + `shared/fixtures/`（1115 条规则用例） |
 
 **安卓版与鸿蒙版的 1:1 复刻已经完成**：主题 token 抄自 ArkTS（§52）、六个页面重做、
@@ -6774,3 +6774,18 @@ golden 总数 19 → **23**；`flutter test` **1293 passed**。
 
 补充：计划页**日期条**同样按参考图量过一遍 —— 鸿蒙 41vp、安卓 45 → 给日期 16 号与相对日 12 号都写 `height: 1.2`
 之后是 **40vp**，和参考图差 1vp；日期条与页头之间 20vp（鸿蒙 19）。
+
+### 116.24 修掉一个真 bug：计划块的颜色拿 `courseId` 当色号（会串色）
+
+`plan_page.dart` 里计划块底色写的是 `courseColor(todo!.courseId)` —— 把**数据库课程 id** 当成
+`colorIndex` 去查 10 色表。鸿蒙 `colorOf(courseId)` 是"先找到课程、再取它的 `colorIndex`"。
+结果：只要某门课的 `courseId ≠ colorIndex`（很常见，比如 4 号课 colorIndex=0），
+计划块颜色就和课表格子、课程管理里的胶囊对不上。
+
+- 给 `_Block` 传 `courseColorOf`（由 `_DayColumn` 从页面拿），改用 `courseColorOf(todo.courseId)`。
+- 新增回归测试：取演示数据里 `courseId=4 / colorIndex=0` 的那条（正好会串色），
+  断言块里出现 `courseColor(0)` 而不是 `courseColor(4)`。
+- 顺带把计划页日期条的两个箭头从 Material `Icons.chevron_*` 改成鸿蒙的 `Text('‹'/'›')` 22 号
+  （`03-plan.jpg` 里就是细箭头文字）。
+- `sandbox_plan.png` 里 14:00 那块从**绿色**变回**蓝色**（= 高数的 courseIndex 2），和 `03-plan.jpg` 一致。
+- `flutter test`：**1294 passed**；23 张 golden 重出。

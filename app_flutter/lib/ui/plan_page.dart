@@ -831,7 +831,9 @@ class _DayBar extends StatelessWidget {
         children: [
           _BarTap(
             onTap: onPrev,
-            child: const Icon(Icons.chevron_left, size: 26, color: accentBlue),
+            // 鸿蒙 `DayBarFloat` 用的是文字箭头 `Text('‹')` 22 号（不是 Material 图标）
+            child: const Text('‹',
+                style: TextStyle(fontSize: 22, color: accentBlue)),
           ),
           Expanded(
             child: Column(
@@ -859,7 +861,8 @@ class _DayBar extends StatelessWidget {
           ),
           _BarTap(
             onTap: onNext,
-            child: const Icon(Icons.chevron_right, size: 26, color: accentBlue),
+            child: const Text('›',
+                style: TextStyle(fontSize: 22, color: accentBlue)),
           ),
           const SizedBox(width: 6),
           _Chip(text: '日', selected: !threeDay, onTap: onDay),
@@ -1257,6 +1260,7 @@ class _DayColumn extends StatelessWidget {
                 pinchEndMin: pinchId == b.id ? pinchEndMin : 0,
                 selected: selectedBlockId == b.id,
                 courseLabel: courseLabelOf(todoOf(b.todoId)?.courseId ?? 0),
+                courseColorOf: courseColorOf,
               ),
             // 截止标记
             for (final g in ddls)
@@ -1423,6 +1427,10 @@ class _Block extends StatelessWidget {
 
   /// 所属课程简称（副文字 / 紧凑标题用；空 = 没课程）
   final String courseLabel;
+
+  /// 课程 id → 颜色。⚠️ 必须按课程的 `colorIndex` 取色，
+  /// 不能拿 `courseId` 当色号（鸿蒙 `colorOf(courseId)` 也是先找课程再取 colorIndex）
+  final Color Function(int) courseColorOf;
   final void Function(PlanBlock b, int pointer, Offset position, bool down)
       onPointer;
   final VoidCallback onTap;
@@ -1443,6 +1451,7 @@ class _Block extends StatelessWidget {
     required this.pinchEndMin,
     required this.selected,
     required this.courseLabel,
+    required this.courseColorOf,
     required this.onPointer,
     required this.onTap,
     required this.onToggleDone,
@@ -1482,7 +1491,7 @@ class _Block extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = todo != null
-        ? courseColor(todo!.courseId)
+        ? courseColorOf(todo!.courseId)
         : (lessonColor ?? const Color(0xFF4A5B75));
     final topMin = resizing ? block.startMin : block.startMin + dragDeltaMin;
     final top = (topMin - axis.startMin).toDouble();

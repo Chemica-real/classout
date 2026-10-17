@@ -11,6 +11,7 @@ import 'package:classout/domain/plan_math.dart';
 import 'package:classout/domain/timetable.dart';
 import 'package:classout/model/types.dart';
 import 'package:classout/ui/plan_page.dart';
+import 'package:classout/ui/theme.dart';
 
 BackupBundle _demo() =>
     BackupBundle.decode(File('assets/demo_backup.json').readAsStringSync());
@@ -526,6 +527,43 @@ void main() {
     final after = _byIdBlock(b!, before.id);
     expect(after.date, '2026-10-17');
     expect(after.startMin, before.startMin, reason: '跨天只改日期、不改时间');
+  });
+
+  testWidgets('计划块的颜色取课程的 colorIndex（不是拿 courseId 当色号）', (tester) async {
+    final demo = _demo();
+    // 3 号块 → 待办 2 → 课程 4（colorIndex = 0）：courseId(4) ≠ colorIndex(0)，正好能抓串色
+    final block = demo.blocks.firstWhere((b) => b.todoId == 2);
+    final todo = demo.todos.firstWhere((t) => t.id == block.todoId);
+    final course = demo.courses.firstWhere((c) => c.id == todo.courseId);
+    // 演示数据里「courseId == colorIndex」不成立（4 号课 colorIndex=0）→ 以前会串色
+    expect(todo.courseId, isNot(course.colorIndex));
+
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: PlanPage(
+          bundle: demo,
+          onChanged: (_) {},
+          initialDay: parseDate(block.date),
+          now: _fixedNow,
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    final card = find.byKey(ValueKey('plan-block-${block.id}'));
+    await tester.ensureVisible(card);
+    await tester.pumpAndSettle();
+    final boxes = tester.widgetList<Container>(
+        find.descendant(of: card, matching: find.byType(Container)));
+    final colors = [
+      for (final c in boxes)
+        if (c.decoration is BoxDecoration &&
+            (c.decoration as BoxDecoration).color != null)
+          (c.decoration as BoxDecoration).color
+    ];
+    expect(colors, contains(courseColor(course.colorIndex)));
   });
 
   testWidgets('截止标记：点一条 → 回调外壳打开那条待办的编辑窗', (tester) async {
