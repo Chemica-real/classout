@@ -4861,3 +4861,29 @@ iOS 侧这次改动**还需 CI 复核**（`DynamicLibrary.process()` + 插件同
   日志 `loaded: courses=4 todos=6 rules=6`
 - 差异记录：演练数据用的是仓库里的 `assets/demo_backup.json`（学期名「演示学期」），
   鸿蒙端沙箱学期叫「演练学期」；两者都是中性演示数据，只差标签，没改资产以免动到既有测试
+
+## 65. 2026-10-17 安卓版：备注展开记忆 + 截止「自定义…」
+
+两条都是上一轮记下的缺口，这轮补齐。
+
+### 65.1 备注展开状态（`note_expanded`）
+
+- 新文件 `lib/data/note_pref.dart`：kv `note_expanded`（与鸿蒙端同一个键）+ 内存态
+  `noteExpanded`（等价 `AppStorage('noteExpanded')`），冷启动由 HomeShell 读回
+- **两个编辑窗共用**：待办编辑抽屉的备注框（收起 1–3 行 / 展开 3–8 行，标题旁边一个
+  `展开 ▸ / 收起 ▾`），计划块属性面板的只读备注（单行 ↔ 全文），切换时都写回 kv
+- `showTodoEditor` / `showBlockEditor` 新增 `onNotePref` 回调，TodoPage / PlanPage 透传给
+  HomeShell 落库（编辑器不直接碰仓库）
+
+### 65.2 截止「自定义…」
+
+计划块属性面板的截止行补上 `自定义…`：先 `showDatePicker` 选日期，再 `showTimePicker` 选时间
+（初始值取当前截止，没有就 23:59），拼成 `YYYY-MM-DD HH:mm` 写回待办——对应鸿蒙端的 `pickDateTime`。
+考试块仍然不显示截止（它的 `ddl` 存的是开考时刻）。
+
+### 65.3 验证
+
+- 新增 `test/note_pref_test.dart` 2 条（kv 往返、编辑窗点「展开」写回并回调）
+- `test/block_editor_test.dart` 加 1 条（点自定义 → 两个选择器确定 → `ddl` 变成 16 位、时间保持 23:59）
+- `flutter test`：**721 passed**
+- 真机（OPPO A97）：待办编辑抽屉底部「备注　展开 ▸」位置与鸿蒙端一致（截图核对）

@@ -5,6 +5,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../data/note_pref.dart';
 import '../domain/dates.dart';
 import '../model/types.dart';
 import 'app_frame.dart';
@@ -25,6 +26,7 @@ Future<TodoEditorResult?> showTodoEditor(
   required List<Course> courses,
   Todo? existing,
   bool asExam = false,
+  void Function(bool on)? onNotePref,
 }) {
   return showGeneralDialog<TodoEditorResult>(
     context: context,
@@ -37,6 +39,7 @@ Future<TodoEditorResult?> showTodoEditor(
       courses: courses,
       existing: existing,
       asExam: asExam,
+      onNotePref: onNotePref,
     ),
     transitionBuilder: (ctx, anim, _, child) {
       final curved = CurvedAnimation(parent: anim, curve: drawerCurve);
@@ -66,12 +69,14 @@ class _DrawerHost extends StatelessWidget {
   final List<Course> courses;
   final Todo? existing;
   final bool asExam;
+  final void Function(bool on)? onNotePref;
 
   const _DrawerHost({
     required this.ctx,
     required this.courses,
     required this.existing,
     required this.asExam,
+    this.onNotePref,
   });
 
   @override
@@ -94,6 +99,7 @@ class _DrawerHost extends StatelessWidget {
                 courses: courses,
                 existing: existing,
                 asExam: asExam,
+                onNotePref: onNotePref,
               ),
             ),
           ),
@@ -108,12 +114,14 @@ class _EditorBody extends StatefulWidget {
   final List<Course> courses;
   final Todo? existing;
   final bool asExam;
+  final void Function(bool on)? onNotePref;
 
   const _EditorBody({
     required this.ctx,
     required this.courses,
     required this.existing,
     required this.asExam,
+    this.onNotePref,
   });
 
   @override
@@ -400,11 +408,30 @@ class _EditorBodyState extends State<_EditorBody> {
                     ],
                   ),
                 ],
-                _Label('备注'),
+                Row(
+                  children: [
+                    const _Label('备注'),
+                    const Spacer(),
+                    GestureDetector(
+                      onTap: () {
+                        setState(() => noteExpanded = !noteExpanded);
+                        widget.onNotePref?.call(noteExpanded);
+                      },
+                      behavior: HitTestBehavior.opaque,
+                      child: Padding(
+                        padding:
+                            const EdgeInsets.only(top: 16, bottom: 8, left: 8),
+                        child: Text(noteExpanded ? '收起 ▾' : '展开 ▸',
+                            style: const TextStyle(
+                                fontSize: 11, color: accentBlue)),
+                      ),
+                    ),
+                  ],
+                ),
                 TextField(
                   controller: _note,
-                  minLines: 1,
-                  maxLines: 3,
+                  minLines: noteExpanded ? 3 : 1,
+                  maxLines: noteExpanded ? 8 : 3,
                   style: const TextStyle(fontSize: 13, color: inkPrimary),
                   cursorColor: accentBlue,
                   decoration: const InputDecoration(

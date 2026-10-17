@@ -37,12 +37,16 @@ class TodoPage extends StatefulWidget {
   /// 悬浮页头的高度（内容顶部留同样的空）
   final double topInset;
 
+  /// 备注展开状态变了（外壳负责写 kv）
+  final void Function(bool on)? onNotePref;
+
   const TodoPage({
     super.key,
     required this.bundle,
     required this.onChanged,
     this.customCategories = const [],
     this.topInset = 0,
+    this.onNotePref,
   });
 
   @override
@@ -272,7 +276,10 @@ class _TodoPageState extends State<TodoPage> {
   Future<void> _openEditor(BuildContext context,
       {Todo? existing, bool asExam = false}) async {
     final result = await showTodoEditor(context,
-        courses: widget.bundle.courses, existing: existing, asExam: asExam);
+        courses: widget.bundle.courses,
+        existing: existing,
+        asExam: asExam,
+        onNotePref: widget.onNotePref);
     if (result == null) return;
     if (result.delete) {
       if (existing != null) widget.onChanged(_without(existing.id));

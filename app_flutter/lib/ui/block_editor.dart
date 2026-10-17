@@ -9,6 +9,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/backup.dart';
+import '../data/note_pref.dart';
 import '../domain/dates.dart';
 import '../domain/plan_math.dart';
 import '../domain/todo_list.dart';
@@ -42,6 +43,7 @@ Future<void> showBlockEditor(
   required PlanBlock block,
   required TimeWindow window,
   required void Function(BackupBundle next) onChanged,
+  void Function(bool on)? onNotePref,
 }) {
   return showGeneralDialog<void>(
     context: context,
@@ -55,6 +57,7 @@ Future<void> showBlockEditor(
       block: block,
       window: window,
       onChanged: onChanged,
+      onNotePref: onNotePref,
     ),
     transitionBuilder: (ctx, anim, _, child) {
       final curved = CurvedAnimation(parent: anim, curve: drawerCurve);
@@ -73,6 +76,7 @@ class _Host extends StatelessWidget {
   final PlanBlock block;
   final TimeWindow window;
   final void Function(BackupBundle next) onChanged;
+  final void Function(bool on)? onNotePref;
 
   const _Host({
     required this.ctx,
@@ -80,6 +84,7 @@ class _Host extends StatelessWidget {
     required this.block,
     required this.window,
     required this.onChanged,
+    this.onNotePref,
   });
 
   @override
@@ -103,6 +108,7 @@ class _Host extends StatelessWidget {
                 block: block,
                 window: window,
                 onChanged: onChanged,
+                onNotePref: onNotePref,
               ),
             ),
           ),
@@ -118,6 +124,7 @@ class _Body extends StatefulWidget {
   final PlanBlock block;
   final TimeWindow window;
   final void Function(BackupBundle next) onChanged;
+  final void Function(bool on)? onNotePref;
 
   const _Body({
     required this.ctx,
@@ -125,6 +132,7 @@ class _Body extends StatefulWidget {
     required this.block,
     required this.window,
     required this.onChanged,
+    this.onNotePref,
   });
 
   @override
@@ -133,7 +141,7 @@ class _Body extends StatefulWidget {
 
 class _BodyState extends State<_Body> {
   late PlanBlock _b = widget.block;
-  bool _noteOpen = false;
+  late bool _noteOpen = noteExpanded;
   String? _error;
   late final TextEditingController _startCtrl;
   late final TextEditingController _durCtrl;
@@ -263,6 +271,28 @@ class _BodyState extends State<_Body> {
       'doneAt': t.doneAt,
     });
     _write(todo: copy);
+  }
+
+  /// 自定义截止：日期 + 时间（鸿蒙端 `pickDateTime`，分钟不限）
+  Future<void> _pickCustomDdl() async {
+    final raw = _todo?.ddl ?? '';
+    final base = raw.length >= 10 ? parseDate(raw.substring(0, 10)) : today();
+    final date = await showDatePicker(
+      context: context,
+      initialDate: base,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (date == null || !mounted) return;
+    final hm = raw.length >= 16
+        ? TimeOfDay(
+            hour: int.tryParse(raw.substring(11, 13)) ?? 23,
+            minute: int.tryParse(raw.substring(14, 16)) ?? 59)
+        : const TimeOfDay(hour: 23, minute: 59);
+    final time = await showTimePicker(context: context, initialTime: hm);
+    if (time == null) return;
+    String two(int n) => n < 10 ? '0$n' : '$n';
+    _setDdl('${formatDate(date)} ${two(time.hour)}:${two(time.minute)}');
   }
 
   void _splitHalf() {
@@ -455,6 +485,11 @@ class _BodyState extends State<_Body> {
                         selected: false,
                         onTap: () => _setDdl(''),
                       ),
+                      _Chip(
+                        text: '自定义…',
+                        selected: false,
+                        onTap: _pickCustomDdl,
+                      ),
                     ],
                   ),
                   Padding(
@@ -487,7 +522,11 @@ class _BodyState extends State<_Body> {
                   Align(
                     alignment: Alignment.centerRight,
                     child: GestureDetector(
-                      onTap: () => setState(() => _noteOpen = !_noteOpen),
+                      onTap: () {
+                        setState(() => _noteOpen = !_noteOpen);
+                        noteExpanded = _noteOpen;
+                        widget.onNotePref?.call(_noteOpen);
+                      },
                       behavior: HitTestBehavior.opaque,
                       child: Padding(
                         padding: const EdgeInsets.symmetric(

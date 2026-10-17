@@ -32,6 +32,7 @@
 | `view/CourseManager.ets` | `lib/ui/course_manager.dart` | 课程管理浮层：**学期区块（列表 / 设为当前 / 新建学期，可复制课表）** + 节次摘要、课程卡、课程编辑抽屉（名称/简称/教师/地点/颜色/自动生成/虚拟课 + 时段规则 + 待办模板 + 删除课程）、备份与恢复 |
 | `view/ChipButton.ets` | `_Choice`/`_Chip`/`_ChipButton`（各页面内） | 选中 = `#2E6BE6` 底 + 白字 |
 | `data/Prefs.ets`（`MOTTO_*`、`mottoUnits`、`clampMottoUnits`、`cleanMotto`） | `lib/domain/motto.dart` | 标语：按显示宽度 32（汉字 2 / 半角 1） |
+| `data/Prefs.ets`（`NOTE_EXPANDED_*`） | `lib/data/note_pref.dart` | 备注展开状态：kv `note_expanded`，待办编辑窗与计划块面板共用 |
 | `data/BackupRepo.ets`（导出/恢复/诊断） | `lib/data/backup_export.dart` + `backup.dart` | 备份 JSON 序列化（布尔写 1/0）、写文件、诊断摘要；恢复走「设置 → 导入备份」 |
 | `data/WallpaperRepo.ets` | `lib/data/wallpaper.dart` | 选图 → 拷进 App 私有目录 → kv `wallpaper_path` |
 | `data/*Repo.ets`（`TimetableRepo`/`TodoRepo`/`KvRepo`…） | `lib/data/sqlite_repo.dart` + `repo.dart` | 同一套 SQL schema（`shared/schema.sql`）；`todo_template` 也读写 |

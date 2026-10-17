@@ -29,6 +29,9 @@ class PlanPage extends StatefulWidget {
   /// 悬浮页头的高度（计划页自己的日期条叠在它下面）
   final double topInset;
 
+  /// 备注展开状态变了（外壳负责写 kv）
+  final void Function(bool on)? onNotePref;
+
   /// 打开时看哪天 / 是不是三日视图（默认今天、单日）——截图和测试要用
   final DateTime? initialDay;
   final bool initialThreeDay;
@@ -45,6 +48,7 @@ class PlanPage extends StatefulWidget {
     this.window = defaultWindow,
     this.restWindows = const [],
     this.topInset = 0,
+    this.onNotePref,
     this.initialDay,
     this.initialThreeDay = false,
     this.now = DateTime.now,
@@ -436,6 +440,7 @@ class _PlanPageState extends State<PlanPage> {
         block: b,
         window: TimeWindow(_axis.startMin, _axis.endMin),
         onChanged: widget.onChanged,
+        onNotePref: widget.onNotePref,
       );
 }
 

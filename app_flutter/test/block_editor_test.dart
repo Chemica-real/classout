@@ -108,6 +108,24 @@ void main() {
     expect(b.blocks.any((x) => x.id == 1), isFalse);
   });
 
+  testWidgets('截止「自定义…」→ 选日期 + 时间后写进待办', (tester) async {
+    final seen = await _pump(tester);
+    await _openBlock(tester);
+    await tester.ensureVisible(find.text('自定义…'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('自定义…'));
+    await tester.pumpAndSettle();
+    // 日期选择器 → 确定；时间选择器 → 确定（Material 默认英文 OK）
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+
+    final todo = seen.last!.todos.firstWhere((t) => t.id == 3);
+    expect(todo.ddl.length, 16, reason: 'YYYY-MM-DD HH:mm');
+    expect(todo.ddl.endsWith('23:59'), isTrue, reason: '初始时间就是原截止的 23:59');
+  });
+
   testWidgets('对半分 → 变两块、总时长不变', (tester) async {
     final seen = await _pump(tester);
     await _openBlock(tester);
