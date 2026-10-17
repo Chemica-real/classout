@@ -4931,3 +4931,25 @@ PlatformException(exact_alarms_not_permitted,
 - 新增 `test/test_reminder_test.dart` 2 条（有权限 → 排一条 ~10 秒后的 test 通知 + 提示；
   无权限 → 不排 + 提示去开权限），用 `FakeNotifier`
 - `flutter test`：**723 passed**
+
+### 66.6 追查续（同一轮，结论更新）
+
+加了日志与「立刻弹一条」自检后，真机把问题**定位到了接收器这一环**：
+
+| 事实 | 证据 |
+|---|---|
+| 立刻弹（`_plugin.show`）**能显示** | `dumpsys notification` 里出现 `pkg=com.chemica.classout id=9000 … channel=classout_reminders` |
+| 排期（`zonedSchedule`）**到点没有通知** | 9001 无 NotificationRecord；`dumpsys alarm` 显示闹钟到点、`ScheduledNotificationReceiver` 被调用，但**系统日志里连接收器的 Log 都没有** |
+| 插件接收器源码 | `ScheduledNotificationReceiver.onReceive` 里解析 `NOTIFICATION_DETAILS` extra；解析失败会 `Log.e(TAG, ...)` —— 我们连这条 Log 都看不到 |
+
+结论：**ColorOS 把"后台广播 → 启动 App 进程 → 发通知"这一步拦掉了**（侧载应用默认没有自启动/后台活动），
+所以接收器根本没跑起来。这不是我们代码的 bug（立刻 show 是好的），需要用户在
+「应用启动管理」里允许 ClassOUT 自启动/后台活动。
+
+顺带做了两件实事：
+1. `FlutterNotifier._init()` 里**显式创建通知渠道**（`classout_reminders`），真机上确认渠道出现了
+2. 设置页「提醒」卡的说明里加了这句用户提示（国产 ROM 拦后台广播，到点没弹先查自启动）
+3. 自检按钮现在**先立刻弹一条**再排 10 秒后那条：用户一眼能分清"权限问题"还是"后台被拦"
+
+排期模式也顺手从 `exactAllowWhileIdle` 换成 `inexactAllowWhileIdle`（提醒晚几分钟可以接受，
+少一个特殊权限依赖；精确闹钟权限被拒时的那条降级分支仍然保留，见 66.2）。

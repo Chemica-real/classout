@@ -33,6 +33,9 @@ abstract class ReminderNotifier {
   /// 排一条
   Future<void> schedule(PlannedNotification n);
 
+  /// 立刻弹一条（自检用：区分"系统拦了通知"和"排期/接收器没跑"）
+  Future<void> showNow(PlannedNotification n);
+
   /// 当前待发条数（iOS 上限 64；用于自检）
   Future<int> pendingCount();
 }

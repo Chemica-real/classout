@@ -18,8 +18,13 @@ class FakeNotifier implements ReminderNotifier {
     scheduled.clear();
   }
 
+  final List<PlannedNotification> shown = [];
+
   @override
   Future<void> schedule(PlannedNotification n) async => scheduled.add(n);
+
+  @override
+  Future<void> showNow(PlannedNotification n) async => shown.add(n);
 
   @override
   Future<int> pendingCount() async => pendingCountOverride ?? scheduled.length;

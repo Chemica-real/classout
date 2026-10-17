@@ -369,6 +369,14 @@ class _HomeShellState extends State<HomeShell> {
     try {
       final ok = await _notifier.ensurePermission();
       if (!ok) return '没有通知权限，去系统设置里开一下';
+      // 先立刻弹一条：如果这条也不出现，说明是系统把通知拦了（不是排期问题）
+      await _notifier.showNow(PlannedNotification(
+        id: 9000,
+        at: DateTime.now(),
+        title: 'ClassOUT 自检通知',
+        body: '如果你看到了这条，说明通知权限没问题',
+        kind: 'test',
+      ));
       await _notifier.schedule(PlannedNotification(
         id: 9001,
         at: DateTime.now().add(const Duration(seconds: 10)),

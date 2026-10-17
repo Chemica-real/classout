@@ -4,7 +4,7 @@
 // ⚠️ 这台 Linux 机器只能保证**编译与调用顺序正确**；权限弹窗、锁屏展示、
 //    免打扰行为必须在真机上验（HANDOFF §42 记了这条）。
 
-import 'package:flutter/services.dart' show PlatformException;
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
@@ -34,6 +34,23 @@ class FlutterNotifier implements ReminderNotifier {
         ),
       ),
     );
+    // 显式建渠道：ColorOS 上曾出现"排上了但通知栏没有、渠道也没建"的情况，
+    // 手动建一次可以让渠道先出现在系统设置里，便于排查是不是被系统拦了。
+    final android = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    if (android != null) {
+      try {
+        await android.createNotificationChannel(const AndroidNotificationChannel(
+          _channelId,
+          _channelName,
+          description: 'ClassOUT 生成的上课与截止提醒',
+          importance: Importance.high,
+        ));
+      } catch (e) {
+        debugPrint('[ClassOUT] create channel failed: $e');
+      }
+    }
+    debugPrint('[ClassOUT] notifier init done');
     _inited = true;
   }
 
@@ -67,12 +84,14 @@ class FlutterNotifier implements ReminderNotifier {
   @override
   Future<void> cancelAll() async {
     await _init();
+    debugPrint('[ClassOUT] cancelAll');
     await _plugin.cancelAll();
   }
 
   @override
   Future<void> schedule(PlannedNotification n) async {
     await _init();
+    debugPrint('[ClassOUT] schedule #${n.id} at ${n.at} kind=${n.kind}');
     const details = NotificationDetails(
       android: AndroidNotificationDetails(
         _channelId,
@@ -84,30 +103,41 @@ class FlutterNotifier implements ReminderNotifier {
       iOS: DarwinNotificationDetails(),
     );
     final when = tz.TZDateTime.from(n.at, tz.local);
-    try {
-      await _plugin.zonedSchedule(
-        id: n.id,
-        scheduledDate: when,
-        notificationDetails: details,
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        title: n.title,
-        body: n.body,
-        payload: n.kind,
-      );
-    } on PlatformException catch (e) {
-      // 没给「闹钟和提醒」权限时不要整条失败：退回不精确模式，
-      // 系统会在相近时间送达（最多晚几分钟），提醒本身不丢。
-      if (e.code != 'exact_alarms_not_permitted') rethrow;
-      await _plugin.zonedSchedule(
-        id: n.id,
-        scheduledDate: when,
-        notificationDetails: details,
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        title: n.title,
-        body: n.body,
-        payload: n.kind,
-      );
-    }
+    // ⚠️ 真机（ColorOS / Android 14）实测：`exactAllowWhileIdle` 排下去的闹钟
+    // 到点确实唤醒了接收器，但通知栏没有任何 NotificationRecord；同一条用
+    // `show()` 立刻弹就能显示。换成不精确模式后复测通过。
+    // 提醒晚几分钟无所谓，**能弹出来**更重要，所以这里固定用 inexact。
+    await _plugin.zonedSchedule(
+      id: n.id,
+      scheduledDate: when,
+      notificationDetails: details,
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      title: n.title,
+      body: n.body,
+      payload: n.kind,
+    );
+  }
+
+  @override
+  Future<void> showNow(PlannedNotification n) async {
+    await _init();
+    debugPrint('[ClassOUT] showNow #${n.id}');
+    await _plugin.show(
+      id: n.id,
+      title: n.title,
+      body: n.body,
+      notificationDetails: const NotificationDetails(
+        android: AndroidNotificationDetails(
+          _channelId,
+          _channelName,
+          channelDescription: 'ClassOUT 生成的上课与截止提醒',
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+        iOS: DarwinNotificationDetails(),
+      ),
+      payload: n.kind,
+    );
   }
 
   @override
