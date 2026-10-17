@@ -35,11 +35,23 @@ class GuideBar extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
+          // 头一行：第 N/7 步 + 标题 + 退出演练（鸿蒙端也是这样一行）
           Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
             children: [
               Text('第 ${step + 1}/$total 步',
                   style: const TextStyle(fontSize: 11, color: accentBlue)),
-              const Spacer(),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(s.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                        color: inkPrimary)),
+              ),
               GestureDetector(
                 onTap: onExit,
                 behavior: HitTestBehavior.opaque,
@@ -48,17 +60,11 @@ class GuideBar extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 4),
-          Text(s.title,
-              style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                  color: inkPrimary)),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           Text(s.body,
               style: const TextStyle(
                   fontSize: 12, height: 1.45, color: Color(0xFFC3CDDE))),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Row(
             children: [
               if (step > 0)
@@ -74,6 +80,7 @@ class GuideBar extends StatelessWidget {
                 background: const Color(0xFF2E6BE6),
                 color: Colors.white,
                 onTap: onNext,
+                wide: true,
               ),
             ],
           ),
@@ -88,11 +95,15 @@ class _Btn extends StatelessWidget {
   final Color background;
   final Color color;
   final VoidCallback onTap;
+
+  /// 主按钮（下一步/完成演练）比次要按钮宽一档
+  final bool wide;
   const _Btn({
     required this.text,
     required this.background,
     required this.color,
     required this.onTap,
+    this.wide = false,
   });
 
   @override
@@ -102,7 +113,8 @@ class _Btn extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       child: Container(
         margin: const EdgeInsets.only(left: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+        padding: EdgeInsets.symmetric(
+            horizontal: wide ? 28 : 16, vertical: wide ? 9 : 7),
         decoration: BoxDecoration(
           color: background,
           borderRadius: BorderRadius.circular(16),

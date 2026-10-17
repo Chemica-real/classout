@@ -20,6 +20,7 @@ import 'package:classout/ui/app_frame.dart';
 import 'package:classout/ui/boot_screen.dart';
 import 'package:classout/ui/course_header.dart';
 import 'package:classout/ui/course_manager.dart';
+import 'package:classout/ui/guide_bar.dart';
 import 'package:classout/ui/theme.dart' as theme;
 import 'package:classout/ui/timetable_page.dart';
 import 'package:classout/data/settings.dart';
@@ -278,5 +279,59 @@ void main() {
     ));
     await tester.pumpAndSettle();
     await _capture(tester, 'boot');
+  });
+
+  testWidgets('演练引导条截图', (tester) async {
+    final family = await _loadFonts();
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+          brightness: Brightness.dark, useMaterial3: true, fontFamily: family),
+      home: Scaffold(
+        body: AppFrame(
+          tab: 0,
+          onTab: (_) {},
+          child: Column(children: [
+            CourseHeader(
+              sem: demo.semester,
+              week: 1,
+              onPrev: () {},
+              onNext: () {},
+              onToday: () {},
+              onSync: () async {},
+            ),
+            Expanded(child: TimetablePage(bundle: demo, week: 1)),
+          ]),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    // 引导条浮在导航栏上方（和真实沙箱里一样）
+    final overlay = Overlay.of(tester.element(find.byType(AppFrame)));
+    final entry = OverlayEntry(
+      // Overlay 里的内容不在 Material 之下 → 拿不到 theme 正文字体（会变 Ahem 方块），
+      // 所以自己包一层透明的 Material
+      builder: (_) => Positioned(
+        left: 10,
+        right: 10,
+        bottom: 74,
+        child: Material(
+          type: MaterialType.transparency,
+          child: GuideBar(
+            step: 0,
+            onPrev: () {},
+            onNext: () {},
+            onExit: () {},
+          ),
+        ),
+      ),
+    );
+    overlay.insert(entry);
+    await tester.pumpAndSettle();
+    await _capture(tester, 'guide');
+    entry.remove();
   });
 }
