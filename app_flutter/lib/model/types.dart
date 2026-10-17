@@ -61,6 +61,29 @@ class Todo {
     this.doneAt = 0,
   });
 
+  /// 只改个别字段（迁移用：`Seeder.migrateData` 会规范化时长/类型）
+  Todo copyWith({int? estimateMin, String? category, String? status, int? doneAt}) =>
+      Todo(
+        id: id,
+        title: title,
+        courseId: courseId,
+        category: category ?? this.category,
+        status: status ?? this.status,
+        priority: priority,
+        ddl: ddl,
+        endAt: endAt,
+        estimateMin: estimateMin ?? this.estimateMin,
+        note: note,
+        source: source,
+        generationKey: generationKey,
+        submitChannel: submitChannel,
+        repeatRule: repeatRule,
+        photos: photos,
+        createdAt: createdAt,
+        confirmedAt: confirmedAt,
+        doneAt: doneAt ?? this.doneAt,
+      );
+
   factory Todo.fromJson(Map<String, dynamic> j) => Todo(
         id: _int(j['id']),
         title: _str(j['title']),
@@ -411,6 +434,20 @@ class TodoTemplate {
     this.submitChannel = '',
     this.note = '',
   });
+
+  TodoTemplate copyWith({String? category}) => TodoTemplate(
+        id: id,
+        courseId: courseId,
+        sortOrder: sortOrder,
+        enabled: enabled,
+        titleTemplate: titleTemplate,
+        ddlRule: ddlRule,
+        ddlParam: ddlParam,
+        estimateMin: estimateMin,
+        category: category ?? this.category,
+        submitChannel: submitChannel,
+        note: note,
+      );
 
   factory TodoTemplate.fromJson(Map<String, dynamic> j) => TodoTemplate(
         id: _int(j['id']),

@@ -78,6 +78,35 @@ class BackupBundle {
     );
   }
 
+  /// 只换其中几张表（迁移 / 局部写回用）
+  BackupBundle copyWith({
+    List<Semester>? semesters,
+    List<SectionTime>? sectionTimes,
+    List<Course>? courses,
+    List<SessionRule>? rules,
+    List<SessionOverride>? overrides,
+    List<Todo>? todos,
+    List<PlanBlock>? blocks,
+    List<RestWindow>? restWindows,
+    List<TodoTemplate>? templates,
+    List<VirtualLesson>? lessons,
+  }) =>
+      BackupBundle(
+        app: app,
+        version: version,
+        exportedAt: exportedAt,
+        semesters: semesters ?? this.semesters,
+        sectionTimes: sectionTimes ?? this.sectionTimes,
+        courses: courses ?? this.courses,
+        rules: rules ?? this.rules,
+        overrides: overrides ?? this.overrides,
+        todos: todos ?? this.todos,
+        blocks: blocks ?? this.blocks,
+        restWindows: restWindows ?? this.restWindows,
+        templates: templates ?? this.templates,
+        lessons: lessons ?? this.lessons,
+      );
+
   factory BackupBundle.decode(String source) =>
       BackupBundle.fromJson(jsonDecode(source) as Map<String, dynamic>);
 }

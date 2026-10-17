@@ -12,7 +12,7 @@ ClassOUT 是一款**纯离线**的「课表 + 待办 + 计划」三合一 App，
 |---|---|---|
 | 版本 | v1.5.1（上架准备中，未提审） | 0.2.0（Android 已装真机 OPPO A97） |
 | 页面 | 课表 / 待办 / 计划 / 设置 + 启动加载页 + 悬浮浮窗 | **同样四页 + 启动页 + 浮窗（§52–§68 逐页复刻）** |
-| 测试 | 离线断言 524 项（`tools/domain-check`） | **1285 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
+| 测试 | 离线断言 524 项（`tools/domain-check`） | **1288 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
 | 差异基准 | 本目录 `docs/manual/01..09.jpg`（真机截图） | `app_flutter/tool/goldens/*.png` 对照上面九张 + `shared/fixtures/`（1115 条规则用例） |
 
 **安卓版与鸿蒙版的 1:1 复刻已经完成**：主题 token 抄自 ArkTS（§52）、六个页面重做、
@@ -6686,3 +6686,18 @@ cd app_flutter && flutter build apk --debug && adb -s 7D7PAQ9PORLR79Z9 install -
 - 测试 +1（新学期名/日期/12 节/4 段/无课程）。
 
 > ⚠️ 这条只影响**全新安装**：已经导入真实课表的手机（比如这台 OPPO）数据不动。
+
+### 116.19 老数据迁移（鸿蒙 `Seeder.migrateData`）：时长归一化 + 「其他」退役
+
+鸿蒙每次启动都会跑 `TodoRepo.normalizeAllEstimates` + `migrateCategories`；安卓这边
+`domain/validate.dart → migrateEstimate` 早就移植了，但**没有任何地方调用它**，
+导入的老备份里 `estimate_min = 17`、`category = 'other'` 会原样显示（鸿蒙那边会被改成 15 / 「无」）。
+
+- 新增 `domain/migrate.dart → migrateBundle(b)`（纯函数，返回 null = 无需改动）：
+  - 待办时长走 `migrateEstimate`：5 分钟分度、非正数 → 60、下限 15、**不设上限**，考试恒 0；
+  - `'other'`（退役的「其他」）→ `'none'`，待办表与模板表都改。
+- `HomeShell._reload` 在读库之后跑一次，改到了就整份写回并打日志
+  `[ClassOUT] migrated legacy estimates/categories`（幂等：干净数据什么都不做）。
+- 顺带补了 `Todo.copyWith` / `TodoTemplate.copyWith` / `BackupBundle.copyWith`
+  （以前这些地方都是手抄 15 个字段，容易漏）。
+- 测试 +3（`test/migrate_test.dart`：时长归一化 / 「其他」退役 / 幂等）。`flutter test` **1288 passed**。

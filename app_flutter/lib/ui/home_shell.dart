@@ -17,6 +17,7 @@ import '../domain/categories.dart';
 import '../domain/dates.dart';
 import '../domain/demo_sandbox.dart';
 import '../domain/guide.dart';
+import '../domain/migrate.dart';
 import '../domain/motto.dart';
 import '../domain/timetable.dart';
 import '../domain/todo_generator.dart';
@@ -182,6 +183,16 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       if (data == null && widget.fallback != null) {
         await widget.repo.replaceAll(widget.fallback!);
         data = await widget.repo.load();
+      }
+      // 老数据的迁移（鸿蒙 `Seeder.migrateData`）：时长按 5 分钟分度、考试归 0、
+      // 退役的「其他」→「无」。幂等，返回 null 表示无事可做。
+      if (data != null) {
+        final migrated = migrateBundle(data);
+        if (migrated != null) {
+          data = migrated;
+          await widget.repo.replaceAll(data);
+          debugPrint('[ClassOUT] migrated legacy estimates/categories');
+        }
       }
       // CI 自检：这一行出现 = 数据层真的读通了
       debugPrint('[ClassOUT] loaded: courses=${data?.courses.length} '
