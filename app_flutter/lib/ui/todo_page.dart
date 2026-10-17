@@ -64,6 +64,9 @@ class _TodoPageState extends State<TodoPage> {
   /// 二次确认删除的那一条
   int _pendingDeleteId = 0;
 
+  /// 底部行动托盘实测高度（鸿蒙 `actionsH` 也是 onAreaChange 量的）
+  double _actionsH = 56;
+
   List<String> get _custom => widget.customCategories;
 
   @override
@@ -73,12 +76,18 @@ class _TodoPageState extends State<TodoPage> {
     final courses = {for (final c in bundle.courses) c.id: c};
     final hasTop = s.pending.isNotEmpty || s.exams.isNotEmpty;
 
-    return Column(
+    return Stack(
       children: [
-        Expanded(
+        // 列表铺满整屏、从悬浮浮窗（页头 / 行动托盘 / 导航栏）下面滑过：
+        // 鸿蒙 `TodoInbox` 的 padding = 左右 16、上 `12 + topInset + FLOAT_GAP`、
+        // 下 `20 + bottomInset + actionsH + FLOAT_GAP`。
+        Positioned.fill(
           child: SingleChildScrollView(
             padding: EdgeInsets.fromLTRB(
-                16, 12 + widget.topInset, 16, 20 + tabBarInset),
+                16,
+                12 + widget.topInset + floatGap,
+                16,
+                20 + tabBarInset + _actionsH),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -191,11 +200,20 @@ class _TodoPageState extends State<TodoPage> {
             ),
           ),
         ),
-        // ---- 底部行动托盘 ----
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-              floatSide, 0, floatSide, tabBarInset + floatGap),
-          child: Glass(
+        // ---- 底部行动托盘（浮在导航栏之上，高度量出来给列表留白）----
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: tabBarInset,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: floatSide),
+            child: MeasureSize(
+              onSize: (size) {
+                if ((size.height - _actionsH).abs() > 0.5) {
+                  setState(() => _actionsH = size.height);
+                }
+              },
+              child: Glass(
             sheet: true,
             padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
             child: Row(
@@ -220,6 +238,8 @@ class _TodoPageState extends State<TodoPage> {
                   ),
                 ),
               ],
+            ),
+              ),
             ),
           ),
         ),

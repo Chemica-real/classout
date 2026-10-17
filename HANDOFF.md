@@ -6525,3 +6525,15 @@ cd app_flutter && flutter test       # 1268 条（含 1115 条三端 fixture 逐
 跟着表格一起滚（`docs/manual/01-timetable.jpg` 里就是贴着屏幕两边的色条）。
 
 - `flutter test`：**1281 passed**；golden 重出；真机（OPPO A97）周条现在是通栏贴边。
+
+### 116.11 待办页：底部行动托盘改成"浮"在列表上（鸿蒙 `TodoInbox` 的结构）
+
+鸿蒙待办页是一个 `Stack`：列表 `Scroll` 铺满整屏（padding 上 `12 + topInset + FLOAT_GAP`、
+下 `20 + bottomInset + actionsH + FLOAT_GAP`），底部行动托盘是**浮层**（`Positioned` 贴悬浮导航栏上方，
+`actionsH` 由 `onAreaChange` 量出来），所以列表能滑到托盘下面 —— 那两个玻璃浮窗之间能看见内容。
+
+安卓原来是 `Column(Expanded(Scroll), 托盘)`：托盘占布局、内容永远在它上面，
+而且底部 padding 写成 `20 + tabBarInset`（既没有 actionsH、又多算/少算了一条缝）。
+现在照鸿蒙改成 `Stack` + `Positioned` 托盘 + `MeasureSize` 量高度，padding 与鸿蒙同式。
+
+- `flutter test`：**1281 passed**；golden 重出（`todos.png` 里托盘下面能看到被压住的那一行）。
