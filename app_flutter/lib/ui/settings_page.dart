@@ -19,6 +19,7 @@ import '../domain/reminders.dart';
 import '../domain/sync_cadence.dart';
 import '../model/types.dart';
 import 'app_frame.dart';
+import 'privacy_page.dart';
 import 'palette.dart';
 import 'theme.dart' as theme;
 
@@ -407,6 +408,13 @@ class _SettingsPageState extends State<SettingsPage> {
                       Text(normalMotto(_s.motto),
                           style: const TextStyle(
                               fontSize: 12, color: Color(0xFF94A0B5))),
+                      const SizedBox(height: 4),
+                      _LinkAction(
+                        key: const ValueKey('settings-privacy'),
+                        icon: Icons.privacy_tip,
+                        text: '隐私说明',
+                        onTap: () => showPrivacyPage(context),
+                      ),
                     ],
                   ),
                 ),

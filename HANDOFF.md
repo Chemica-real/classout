@@ -5045,3 +5045,17 @@ scale 识别器和 tap/longPress 抢同一个手势竞技场，两指分开时�
 4. 课程管理里的「诊断信息 / 恢复二次确认」两个小面板
 5. 鸿蒙端与安卓端的 domain 契约：fixtures 目前 616 条，`TodoGenerator`/`Guide` 还没有 fixture
    （只有 Dart 侧测试），如果要"三端完全同规则"应补进 `shared/fixtures`
+
+## 70. 2026-10-17 安卓版：隐私说明页（上架材料）
+
+§69 审计里唯一的 ❌ 项（`docs/manual/08-privacy.jpg`）补上了。
+
+- `lib/domain/privacy.dart`：9 节正文 + `更新于 2026-10-16`，逐条照搬 `domain/Privacy.ets`
+- `lib/ui/privacy_page.dart`：全屏玻璃浮层（淡入 + 0.97→1 缩放），标题 + 更新时间 + 可滚正文
+- 设置页「关于」卡新增 `隐私说明` 入口（`settings-privacy` 键）
+- `test/privacy_test.dart` 2 条：章节完整性（9 节、首节含"不收集"、更新日期）、
+  设置页打开后能看到「一句话结论」与正文
+- `flutter test`：**727 passed**
+
+至此 `docs/manual/01..09` 九张截图对应的界面**全部在安卓版出现**（§69.1 的对照表已全部 ✅，
+只剩 §69.3 里那几个"体验类/上架辅助"的小项）。
