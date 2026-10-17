@@ -167,21 +167,3 @@ const TextStyle textHint = TextStyle(fontSize: 11, color: inkTertiary);
 
 /// 行内次要信息
 const TextStyle textSub = TextStyle(fontSize: 12, color: inkSecondary);
-
-/// 解析壁纸的 'dx,dy,zoom'（对应鸿蒙端 `parseWallpaperFocus`）：
-/// 坏值一律回 (0,0,1)；zoom 夹在 1..3。
-({double dx, double dy, double zoom}) parseWallpaperFocus(String raw) {
-  final parts = raw.split(',');
-  if (parts.length != 3) return (dx: 0, dy: 0, zoom: 1);
-  final dx = double.tryParse(parts[0].trim()) ?? 0;
-  final dy = double.tryParse(parts[1].trim()) ?? 0;
-  final z = double.tryParse(parts[2].trim()) ?? 1;
-  return (
-    dx: dx.clamp(-1.0, 1.0),
-    dy: dy.clamp(-1.0, 1.0),
-    zoom: z.clamp(1.0, 3.0),
-  );
-}
-
-String formatWallpaperFocus(double dx, double dy, double zoom) =>
-    '${dx.toStringAsFixed(3)},${dy.toStringAsFixed(3)},${zoom.toStringAsFixed(3)}';

@@ -35,7 +35,8 @@
 | `domain/Privacy.ets` | `lib/domain/privacy.dart` + `lib/ui/privacy_page.dart` | 隐私说明（上架材料）：9 节正文、更新日期；设置页「关于 → 隐私说明」打开 |
 | `data/Prefs.ets`（`NOTE_EXPANDED_*`） | `lib/data/note_pref.dart` | 备注展开状态：kv `note_expanded`，待办编辑窗与计划块面板共用 |
 | `data/BackupRepo.ets`（导出/恢复/诊断） | `lib/data/backup_export.dart` + `backup.dart` | 备份 JSON 序列化（布尔写 1/0）、写文件、诊断摘要；恢复走「设置 → 导入备份」 |
-| `data/WallpaperRepo.ets` | `lib/data/wallpaper.dart` | 选图 → 拷进 App 私有目录 → kv `wallpaper_path` |
+| `data/WallpaperRepo.ets` | `lib/data/wallpaper.dart` + `lib/ui/wallpaper_view.dart` | 选图 → 拷进 App 私有目录 → kv `wallpaper_path`；**显示几何**走 `domain/wallpaper.dart`（见下一行） |
+| `domain/Wallpaper.ets`（`wallpaperGeometry` / `clampFocus` / `parseWallpaperFormat`） | `lib/domain/wallpaper.dart`（+ `lib/ui/wallpaper_view.dart` 渲染） | cover → ×zoom → 归一化焦点 × 可动余量；zoom 1..4、焦点 -1..1；所有页面与「调整背景」用同一个函数（所见即所得） |
 | `data/*Repo.ets`（`TimetableRepo`/`TodoRepo`/`KvRepo`…） | `lib/data/sqlite_repo.dart` + `repo.dart` | 同一套 SQL schema（`shared/schema.sql`）；`todo_template`、`virtual_lesson` 也读写 |
 | `model/Types.ets`（`VirtualLesson` 虚拟课程课时） | `lib/model/types.dart`（`VirtualLesson`） | 数据层 + 课程管理编辑 + **计划页课时池（选中→点网格排入、块完成联动讲次）** ✅ |
 | `domain/TodoGenRules.ets`（**纯规则**：`renderTitle` / `computeDdl` / `nextSessionOfCourse`） | `lib/domain/todo_generator.dart` 的上半部分 | 已进 fixtures（`todo_gen.json` 84 条），三端逐条对拍 |

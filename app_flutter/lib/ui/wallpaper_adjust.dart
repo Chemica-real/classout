@@ -3,24 +3,27 @@
 // 布局与鸿蒙一致：
 //   · 整屏预览：默认渐变垫底 + 照片（按焦点 translate/scale）+ **可读性薄纱**（所见即所得）；
 //   · 顶部一张玻璃卡：「调整背景」17 + 说明 11；
-//   · 底部一张玻璃卡：缩放滑杆（1.00–3.00×，步进 0.05）+ 居中 / 取消 / 保存 三等宽按钮；
-//   · 单指拖动平移、双指捏合缩放；原图一个字节都不改，只存归一化焦点。
-
-import 'dart:io';
+//   · 底部一张玻璃卡：缩放滑杆（1.00–4.00×，步进 0.05）+ 居中 / 取消 / 保存 三等宽按钮；
+//   · 单指拖动平移（位移 ÷ 该方向的可动余量 = 归一化焦点）、双指捏合缩放；
+//   · 几何走 `domain/wallpaper.dart` 的同一个 `wallpaperGeometry`（和所有页面的背景一致）；
+//   · 原图一个字节都不改，只存归一化焦点。
 
 import 'package:flutter/material.dart';
 
+import '../data/wallpaper.dart';
+import '../domain/wallpaper.dart';
 import 'app_frame.dart';
 import 'theme.dart';
+import 'wallpaper_view.dart';
 
 Future<String?> showWallpaperAdjust(BuildContext context,
-    {required String path}) {
+    {required String path, String focus = '0,0,1'}) {
   return showGeneralDialog<String>(
     context: context,
     barrierDismissible: false,
     barrierColor: Colors.black,
     transitionDuration: dur(durDrawer),
-    pageBuilder: (ctx, _, __) => _AdjustPage(path: path),
+    pageBuilder: (ctx, _, __) => _AdjustPage(path: path, focus: focus),
     transitionBuilder: (ctx, anim, _, child) =>
         FadeTransition(opacity: anim, child: child),
   );
@@ -28,22 +31,37 @@ Future<String?> showWallpaperAdjust(BuildContext context,
 
 class _AdjustPage extends StatefulWidget {
   final String path;
-  const _AdjustPage({required this.path});
+
+  /// 当前的 'fx,fy,zoom'：**再进调整页要停在保存时的构图**（鸿蒙 `openAdjust` 也是从存的值起）
+  final String focus;
+  const _AdjustPage({required this.path, required this.focus});
 
   @override
   State<_AdjustPage> createState() => _AdjustPageState();
 }
 
 class _AdjustPageState extends State<_AdjustPage> {
-  double _dx = 0;
-  double _dy = 0;
+  double _fx = 0;
+  double _fy = 0;
   double _zoom = 1;
   double _baseZoom = 1;
-  Offset _baseOffset = Offset.zero;
+  double _baseFx = 0;
+  double _baseFy = 0;
 
-  /// 焦点平移在屏幕上的最大位移（与 AppFrame 的变换同一个系数 0.4，
-  /// 这样"调的时候"和"退出去"看到的完全一致）
-  static const double _shiftFactor = 0.4;
+  /// 原图像素尺寸（算 cover 与可动余量要用）
+  Size? _img;
+
+  @override
+  void initState() {
+    super.initState();
+    final f = parseWallpaperFocus(widget.focus);
+    _fx = f[0];
+    _fy = f[1];
+    _zoom = f[2];
+    wallpaperImageSize(widget.path).then((v) {
+      if (mounted) setState(() => _img = v);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -55,19 +73,35 @@ class _AdjustPageState extends State<_AdjustPage> {
           // ---------- 整屏预览 ----------
           Positioned.fill(
             child: GestureDetector(
+              // ⚠️ 必须 opaque：预览层里除了薄纱（IgnorePointer）没有可命中子节点，
+              // 默认的 deferToChild 会让单指拖动/双指捏合根本收不到事件
+              behavior: HitTestBehavior.opaque,
               onScaleStart: (_) {
                 _baseZoom = _zoom;
-                _baseOffset = Offset(_dx, _dy);
+                _baseFx = _fx;
+                _baseFy = _fy;
               },
               onScaleUpdate: (d) {
+                // 鸿蒙 `dragAdjust`：手指位移 ÷ 该方向的可动余量（maxDx/maxDy）
+                final g = wallpaperGeometry(
+                    _img?.width ?? 0,
+                    _img?.height ?? 0,
+                    size.width,
+                    size.height,
+                    _zoom,
+                    _baseFx,
+                    _baseFy);
                 setState(() {
-                  _zoom = (_baseZoom * d.scale).clamp(1.0, 3.0);
-                  final spanX = size.width * _shiftFactor;
-                  final spanY = size.height * _shiftFactor;
-                  _dx = (_baseOffset.dx + d.focalPointDelta.dx / spanX)
-                      .clamp(-1.0, 1.0);
-                  _dy = (_baseOffset.dy + d.focalPointDelta.dy / spanY)
-                      .clamp(-1.0, 1.0);
+                  _zoom = (_baseZoom * d.scale)
+                      .clamp(wallpaperMinZoom, wallpaperMaxZoom);
+                  _fx = g.maxDx > 0
+                      ? (_baseFx + d.focalPointDelta.dx / g.maxDx)
+                          .clamp(-1.0, 1.0)
+                      : _baseFx;
+                  _fy = g.maxDy > 0
+                      ? (_baseFy + d.focalPointDelta.dy / g.maxDy)
+                          .clamp(-1.0, 1.0)
+                      : _baseFy;
                 });
               },
               child: ClipRect(
@@ -76,18 +110,10 @@ class _AdjustPageState extends State<_AdjustPage> {
                   children: [
                     const DecoratedBox(
                         decoration: BoxDecoration(gradient: pageGradient)),
-                    Transform.translate(
-                      offset: Offset(
-                          _dx * size.width * _shiftFactor,
-                          _dy * size.height * _shiftFactor),
-                      child: Transform.scale(
-                        scale: _zoom,
-                        child: Image.file(File(widget.path),
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) =>
-                                const ColoredBox(color: Colors.black)),
-                      ),
-                    ),
+                    // 与所有页面的背景同一个几何函数 → 所见即所得
+                    WallpaperImage(
+                        path: widget.path,
+                        focus: formatWallpaperFocus(_fx, _fy, _zoom)),
                     // WALLPAPER_VEIL = rgba(6,8,16,0.62)：预览就要连同薄纱一起看
                     const ColoredBox(
                         color: Color(0x9E060810),
@@ -156,9 +182,9 @@ class _AdjustPageState extends State<_AdjustPage> {
                           child: Slider(
                             key: const ValueKey('wp-zoom-slider'),
                             value: _zoom,
-                            min: 1,
-                            max: 3,
-                            divisions: 40,
+                            min: wallpaperMinZoom,
+                            max: wallpaperMaxZoom,
+                            divisions: 60, // 步进 0.05（鸿蒙 Slider step: 0.05）
                             activeColor: const Color(0xFF2E6BE6),
                             inactiveColor:
                                 Colors.white.withValues(alpha: 0.16),
@@ -182,8 +208,8 @@ class _AdjustPageState extends State<_AdjustPage> {
                         child: _Btn(
                           text: '居中',
                           onTap: () => setState(() {
-                            _dx = 0;
-                            _dy = 0;
+                            _fx = 0;
+                            _fy = 0;
                             _zoom = 1;
                           }),
                         ),
@@ -202,7 +228,7 @@ class _AdjustPageState extends State<_AdjustPage> {
                           text: '保存',
                           primary: true,
                           onTap: () => Navigator.of(context)
-                              .pop(formatWallpaperFocus(_dx, _dy, _zoom)),
+                              .pop(formatWallpaperFocus(_fx, _fy, _zoom)),
                         ),
                       ),
                     ],

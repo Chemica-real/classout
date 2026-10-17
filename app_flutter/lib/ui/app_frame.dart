@@ -9,6 +9,7 @@ import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 
 import 'theme.dart';
+import 'wallpaper_view.dart';
 
 const List<String> tabLabels = ['课表', '待办', '计划', '设置'];
 
@@ -70,26 +71,11 @@ class _AppFrameState extends State<AppFrame>
             if (widget.wallpaperPath.isNotEmpty &&
                 File(widget.wallpaperPath).existsSync())
               Positioned.fill(
-                child: Builder(builder: (_) {
-                  final f = parseWallpaperFocus(widget.wallpaperFocus);
-                  return ClipRect(
-                    child: Transform.translate(
-                      offset: Offset(
-                          f.dx * MediaQuery.of(context).size.width,
-                          f.dy * MediaQuery.of(context).size.height),
-                      child: Transform.scale(
-                        scale: f.zoom,
-                        child: Image.file(
-                          File(widget.wallpaperPath),
-                          fit: BoxFit.cover,
-                          width: double.infinity,
-                          height: double.infinity,
-                          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                        ),
-                      ),
-                    ),
-                  );
-                }),
+                // 几何与「调整背景」里的预览同一个函数（cover + zoom + 归一化焦点），
+                // 所以调完退出来看到的位置和预览完全一致
+                child: WallpaperImage(
+                    path: widget.wallpaperPath,
+                    focus: widget.wallpaperFocus),
               ),
             if (widget.wallpaperPath.isNotEmpty &&
                 File(widget.wallpaperPath).existsSync())

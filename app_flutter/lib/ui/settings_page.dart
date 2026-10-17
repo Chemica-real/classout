@@ -5,8 +5,6 @@
 //  - **数据类**（不可排时段 rest_window 表）→ 跟 bundle 一起整份写回。
 
 import 'dart:async';
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 
 import '../data/backup.dart';
@@ -23,6 +21,7 @@ import 'app_frame.dart';
 import 'inline_toast.dart';
 import 'privacy_page.dart';
 import 'wallpaper_adjust.dart';
+import 'wallpaper_view.dart';
 import 'palette.dart';
 import 'theme.dart' as theme;
 
@@ -909,7 +908,9 @@ class _SettingsPageState extends State<SettingsPage>
   Future<void> _adjustWallpaper() async {
     final path = _s.wallpaperPath;
     if (path.isEmpty) return;
-    final next = await showWallpaperAdjust(context, path: path);
+    // 再进调整页要停在**保存时的构图**（鸿蒙 `openAdjust` 从存的值起）
+    final next = await showWallpaperAdjust(context,
+        path: path, focus: _s.wallpaperFocus);
     if (next == null) return;
     _s.wallpaperFocus = next;
     _saveSettings();
@@ -1208,23 +1209,7 @@ class _WallpaperCard extends StatelessWidget {
                   const DecoratedBox(
                       decoration: BoxDecoration(gradient: pageGradient)),
                   if (has) ...[
-                    Builder(builder: (_) {
-                      final f = parseWallpaperFocus(focus);
-                      return ClipRect(
-                        child: Transform.translate(
-                          offset: Offset(
-                              f.dx * MediaQuery.of(context).size.width * 0.4,
-                              f.dy * 110 * 0.4),
-                          child: Transform.scale(
-                            scale: f.zoom,
-                            child: Image.file(File(path),
-                                fit: BoxFit.cover,
-                                width: double.infinity,
-                                height: 110),
-                          ),
-                        ),
-                      );
-                    }),
+                    WallpaperImage(path: path, focus: focus),
                     // WALLPAPER_VEIL = rgba(6,8,16,0.62)
                     const ColoredBox(color: Color(0x9E060810)),
                   ],

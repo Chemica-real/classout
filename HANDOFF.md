@@ -12,7 +12,7 @@ ClassOUT 是一款**纯离线**的「课表 + 待办 + 计划」三合一 App，
 |---|---|---|
 | 版本 | v1.5.1（上架准备中，未提审） | 0.2.0（Android 已装真机 OPPO A97） |
 | 页面 | 课表 / 待办 / 计划 / 设置 + 启动加载页 + 悬浮浮窗 | **同样四页 + 启动页 + 浮窗（§52–§68 逐页复刻）** |
-| 测试 | 离线断言 524 项（`tools/domain-check`） | **1295 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
+| 测试 | 离线断言 524 项（`tools/domain-check`） | **1301 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
 | 差异基准 | 本目录 `docs/manual/01..09.jpg`（真机截图） | `app_flutter/tool/goldens/*.png` 对照上面九张 + `shared/fixtures/`（1115 条规则用例） |
 
 **安卓版与鸿蒙版的 1:1 复刻已经完成**：主题 token 抄自 ArkTS（§52）、六个页面重做、
@@ -6806,3 +6806,28 @@ golden 总数 19 → **23**；`flutter test` **1293 passed**。
 真机（OPPO A97）实测截到了这张层（「正在准备演练…」），退出演练后 logcat 里
 `restored prefs from sandbox snapshot` + `loaded: courses=13 todos=26 rules=16`，数据与偏好都回来了。
 测试 +1（点「开始演练」后能看到这层、settle 后消失）。`flutter test` **1295 passed**。
+
+### 116.26 壁纸几何整体对齐鸿蒙 `domain/Wallpaper.ets`（并修掉「拖动调整完全没反应」）
+
+鸿蒙有一整套**壁纸几何纯函数**（还带离线断言）：cover 缩放 → 乘 `zoom`（1..4）→
+按归一化焦点 `fx/fy ∈ [-1,1]` 乘以**可动余量** `maxDx/maxDy` 平移；所有页面与「调整背景」预览
+用的是**同一个函数**（所见即所得）。安卓这边是另一套近似：
+
+- 平移量写的是 `fx × 屏宽 × 0.4`（不是"可动余量"），缩放上限写成 **3**；
+- 页面背景的变换顺序是"先平移再缩放"，和鸿蒙不一致；
+- **预览层的 `GestureDetector` 没有 `behavior: opaque`** —— 预览里除了 `IgnorePointer` 的薄纱
+  没有可命中的子节点，所以**单指拖动、双指捏合在真机上根本没反应**（这次真机验证时发现的）。
+
+现在：
+- 新增 `lib/domain/wallpaper.dart`：`clampFocus` / `parseWallpaperFocus` / `formatWallpaperFocus`
+  （输出与 JS 一样不带 `.0`）/ `wallpaperGeometry`，数值与鸿蒙 domain-check 逐条同值；
+- 新增 `lib/ui/wallpaper_view.dart → WallpaperImage`：按 geometry 摆图（居中 + dx/dy，`BoxFit.fill`），
+  所有页面背景与设置页预览都用它；
+- 「调整背景」：滑杆 1.00–4.00×（步进 0.05，`divisions: 60`）、拖动 = 位移 ÷ `maxDx/maxDy`、
+  **从保存时的焦点起**（`showWallpaperAdjust(focus:)`）、预览层 `behavior: opaque`；
+- 删掉 `theme.dart` 里旧的两份 focus 解析（`parseWallpaperFocus`/`formatWallpaperFocus` 现在只在 domain）。
+
+真机（OPPO A97）走了一遍完整回路：进「调整位置 / 区域」→ 拖动（图确实移动）→ 滑杆拉到 **4.00×**（图放大）
+→ 保存（提示「背景位置已保存」+ 预览同步）→ 重新进入停在 **2.15×** 的保存构图 → 居中 + 保存还原。
+测试 +6（`test/wallpaper_geometry_test.dart` 与鸿蒙断言同值；`wallpaper_focus_test` 改成 domain API）。
+`flutter test` **1301 passed**。

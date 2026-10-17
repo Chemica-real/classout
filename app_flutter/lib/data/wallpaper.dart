@@ -4,9 +4,11 @@
 // 这里同样：file_picker 拿到临时路径 → 复制到 ApplicationSupport 目录 → kv 里存新路径。
 // 解码失败/文件丢了 → 设置页显示"默认渐变"，AppFrame 也自动退回渐变（不闪黑）。
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/widgets.dart';
 import 'package:path_provider/path_provider.dart';
 
 /// 选一张图并复制进 App 目录，返回新路径；用户取消 → null
@@ -43,4 +45,31 @@ bool wallpaperExists(String path) {
   } catch (_) {
     return false;
   }
+}
+
+
+/// 壁纸的**像素尺寸**（算 `wallpaperGeometry` 要用）。同一个路径只量一次。
+final Map<String, Size?> _sizeCache = <String, Size?>{};
+
+Future<Size?> wallpaperImageSize(String path) {
+  if (_sizeCache.containsKey(path)) return Future<Size?>.value(_sizeCache[path]);
+  final completer = Completer<Size?>();
+  final stream = FileImage(File(path)).resolve(ImageConfiguration.empty);
+  late final ImageStreamListener listener;
+  listener = ImageStreamListener(
+    (info, _) {
+      completer.complete(Size(
+          info.image.width.toDouble(), info.image.height.toDouble()));
+      stream.removeListener(listener);
+    },
+    onError: (_, __) {
+      completer.complete(null);
+      stream.removeListener(listener);
+    },
+  );
+  stream.addListener(listener);
+  return completer.future.then((v) {
+    _sizeCache[path] = v;
+    return v;
+  });
 }

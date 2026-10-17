@@ -8,23 +8,23 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:classout/data/backup.dart';
 import 'package:classout/data/settings.dart';
 import 'package:classout/ui/settings_page.dart';
-import 'package:classout/ui/theme.dart';
+import 'package:classout/domain/wallpaper.dart';
 
 BackupBundle _demo() =>
     BackupBundle.decode(File('assets/demo_backup.json').readAsStringSync());
 
 void main() {
-  test('focus 解析：坏值回默认，zoom 夹在 1..3', () {
-    expect(parseWallpaperFocus('0,0,1').zoom, 1);
+  test('focus 解析：坏值回默认，zoom 夹在 1..4（鸿蒙 WALLPAPER_MAX_ZOOM）', () {
+    expect(parseWallpaperFocus('0,0,1'), [0, 0, 1]);
     final f = parseWallpaperFocus('0.5,-0.25,2.5');
-    expect(f.dx, 0.5);
-    expect(f.dy, -0.25);
-    expect(f.zoom, 2.5);
-    expect(parseWallpaperFocus('乱写').zoom, 1);
-    expect(parseWallpaperFocus('9,9,9').dx, 1);
-    expect(parseWallpaperFocus('9,9,9').zoom, 3);
-    expect(parseWallpaperFocus('0,0,0.2').zoom, 1);
-    expect(formatWallpaperFocus(0.5, -0.25, 2), '0.500,-0.250,2.000');
+    expect(f[0], 0.5);
+    expect(f[1], -0.25);
+    expect(f[2], 2.5);
+    expect(parseWallpaperFocus('乱写'), [0, 0, 1]);
+    expect(parseWallpaperFocus('9,9,9')[0], 1);
+    expect(parseWallpaperFocus('9,9,9')[2], 4);
+    expect(parseWallpaperFocus('0,0,0.2')[2], 1);
+    expect(formatWallpaperFocus(0.5, -0.25, 2), '0.5,-0.25,2');
   });
 
   testWidgets('有壁纸时背景卡出现「调整位置 / 区域」与「居中」，点居中写回 kv',
