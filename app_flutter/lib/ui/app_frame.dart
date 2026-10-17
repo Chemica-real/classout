@@ -23,12 +23,16 @@ class AppFrame extends StatefulWidget {
   /// 自定义壁纸（空 = 默认渐变）。对应鸿蒙端 PageBackground 的 `wallpaper`
   final String wallpaperPath;
 
+  /// 壁纸显示位置/缩放（'dx,dy,zoom'，见 theme.parseWallpaperFocus）
+  final String wallpaperFocus;
+
   const AppFrame({
     super.key,
     required this.tab,
     required this.onTab,
     required this.child,
     this.wallpaperPath = '',
+    this.wallpaperFocus = '0,0,1',
   });
 
   @override
@@ -66,11 +70,26 @@ class _AppFrameState extends State<AppFrame>
             if (widget.wallpaperPath.isNotEmpty &&
                 File(widget.wallpaperPath).existsSync())
               Positioned.fill(
-                child: Image.file(
-                  File(widget.wallpaperPath),
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                ),
+                child: Builder(builder: (_) {
+                  final f = parseWallpaperFocus(widget.wallpaperFocus);
+                  return ClipRect(
+                    child: Transform.translate(
+                      offset: Offset(
+                          f.dx * MediaQuery.of(context).size.width,
+                          f.dy * MediaQuery.of(context).size.height),
+                      child: Transform.scale(
+                        scale: f.zoom,
+                        child: Image.file(
+                          File(widget.wallpaperPath),
+                          fit: BoxFit.cover,
+                          width: double.infinity,
+                          height: double.infinity,
+                          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                        ),
+                      ),
+                    ),
+                  );
+                }),
               ),
             if (widget.wallpaperPath.isNotEmpty &&
                 File(widget.wallpaperPath).existsSync())

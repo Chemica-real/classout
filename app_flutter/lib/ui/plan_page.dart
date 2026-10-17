@@ -4,6 +4,8 @@
 // 还没做的：拖动/缩放（PlanMath 的 dropRange/moveRange/resizeRange 已移植并有 fixtures，
 // 等交互打磨时接上）、属性面板里的改时间、三日视图的横向拖拽。
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../data/backup.dart';
@@ -72,6 +74,10 @@ class _PlanPageState extends State<PlanPage> {
   /// 日期条实测高度（首帧用估算值）
   double _dayBarH = 68;
 
+  /// 瞬时提示（鸿蒙端 showHint）：不占布局、1.8 秒自动消失
+  String _hint = '';
+  Timer? _hintTimer;
+
   /// 双指缩放预览：正在缩的块 id 与预览结束分钟（0 = 没在缩）
   int _pinchId = 0;
   int _pinchEndMin = 0;
@@ -101,8 +107,20 @@ class _PlanPageState extends State<PlanPage> {
 
   @override
   void dispose() {
+    _hintTimer?.cancel();
     _scroll.dispose();
     super.dispose();
+  }
+
+  /// 弹一条瞬时提示（空白串 = 立刻清掉）
+  void _showHint(String text) {
+    _hintTimer?.cancel();
+    if (!mounted) return;
+    setState(() => _hint = text);
+    if (text.isEmpty) return;
+    _hintTimer = Timer(const Duration(milliseconds: 1800), () {
+      if (mounted) setState(() => _hint = '');
+    });
   }
 
   /// 网格在屏幕上的可视范围（自动滚动要用）
@@ -324,6 +342,7 @@ class _PlanPageState extends State<PlanPage> {
       );
       widget.onChanged(_withBlocks([...widget.bundle.blocks, block]));
       setState(() => _selectedLessonId = 0);
+      _showHint('已排到 ${minToHHmm(startMin)}');
       return;
     }
     final todo = _todoOf(_selectedTodoId);
@@ -338,6 +357,7 @@ class _PlanPageState extends State<PlanPage> {
     );
     widget.onChanged(_withBlocks([...widget.bundle.blocks, block]));
     setState(() => _selectedTodoId = 0);
+    _showHint('已排到 ${minToHHmm(startMin)}');
   }
 
   /// ⚡ 找空档：把课表 + 已排块当 busy、不可排时段当 rest
@@ -357,8 +377,7 @@ class _PlanPageState extends State<PlanPage> {
     final from = isToday ? (now.hour * 60 + now.minute) : _axis.startMin;
     final slot = findFreeSlot(_axis, busy, rest, todo.estimateMin, from);
     if (slot < 0) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('这一天找不到合适空档')));
+      _showHint('这天（或剩余时间）排不下了，换一天试试');
       return;
     }
     _place(day, slot, todo.estimateMin);
@@ -468,17 +487,49 @@ class _PlanPageState extends State<PlanPage> {
             selectedId: _selectedTodoId,
             open: _trayOpen,
             onToggle: () => setState(() => _trayOpen = !_trayOpen),
-            onSelect: (id) => setState(() {
-              _selectedTodoId = _selectedTodoId == id ? 0 : id;
-              _selectedLessonId = 0;
-            }),
-            onSelectLesson: (id) => setState(() {
-              _selectedLessonId = _selectedLessonId == id ? 0 : id;
-              _selectedTodoId = 0;
-            }),
+            onSelect: (id) {
+              setState(() {
+                _selectedTodoId = _selectedTodoId == id ? 0 : id;
+                _selectedLessonId = 0;
+              });
+              _showHint(_selectedTodoId > 0 ? '现在点网格空白处放下它' : '');
+            },
+            onSelectLesson: (id) {
+              setState(() {
+                _selectedLessonId = _selectedLessonId == id ? 0 : id;
+                _selectedTodoId = 0;
+              });
+              _showHint(_selectedLessonId > 0 ? '现在点网格空白处放下它' : '');
+            },
             onPlace: _placeFromPool,
+            onPlaceLesson: _findSlotForLesson,
           ),
         ),
+        // 瞬时提示：悬浮在网格上方，不参与布局（鸿蒙端 showHint 的深色小胶囊）
+        if (_hint.isNotEmpty)
+          Positioned(
+            left: 24,
+            right: 24,
+            top: widget.topInset + _dayBarH + 8,
+            child: IgnorePointer(
+              child: Center(
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: const Color(0xDB0C121C), // rgba(12,18,28,0.86)
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Text(_hint,
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style:
+                          const TextStyle(fontSize: 12, color: Colors.white)),
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -487,6 +538,28 @@ class _PlanPageState extends State<PlanPage> {
   void _placeFromPool(Todo t) {
     setState(() => _selectedTodoId = t.id);
     _findSlot();
+  }
+
+  /// 虚拟课时的一讲（鸿蒙端 autoPlaceLesson）：固定 90 分钟，从"现在"往后找。
+  void _findSlotForLesson(VirtualLesson l) {
+    final day = _day;
+    final busy = <List<int>>[
+      for (final s in _sessionsOn(day)) [s.startMin, s.endMin],
+      for (final b in _blocksOn(day)) [b.startMin, b.endMin],
+    ];
+    final rest = <List<int>>[
+      for (final w in _restRanges()) [w[0], w[1]],
+    ];
+    final now = widget.now();
+    final isToday = formatDate(day) == formatDate(now);
+    final from = isToday ? (now.hour * 60 + now.minute) : _axis.startMin;
+    final slot = findFreeSlot(_axis, busy, rest, 90, from);
+    if (slot < 0) {
+      _showHint('这天（或剩余时间）排不下了，换一天试试');
+      return;
+    }
+    setState(() => _selectedLessonId = l.id);
+    _place(day, slot, 90);
   }
 
   /// 原始指针：两指时按间距比例缩放当前块；单指/抬指时结束
@@ -1337,6 +1410,7 @@ class _Tray extends StatelessWidget {
   final ValueChanged<int> onSelect;
   final ValueChanged<int> onSelectLesson;
   final void Function(Todo t) onPlace;
+  final void Function(VirtualLesson l) onPlaceLesson;
 
   const _Tray({
     required this.pool,
@@ -1349,6 +1423,7 @@ class _Tray extends StatelessWidget {
     required this.onSelect,
     required this.onSelectLesson,
     required this.onPlace,
+    required this.onPlaceLesson,
   });
 
   @override
@@ -1380,15 +1455,15 @@ class _Tray extends StatelessWidget {
             Text('${pool.length + lessons.length}',
                 style: const TextStyle(fontSize: 12, color: accentBlue)),
             const Spacer(),
-            const Text('展开',
+            const Text('展开 ▴',
                 style: TextStyle(fontSize: 12, color: Color(0xFFA9B5C9))),
-            const Icon(Icons.expand_less, size: 14, color: Color(0xFFA9B5C9)),
           ],
         ),
       ),
     );
   }
 
+  /// 展开后的货架（鸿蒙端 TodoPool）：标题行 + 待办横排 + （有虚拟课时才有的）课时横排
   Widget _expanded(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1399,7 +1474,7 @@ class _Tray extends StatelessWidget {
           onTap: onToggle,
           behavior: HitTestBehavior.opaque,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
             child: Row(
               children: [
                 const Text('待安排',
@@ -1408,47 +1483,88 @@ class _Tray extends StatelessWidget {
                         fontWeight: FontWeight.w500,
                         color: inkPrimary)),
                 const Spacer(),
-                Text(selectedId > 0 ? '已选中，点网格空白处放下' : '点选 / ⚡ 一键找空档',
+                Text(
+                    selectedId > 0
+                        ? '已选中，点网格空白处放下'
+                        : '拖动 / 点选 / ⚡ 一键找空档',
                     style: TextStyle(
-                        fontSize: 11,
+                        fontSize: 12,
                         color: selectedId > 0
                             ? accentBlue
                             : const Color(0xFF8B97AC))),
-                const SizedBox(width: 10),
-                const Text('收起',
-                    style: TextStyle(fontSize: 12, color: Color(0xFFA9B5C9))),
-                const Icon(Icons.expand_more,
-                    size: 14, color: Color(0xFFA9B5C9)),
+                const Padding(
+                  padding: EdgeInsets.only(left: 10),
+                  child: Text('收起 ▾',
+                      style:
+                          TextStyle(fontSize: 12, color: Color(0xFFA9B5C9))),
+                ),
               ],
             ),
           ),
         ),
-        if (pool.isEmpty && lessons.isEmpty)
+        if (pool.isEmpty)
           const Padding(
-            padding: EdgeInsets.fromLTRB(14, 4, 14, 12),
-            child: Text('没有待安排的事项。先去「待办」里确认几条。',
-                style: TextStyle(fontSize: 12, color: Color(0xFF8B97AC))),
+            padding: EdgeInsets.fromLTRB(12, 0, 12, 10),
+            child: Text('没有待安排的事项。先去『待办』里确认几条。',
+                style: TextStyle(fontSize: 14, color: Color(0xFF8B97AC))),
           )
         else
-          SizedBox(
-            height: 122,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.fromLTRB(14, 4, 14, 10),
-              itemCount: pool.length + lessons.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
-              itemBuilder: (context, i) => i < pool.length
-                  ? _poolCard(pool[i])
-                  : _lessonCard(lessons[i - pool.length]),
-            ),
+          _strip([for (final t in pool) _poolCard(t)]),
+        if (lessons.isNotEmpty) ...[
+          const Padding(
+            padding: EdgeInsets.fromLTRB(12, 12, 12, 6),
+            child: Text('虚拟课程课时（拖进计划，打勾完成会触发生成待办）',
+                style: TextStyle(fontSize: 12, color: Color(0xFFE0A94E))),
           ),
+          _strip([for (final l in lessons) _lessonCard(l)]),
+        ],
+        const SizedBox(height: 10),
       ],
     );
   }
 
+  /// 横向卡片条：卡片宽 140，间隔 8，左右 12（鸿蒙端 `Scroll` + `Row`）
+  Widget _strip(List<Widget> cards) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var i = 0; i < cards.length; i++) ...[
+            if (i > 0) const SizedBox(width: 8),
+            cards[i],
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// 课时卡片上的标题（鸿蒙端 `lessonTitle`）：没起名就「课程简称 第 N 讲」
+  String _lessonTitle(VirtualLesson l) {
+    if (l.title.isNotEmpty) return l.title;
+    final c = courses[l.courseId];
+    final name = c == null
+        ? '虚拟课程'
+        : (c.shortName.isNotEmpty ? c.shortName : c.name);
+    return '$name 第 ${l.seq} 讲';
+  }
+
+  /// 小卡（鸿蒙端 glassCard）：半透明纯色 + 细边 + 投影，不使用模糊
+  BoxDecoration _cardDecoration({required bool selected, Color? tint, Color? edge}) {
+    return BoxDecoration(
+      color: selected ? const Color(0x4D2E6BE6) : (tint ?? glassTintRow),
+      borderRadius: BorderRadius.circular(glassRadius),
+      border: Border.all(
+          width: selected ? 1.5 : 1,
+          color: selected ? accentBlue : (edge ?? glassEdgeSoft)),
+      boxShadow: glassShadowRow,
+    );
+  }
+
+  /// 虚拟课时卡片：暖色薄纱，和真待办的小卡一眼能分开（鸿蒙端同款）
   Widget _lessonCard(VirtualLesson l) {
     final selected = l.id == selectedLessonId;
-    final course = courses[l.courseId];
     return GestureDetector(
       key: ValueKey('pool-lesson-${l.id}'),
       onTap: () => onSelectLesson(l.id),
@@ -1456,17 +1572,56 @@ class _Tray extends StatelessWidget {
       child: Container(
         width: 140,
         padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: selected ? const Color(0x4D2E6BE6) : glassTintRow,
-          borderRadius: BorderRadius.circular(glassRadius),
-          border: Border.all(
-              width: selected ? 1.5 : 1,
-              color: selected ? accentBlue : glassEdgeSoft),
+        decoration: _cardDecoration(
+          selected: selected,
+          tint: const Color(0x29F0BE5A), // rgba(240,190,90,0.16)
+          edge: const Color(0x47F0BE5A), // rgba(240,190,90,0.28)
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Text(l.title,
+            Text(_lessonTitle(l),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 14, color: inkPrimary)),
+            const Padding(
+              padding: EdgeInsets.only(top: 2),
+              child: Text('90 分钟',
+                  style: TextStyle(fontSize: 12, color: Color(0xFFD8C48A))),
+            ),
+            GestureDetector(
+              key: ValueKey('pool-lesson-find-${l.id}'),
+              onTap: () => onPlaceLesson(l),
+              behavior: HitTestBehavior.opaque,
+              child: const Padding(
+                padding: EdgeInsets.only(top: 6),
+                child: Text('⚡ 找空档',
+                    style: TextStyle(fontSize: 12, color: Color(0xFFE8B25C))),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _poolCard(Todo t) {
+    final selected = t.id == selectedId;
+    final course = courses[t.courseId];
+    return GestureDetector(
+      key: ValueKey('pool-${t.id}'),
+      onTap: () => onSelect(t.id),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: 140,
+        padding: const EdgeInsets.all(10),
+        decoration: _cardDecoration(selected: selected),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(t.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 14, color: inkPrimary)),
@@ -1484,83 +1639,23 @@ class _Tray extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                          fontSize: 11, color: Color(0xFFEAF0FA))),
-                ),
-              ),
-            const SizedBox(height: 2),
-            Text('第 ${l.seq} 讲 · 点一下选中',
-                maxLines: 2,
-                style: const TextStyle(fontSize: 11, color: Color(0xFF9BA7BD))),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _poolCard(Todo t) {
-    final selected = t.id == selectedId;
-    final course = t.courseId;
-    return GestureDetector(
-      key: ValueKey('pool-${t.id}'),
-      onTap: () => onSelect(t.id),
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        width: 140,
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: selected
-              ? const Color(0x4D2E6BE6) // rgba(46,107,230,0.30)
-              : glassTintRow,
-          borderRadius: BorderRadius.circular(glassRadius),
-          border: Border.all(
-              width: selected ? 1.5 : 1,
-              color: selected ? accentBlue : glassEdgeSoft),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(t.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 14, color: inkPrimary)),
-            if (course > 0)
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                  decoration: BoxDecoration(
-                    color: courseColor(courses[course]?.colorIndex ?? 0),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(courses[course]?.label ?? '',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 11, color: Color(0xFFEAF0FA))),
+                          fontSize: 12, color: Color(0xFFEAF0FA))),
                 ),
               ),
             Padding(
               padding: const EdgeInsets.only(top: 2),
               child: Text('预计 ${t.estimateMin} 分钟',
                   style:
-                      const TextStyle(fontSize: 11, color: Color(0xFF9BA7BD))),
+                      const TextStyle(fontSize: 12, color: Color(0xFF9BA7BD))),
             ),
-            const Spacer(),
             GestureDetector(
               key: ValueKey('pool-find-${t.id}'),
               onTap: () => onPlace(t),
               behavior: HitTestBehavior.opaque,
               child: const Padding(
-                padding: EdgeInsets.only(top: 4),
-                child: Row(
-                  children: [
-                    Icon(Icons.bolt, size: 13, color: accentBlue),
-                    SizedBox(width: 2),
-                    Text('找空档',
-                        style: TextStyle(fontSize: 11, color: accentBlue)),
-                  ],
-                ),
+                padding: EdgeInsets.only(top: 6),
+                child: Text('⚡ 找空档',
+                    style: TextStyle(fontSize: 12, color: Color(0xFF7FA8FF))),
               ),
             ),
           ],

@@ -27,6 +27,10 @@ class AppSettings {
   /// 自定义壁纸路径（kv `wallpaper_path`，空 = 默认渐变）
   String wallpaperPath;
 
+  /// 壁纸的显示位置/缩放（kv `wallpaper_focus`，'dx,dy,zoom'：
+  /// dx/dy 是相对屏幕宽高的平移比例（-1..1），zoom 1..3）
+  String wallpaperFocus;
+
   AppSettings({
     this.syncIntervalMin = syncIntervalDefault,
     this.planWindow = defaultWindow,
@@ -37,6 +41,7 @@ class AppSettings {
     this.classLeadMin = defaultClassLeadMin,
     this.motionEnabled = true,
     this.wallpaperPath = '',
+    this.wallpaperFocus = '0,0,1',
   });
 
   ReminderSettings get reminderSettings => ReminderSettings(
@@ -54,6 +59,7 @@ class AppSettings {
   static const String _kClassLead = 'class_lead';
   static const String _kMotion = 'motionOn';
   static const String _kWallpaper = 'wallpaper_path';
+  static const String _kWallpaperFocus = 'wallpaper_focus';
 
   static Future<AppSettings> load(ClassOutRepo repo) async {
     final sync = await repo.getKv(_kSync);
@@ -65,6 +71,7 @@ class AppSettings {
     final leadRaw = await repo.getKv(_kClassLead);
     final motionRaw = await repo.getKv(_kMotion);
     final wallpaper = await repo.getKv(_kWallpaper);
+    final wallpaperFocus = await repo.getKv(_kWallpaperFocus);
     return AppSettings(
       briefEnabled: briefEnabledRaw == null || briefEnabledRaw.isEmpty
           ? true
@@ -81,6 +88,9 @@ class AppSettings {
       motionEnabled:
           motionRaw == null || motionRaw.isEmpty ? true : motionRaw == '1',
       wallpaperPath: wallpaper ?? '',
+      wallpaperFocus: wallpaperFocus == null || wallpaperFocus.isEmpty
+          ? '0,0,1'
+          : wallpaperFocus,
     );
   }
 
@@ -94,6 +104,7 @@ class AppSettings {
     await repo.setKv(_kClassLead, '$classLeadMin');
     await repo.setKv(_kMotion, motionEnabled ? '1' : '0');
     await repo.setKv(_kWallpaper, wallpaperPath);
+    await repo.setKv(_kWallpaperFocus, wallpaperFocus);
   }
 
   /// 'HH:mm' → 分钟；坏值返回 null（与鸿蒙端 loadReminderSettings 一致）

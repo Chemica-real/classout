@@ -568,6 +568,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                   _generateMissed(_bundle!);
               },
               wallpaperPath: _settings.wallpaperPath,
+              wallpaperFocus: _settings.wallpaperFocus,
               // 课表 / 待办 / 计划 三页共用同一条页头（鸿蒙端 FloatingBars），
               // 设置页没有它 —— 那些是课表页的导航控件。
               child: _tab == 3

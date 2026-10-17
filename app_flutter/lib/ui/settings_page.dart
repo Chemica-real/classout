@@ -20,6 +20,7 @@ import '../domain/sync_cadence.dart';
 import '../model/types.dart';
 import 'app_frame.dart';
 import 'privacy_page.dart';
+import 'wallpaper_adjust.dart';
 import 'palette.dart';
 import 'theme.dart' as theme;
 
@@ -67,8 +68,9 @@ class _SettingsPageState extends State<SettingsPage> {
   double _barH = 56;
 
   List<RestWindow> _effectiveRest() {
-    if (widget.bundle.restWindows.isNotEmpty)
+    if (widget.bundle.restWindows.isNotEmpty) {
       return List.of(widget.bundle.restWindows);
+    }
     return [
       for (final w in defaultRestWindows())
         RestWindow(
@@ -128,8 +130,11 @@ class _SettingsPageState extends State<SettingsPage> {
               children: [
                 _WallpaperCard(
                   path: _s.wallpaperPath,
+                  focus: _s.wallpaperFocus,
                   onPick: _pickWallpaper,
                   onReset: _resetWallpaper,
+                  onAdjust: _adjustWallpaper,
+                  onCenter: _centerWallpaper,
                 ),
                 _MottoCard(settings: _s, onSave: _saveSettings),
                 _MotionCard(
@@ -442,8 +447,8 @@ class _SettingsPageState extends State<SettingsPage> {
                 children: const [
                   Text('设置',
                       style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w500,
                           color: inkPrimary)),
                 ],
               ),
@@ -469,6 +474,22 @@ class _SettingsPageState extends State<SettingsPage> {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('选图失败：$e')));
     }
+  }
+
+  /// 「调整位置 / 区域」：全屏拖动/缩放，保存后立刻重绘所有玻璃面
+  Future<void> _adjustWallpaper() async {
+    final path = _s.wallpaperPath;
+    if (path.isEmpty) return;
+    final next = await showWallpaperAdjust(context, path: path);
+    if (next == null) return;
+    _s.wallpaperFocus = next;
+    _saveSettings();
+  }
+
+  /// 「居中」：位置归零、缩放回 1
+  void _centerWallpaper() {
+    _s.wallpaperFocus = '0,0,1';
+    _saveSettings();
   }
 
   Future<void> _resetWallpaper() async {
@@ -564,17 +585,17 @@ class _Card extends StatelessWidget {
           children: [
             Text(title,
                 style: const TextStyle(
-                    fontSize: 16,
+                    fontSize: 15,
                     fontWeight: FontWeight.w500,
                     color: inkPrimary)),
-            const SizedBox(height: 4),
+            const SizedBox(height: 3),
             Text(description,
                 style: const TextStyle(
-                    fontSize: 12, height: 1.4, color: Color(0xFF94A0B5))),
+                    fontSize: 11, height: 1.4, color: Color(0xFF94A0B5))),
             const SizedBox(height: 10),
             child,
             if (footnote != null) ...[
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               Text(footnote!,
                   style:
                       const TextStyle(fontSize: 11, color: Color(0xFF8B97AC))),
@@ -627,6 +648,48 @@ class _Choice extends StatelessWidget {
             style: TextStyle(
                 fontSize: 12,
                 color: selected ? Colors.white : const Color(0xFFC3CDDE))),
+      ),
+    );
+  }
+}
+
+/// 胶囊按钮（鸿蒙端默认 `Button` 的样子）：高 40、胶囊圆角、居中白字
+class _PillBtn extends StatelessWidget {
+  final String text;
+  final Color background;
+  final Color foreground;
+  final VoidCallback onTap;
+  final double height;
+  final double fontSize;
+  const _PillBtn({
+    super.key,
+    required this.text,
+    required this.background,
+    required this.foreground,
+    required this.onTap,
+    this.height = 40,
+    this.fontSize = 14,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        height: height,
+        // 鸿蒙 Button 默认左右各 16 padding：两个字也有胶囊的宽度
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(height / 2),
+        ),
+        child: Text(text,
+            style: TextStyle(
+                fontSize: fontSize,
+                fontWeight: FontWeight.w500,
+                color: foreground)),
       ),
     );
   }
@@ -722,12 +785,18 @@ class _LinkAction extends StatelessWidget {
 /// 背景卡：预览 + 「从相册选一张」+ 「恢复默认渐变」
 class _WallpaperCard extends StatelessWidget {
   final String path;
+  final String focus;
   final Future<void> Function() onPick;
   final Future<void> Function() onReset;
+  final Future<void> Function() onAdjust;
+  final VoidCallback onCenter;
   const _WallpaperCard({
     required this.path,
+    required this.focus,
     required this.onPick,
     required this.onReset,
+    required this.onAdjust,
+    required this.onCenter,
   });
 
   @override
@@ -736,50 +805,111 @@ class _WallpaperCard extends StatelessWidget {
     return _Card(
       title: '背景',
       description: '玻璃态要有东西可透才好看。默认是柔和渐变；换成自己的照片后，所有玻璃面会自动跟着变。',
-      footnote: '照片会拷进 App 内部保存，不联网、也不需要相册权限。',
       child: Column(
         children: [
+          // 预览（对应鸿蒙 `Stack` + 110 高 + 圆角 12）：渐变永远在底层，
+          // 有图才盖上去 + 同一层可读性薄纱，最上面压一块玻璃标签。
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: SizedBox(
-              height: 120,
+              height: 110,
               width: double.infinity,
-              child: has
-                  ? Image.file(File(path), fit: BoxFit.cover)
-                  : const DecoratedBox(
-                      decoration: BoxDecoration(gradient: pageGradient),
-                      child: Center(
-                        child: Text('默认渐变',
-                            style: TextStyle(
-                                fontSize: 12, color: Color(0xFFC3CDDE))),
-                      ),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  const DecoratedBox(
+                      decoration: BoxDecoration(gradient: pageGradient)),
+                  if (has) ...[
+                    Builder(builder: (_) {
+                      final f = parseWallpaperFocus(focus);
+                      return ClipRect(
+                        child: Transform.translate(
+                          offset: Offset(
+                              f.dx * MediaQuery.of(context).size.width * 0.4,
+                              f.dy * 110 * 0.4),
+                          child: Transform.scale(
+                            scale: f.zoom,
+                            child: Image.file(File(path),
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                                height: 110),
+                          ),
+                        ),
+                      );
+                    }),
+                    // WALLPAPER_VEIL = rgba(6,8,16,0.62)
+                    const ColoredBox(color: Color(0x9E060810)),
+                  ],
+                  Center(
+                    child: Glass(
+                      radius: glassRadius,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      child: Text(has ? '自定义照片' : '默认渐变',
+                          style: const TextStyle(
+                              fontSize: 12, color: Color(0xFFF2F5FA))),
                     ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          GestureDetector(
-            onTap: () => onPick(),
-            behavior: HitTestBehavior.opaque,
-            child: Container(
-              height: 40,
-              width: double.infinity,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: const Color(0xFF2E6BE6),
-                borderRadius: BorderRadius.circular(20),
+                  ),
+                ],
               ),
-              child: const Text('从相册选一张',
-                  style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white)),
             ),
           ),
-          if (has)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: _LinkAction(text: '恢复默认渐变', onTap: () => onReset()),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _PillBtn(
+                  text: '从相册选一张',
+                  background: const Color(0xFF2E6BE6),
+                  foreground: Colors.white,
+                  onTap: () => onPick(),
+                ),
+              ),
+              if (has) ...[
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _PillBtn(
+                    text: '恢复默认渐变',
+                    background: Colors.white.withValues(alpha: 0.14),
+                    foreground: const Color(0xFFC3CDDE),
+                    onTap: () => onReset(),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          // 选区域 / 调位置（鸿蒙端只在有自定义照片时出现）
+          if (has) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: _PillBtn(
+                    key: const ValueKey('wp-adjust'),
+                    text: '调整位置 / 区域',
+                    background: const Color(0x382E6BE6),
+                    foreground: const Color(0xFF7FA8FF),
+                    onTap: () => onAdjust(),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _PillBtn(
+                    key: const ValueKey('wp-center'),
+                    text: '居中',
+                    background: Colors.white.withValues(alpha: 0.14),
+                    foreground: const Color(0xFFC3CDDE),
+                    onTap: onCenter,
+                  ),
+                ),
+              ],
             ),
+          ],
+          const Padding(
+            padding: EdgeInsets.only(top: 8),
+            child: Text('照片会拷进 App 内部保存，不联网、也不需要相册权限。',
+                style: TextStyle(fontSize: 11, color: Color(0xFF8B97AC))),
+          ),
         ],
       ),
     );
@@ -816,32 +946,40 @@ class _MottoCardState extends State<_MottoCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          TextField(
-            controller: _ctrl,
-            style: const TextStyle(fontSize: 15, color: inkPrimary),
-            cursorColor: accentBlue,
-            onChanged: (v) {
-              final clamped = clampMottoUnits(v);
-              if (clamped != v) {
-                _ctrl.value = TextEditingValue(
-                  text: clamped,
-                  selection: TextSelection.collapsed(offset: clamped.length),
-                );
-              }
-              setState(() {});
-            },
-            decoration: const InputDecoration(
-              isDense: true,
-              hintText: mottoDefault,
-              hintStyle: TextStyle(fontSize: 15, color: Color(0xFF8B97AC)),
-              enabledBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(color: Color(0x24FFFFFF))),
-              focusedBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(color: accentBlue)),
+          // 鸿蒙端是裸 TextInput（默认深色圆角底、高 40、圆角 20）
+          Container(
+            height: 40,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            alignment: Alignment.centerLeft,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: TextField(
+              controller: _ctrl,
+              style: const TextStyle(fontSize: 15, color: inkPrimary),
+              cursorColor: accentBlue,
+              onChanged: (v) {
+                final clamped = clampMottoUnits(v);
+                if (clamped != v) {
+                  _ctrl.value = TextEditingValue(
+                    text: clamped,
+                    selection: TextSelection.collapsed(offset: clamped.length),
+                  );
+                }
+                setState(() {});
+              },
+              onSubmitted: (_) => _save(),
+              decoration: const InputDecoration(
+                isDense: true,
+                border: InputBorder.none,
+                hintText: mottoDefault,
+                hintStyle: TextStyle(fontSize: 15, color: Color(0xFF8B97AC)),
+              ),
             ),
           ),
           Padding(
-            padding: const EdgeInsets.only(top: 6),
+            padding: const EdgeInsets.only(top: 10),
             child: Row(
               children: [
                 Text('$units/$mottoMaxUnits',
@@ -851,33 +989,26 @@ class _MottoCardState extends State<_MottoCard> {
                             ? const Color(0xFFE8B25C)
                             : const Color(0xFF8B97AC))),
                 const Spacer(),
-                _LinkAction(
+                _PillBtn(
                   text: '恢复默认',
-                  color: const Color(0xFFA9B5C9),
+                  height: 30,
+                  fontSize: 12,
+                  background: Colors.white.withValues(alpha: 0.10),
+                  foreground: const Color(0xFFC3CDDE),
                   onTap: () {
                     _ctrl.text = mottoDefault;
                     setState(() {});
+                    _save();
                   },
                 ),
-                const SizedBox(width: 12),
-                GestureDetector(
-                  onTap: () {
-                    widget.settings.motto = normalMotto(_ctrl.text);
-                    widget.onSave();
-                    ScaffoldMessenger.of(context)
-                        .showSnackBar(const SnackBar(content: Text('标语已保存')));
-                  },
-                  behavior: HitTestBehavior.opaque,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF2E6BE6),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Text('保存',
-                        style: TextStyle(fontSize: 12, color: Colors.white)),
-                  ),
+                const SizedBox(width: 8),
+                _PillBtn(
+                  text: '保存',
+                  height: 30,
+                  fontSize: 12,
+                  background: const Color(0xFF2E6BE6),
+                  foreground: Colors.white,
+                  onTap: _save,
                 ),
               ],
             ),
@@ -885,6 +1016,13 @@ class _MottoCardState extends State<_MottoCard> {
         ],
       ),
     );
+  }
+
+  void _save() {
+    widget.settings.motto = normalMotto(_ctrl.text);
+    widget.onSave();
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('首页标语已保存')));
   }
 }
 

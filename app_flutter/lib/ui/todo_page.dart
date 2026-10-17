@@ -467,7 +467,7 @@ class _RowCard extends StatelessWidget {
   const _RowCard({
     required this.child,
     this.color = glassTintRow,
-    this.border,
+    this.border = glassEdgeSoft,
     this.radius = glassRadius,
   });
 
@@ -482,6 +482,7 @@ class _RowCard extends StatelessWidget {
           color: color,
           borderRadius: BorderRadius.circular(radius),
           border: border == null ? null : Border.all(color: border!),
+          boxShadow: glassShadowRow,
         ),
         child: child,
       ),

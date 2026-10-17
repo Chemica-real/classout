@@ -329,4 +329,106 @@ void main() {
           reason: '和 ${other.date} 的块撞了');
     }
   });
+
+  testWidgets('托盘：展开后的提示语 / 收起按钮与鸿蒙端同字，⚡ 落块后弹「已排到」',
+      (tester) async {
+    final h = await _pump(tester);
+    await tester.tap(find.byKey(const ValueKey('tray-toggle')));
+    await tester.pumpAndSettle();
+    expect(find.text('拖动 / 点选 / ⚡ 一键找空档'), findsOneWidget);
+    expect(find.text('收起 ▾'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('pool-find-5')));
+    await tester.pump();
+    expect(h.last, isNotNull);
+    // 瞬时提示：不占布局的深色胶囊，1.8 秒后自己消失
+    expect(find.textContaining('已排到 '), findsOneWidget);
+    await tester.pump(const Duration(seconds: 2));
+    expect(find.textContaining('已排到 '), findsNothing);
+  });
+
+  testWidgets('虚拟课时卡片：显示「90 分钟」，卡片上的 ⚡ 找空档直接排进网格并弹提示',
+      (tester) async {
+    final demo = _demo();
+    final withLesson = BackupBundle(
+      app: demo.app,
+      version: demo.version,
+      exportedAt: demo.exportedAt,
+      semesters: demo.semesters,
+      sectionTimes: demo.sectionTimes,
+      courses: demo.courses,
+      rules: demo.rules,
+      overrides: demo.overrides,
+      todos: demo.todos,
+      blocks: demo.blocks,
+      lessons: [
+        VirtualLesson(id: 1, courseId: 1, seq: 2, title: '第二讲'),
+      ],
+    );
+    BackupBundle? last;
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: StatefulBuilder(
+          builder: (context, setState) => PlanPage(
+            bundle: last ?? withLesson,
+            onChanged: (next) => setState(() => last = next),
+            window: defaultWindow,
+            initialDay: DateTime(2026, 10, 17),
+            now: () => DateTime(2026, 10, 17, 9, 0),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('tray-toggle')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('90 分钟'), findsOneWidget);
+    expect(find.text('虚拟课程课时（拖进计划，打勾完成会触发生成待办）'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('pool-lesson-find-1')));
+    await tester.pump();
+    expect(last, isNotNull);
+    final b = last!.blocks.last;
+    expect(b.lessonId, 1);
+    expect(b.endMin - b.startMin, 90);
+    expect(find.textContaining('已排到 '), findsOneWidget);
+  });
+
+  testWidgets('托盘里没有可排的事项时，空状态文案与鸿蒙端一致', (tester) async {
+    final demo = _demo();
+    final empty = BackupBundle(
+      app: demo.app,
+      version: demo.version,
+      exportedAt: demo.exportedAt,
+      semesters: demo.semesters,
+      sectionTimes: demo.sectionTimes,
+      courses: demo.courses,
+      rules: demo.rules,
+      overrides: demo.overrides,
+      todos: const [],
+      blocks: demo.blocks,
+    );
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: PlanPage(
+          bundle: empty,
+          onChanged: (_) {},
+          initialDay: DateTime(2026, 10, 17),
+          now: () => DateTime(2026, 10, 17, 9, 0),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('tray-toggle')));
+    await tester.pumpAndSettle();
+    expect(find.text('没有待安排的事项。先去『待办』里确认几条。'), findsOneWidget);
+    expect(find.text('展开 ▴'), findsNothing);
+  });
 }
