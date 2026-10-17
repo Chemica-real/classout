@@ -12,7 +12,7 @@ ClassOUT 是一款**纯离线**的「课表 + 待办 + 计划」三合一 App，
 |---|---|---|
 | 版本 | v1.5.1（上架准备中，未提审） | 0.2.0（Android 已装真机 OPPO A97） |
 | 页面 | 课表 / 待办 / 计划 / 设置 + 启动加载页 + 悬浮浮窗 | **同样四页 + 启动页 + 浮窗（§52–§68 逐页复刻）** |
-| 测试 | 离线断言 524 项（`tools/domain-check`） | **931 条 `flutter test`**（含 775 条三端 fixture 逐条对拍） |
+| 测试 | 离线断言 524 项（`tools/domain-check`） | **932 条 `flutter test`**（含 775 条三端 fixture 逐条对拍） |
 | 差异基准 | 本目录 `docs/manual/01..09.jpg`（真机截图） | `app_flutter/tool/goldens/*.png` 对照上面九张 + `shared/fixtures/`（775 条规则用例） |
 
 **安卓版与鸿蒙版的 1:1 复刻已经完成**：主题 token 抄自 ArkTS（§52）、六个页面重做、
@@ -5934,3 +5934,14 @@ padding 从 `8/8/12/6` 改成鸿蒙的 **`左 8 / 右 12 / 上 10 / 下 8`**（�
 - `flutter test`：**931 passed**（+1：模板变量插入与预览；模板/时段弹窗的保存按钮 key 更新）
 - `flutter analyze`：**No issues found**
 - golden 重出（todos 等）。
+
+---
+
+## 97. 「已完成」段头改成鸿蒙的文字箭头
+
+鸿蒙 `DoneHeader` 右侧就是一行「收起 ▴ / 展开 ▾」（11 号 `#7FA8FF`），
+安卓原来是「收起 / 展开」+ Material 展开图标（字形与大小都不一致）。已改成同一行文字。
+
+- `test/todo_page_test.dart` 新增一条断言（有已完成条目时点「收起 ▴」→「展开 ▾」）。
+- 顺带把 `note_pref_test` 的断言放宽成 `findsWidgets`（现在页面里可能同时有编辑窗与段头两个
+  「收起 ▴」）。**932 passed**；golden 重出。

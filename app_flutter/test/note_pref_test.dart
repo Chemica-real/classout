@@ -52,6 +52,6 @@ void main() {
 
     expect(noteExpanded, isTrue);
     expect(seen, isTrue);
-    expect(find.text('收起 ▴'), findsOneWidget);
+    expect(find.text('收起 ▴'), findsWidgets);
   });
 }

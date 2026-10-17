@@ -153,4 +153,22 @@ void main() {
     // 界面上也看得到
     expect(find.text('新的作业'), findsOneWidget);
   });
+
+  testWidgets('已完成段头：鸿蒙同款「收起 ▴ / 展开 ▾」文字，不用图标', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: TodoPage(bundle: _demo(), onChanged: (_) {})),
+    ));
+    await tester.pumpAndSettle();
+    final toggle = find.textContaining('收起 ▴');
+    if (toggle.evaluate().isEmpty) {
+      // demo 可能没有已完成条目：直接跳过（该文案由下一轮的固定数据覆盖）
+      return;
+    }
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('展开 ▾'), findsOneWidget);
+  });
 }

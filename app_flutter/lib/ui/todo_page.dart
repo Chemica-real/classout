@@ -376,15 +376,9 @@ class _DoneHeader extends StatelessWidget {
             behavior: HitTestBehavior.opaque,
             child: Padding(
               padding: const EdgeInsets.only(left: 8),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(open ? '收起' : '展开',
-                      style: const TextStyle(fontSize: 11, color: accentBlue)),
-                  Icon(open ? Icons.expand_less : Icons.expand_more,
-                      size: 14, color: accentBlue),
-                ],
-              ),
+              // 鸿蒙端就是一行文字「收起 ▴ / 展开 ▾」，不用图标
+              child: Text(open ? '收起 ▴' : '展开 ▾',
+                  style: const TextStyle(fontSize: 11, color: accentBlue)),
             ),
           ),
         ],
