@@ -71,7 +71,7 @@ Future<void> showSessionSheet(
 }) {
   return showDialog<void>(
     context: context,
-    barrierColor: const Color(0x8C0C1220),
+    barrierColor: const Color(0x730C121C), // rgba(12,18,28,0.45)
     builder: (_) => _SessionSheet(
       bundle: bundle,
       session: session,
@@ -411,7 +411,7 @@ Future<void> showAdjustSheet(
 }) {
   return showDialog<void>(
     context: context,
-    barrierColor: const Color(0x8C0C1220),
+    barrierColor: const Color(0x730C121C), // rgba(12,18,28,0.45)
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setState) {
         final list = bundle.overrides;
@@ -507,7 +507,7 @@ Future<void> showExtraSheet(
 }) {
   return showDialog<void>(
     context: context,
-    barrierColor: const Color(0x8C0C1220),
+    barrierColor: const Color(0x730C121C), // rgba(12,18,28,0.45)
     builder: (_) =>
         _ExtraSheet(bundle: bundle, week: week, onChanged: onChanged),
   );
