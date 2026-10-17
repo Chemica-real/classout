@@ -90,6 +90,9 @@ class _PlanPageState extends State<PlanPage> {
   /// 日期条实测高度（首帧用估算值）
   double _dayBarH = 68;
 
+  /// 待安排托盘实测高度（首帧用收起时的估算值；鸿蒙 `bottomPaneH` 同样是量出来的）
+  double _trayH = 62;
+
   /// 瞬时提示（鸿蒙端 showHint）：不占布局、1.8 秒自动消失
   String _hint = '';
   Timer? _hintTimer;
@@ -430,10 +433,14 @@ class _PlanPageState extends State<PlanPage> {
     final days = _days;
     // 日期条是**悬浮浮窗**（鸿蒙端 DayBarFloat）：内容从它下面滑过，所以滚动区顶部留
     // 页头 + 日期条的空；底部留导航栏 + 待安排托盘的空。
-    final dayBarBlock = widget.topInset + _dayBarH;
+    // 鸿蒙 `topBarsBlockH() = topInset + FLOAT_GAP + H_DAYBAR + FLOAT_GAP`：
+    // 日期条与网格之间**要留一条缝**（多个浮窗相连时的空行）
+    final dayBarBlock = widget.topInset + _dayBarH + floatGap;
     // ⚠️ 末尾那 36 是鸿蒙 `DDL_MARK_ALLOW`：截止标记挂在网格底边**往下**一行，
     // 不留这点余量的话，滑到底时它的下半截会被悬浮的待安排托盘盖住。
-    final trayBlock = tabBarInset + (_trayOpen ? 176 : 62) + ddlMarkAllow;
+    // 托盘高度是**量出来的**（鸿蒙 `bottomPaneH` 也是 onAreaChange 量的）：
+    // 写死 62/176 时，托盘里的课时或提示多一行，滚动区底部就会多/少一截。
+    final trayBlock = tabBarInset + _trayH + ddlMarkAllow;
     return Stack(
       children: [
         Positioned.fill(
@@ -551,7 +558,13 @@ class _PlanPageState extends State<PlanPage> {
           left: 0,
           right: 0,
           bottom: tabBarInset,
-          child: _Tray(
+          child: MeasureSize(
+            onSize: (size) {
+              if ((size.height - _trayH).abs() > 0.5) {
+                setState(() => _trayH = size.height);
+              }
+            },
+            child: _Tray(
             pool: _pool,
             lessons: _lessonPool,
             selectedLessonId: _selectedLessonId,
@@ -575,6 +588,7 @@ class _PlanPageState extends State<PlanPage> {
             },
             onPlace: _placeFromPool,
             onPlaceLesson: _findSlotForLesson,
+            ),
           ),
         ),
         // 瞬时提示：悬浮在网格上方，不参与布局（鸿蒙端 showHint 的深色小胶囊）
@@ -806,7 +820,9 @@ class _DayBar extends StatelessWidget {
     final wd = names[weekdayOf(day) - 1];
     return Glass(
       sheet: true,
-      margin: const EdgeInsets.fromLTRB(floatSide, 4, floatSide, 4),
+      // 鸿蒙 `DayBarFloat` 的外层是 `.padding({ top: topInset + FLOAT_GAP })`、
+      // 底下不留边距；网格内容的 padding 再 + FLOAT_GAP（见 build 里 dayBarBlock）
+      margin: const EdgeInsets.fromLTRB(floatSide, floatGap, floatSide, 0),
       // 鸿蒙 DayBarFloat：padding 左 8 / 右 12 / 上 10 / 下 8
       padding: const EdgeInsets.fromLTRB(8, 10, 12, 8),
       child: Row(

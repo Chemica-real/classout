@@ -6500,3 +6500,16 @@ cd app_flutter && flutter test       # 1268 条（含 1115 条三端 fixture 逐
    以及恢复备份的二次确认（安卓的导入对话框会先预览要覆盖的内容，那一步就是确认）。
 4. 真机（OPPO A97）复看：待办列表的 `10/18 23:59 · 今天` 是斜线了；编辑抽屉右侧有缝、圆角 20；
    管理课程/学期设置/节次时间/备份/编辑课程都是整页。
+
+### 116.9 计划页浮窗几何：日期条与网格之间的空行、托盘高度改成量出来
+
+对着 `PlanDayView.ets` 里的 `topBarsBlockH()` 与滚动区 padding 又抠了两处：
+
+- 鸿蒙 `topBarsBlockH() = topInset + FLOAT_GAP + H_DAYBAR + FLOAT_GAP`，也就是**日期条和网格之间
+  还有一条 10vp 的空行**（"多个浮窗相连时中间要有空行"）。安卓原来 `dayBarBlock = topInset + 日期条高度`
+  （日期条自带 4/4 外边距），网格顶上来贴着日期条。现在日期条外边距改成 `(FLOAT_SIDE, FLOAT_GAP, FLOAT_SIDE, 0)`、
+  内容 padding 再 `+ FLOAT_GAP`。
+- 鸿蒙底部 padding 用的是**量出来的** `bottomPaneH`（`onAreaChange`），安卓写死 `(_trayOpen ? 176 : 62)`。
+  托盘里多一行（比如有虚拟课时）时底部就对不上。现在托盘也包了 `MeasureSize`，`_trayH` 实测值参与滚动区 padding，
+  再加上 §116.1 的 `DDL_MARK_ALLOW`。
+- `flutter test`：**1281 passed**；golden 重出；真机（OPPO A97）复看计划页间距正常。
