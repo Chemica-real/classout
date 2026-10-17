@@ -64,14 +64,23 @@ for (const d of ['2026-10-18 23:59', '2026-10-18 00:00', '2026-10-18 12:34', '',
 }
 
 const todos = [
-  { id: 1, title: '作业甲', courseId: 1, category: 'homework', ddl: '2026-10-18 23:59' },
-  { id: 2, title: '作业乙', courseId: 1, category: 'homework', ddl: '2026-10-18 23:59' },
-  { id: 3, title: '考试甲', courseId: 2, category: 'exam', ddl: '2026-10-18 09:00', endAt: '2026-10-18 11:00' },
-  { id: 4, title: '自学丙', courseId: 0, category: 'self', ddl: '2026-10-19 12:00' },
-  { id: 5, title: '无截止', courseId: 0, category: 'none', ddl: '' }
+  { id: 1, title: '作业甲', courseId: 1, category: 'homework', status: 'active', ddl: '2026-10-18 23:59' },
+  { id: 2, title: '作业乙', courseId: 1, category: 'homework', status: 'pending', ddl: '2026-10-18 23:59' },
+  { id: 3, title: '考试甲', courseId: 2, category: 'exam', status: 'active', ddl: '2026-10-18 09:00', endAt: '2026-10-18 11:00' },
+  { id: 4, title: '自学丙', courseId: 0, category: 'self', status: 'active', ddl: '2026-10-19 12:00' },
+  { id: 5, title: '无截止', courseId: 0, category: 'none', status: 'active', ddl: '' },
+  { id: 6, title: '已完成', courseId: 1, category: 'homework', status: 'done', ddl: '2026-10-18 23:59' },
+  { id: 7, title: '已归档', courseId: 1, category: 'homework', status: 'archived', ddl: '2026-10-18 23:59' },
+  { id: 8, title: '凌晨截止', courseId: 1, category: 'homework', status: 'active', ddl: '2026-10-18 02:00' },
+  { id: 9, title: '只有日期', courseId: 1, category: 'homework', status: 'active', ddl: '2026-10-18' },
+  { id: 10, title: '另一条', courseId: 1, category: 'homework', status: 'active', ddl: '2026-10-18 23:59' }
 ];
 for (const date of ['2026-10-18', '2026-10-19', '2026-10-20']) {
-  add('ddlGroupsOn', [todos, date, 7 * 60, 24 * 60], PM.ddlGroupsOn(todos, date, 7 * 60, 24 * 60));
+  // 期望值收紧成 {minute, todoIds}：比整份 todo 对象稳定，也不会把字段顺序带进对比
+  const compact = (gs) => gs.map((g) => ({ minute: g.minute, todoIds: g.todos.map((t) => t.id) }));
+  add('ddlGroupsOn', [todos, date, 7 * 60, 24 * 60], compact(PM.ddlGroupsOn(todos, date, 7 * 60, 24 * 60)));
+  // 时间窗被改窄：凌晨的夹到轴起点，23:59 的夹到轴终点
+  add('ddlGroupsOn', [todos, date, 9 * 60, 22 * 60], compact(PM.ddlGroupsOn(todos, date, 9 * 60, 22 * 60)));
 }
 
 const blocks = [
@@ -81,6 +90,20 @@ const blocks = [
 add('scheduledDays', [blocks, 1], PM.scheduledDays(blocks, 1));
 add('hasBlockOnDate', [blocks, 1, '2026-10-18'], PM.hasBlockOnDate(blocks, 1, '2026-10-18'));
 add('hasBlockOnDate', [blocks, 1, '2026-10-19'], PM.hasBlockOnDate(blocks, 1, '2026-10-19'));
+
+// ---- 待安排托盘 ----
+const poolTodos = [
+  { id: 3, title: '有截止晚报', courseId: 0, category: 'self', status: 'active', ddl: '2026-10-20 12:00' },
+  { id: 1, title: '有截止早报', courseId: 0, category: 'self', status: 'active', ddl: '2026-10-18 09:00' },
+  { id: 2, title: '无截止乙', courseId: 0, category: 'self', status: 'active', ddl: '' },
+  { id: 4, title: '无截止甲', courseId: 0, category: 'self', status: 'active', ddl: '' },
+  { id: 5, title: '待确认', courseId: 0, category: 'self', status: 'pending', ddl: '2026-10-17 09:00' },
+  { id: 6, title: '已完成', courseId: 0, category: 'self', status: 'done', ddl: '2026-10-17 09:00' }
+];
+add('sortPoolTodos', [poolTodos], PM.sortPoolTodos(poolTodos).map((t) => t.id));
+add('sortPoolTodos', [todos], PM.sortPoolTodos(todos).map((t) => t.id));
+add('selectPoolTodos', [poolTodos, blocks], PM.selectPoolTodos(poolTodos, blocks).map((t) => t.id));
+add('selectPoolTodos', [todos, blocks], PM.selectPoolTodos(todos, blocks).map((t) => t.id));
 
 const fixture = {
   module: 'PlanMath',

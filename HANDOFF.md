@@ -3582,3 +3582,82 @@ GIT_SSH_COMMAND="ssh -F /dev/null" git push --force --tags origin
   然后重新构建 + 装机，手机上现在是**干净构建**。
 - 沙箱退出用 `aa force-stop` + 重启（冷启动 `GuideRepo.cleanupDemoFile` 兜底删沙箱，
   日志 `demo sandbox db deleted: classout_demo.db`），确认回到真实库（`大一上 / 第 6 周`）。
+
+
+## 36. 2026-10-17 多端：iOS 优先（Flutter）+ `shared/` 合同层
+
+用户：「我接下来要同步开发 ClassOUT 的安卓版」→ 追问后拍定 **以后要上 iOS**，
+并且「**先开发 iOS 版**」。于是选型从 Kotlin 改成 **Flutter（Dart）**。
+
+### 36.1 为什么是 Flutter（而不是 Kotlin / KMP）
+
+| 端 | 实现 | 说明 |
+|---|---|---|
+| 鸿蒙 | **ArkTS**（已完成，v1.5.0） | ArkTS 编译不到 iOS/Android，改不了 |
+| iOS | **Dart/Flutter** | 与 Android 共用同一份 UI + 规则 |
+| Android | 同上（同一份 Dart） | 等 iOS 跑通再开 Android target |
+
+- Kotlin + Compose 只能覆盖 Android，到 iOS 还得写第三套 SwiftUI。
+- KMP/CMP 的 Kotlin **不能被 ArkTS 调用**，对鸿蒙端零收益。
+- 所以"三套"变"两套"：`{ArkTS: 鸿蒙}` + `{Dart: iOS + Android}`。
+
+### 36.2 ⚠️ 没有 Mac 怎么做 iOS
+
+**硬约束**：iOS 只能在 macOS + Xcode 上构建/签名。这台开发机是 Linux（无 `xcodebuild`）。
+
+**不需要 Mac 的部分（在这台机器上就能做）**：
+- Dart 规则层 + `flutter test`（纯 Dart VM，Linux 上跑）；
+- UI 代码 + `flutter run -d web-server` 用浏览器预览布局；
+- Platform channel 写接口 + 假实现。
+
+**需要 Mac 的部分 & 替代方案**：
+- 真机调试 / 上架 → **CI 上的 macOS runner**（GitHub Actions 公开仓库免费、私有 2000 分钟/月；
+  Codemagic 500 分钟/月）：
+  - `flutter build ios --release --no-codesign` 证明能编译；
+  - `xcrun simctl` 跑模拟器截图（可以在 Linux 上让 CI 出图）；
+  - 打包 → **TestFlight 内部测试员**（最多 100 人，**不需要 App Review**）→ 自己的 iPhone 装。
+- 费用：Apple 开发者 **99 美元/年**；只学习不发布可以先不开。
+- ❌ 不建议：Linux 上装 macOS 虚拟机（违反 Apple 许可、无 Metal 加速、上架心虚）。
+
+### 36.3 `shared/` 合同层（这轮做完了，已推）
+
+ArkTS 代码不能复用，能同步的是**规则**。`shared/` 就是规则本身：
+
+| 文件 | 内容 | 谁生成 |
+|---|---|---|
+| `shared/schema.sql` | 19 条权威 DDL（12 表 + 7 索引） | `tools/sync-contract.sh` 从 `data/Schema.ets` 抽 |
+| `shared/fixtures/plan_math.json` | **122 条** `{fn, args, expect}` | `tools/fixtures/gen.js` 从**已验证的**鸿蒙端实现冻结 |
+| `shared/backup-v1.md` | 备份 JSON 字段规范 + 导入 5 条规则（外键重映射/前向兼容/整份替换） | 手写 |
+| `shared/README.md` | 改规则的工作流（先改 fixtures 变红 → 两端实现 → 两端绿） | 手写 |
+
+一条命令重建：`./tools/sync-contract.sh`（会先跑 524 条断言，红了就不许生成）。
+
+> **fixtures 的定位要说清**：它是"**等价性**基准"（iOS 必须和鸿蒙算得一样），
+> 不是"正确性证明"。正确性仍由 ArkTS 那 524 条断言 + 真机负责。
+> 所以发现规则可疑时：**先修鸿蒙端 → 再重新生成 fixtures**，别改 fixtures 去迁就某一端。
+
+### 36.4 ★ 移植时抓到的两个 JS 兼容坑（以后每一处都要盯）
+
+Dart 和 ArkTS 在**边界**上不是同一个语义，直接"照抄函数名"就会算出不同结果：
+
+| ArkTS（JS 语义） | Dart 同名函数 | 差异 | 处理 |
+|---|---|---|---|
+| `Math.round(x)` | `num.round()` | **正好 .5 时**：JS 向 +∞（`Math.round(-0.5) = -0`），Dart 远离零（`(-0.5).round() = -1`） | 自写 `_jsRound(x) = (x + 0.5).floor()` |
+| `parseInt(s, 10)` | `int.parse(s)` / `int.tryParse(s)` | JS 只解析**前缀**（`parseInt('12abc')=12`），Dart 的 `int.parse` 直接抛、`tryParse` 返回 null | 自写 `_jsParseInt()` 用 `^\s*([+-]?\d+)` 正则 |
+| `String.prototype.substring(0, 10)` | `String.substring` | 超出长度时 JS **自动截到末尾**，Dart 直接抛 `RangeError` | 显式 `min(length, 10)` |
+
+这三条都已经写进 `app_flutter/lib/domain/plan_math.dart` 顶部的注释里。
+
+### 36.5 当前状态 / 下一步
+
+- ✅ `shared/` 合同层 + `tools/sync-contract.sh` + `tools/fixtures/gen.js` **已提交并推送**
+  （`shared/` 与鸿蒙端 524 条断言一起绿）。
+- 🚧 `app_flutter/`：`lib/model/types.dart`（Todo/PlanBlock）、`lib/domain/plan_math.dart`（388 行，
+  逐函数移植 + 3 个 JS 兼容闸门）、`test/fixtures_test.dart`（读 122 条 fixtures 逐条对比）
+  **已写完但尚未编译验证** —— 等 Flutter SDK 下完（国内镜像 ~140 KB/s，约 1 GB）。
+- 下一步（拿到 SDK 后）：
+  1. `flutter create --project-name classout --platforms=ios,android .`（补 pubspec / ios / android 骨架）
+  2. `flutter analyze && flutter test`（122 条 fixtures 必须全绿，红了以鸿蒙端为准）
+  3. 再按同样方式移植 `Timetable` / `Validate` / `TodoGenerator` / `Briefing` / `SyncCadence`，
+     每搬一个就在 `tools/fixtures/gen.js` 里加一节
+  4. 然后才是 UI（Compose→Compose 的坑在 Flutter 这边换成 Cupertino + `BackdropFilter`）
