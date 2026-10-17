@@ -91,17 +91,21 @@ jobs:
             adb logcat -d | grep -iE "FATAL|AndroidRuntime|sqlite|ClassOUT" | tail -80 || true
 
 
-      - name: 失败时把日志推到 ci-logs 分支（没有 token 也能排查）
+      - name: 失败时收集诊断并推到 ci-logs 分支（含 logcat）
         if: failure()
         working-directory: .
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
           mkdir -p /tmp/cilog
           cp app_flutter/build-*.log /tmp/cilog/ 2>/dev/null || true
-          cp app_flutter/app.log /tmp/cilog/ 2>/dev/null || true
-          (cd app_flutter && flutter --version > /tmp/cilog/flutter-version.txt 2>&1 || true)
+          (cd app_flutter && flutter --version > /tmp/cilog/flutter-version.txt 2>&1) || true
+          adb devices -l > /tmp/cilog/adb-devices.txt 2>&1 || true
+          adb shell getprop > /tmp/cilog/android-props.txt 2>&1 || true
+          adb logcat -d > /tmp/cilog/logcat.txt 2>&1 || true
+          adb logcat -d -b crash > /tmp/cilog/logcat-crash.txt 2>&1 || true
+          adb exec-out screencap -p > /tmp/cilog/failure-screen.png 2>/dev/null || true
           git config user.name "ci-logs"
           git config user.email "ci-logs@users.noreply.github.com"
           git checkout --orphan ci-logs-tmp >/dev/null 2>&1 || true
@@ -109,7 +113,7 @@ jobs:
           find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} + 2>/dev/null || true
           cp /tmp/cilog/* . 2>/dev/null || true
           git add -A
-          git commit -m "CI 失败日志 run ${{ github.run_number }} (${{ github.workflow }})" >/dev/null
+          git commit -m "Android CI 失败诊断 run ${{ github.run_number }}" >/dev/null
           git push -f origin HEAD:ci-logs
 
       - name: 上传截图
