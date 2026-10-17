@@ -12,7 +12,7 @@ Future<void> showPrivacyPage(BuildContext context) {
   return showGeneralDialog<void>(
     context: context,
     barrierDismissible: true,
-    barrierLabel: '关闭隐私说明',
+    barrierLabel: '关闭隐私政策',
     barrierColor: const Color(0x990C1220),
     transitionDuration: dur(durDrawer),
     pageBuilder: (ctx, _, __) => const _PrivacyBody(),
@@ -47,7 +47,7 @@ class _PrivacyBody extends StatelessWidget {
                 Row(
                   children: [
                     const Expanded(
-                      child: Text('隐私说明',
+                      child: Text('隐私政策',
                           style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w500,

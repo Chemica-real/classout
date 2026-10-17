@@ -53,6 +53,7 @@ Future<void> showCourseManager(
   BuildContext context, {
   required BackupBundle bundle,
   required void Function(BackupBundle next) onChanged,
+  Future<void> Function()? onImport,
 }) {
   return showGeneralDialog<void>(
     context: context,
@@ -60,7 +61,8 @@ Future<void> showCourseManager(
     barrierLabel: '关闭课程管理',
     barrierColor: const Color(0x990C1220),
     transitionDuration: dur(durDrawer),
-    pageBuilder: (ctx, _, __) => _Manager(bundle: bundle, onChanged: onChanged),
+    pageBuilder: (ctx, _, __) =>
+        _Manager(bundle: bundle, onChanged: onChanged, onImport: onImport),
     transitionBuilder: (ctx, anim, _, child) {
       final curved = CurvedAnimation(parent: anim, curve: drawerCurve);
       return FadeTransition(
@@ -76,7 +78,11 @@ Future<void> showCourseManager(
 class _Manager extends StatefulWidget {
   final BackupBundle bundle;
   final void Function(BackupBundle next) onChanged;
-  const _Manager({required this.bundle, required this.onChanged});
+
+  /// 「导入备份」入口（鸿蒙端：管理课程 → 备份与恢复 → 从备份恢复）
+  final Future<void> Function()? onImport;
+  const _Manager(
+      {required this.bundle, required this.onChanged, this.onImport});
 
   @override
   State<_Manager> createState() => _ManagerState();
@@ -293,13 +299,24 @@ class _ManagerState extends State<_Manager> {
                   color: inkPrimary)),
           const SizedBox(height: 4),
           const Text(
-              '导出一个 JSON 文件（放在 App 的文档目录），可以拷到电脑或发给别人排查；'
-              '恢复在「设置 → 数据 → 导入备份…」里。',
+              '数据只在这台手机里。导出会把全部内容写成一个 JSON 文件放在应用文档目录，'
+              '恢复则用它整份覆盖当前数据。',
               style: TextStyle(fontSize: 11, color: Color(0xFF94A0B5))),
           const SizedBox(height: 8),
           Row(
             children: [
               _PillAction(text: '导出备份', onTap: _export),
+              if (widget.onImport != null) const SizedBox(width: 8),
+              if (widget.onImport != null)
+                _PillAction(
+                  key: const ValueKey('manager-import'),
+                  text: '导入备份…',
+                  onTap: () async {
+                    final nav = Navigator.of(context);
+                    await widget.onImport!();
+                    if (mounted) nav.maybePop();
+                  },
+                ),
               if (_exportPath != null) const SizedBox(width: 8),
               if (_exportPath != null)
                 _PillAction(
@@ -501,7 +518,7 @@ class _PillAction extends StatelessWidget {
   /// 危险动作（红字红底）
   final bool danger;
   const _PillAction(
-      {required this.text, required this.onTap, this.danger = false});
+      {super.key, required this.text, required this.onTap, this.danger = false});
 
   @override
   Widget build(BuildContext context) {

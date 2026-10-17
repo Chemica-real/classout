@@ -113,3 +113,26 @@ int totalBlockMinutes(List<PlanBlockLike> blocks, int todoId) {
   }
   return any ? total : -1;
 }
+
+// ---------------- 不可排时段（与 ArkTS `domain/Validate.ets` 同值）----------------
+
+/// 校验一条不可排时段：适用星期、时间范围、结束晚于开始。
+Validation validateRestWindow(RestWindow w) {
+  if (w.weekday < 0 || w.weekday > 7 || w.weekday.round() != w.weekday) {
+    return const Validation(false, '适用日期不合法');
+  }
+  if (w.startMin < 0 || w.endMin > dayMin) {
+    return const Validation(false, '时间要在 00:00–24:00 之间');
+  }
+  if (w.startMin >= w.endMin) {
+    return const Validation(false, '结束时间必须晚于开始时间');
+  }
+  return const Validation(true, '');
+}
+
+/// 结束时刻的"午夜"归位：系统时间滚轮选不到 24:00，
+/// 所以「结束选 00:00、而开始不是 0」按"到午夜"理解成 24:00。
+int normalizeRestEnd(int pickedMin, int startMin) {
+  if (pickedMin == 0 && startMin > 0) return dayMin;
+  return pickedMin;
+}

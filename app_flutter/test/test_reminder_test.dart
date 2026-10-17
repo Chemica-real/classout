@@ -30,6 +30,20 @@ Future<FakeNotifier> _openSettings(WidgetTester tester,
 }
 
 Future<void> _tapTestReminder(WidgetTester tester) async {
+  // 鸿蒙端设置页没有这个入口：长按「保存提醒设置」才出安卓专属的提醒诊断
+  final save = find.byKey(const ValueKey('save-reminder'));
+  await tester.ensureVisible(save);
+  await tester.pumpAndSettle();
+  final scroll = tester
+      .state<ScrollableState>(find.byType(Scrollable).first)
+      .position;
+  for (var i = 0; i < 8; i++) {
+    if (tester.getRect(save).top > 90) break;
+    scroll.jumpTo((scroll.pixels - 60).clamp(0.0, scroll.maxScrollExtent));
+    await tester.pumpAndSettle();
+  }
+  await tester.longPress(save);
+  await tester.pumpAndSettle();
   final f = find.textContaining('试一条提醒');
   await tester.ensureVisible(f);
   await tester.pumpAndSettle();
@@ -56,8 +70,8 @@ void main() {
     expect(n.title, contains('测试提醒'));
     final delay = n.at.difference(DateTime.now()).inSeconds;
     expect(delay, inInclusiveRange(5, 12), reason: '约 10 秒后');
-    // 按钮文案本身也含「10 秒后」：排上之后应该是两个（按钮 + SnackBar）
-    expect(find.textContaining('10 秒后'), findsNWidgets(2));
+    // 诊断菜单关了，只剩 SnackBar 上那句「10 秒后弹一条测试提醒」
+    expect(find.textContaining('10 秒后'), findsOneWidget);
   });
 
   testWidgets('没有通知权限 → 不排，并提示去开权限', (tester) async {

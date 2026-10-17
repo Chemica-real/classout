@@ -20,11 +20,16 @@ Future<void> _pump(WidgetTester tester, MemoryRepo repo) async {
   await tester.pumpAndSettle();
 }
 
-/// 导入入口 = 设置页「数据 → 导入备份…」（跟鸿蒙端「管理课程 → 备份与恢复」对应）
+/// 导入入口 = 「管理课程 → 备份与恢复 → 导入备份…」（鸿蒙端同构）
 Future<void> _openImport(WidgetTester tester) async {
-  await tester.tap(find.text('设置').last);
+  // 鸿蒙端入口：课表页 →「管理课程」→ 备份与恢复 → 导入备份…
+  if (find.text('设置').evaluate().isNotEmpty) {
+    await tester.tap(find.text('课表').last);
+    await tester.pumpAndSettle();
+  }
+  await tester.tap(find.text('管理课程'));
   await tester.pumpAndSettle();
-  final b = find.byKey(const ValueKey('settings-import'));
+  final b = find.byKey(const ValueKey('manager-import'));
   await tester.ensureVisible(b);
   await tester.pumpAndSettle();
   await tester.tap(b);

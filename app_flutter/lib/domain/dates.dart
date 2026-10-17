@@ -22,6 +22,9 @@ int diffDays(DateTime a, DateTime b) {
   return ((am - bm) / 86400000).round();
 }
 
+/// 「周一」…「周日」里的那个字（鸿蒙端 `WEEKDAY_CN`）
+const List<String> weekdayCn = ['一', '二', '三', '四', '五', '六', '日'];
+
 /// 1 = 周一 … 7 = 周日
 int weekdayOf(DateTime d) => d.weekday; // Dart: 周一=1 … 周日=7
 

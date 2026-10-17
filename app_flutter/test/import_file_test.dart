@@ -50,11 +50,16 @@ Future<void> _gotoTimetable(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-/// 导入入口在「设置 → 数据 → 导入备份…」（与鸿蒙端「管理课程 → 备份与恢复」对应）
+/// 导入入口在「管理课程 → 备份与恢复 → 导入备份…」
 Future<void> _openImport(WidgetTester tester) async {
-  await tester.tap(find.text('设置').last); // 底部导航
+  // 鸿蒙端入口：课表页 →「管理课程」→ 备份与恢复 → 导入备份…
+  if (find.text('设置').evaluate().isNotEmpty) {
+    await tester.tap(find.text('课表').last);
+    await tester.pumpAndSettle();
+  }
+  await tester.tap(find.text('管理课程'));
   await tester.pumpAndSettle();
-  final btn = find.byKey(const ValueKey('settings-import'));
+  final btn = find.byKey(const ValueKey('manager-import'));
   await tester.ensureVisible(btn);
   await tester.pumpAndSettle();
   await tester.tap(btn);

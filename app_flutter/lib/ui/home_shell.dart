@@ -252,7 +252,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         onExtra: () => showExtraSheet(context,
             bundle: bundle, week: _week, onChanged: _apply),
         onManage: () =>
-            showCourseManager(context, bundle: bundle, onChanged: _apply),
+            showCourseManager(context,
+                bundle: bundle, onChanged: _apply, onImport: _import),
         onOpenAdjust: () =>
             showAdjustSheet(context, bundle: bundle, onChanged: _apply),
       );
@@ -579,7 +580,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                       onSettingsChanged: _applySettings,
                       onResyncReminders: _resyncReminders,
                       onTestReminder: _testReminder,
-                      onImport: _import,
                       onStartGuide: () async {
                         Navigator.of(context).maybePop();
                         await _startGuide();

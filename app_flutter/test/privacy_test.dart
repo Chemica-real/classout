@@ -26,7 +26,7 @@ void main() {
     expect(privacyUpdatedAt(), '2026-10-16');
   });
 
-  testWidgets('设置 → 关于 → 隐私说明 能打开并显示全文', (tester) async {
+  testWidgets('设置 → 关于 → 隐私政策 能打开并显示全文', (tester) async {
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 3.0;
     addTearDown(tester.view.reset);
@@ -50,8 +50,8 @@ void main() {
     await tester.tap(link);
     await tester.pumpAndSettle();
 
-    // 入口文案和页面标题都叫「隐私说明」，所以这里是 2 个
-    expect(find.text('隐私说明'), findsNWidgets(2));
+    // 入口文案和页面标题都叫「隐私政策」（鸿蒙端同字），所以这里是 2 个
+    expect(find.text('隐私政策'), findsNWidgets(2));
     expect(find.text('一句话结论'), findsOneWidget);
     expect(find.textContaining('不收集'), findsWidgets);
     expect(find.textContaining('更新于'), findsOneWidget);
