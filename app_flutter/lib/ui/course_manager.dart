@@ -348,10 +348,8 @@ class _ManagerState extends State<_Manager> {
                       fontWeight: FontWeight.w500,
                       color: inkPrimary)),
               const Spacer(),
-              _PillAction(
-                text: '+ 新增课程',
-                onTap: () => _openCourse(null),
-              ),
+              // 鸿蒙就是一行 13 号蓝字（没有胶囊底）
+              _LinkAction(text: '+ 新增课程', onTap: () => _openCourse(null)),
             ],
           ),
           const SizedBox(height: 8),
@@ -603,12 +601,34 @@ class _ManagerState extends State<_Manager> {
   }
 }
 
-class _PillAction extends StatelessWidget {
+/// 鸿蒙里那些"就是一行蓝字"的动作（`+ 新增课程` 13 号、`刷新` 12 号）：
+/// 没有底色、没有胶囊 —— 以前安卓套了一层蓝底胶囊，双机对比一眼能看出多了一块。
+class _LinkAction extends StatelessWidget {
   final String text;
   final VoidCallback onTap;
+  final double fontSize;
+  const _LinkAction(
+      {required this.text, required this.onTap, this.fontSize = 13});
 
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+        child: Text(text,
+            style: TextStyle(fontSize: fontSize, color: const Color(0xFF7FA8FF))),
+      ),
+    );
+  }
+}
 
-  const _PillAction({required this.text, required this.onTap});
+/// 「选择日期…」：鸿蒙是 `Button` + 白 0.14 底 + 13 号蓝字（40 高、胶囊）
+class _GhostButton extends StatelessWidget {
+  final String text;
+  final VoidCallback onTap;
+  const _GhostButton({required this.text, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -616,14 +636,15 @@ class _PillAction extends StatelessWidget {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        height: 40,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: const Color(0x382E6BE6),
-          borderRadius: BorderRadius.circular(12),
+          color: Colors.white.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(20),
         ),
-        child:
-            // 鸿蒙「选择日期…」这类小按钮是 fontSize 13
-            Text(text, style: const TextStyle(fontSize: 13, color: accentBlue)),
+        child: Text(text,
+            style: const TextStyle(fontSize: 13, color: Color(0xFF7FA8FF))),
       ),
     );
   }
@@ -1294,22 +1315,16 @@ class _RuleDialogState extends State<_RuleDialog> {
                 ],
               ),
               const SizedBox(height: 10),
+              // 鸿蒙规则弹窗：取消 / 保存 都是**默认 Button**（40 高、16 号、等宽）
               Row(
                 children: [
-                  const Spacer(),
-                  _PillAction(
-                      text: '取消', onTap: () => Navigator.of(context).pop()),
-                  const SizedBox(width: 10),
-                  FilledButton(
-                    onPressed: _save,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF2E6BE6),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20)),
-                    ),
-                    child: const Text('保存', style: TextStyle(fontSize: 13)),
+                  Expanded(
+                    child: _sheetButton('取消',
+                        () => Navigator.of(context).pop(),
+                        secondary: true),
                   ),
+                  const SizedBox(width: 10),
+                  Expanded(child: _sheetButton('保存', _save)),
                 ],
               ),
             ],
@@ -1556,32 +1571,18 @@ class _TemplateDialogState extends State<_TemplateDialog> {
                 ],
               ),
               const SizedBox(height: 18),
+              // 鸿蒙模板弹窗：同样是两颗默认 Button（保存带 key 供测试用）
               Row(
                 children: [
                   Expanded(
-                    child: _PillAction(
-                        text: '取消', onTap: () => Navigator.of(context).pop()),
+                    child: _sheetButton('取消',
+                        () => Navigator.of(context).pop(),
+                        secondary: true),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: GestureDetector(
-                      key: const ValueKey('template-save'),
-                      onTap: _save,
-                      behavior: HitTestBehavior.opaque,
-                      child: Container(
-                        height: 40,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF2E6BE6),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: const Text('保存',
-                            style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                                color: Colors.white)),
-                      ),
-                    ),
+                    child: _sheetButton('保存', _save,
+                        key: const ValueKey('template-save')),
                   ),
                 ],
               ),
@@ -1936,7 +1937,7 @@ class _SemesterSheetState extends State<_SemesterSheet>
                                 style: const TextStyle(
                                     fontSize: 15, color: Color(0xFFF2F5FA))),
                           ),
-                          _PillAction(text: '选择日期…', onTap: _pickStart),
+                          _GhostButton(text: '选择日期…', onTap: _pickStart),
                         ],
                       ),
                       const Padding(
@@ -2154,7 +2155,7 @@ class _NewSemesterFormState extends State<_NewSemesterForm> {
                   style: const TextStyle(
                       fontSize: 15, color: Color(0xFFF2F5FA))),
             ),
-            _PillAction(text: '选择日期…', onTap: _pickStart),
+            _GhostButton(text: '选择日期…', onTap: _pickStart),
           ],
         ),
         const Padding(
@@ -2416,7 +2417,7 @@ class _BackupSheetState extends State<_BackupSheet> {
                       fontWeight: FontWeight.w500,
                       color: inkPrimary)),
               const Spacer(),
-              _PillAction(text: '刷新', onTap: () => setState(() {})),
+              _LinkAction(text: '刷新', fontSize: 12, onTap: () => setState(() {})),
             ],
           ),
           const SizedBox(height: 6),

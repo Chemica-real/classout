@@ -68,7 +68,8 @@ void main() {
     await _tapVisible(tester, find.text('+ 添加时段'));
     expect(find.text('添加上课时段'), findsOneWidget);
     // 第一次「保存」是时段弹窗，第二次才是课程子页
-    await _tapVisible(tester, find.widgetWithText(FilledButton, '保存').last);
+    // 弹窗底部的「保存」现在是鸿蒙同款胶囊（GestureDetector，不是 FilledButton）
+    await _tapVisible(tester, find.text('保存').last);
     await _tapVisible(tester, find.byKey(const ValueKey('course-save')));
 
     final saved = (await repo.load())!;
@@ -159,7 +160,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(weeks, '1-8');
     await tester.pumpAndSettle();
-    await _tapVisible(tester, find.widgetWithText(FilledButton, '保存').last);
+    // 弹窗底部的「保存」现在是鸿蒙同款胶囊（GestureDetector，不是 FilledButton）
+    await _tapVisible(tester, find.text('保存').last);
     await _tapVisible(tester, find.byKey(const ValueKey('course-save')));
 
     final saved = (await repo.load())!;

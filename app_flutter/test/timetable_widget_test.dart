@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:classout/data/backup.dart';
 import 'package:classout/data/repo.dart';
+import 'package:classout/domain/demo_sandbox.dart';
 import 'package:classout/domain/timetable.dart';
 import 'package:classout/ui/home_shell.dart';
 import 'package:classout/ui/timetable_page.dart';
@@ -40,6 +41,30 @@ void main() {
       expect(find.text(s.course.label), findsWidgets,
           reason: '第 $w 周应该有「${s.course.label}」的课');
     }
+  });
+
+  testWidgets('课时块高度 = Σ节高 - 3（鸿蒙 blockHeight 的 3vp 缝）', (tester) async {
+    final bundle = buildDemoSandbox(now: DateTime(2026, 10, 16, 9, 30));
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    final sem = bundle.semester!;
+    final w = weekOfDate(sem, DateTime(2026, 10, 16));
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: TimetablePage(
+                bundle: bundle, week: w, now: DateTime(2026, 10, 16, 9, 30)))));
+    await tester.pumpAndSettle();
+
+    // 「高数」周一 1-2 节：两块 52 高的普通节 → 52+52-3 = 101
+    final box = find
+        .ancestor(of: find.text('高数'), matching: find.byType(Container))
+        .first;
+    expect(tester.getSize(box).height, 101);
+    // 左右各 1.5 的内缝（鸿蒙 SessionBlock 外层 padding）
+    final weekW = tester.getSize(find.byType(TimetablePage)).width;
+    final colW = (weekW - 38 - 8) / 7; // TT_AXIS_W=38、TT_GRID_PAD=4×2
+    expect(tester.getSize(box).width, closeTo(colW - 3, 0.6));
   });
 
   testWidgets('左右切换周次', (tester) async {

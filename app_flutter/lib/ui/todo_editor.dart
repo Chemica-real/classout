@@ -182,10 +182,15 @@ class _EditorBodyState extends State<_EditorBody> {
     final e = widget.existing;
     _title = TextEditingController(text: e?.title ?? '');
     _note = TextEditingController(text: e?.note ?? '');
+    // 鸿蒙 `openNew()`：新建默认类型是「无」；「+ 考试」= exam
     _category = e?.category ??
-        (widget.asExam ? TodoCategory.exam : TodoCategory.homework);
-    _ddl = e?.ddl ?? '';
-    _examDate = _ddl.length >= 10 ? _ddl.substring(0, 10) : formatDate(today());
+        (widget.asExam ? TodoCategory.exam : TodoCategory.none);
+    // 鸿蒙 `openNew()`：`editDdl = 今天 23:59`（不是"无截止"）；
+    // `openNewExam()` 再改成「下周同一天 09:00–11:00」（考试要一段固定时间）
+    final defaultDay =
+        formatDate(widget.asExam ? addDays(today(), 7) : today());
+    _ddl = e?.ddl ?? '$defaultDay ${widget.asExam ? '09:00' : '23:59'}';
+    _examDate = _ddl.length >= 10 ? _ddl.substring(0, 10) : defaultDay;
     _examStart = _ddl.length >= 16 ? _ddl.substring(11, 16) : '09:00';
     _examEnd = (e?.endAt.length ?? 0) >= 16
         ? e!.endAt.substring(11, 16)
@@ -243,6 +248,14 @@ class _EditorBodyState extends State<_EditorBody> {
     widget.onAddCategory?.call(name);
   }
 
+  /// 考试时长（分钟）—— 鸿蒙保存考试时 `estimateMin = end - start`
+  int _examMinutes() {
+    final s = hhmmToMin(_examStart);
+    final e = hhmmToMin(_examEnd);
+    if (s == null || e == null || e <= s) return 0;
+    return e - s;
+  }
+
   static String _addMinutes(String hhmm, int minutes) {
     final h = int.parse(hhmm.substring(0, 2));
     final m = int.parse(hhmm.substring(3, 5));
@@ -265,7 +278,7 @@ class _EditorBodyState extends State<_EditorBody> {
       ddl: isExam ? '$_examDate $_examStart' : _ddl,
       endAt: isExam ? '$_examDate $_examEnd' : (e?.endAt ?? ''),
       courseId: _courseId,
-      estimateMin: isExam ? 0 : _estimateMin,
+      estimateMin: isExam ? _examMinutes() : _estimateMin,
       note: _note.text.trim(),
       status: e?.status ?? TodoStatus.active,
       priority: e?.priority ?? 1,

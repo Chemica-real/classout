@@ -193,12 +193,16 @@ double _offsetOf(List<SectionTime> times, int section) {
   return y;
 }
 
+/// 课时块高度 —— 鸿蒙 `Index.ets` 的 `blockHeight()`：
+/// `Σ sectionHeight - 3`。那 **3vp 是两块课之间刻意留的缝**（同一列上下相邻的两节课
+/// 不会糊成一块；先有缝才看得出"这是两节"）。安卓原来没减，块比鸿蒙高 3vp，
+/// 与参考图（`docs/manual/01-timetable.jpg`）逐像素量正好差这么多。
 double _blockHeight(List<SectionTime> times, int start, int end) {
   var h = 0.0;
   for (final st in times) {
     if (st.section >= start && st.section <= end) h += _sectionH(st);
   }
-  return h == 0 ? sectionH : h;
+  return (h == 0 ? sectionH : h) - 3;
 }
 
 class _Grid extends StatelessWidget {

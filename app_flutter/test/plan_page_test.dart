@@ -117,6 +117,20 @@ void main() {
     expect(find.text('10 月 16 日 周五'), findsOneWidget);
   });
 
+  testWidgets('日期条的「今天 / 逾期」走注入的时钟（不再偷用真实日期）', (tester) async {
+    await _pump(tester, initialDay: DateTime(2026, 10, 15));
+    // 注入 10/17，看的是 10/15 → 逾期 2 天（原来这里写死 today()，截图会随真实日期漂）
+    expect(find.text('逾期 2 天'), findsOneWidget);
+  });
+
+  testWidgets('时间轴贴屏幕左边（鸿蒙 plan 网格满宽、没有左右 10vp 内边距）',
+      (tester) async {
+    await _pump(tester, initialDay: DateTime(2026, 10, 17));
+    // 鸿蒙 HourLines：Text.width(40).textAlign(End) → 刻度右边缘 40vp（AXIS_W 46 - 6）
+    final right = tester.getTopRight(find.text('10:00')).dx;
+    expect(right, closeTo(40, 0.5));
+  });
+
   testWidgets('选中托盘里的待办 → 点网格 15:00 → 生成计划块', (tester) async {
     final h = await _pump(tester);
     expect(h.last, isNull);

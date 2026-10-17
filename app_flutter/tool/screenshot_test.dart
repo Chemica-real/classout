@@ -169,7 +169,11 @@ void main() {
           onToday: () {},
           onSync: () async {},
         ),
-        Expanded(child: TodoPage(bundle: sandbox, onChanged: (_) {})),
+        Expanded(
+            child: TodoPage(
+                bundle: sandbox,
+                onChanged: (_) {},
+                now: DateTime(2026, 10, 16, 9, 30))),
       ]),
       'sandbox_todos',
       family,
@@ -605,8 +609,9 @@ void main() {
     ));
     await tester.pumpAndSettle();
     // 不要 await：showGeneralDialog 的 Future 要等浮层关掉才完成
+    // 用沙箱演示数据（演练学期 / 每门课带模板行）—— 才能和 docs/manual/05-manager.jpg 逐块对照
     unawaited(showCourseManager(tester.element(find.byType(AppFrame)),
-        bundle: demo, onChanged: (_) {}));
+        bundle: sandbox, onChanged: (_) {}));
     await tester.pumpAndSettle();
     await _capture(tester, 'course_manager');
   });

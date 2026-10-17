@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 
 import '../data/backup.dart';
 import '../domain/categories.dart';
+import '../domain/dates.dart' show hhmmToMin;
 import '../domain/todo_list.dart';
 import '../model/types.dart';
 import 'app_frame.dart';
@@ -45,6 +46,9 @@ class TodoPage extends StatefulWidget {
   /// 备注展开状态变了（外壳负责写 kv）
   final void Function(bool on)? onNotePref;
 
+  /// 时钟（截图/测试注入固定日期用；真机不传 = 真实今天，与鸿蒙 `today()` 同）
+  final DateTime? now;
+
   const TodoPage({
     super.key,
     required this.bundle,
@@ -53,6 +57,7 @@ class TodoPage extends StatefulWidget {
     this.onAddCategory,
     this.topInset = 0,
     this.onNotePref,
+    this.now,
   });
 
   @override
@@ -108,6 +113,7 @@ class _TodoPageState extends State<TodoPage> {
                       course: courses[t.courseId],
                       categoryText: categoryLabel(t.category, _custom),
                       confirming: _pendingDeleteId == t.id,
+                      now: widget.now,
                       onDelete: () => setState(() => _pendingDeleteId = t.id),
                       onCancelDelete: () =>
                           setState(() => _pendingDeleteId = 0),
@@ -137,7 +143,7 @@ class _TodoPageState extends State<TodoPage> {
                       key: ValueKey('exam-${t.id}'),
                       t: t,
                       course: courses[t.courseId],
-                      countdown: countdownOf(t),
+                      countdown: countdownOf(t, now: widget.now),
                       onOpen: () => _openEditor(context, existing: t),
                       onDone: () => widget.onChanged(_mutate(t.id, (x) {
                         x.status = TodoStatus.done;
@@ -165,6 +171,7 @@ class _TodoPageState extends State<TodoPage> {
                   _ActiveRow(
                     key: ValueKey('active-${t.id}'),
                     t: t,
+                    now: widget.now,
                     course: courses[t.courseId],
                     categoryText: categoryLabel(t.category, _custom),
                     onComplete: () => widget.onChanged(_mutate(t.id, (x) {
@@ -285,10 +292,36 @@ class _TodoPageState extends State<TodoPage> {
     return _copyWith(todos: todos);
   }
 
-  BackupBundle _without(int id) =>
-      _copyWith(todos: widget.bundle.todos.where((t) => t.id != id).toList());
+  /// 删一条待办 —— 鸿蒙 `TodoRepo.deleteTodo` 会连带删掉它的计划块
+  BackupBundle _without(int id) => _copyWith(
+      todos: widget.bundle.todos.where((t) => t.id != id).toList(),
+      blocks: widget.bundle.blocks.where((b) => b.todoId != id).toList());
 
-  BackupBundle _copyWith({List<Todo>? todos}) => BackupBundle(
+  /// 考试保存后的"自动排进计划页" —— 鸿蒙 `TodoRepo.syncExamBlock`：
+  /// 先删掉这条待办原来的块，起止合法时再插一条 `date/startMin/endMin` 的块（重叠也照排）。
+  BackupBundle _syncExamBlock(BackupBundle b, Todo t) {
+    if (t.category != TodoCategory.exam || t.id <= 0) return b;
+    final rest = b.blocks.where((x) => x.todoId != t.id).toList();
+    final s = t.ddl.length >= 16 ? hhmmToMin(t.ddl.substring(11, 16)) : null;
+    final e = t.endAt.length >= 16 ? hhmmToMin(t.endAt.substring(11, 16)) : null;
+    if (s == null || e == null || e <= s) {
+      return _copyWith(
+          todos: b.todos, blocks: rest);
+    }
+    final nextId =
+        b.blocks.fold<int>(0, (m, x) => x.id > m ? x.id : m) + 1;
+    return _copyWith(todos: b.todos, blocks: [
+      ...rest,
+      PlanBlock(
+          id: nextId,
+          todoId: t.id,
+          date: t.ddl.substring(0, 10),
+          startMin: s,
+          endMin: e),
+    ]);
+  }
+
+  BackupBundle _copyWith({List<Todo>? todos, List<PlanBlock>? blocks}) => BackupBundle(
         app: widget.bundle.app,
         version: widget.bundle.version,
         exportedAt: widget.bundle.exportedAt,
@@ -298,7 +331,7 @@ class _TodoPageState extends State<TodoPage> {
         rules: widget.bundle.rules,
         overrides: widget.bundle.overrides,
         todos: todos ?? widget.bundle.todos,
-        blocks: widget.bundle.blocks,
+        blocks: blocks ?? widget.bundle.blocks,
         restWindows: widget.bundle.restWindows,
         templates: widget.bundle.templates,
         lessons: widget.bundle.lessons,
@@ -324,13 +357,16 @@ class _TodoPageState extends State<TodoPage> {
       final nextId =
           widget.bundle.todos.fold<int>(0, (m, t) => t.id > m ? t.id : m) + 1;
       draft.id = nextId;
-      widget.onChanged(_copyWith(todos: [...widget.bundle.todos, draft]));
+      widget.onChanged(_syncExamBlock(
+          _copyWith(todos: [...widget.bundle.todos, draft]), draft));
       return;
     }
-    widget.onChanged(_copyWith(todos: [
-      for (final t in widget.bundle.todos)
-        if (t.id == draft.id) draft else t,
-    ]));
+    widget.onChanged(_syncExamBlock(
+        _copyWith(todos: [
+          for (final t in widget.bundle.todos)
+            if (t.id == draft.id) draft else t,
+        ]),
+        draft));
   }
 }
 
@@ -565,6 +601,9 @@ class _PendingCard extends StatefulWidget {
   final VoidCallback onEdit;
   final VoidCallback onConfirm;
 
+  /// 注入的时钟（null = 真实今天）
+  final DateTime? now;
+
   const _PendingCard({
     super.key,
     required this.t,
@@ -576,6 +615,7 @@ class _PendingCard extends StatefulWidget {
     required this.onDeleteConfirmed,
     required this.onEdit,
     required this.onConfirm,
+    this.now,
   });
 
   @override
@@ -584,6 +624,8 @@ class _PendingCard extends StatefulWidget {
 
 class _PendingCardState extends State<_PendingCard>
     with TickerProviderStateMixin {
+  /// 注入的时钟（null = 真实今天）
+  DateTime? get now => widget.now;
   /// 「删除时碎裂掉出」（鸿蒙 `removeConfirmed`）：**先碎裂、再收掉高度、最后才真删**
   late final AnimationController _shake =
       AnimationController(vsync: this, duration: dur(durShard));
@@ -675,7 +717,7 @@ class _PendingCardState extends State<_PendingCard>
             child: Row(
               children: [
                 Expanded(
-                  child: Text(ddlText(t.ddl),
+                  child: Text(ddlText(t.ddl, now: now),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style:
@@ -777,6 +819,9 @@ class _ActiveRow extends StatefulWidget {
   final VoidCallback onComplete;
   final VoidCallback onOpen;
 
+  /// 注入的时钟（null = 真实今天）
+  final DateTime? now;
+
   const _ActiveRow({
     super.key,
     required this.t,
@@ -784,6 +829,7 @@ class _ActiveRow extends StatefulWidget {
     required this.categoryText,
     required this.onComplete,
     required this.onOpen,
+    this.now,
   });
 
   @override
@@ -858,7 +904,8 @@ class _ActiveRowState extends State<_ActiveRow>
                   ),
                   Padding(
                     padding: const EdgeInsets.only(top: 3),
-                    child: Text('${ddlText(t.ddl)} · 预计 ${t.estimateMin} 分钟',
+                    child: Text(
+                        '${ddlText(t.ddl, now: widget.now)} · 预计 ${t.estimateMin} 分钟',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontSize: 11, color: _rowMeta)),

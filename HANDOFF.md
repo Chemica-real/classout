@@ -12,7 +12,7 @@ ClassOUT 是一款**纯离线**的「课表 + 待办 + 计划」三合一 App，
 |---|---|---|
 | 版本 | v1.5.1（上架准备中，未提审） | 0.2.0（Android 已装真机 OPPO A97） |
 | 页面 | 课表 / 待办 / 计划 / 设置 + 启动加载页 + 悬浮浮窗 | **同样四页 + 启动页 + 浮窗（§52–§68 逐页复刻）** |
-| 测试 | 离线断言 524 项（`tools/domain-check`） | **1311 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
+| 测试 | 离线断言 524 项（`tools/domain-check`） | **1317 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
 | 差异基准 | 本目录 `docs/manual/01..09.jpg`（真机截图） | `app_flutter/tool/goldens/*.png` 对照上面九张 + `shared/fixtures/`（1115 条规则用例） |
 
 **安卓版与鸿蒙版的 1:1 复刻已经完成**：主题 token 抄自 ArkTS（§52）、六个页面重做、
@@ -6320,7 +6320,7 @@ Material 关闭图标。连同下面几处一起对齐：
 ```bash
 ./tools/domain-check/run.sh          # 鸿蒙端离线断言：524 项
 cd app_flutter && flutter analyze    # 0 issue
-cd app_flutter && flutter test       # 1311 条（含 1115 条三端 fixture 逐条对拍）
+cd app_flutter && flutter test       # 1317 条（含 1115 条三端 fixture 逐条对拍）
 ```
 
 ---
@@ -6603,7 +6603,7 @@ cd app_flutter && flutter test       # 1311 条（含 1115 条三端 fixture 逐
 ```bash
 ./tools/domain-check/run.sh          # 鸿蒙端离线断言：524 项
 cd app_flutter && flutter analyze    # 0 issue
-cd app_flutter && flutter test       # 1311 条（含 1115 条三端 fixture 逐条对拍）
+cd app_flutter && flutter test       # 1317 条（含 1115 条三端 fixture 逐条对拍）
 cd app_flutter && flutter test --update-goldens tool/screenshot_test.dart   # 24 张 golden（1080×2400）
 ```
 
@@ -7103,3 +7103,69 @@ Flutter 要做这个得上 `AnimatedList`/`SliverAnimatedList`，改动面比收
 - 原来的「动画总开关关掉 → 直接删」仍绿（`dur(240)` 变 0）。
 
 - `flutter test` **1311 passed**；24 张 golden 重出（没有像素变化：截图都在动画结束后）。
+
+## 120. 拿 `docs/manual/*.jpg` 当尺子再量一轮（鸿蒙机锁屏期间能做的事）
+
+鸿蒙机从 02:30 起一直锁屏，双机同屏做不了；但仓库里的 9 张参考图还在，
+于是把 **golden 与参考图逐块量**（不是肉眼扫，用脚本测边界/颜色/文字行）又找出一批
+"代码没错、数值差一点"的问题。
+
+### 120.1 课表课时块高度少了 3vp 的缝（`blockHeight = Σ - 3`）
+
+鸿蒙 `Index.ets → blockHeight()` 是 `Σ sectionHeight(section) - 3`，那 3vp 是同一列上下
+两节课之间的缝。安卓只写了 `Σ`，所以每个块高 3vp：参考图里 2 节连排的块高 **303px**
+（101vp×3），安卓是 312px（104vp×3）。
+→ `_blockHeight()` 改成 `(Σ 或兜底 52) - 3`，并加了一条 **几何测试**（101vp、宽度 = 列宽 - 3）。
+
+### 120.2 计划页网格：满宽、刻度右边缘 40、单日不画竖线
+
+三处都对着参考图/源码改：
+
+| 项 | 鸿蒙 | 安卓（改前 → 改后） |
+|---|---|---|
+| 网格左右内边距 | **0**（`FLOAT_SIDE` 只给日期栏/托盘） | 左右各 10 → **0**（整张网格右移了 10vp） |
+| 小时刻度 | `Text.width(40).textAlign(End)` + 分隔线 `left:6` → 右边缘 **40** | `right: 4`（右边缘 42）→ `right: 6` |
+| 列间竖线 | 只在三日视图（`ColumnSeparators`，白 0.12） | 每列都有一条左描边（白 0.06，单日也有）→ 去掉，改成三日视图里按列宽画 1px 白 0.12 |
+
+### 120.3 课程管理的"看起来像按钮"和"真按钮"
+
+- `+ 新增课程`、`刷新`：鸿蒙就是**一行蓝字**（13 / 12 号，`#7FA8FF`，无底色）。
+  安卓套了蓝底胶囊 → 拆成 `_LinkAction`（裸文字）。
+- `选择日期…`：鸿蒙是 `Button`（白 0.14 底、13 号蓝字、40 高、胶囊）。
+  安卓用的是同一个蓝底胶囊 → 新增 `_GhostButton`。
+- 规则 / 模板弹窗底部：鸿蒙是 **两颗等宽默认 Button**（取消 白 0.14 / 保存 蓝，16 号）。
+  安卓原来是"右对齐的蓝底小胶囊 + 13 号 FilledButton" → 换成两颗 `_sheetButton`。
+
+### 120.4 新建待办 / 新建考试的默认值（`openNew` / `openNewExam`）
+
+安卓原来新建时：截止 **空**、类型 **作业**、考试日期 **今天**。鸿蒙是：
+
+| 字段 | 鸿蒙 | 安卓（改后） |
+|---|---|---|
+| 普通待办 截止 | `今天 23:59` | 同 |
+| 普通待办 类型 | `无`（`TodoCategory.None`） | 同 |
+| 普通待办 时长 | 60 分钟 | 同（原来就是） |
+| 考试 截止/结束 | **下周同一天** 09:00–11:00 | 同（原来是今天 09:00–11:00） |
+| 考试 `estimateMin` | **= 起止时长**（120） | 原来是 0 → 改成时长 |
+
+### 120.5 考试保存后自动排进计划页（`TodoRepo.syncExamBlock`）
+
+鸿蒙保存考试时会 `DELETE FROM plan_block WHERE todo_id = ?` 再插一条考试时段的块
+（与已有块重叠也照排）。安卓**整条逻辑都没有** —— 考试保存后计划页里看不到它。
+
+→ `TodoPage._syncExamBlock()`：起止合法（同一天、end > start）时删旧插新，
+`date/startMin/endMin` 取考试时段；起止不合法就只删旧的（与鸿蒙一致）。
+同时补上 `deleteTodo` 的另一半：**删待办时连带删它的计划块**（`_without`）。
+
+### 120.6 时钟注入：golden 不再随真实日期漂
+
+`todo_page` 的「今天 / 明天 / 逾期 N 天」和计划页日期条原来直接读 `today()`，
+截图里的「今天」会随运行日期变（sandbox 固定 10/16，真实跑在 10/18 就显示「逾期 2 天」，
+和参考图对不上）。现在：
+
+- `ddlText(ddl, {now})` / `countdownOf(t, {now})` 和 `TodoPage(now:)` 可注入；真机不传 = 真实今天。
+- 计划页日期条的「今天」改用注入的 `now()`（齿轮找空档本来就用它）。
+- 截图生成器：sandbox 待办页传 `now = 10/16 09:30`；`course_manager` 改用 **sandbox 数据**
+  （演练学期 + 每门课的模板行），这才和 `05-manager.jpg` 同一条数据。
+
+- `flutter test` **1317 passed**；24 张 golden 重出。

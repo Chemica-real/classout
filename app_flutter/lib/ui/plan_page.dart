@@ -118,7 +118,6 @@ class _PlanPageState extends State<PlanPage> {
   /// 拖拽目标列（-1 = 不跨天 / 缩放中）；跨天松手时按它改日期
   int _dragCol = -1;
 
-
   /// 手指按下时的窗口 y
   double _dragTouchStartY = 0;
 
@@ -454,7 +453,10 @@ class _PlanPageState extends State<PlanPage> {
             physics: _dragId != 0
                 ? const NeverScrollableScrollPhysics()
                 : const ClampingScrollPhysics(),
-            padding: EdgeInsets.fromLTRB(10, dayBarBlock, 10, trayBlock),
+            // ⚠️ 左右 **不**留 FLOAT_SIDE：鸿蒙 `PlanDayView` 的滚动内容只给了上下
+            // padding，网格是满宽的（FLOAT_SIDE 只作用在日期栏/托盘这两个浮窗上）。
+            // 安卓原来左右各留 10，双机对比时整张网格右移了 10vp。
+            padding: EdgeInsets.fromLTRB(0, dayBarBlock, 0, trayBlock),
             child: Column(
               children: [
                 if (days.length > 1) _DayTitles(days: days, axisW: _axisW),
@@ -540,6 +542,8 @@ class _PlanPageState extends State<PlanPage> {
             },
             child: _DayBar(
               day: _day,
+              // 「今天 / 逾期 N 天」也走注入的时钟（截图/测试才能钉在 10/16）
+              today: widget.now(),
               threeDay: _threeDay,
               onPrev: () => _shift(_threeDay ? -3 : -1),
               onNext: () => _shift(_threeDay ? 3 : 1),
@@ -567,29 +571,29 @@ class _PlanPageState extends State<PlanPage> {
               }
             },
             child: _Tray(
-            pool: _pool,
-            lessons: _lessonPool,
-            selectedLessonId: _selectedLessonId,
-            courses: {for (final c in widget.bundle.courses) c.id: c},
-            selectedId: _selectedTodoId,
-            open: _trayOpen,
-            onToggle: () => setState(() => _trayOpen = !_trayOpen),
-            onSelect: (id) {
-              setState(() {
-                _selectedTodoId = _selectedTodoId == id ? 0 : id;
-                _selectedLessonId = 0;
-              });
-              _showHint(_selectedTodoId > 0 ? '现在点网格空白处放下它' : '');
-            },
-            onSelectLesson: (id) {
-              setState(() {
-                _selectedLessonId = _selectedLessonId == id ? 0 : id;
-                _selectedTodoId = 0;
-              });
-              _showHint(_selectedLessonId > 0 ? '现在点网格空白处放下它' : '');
-            },
-            onPlace: _placeFromPool,
-            onPlaceLesson: _findSlotForLesson,
+              pool: _pool,
+              lessons: _lessonPool,
+              selectedLessonId: _selectedLessonId,
+              courses: {for (final c in widget.bundle.courses) c.id: c},
+              selectedId: _selectedTodoId,
+              open: _trayOpen,
+              onToggle: () => setState(() => _trayOpen = !_trayOpen),
+              onSelect: (id) {
+                setState(() {
+                  _selectedTodoId = _selectedTodoId == id ? 0 : id;
+                  _selectedLessonId = 0;
+                });
+                _showHint(_selectedTodoId > 0 ? '现在点网格空白处放下它' : '');
+              },
+              onSelectLesson: (id) {
+                setState(() {
+                  _selectedLessonId = _selectedLessonId == id ? 0 : id;
+                  _selectedTodoId = 0;
+                });
+                _showHint(_selectedLessonId > 0 ? '现在点网格空白处放下它' : '');
+              },
+              onPlace: _placeFromPool,
+              onPlaceLesson: _findSlotForLesson,
             ),
           ),
         ),
@@ -667,8 +671,7 @@ class _PlanPageState extends State<PlanPage> {
                     seq: l.seq,
                     title: l.title,
                     done: next,
-                    doneAt:
-                        next ? DateTime.now().millisecondsSinceEpoch : 0,
+                    doneAt: next ? DateTime.now().millisecondsSinceEpoch : 0,
                   )
                 : l)
             .toList()
@@ -799,6 +802,7 @@ class _PlanPageState extends State<PlanPage> {
 ///   ‹  10 月 16 日 周五 / 今天  ›    [日] [三日]   今天
 class _DayBar extends StatelessWidget {
   final DateTime day;
+  final DateTime today;
   final bool threeDay;
   final VoidCallback onPrev;
   final VoidCallback onNext;
@@ -808,6 +812,7 @@ class _DayBar extends StatelessWidget {
 
   const _DayBar({
     required this.day,
+    required this.today,
     required this.threeDay,
     required this.onPrev,
     required this.onNext,
@@ -850,12 +855,10 @@ class _DayBar extends StatelessWidget {
                           fontWeight: FontWeight.w500,
                           color: inkPrimary)),
                 ),
-                Text(relativeDayText(day, today()),
+                Text(relativeDayText(day, today),
                     maxLines: 1,
                     style: const TextStyle(
-                        fontSize: 12,
-                        height: 1.2,
-                        color: Color(0xFF94A0B5))),
+                        fontSize: 12, height: 1.2, color: Color(0xFF94A0B5))),
               ],
             ),
           ),
@@ -1087,7 +1090,9 @@ class _Grid extends StatelessWidget {
                   for (final m in axis.marks)
                     Positioned(
                       top: (m - axis.startMin).toDouble(),
-                      right: 4,
+                      // 鸿蒙 `Text(minToHHmm(mark)).width(40).textAlign(End)` + 分隔线 left 6
+                      // → 刻度右边缘在 40vp（AXIS_W 46 - 6）
+                      right: 6,
                       child: Text(minToHHmm(m),
                           // 鸿蒙端 LAYOUT.hour=12、颜色 #CBD6E8（时间刻度是最不能含糊的）
                           style: const TextStyle(
@@ -1097,42 +1102,60 @@ class _Grid extends StatelessWidget {
               ),
             ),
             Expanded(
-              child: Row(
-                children: [
-                  for (final d in days)
-                    Expanded(
-                      child: _DayColumn(
-                        key: ValueKey('plan-day-${formatDate(d)}'),
-                        axis: axis,
-                        dragId: dragId,
-                        dragResize: dragResize,
-                        dragDeltaMin: dragDeltaMin,
-                        onDragStart: onDragStart,
-                        onDragUpdate: onDragUpdate,
-                        onDragEnd: onDragEnd,
-                        onPointer: onPointer,
-                        lessonTitles: lessonTitles,
-                        lessonColors: lessonColors,
-                        pinchId: pinchId,
-                        pinchEndMin: pinchEndMin,
-                        day: d,
-                        sessions: sessions[formatDate(d)] ?? const [],
-                        blocks: blocks[formatDate(d)] ?? const [],
-                        ddls: ddls[formatDate(d)] ?? const [],
-                        rests: rests[formatDate(d)] ?? const [],
-                        singleDay: days.length == 1,
-                        todoOf: todoOf,
-                        onTapMinute: onTapMinute,
-                        onTapBlock: onTapBlock,
-                        onToggleDone: onToggleDone,
-                        selectedBlockId: selectedBlockId,
-                        courseLabelOf: courseLabelOf,
-                        courseColorOf: courseColorOf,
-                        onOpenTodo: onOpenTodo,
-                      ),
+              // 三日视图的列间分隔线（鸿蒙 `ColumnSeparators`：宽 1、白 0.12，
+              // 只画列与列之间，单日视图没有 —— 画在日期列的上层会被课程块压住）
+              child: LayoutBuilder(builder: (ctx, c) {
+                final colW = c.maxWidth / days.length;
+                return Stack(
+                  children: [
+                    Row(
+                      children: [
+                        for (final d in days)
+                          Expanded(
+                            child: _DayColumn(
+                              key: ValueKey('plan-day-${formatDate(d)}'),
+                              axis: axis,
+                              dragId: dragId,
+                              dragResize: dragResize,
+                              dragDeltaMin: dragDeltaMin,
+                              onDragStart: onDragStart,
+                              onDragUpdate: onDragUpdate,
+                              onDragEnd: onDragEnd,
+                              onPointer: onPointer,
+                              lessonTitles: lessonTitles,
+                              lessonColors: lessonColors,
+                              pinchId: pinchId,
+                              pinchEndMin: pinchEndMin,
+                              day: d,
+                              sessions: sessions[formatDate(d)] ?? const [],
+                              blocks: blocks[formatDate(d)] ?? const [],
+                              ddls: ddls[formatDate(d)] ?? const [],
+                              rests: rests[formatDate(d)] ?? const [],
+                              singleDay: days.length == 1,
+                              todoOf: todoOf,
+                              onTapMinute: onTapMinute,
+                              onTapBlock: onTapBlock,
+                              onToggleDone: onToggleDone,
+                              selectedBlockId: selectedBlockId,
+                              courseLabelOf: courseLabelOf,
+                              courseColorOf: courseColorOf,
+                              onOpenTodo: onOpenTodo,
+                            ),
+                          ),
+                      ],
                     ),
-                ],
-              ),
+                    for (var i = 1; i < days.length; i++)
+                      Positioned(
+                        left: colW * i,
+                        top: 0,
+                        bottom: 0,
+                        child: Container(
+                            width: 1,
+                            color: Colors.white.withValues(alpha: 0.12)),
+                      ),
+                  ],
+                );
+              }),
             ),
           ],
         ),
@@ -1208,78 +1231,73 @@ class _DayColumn extends StatelessWidget {
         final min = axis.startMin + details.localPosition.dy.round();
         onTapMinute(day, snap(min));
       },
-      child: Container(
-        decoration: BoxDecoration(
-          border: Border(
-              left: BorderSide(color: Colors.white.withValues(alpha: 0.06))),
-        ),
-        child: Stack(
-          children: [
-            // 不可排时段（"睡觉""午休"）：斜纹淡标记，压在最下面
-            for (final w in rests)
-              _RestBand(
-                top: (w.startMin - axis.startMin).toDouble(),
-                height: (w.endMin - w.startMin).toDouble(),
-                label: w.label,
-                showLabel: singleDay && (w.endMin - w.startMin) >= 46,
-              ),
-            // 整点横线
-            for (final m in axis.marks)
-              Positioned(
-                top: (m - axis.startMin).toDouble(),
-                left: 0,
-                right: 0,
-                child: Container(
-                    height: 1, color: Colors.white.withValues(alpha: 0.12)),
-              ),
-            // 课表灰带（鸿蒙端 ClassBlock：白 0.10 + 左对齐 12/11 号字）
-            for (final s in sessions)
-              _Band(
-                top: (s.startMin - axis.startMin).toDouble(),
-                height: (s.endMin - s.startMin).toDouble(),
-                course: s.course,
-                location: s.location,
-              ),
-            // 计划块
-            for (final b in blocks)
-              _Block(
-                block: b,
-                axis: axis,
-                todo: todoOf(b.todoId),
-                dragging: dragId == b.id,
-                resizing: dragId == b.id && dragResize,
-                dragDeltaMin: dragId == b.id ? dragDeltaMin : 0,
-                onTap: () => onTapBlock(b),
-                onToggleDone: () => onToggleDone(b),
-                onDragStart: onDragStart,
-                onDragUpdate: onDragUpdate,
-                onDragEnd: onDragEnd,
-                onPointer: onPointer,
-                lessonTitle: lessonTitles[b.lessonId],
-                lessonColor: lessonColors[b.lessonId],
-                pinchEndMin: pinchId == b.id ? pinchEndMin : 0,
-                selected: selectedBlockId == b.id,
-                courseLabel: courseLabelOf(todoOf(b.todoId)?.courseId ?? 0),
-                courseColorOf: courseColorOf,
-              ),
-            // 截止标记
-            for (final g in ddls)
-              _DdlMark(
-                key: ValueKey('ddl-${formatDate(day)}-${g.minute}'),
-                top: (g.minute - axis.startMin).toDouble(),
-                label: g.todos.length > 1
-                    ? '⚑ ${g.todos.length} 项截止'
-                    : '⚑ ${g.todos.first.title} 截止',
-                group: g,
-                day: formatDate(day),
-                // 三日视图才给标题加 MM-DD 前缀（鸿蒙 `viewCols > COLS_DAY`）
-                datePrefix: !singleDay,
-                courseLabelOf: courseLabelOf,
-                courseColorOf: courseColorOf,
-                onOpenTodo: onOpenTodo,
-              ),
-          ],
-        ),
+      // 单日视图没有竖分隔线（鸿蒙 `ColumnSeparators` 只在 `viewCols > COLS_DAY` 时画）
+      child: Stack(
+        children: [
+          // 不可排时段（"睡觉""午休"）：斜纹淡标记，压在最下面
+          for (final w in rests)
+            _RestBand(
+              top: (w.startMin - axis.startMin).toDouble(),
+              height: (w.endMin - w.startMin).toDouble(),
+              label: w.label,
+              showLabel: singleDay && (w.endMin - w.startMin) >= 46,
+            ),
+          // 整点横线
+          for (final m in axis.marks)
+            Positioned(
+              top: (m - axis.startMin).toDouble(),
+              left: 0,
+              right: 0,
+              child: Container(
+                  height: 1, color: Colors.white.withValues(alpha: 0.12)),
+            ),
+          // 课表灰带（鸿蒙端 ClassBlock：白 0.10 + 左对齐 12/11 号字）
+          for (final s in sessions)
+            _Band(
+              top: (s.startMin - axis.startMin).toDouble(),
+              height: (s.endMin - s.startMin).toDouble(),
+              course: s.course,
+              location: s.location,
+            ),
+          // 计划块
+          for (final b in blocks)
+            _Block(
+              block: b,
+              axis: axis,
+              todo: todoOf(b.todoId),
+              dragging: dragId == b.id,
+              resizing: dragId == b.id && dragResize,
+              dragDeltaMin: dragId == b.id ? dragDeltaMin : 0,
+              onTap: () => onTapBlock(b),
+              onToggleDone: () => onToggleDone(b),
+              onDragStart: onDragStart,
+              onDragUpdate: onDragUpdate,
+              onDragEnd: onDragEnd,
+              onPointer: onPointer,
+              lessonTitle: lessonTitles[b.lessonId],
+              lessonColor: lessonColors[b.lessonId],
+              pinchEndMin: pinchId == b.id ? pinchEndMin : 0,
+              selected: selectedBlockId == b.id,
+              courseLabel: courseLabelOf(todoOf(b.todoId)?.courseId ?? 0),
+              courseColorOf: courseColorOf,
+            ),
+          // 截止标记
+          for (final g in ddls)
+            _DdlMark(
+              key: ValueKey('ddl-${formatDate(day)}-${g.minute}'),
+              top: (g.minute - axis.startMin).toDouble(),
+              label: g.todos.length > 1
+                  ? '⚑ ${g.todos.length} 项截止'
+                  : '⚑ ${g.todos.first.title} 截止',
+              group: g,
+              day: formatDate(day),
+              // 三日视图才给标题加 MM-DD 前缀（鸿蒙 `viewCols > COLS_DAY`）
+              datePrefix: !singleDay,
+              courseLabelOf: courseLabelOf,
+              courseColorOf: courseColorOf,
+              onOpenTodo: onOpenTodo,
+            ),
+        ],
       ),
     );
   }
@@ -1521,8 +1539,8 @@ class _Block extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
                 Text(minToHHmm(block.startMin),
-                    style: const TextStyle(
-                        fontSize: 9, color: Color(0xFFCBD6E8))),
+                    style:
+                        const TextStyle(fontSize: 9, color: Color(0xFFCBD6E8))),
               ],
             ),
           )
@@ -1594,8 +1612,7 @@ class _Block extends StatelessWidget {
             final box = context.findRenderObject() as RenderBox?;
             final bh = box?.size.height ?? 0;
             // 按在底部 18vp 内 = 拖底边改时长，否则整块平移
-            onDragStart(
-                block, e.localPosition.dy > bh - 18, e.globalPosition);
+            onDragStart(block, e.localPosition.dy > bh - 18, e.globalPosition);
           },
           onLongPressMoveUpdate: (e) => onDragUpdate(e.globalPosition),
           onLongPressEnd: (_) => onDragEnd(),
@@ -1827,8 +1844,7 @@ class _DdlPanel extends StatelessWidget {
                 child: const Padding(
                   padding: EdgeInsets.only(left: 10),
                   child: Text('✕',
-                      style:
-                          TextStyle(fontSize: 12, color: Color(0xFFA9B5C9))),
+                      style: TextStyle(fontSize: 12, color: Color(0xFFA9B5C9))),
                 ),
               ),
             ],
@@ -1842,9 +1858,8 @@ class _DdlPanel extends StatelessWidget {
                 children: [
                   for (final t in group.todos)
                     GestureDetector(
-                      onTap: onOpenTodo == null
-                          ? null
-                          : () => onOpenTodo!(t.id),
+                      onTap:
+                          onOpenTodo == null ? null : () => onOpenTodo!(t.id),
                       behavior: HitTestBehavior.opaque,
                       child: Padding(
                         padding: const EdgeInsets.symmetric(vertical: 5),
@@ -1852,8 +1867,8 @@ class _DdlPanel extends StatelessWidget {
                           children: [
                             if (t.courseId > 0) ...[
                               Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 4),
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 4),
                                 decoration: BoxDecoration(
                                   color: courseColorOf(t.courseId),
                                   borderRadius: BorderRadius.circular(3),
@@ -1988,9 +2003,7 @@ class _Tray extends StatelessWidget {
                 // 窄屏（测试 360vp）放不下时省略号收尾，不溢出
                 Expanded(
                   child: Text(
-                      selectedId > 0
-                          ? '已选中，点网格空白处放下'
-                          : '拖动 / 点选 / ⚡ 一键找空档',
+                      selectedId > 0 ? '已选中，点网格空白处放下' : '拖动 / 点选 / ⚡ 一键找空档',
                       textAlign: TextAlign.right,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -2003,8 +2016,7 @@ class _Tray extends StatelessWidget {
                 const Padding(
                   padding: EdgeInsets.only(left: 10),
                   child: Text('收起 ▾',
-                      style:
-                          TextStyle(fontSize: 12, color: Color(0xFFA9B5C9))),
+                      style: TextStyle(fontSize: 12, color: Color(0xFFA9B5C9))),
                 ),
               ],
             ),
@@ -2053,7 +2065,8 @@ class _Tray extends StatelessWidget {
       lessonTitleOf(l, courses.values.toList());
 
   /// 小卡（鸿蒙端 glassCard）：半透明纯色 + 细边 + 投影，不使用模糊
-  BoxDecoration _cardDecoration({required bool selected, Color? tint, Color? edge}) {
+  BoxDecoration _cardDecoration(
+      {required bool selected, Color? tint, Color? edge}) {
     return BoxDecoration(
       color: selected ? const Color(0x4D2E6BE6) : (tint ?? glassTintRow),
       borderRadius: BorderRadius.circular(glassRadius),

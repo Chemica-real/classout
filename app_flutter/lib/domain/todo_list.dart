@@ -81,11 +81,12 @@ List<Todo> sortDone(List<Todo> list) {
 
 /// '2026-10-14 23:59' → '10/14 23:59 · 明天'；空串 → '无截止'
 /// 只有日期没有时刻（长度 < 16）时只显示日期 + 相对日
-String ddlText(String ddl) {
+/// [now] 可注入：截图/测试要钉住「今天」时用（默认真实今天，与鸿蒙 `today()` 同）
+String ddlText(String ddl, {DateTime? now}) {
   if (ddl.isEmpty) return '无截止';
   final date = parseDate(ddl.substring(0, 10));
   final time = ddl.length >= 16 ? ddl.substring(11, 16) : '';
-  final rel = relativeDayText(date, today());
+  final rel = relativeDayText(date, now ?? today());
   return time.isEmpty
       ? '${date.month}/${date.day} · $rel'
       : '${date.month}/${date.day} $time · $rel';
@@ -100,9 +101,9 @@ String examTimeText(Todo t) {
 }
 
 /// 考试倒计时（相对今天）
-String countdownOf(Todo t) {
+String countdownOf(Todo t, {DateTime? now}) {
   if (t.ddl.length < 10) return '';
-  return countdownText(parseDate(t.ddl.substring(0, 10)), today());
+  return countdownText(parseDate(t.ddl.substring(0, 10)), now ?? today());
 }
 
 /// 已完成条目上那行小字：'10/14 12:03 完成'；没有时间戳 → '已完成'

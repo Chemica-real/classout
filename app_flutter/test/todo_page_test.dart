@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:classout/data/backup.dart';
+import 'package:classout/domain/dates.dart';
 import 'package:classout/model/types.dart';
 import 'package:classout/ui/todo_page.dart';
 import 'package:classout/ui/theme.dart';
@@ -151,6 +152,107 @@ void main() {
     await tester.pumpAndSettle();
     expect(_byId(last!, 1).status, TodoStatus.active);
     expect(find.text('待确认'), findsNothing);
+  });
+
+  testWidgets('新建待办默认「今天 23:59」+ 类型「无」+ 60 分钟（鸿蒙 openNew）',
+      (tester) async {
+    BackupBundle? last;
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: StatefulBuilder(
+          builder: (context, setState) => TodoPage(
+            bundle: last ?? _demo(),
+            onChanged: (next) => setState(() => last = next),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('+ 新建待办'));
+    await tester.pumpAndSettle();
+    // 鸿蒙 openNew：编辑窗默认就是「今天 23:59 / 无 / 60 分钟」
+    await tester.enterText(find.byType(TextField).first, '默认值检查');
+    await tester.tap(find.byKey(const ValueKey('todo-save')));
+    await tester.pumpAndSettle();
+
+    final created = last!.todos.firstWhere((t) => t.title == '默认值检查');
+    expect(created.ddl, '${formatDate(today())} 23:59');
+    expect(created.category, TodoCategory.none);
+    expect(created.estimateMin, 60);
+    expect(created.status, TodoStatus.active);
+  });
+
+  testWidgets('新建考试：默认「下周同一天 09:00–11:00」，保存即自动排进计划页',
+      (tester) async {
+    BackupBundle? last;
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: StatefulBuilder(
+          builder: (context, setState) => TodoPage(
+            bundle: last ?? _demo(),
+            onChanged: (next) => setState(() => last = next),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('+ 考试'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, '期末考试');
+    await tester.tap(find.byKey(const ValueKey('todo-save')));
+    await tester.pumpAndSettle();
+
+    final day = formatDate(addDays(today(), 7));
+    final exam = last!.todos.firstWhere((t) => t.title == '期末考试');
+    expect(exam.ddl, '$day 09:00');
+    expect(exam.endAt, '$day 11:00');
+    // 鸿蒙：考试 estimateMin = 起止时长（不是 0）
+    expect(exam.estimateMin, 120);
+    // 鸿蒙 TodoRepo.syncExamBlock：自动插一条 plan_block
+    final blk = last!.blocks.firstWhere((b) => b.todoId == exam.id);
+    expect(blk.date, day);
+    expect(blk.startMin, 9 * 60);
+    expect(blk.endMin, 11 * 60);
+    expect(blk.done, isFalse);
+  });
+
+  testWidgets('删掉考试 → 它在计划页的那一段一起删（鸿蒙 deleteTodo）', (tester) async {
+    BackupBundle? last;
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: StatefulBuilder(
+          builder: (context, setState) => TodoPage(
+            bundle: last ?? _demo(),
+            onChanged: (next) => setState(() => last = next),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    // 演示数据里已有考试（线性代数 期中考试）→ 打开编辑窗删掉它
+    final exam = _demo().todos.firstWhere((t) => t.category == TodoCategory.exam);
+    await tester.tap(find.text(exam.title));
+    await tester.pumpAndSettle();
+    final del = find.text('删除待办');
+    await tester.ensureVisible(del);
+    await tester.pumpAndSettle();
+    await tester.tap(del);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确认删除'));
+    await tester.pumpAndSettle();
+
+    expect(last!.todos.any((t) => t.id == exam.id), isFalse);
+    expect(last!.blocks.any((b) => b.todoId == exam.id), isFalse,
+        reason: '待办删了，它的计划块也要一起删');
   });
 
   testWidgets('点「确认」→ 先按鸿蒙 transition 淡出，播完才变 active', (tester) async {
