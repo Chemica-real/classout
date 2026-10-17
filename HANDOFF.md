@@ -12,7 +12,7 @@ ClassOUT 是一款**纯离线**的「课表 + 待办 + 计划」三合一 App，
 |---|---|---|
 | 版本 | v1.5.1（上架准备中，未提审） | 0.2.0（Android 已装真机 OPPO A97） |
 | 页面 | 课表 / 待办 / 计划 / 设置 + 启动加载页 + 悬浮浮窗 | **同样四页 + 启动页 + 浮窗（§52–§68 逐页复刻）** |
-| 测试 | 离线断言 524 项（`tools/domain-check`） | **1309 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
+| 测试 | 离线断言 524 项（`tools/domain-check`） | **1311 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
 | 差异基准 | 本目录 `docs/manual/01..09.jpg`（真机截图） | `app_flutter/tool/goldens/*.png` 对照上面九张 + `shared/fixtures/`（1115 条规则用例） |
 
 **安卓版与鸿蒙版的 1:1 复刻已经完成**：主题 token 抄自 ArkTS（§52）、六个页面重做、
@@ -6320,7 +6320,7 @@ Material 关闭图标。连同下面几处一起对齐：
 ```bash
 ./tools/domain-check/run.sh          # 鸿蒙端离线断言：524 项
 cd app_flutter && flutter analyze    # 0 issue
-cd app_flutter && flutter test       # 1309 条（含 1115 条三端 fixture 逐条对拍）
+cd app_flutter && flutter test       # 1311 条（含 1115 条三端 fixture 逐条对拍）
 ```
 
 ---
@@ -6594,15 +6594,16 @@ cd app_flutter && flutter test       # 1309 条（含 1115 条三端 fixture 逐
    `classout-backup.json`，页面结构与文案逐块对齐；跨端搬数据留在「长按从备份恢复」。
 5. **版本号** —— 安卓 `0.2.0`、鸿蒙 `v1.5.1`，两端各自的版本号，不是抄错。
 6. **提醒诊断（长按「保存提醒设置」）** —— 安卓专属的排查入口（§86.2），鸿蒙没有。
-7. **列表项增删的过渡** —— 鸿蒙卡片有 `transition(OPACITY + translate y -10, DUR_ITEM)`；
-   安卓只有待确认卡的碎裂/收起有动画，其它增删是即时的（要做得上 `AnimatedList`，先记着）。
+7. ~~列表项增删的过渡~~ —— **已补**（§119）：待确认卡 / 待办行现在有鸿蒙同款的
+   `OPACITY + translate y -10`、`DUR_ITEM` 淡入淡出，连「确认」「点圆圈完成」都先播完再落库。
+   列表项也都加了 `ValueKey(id)`，增删时其它行不会跟着重播进场动画。
 
 ### 117.3 验证命令（每次改动后跑一遍）
 
 ```bash
 ./tools/domain-check/run.sh          # 鸿蒙端离线断言：524 项
 cd app_flutter && flutter analyze    # 0 issue
-cd app_flutter && flutter test       # 1309 条（含 1115 条三端 fixture 逐条对拍）
+cd app_flutter && flutter test       # 1311 条（含 1115 条三端 fixture 逐条对拍）
 cd app_flutter && flutter test --update-goldens tool/screenshot_test.dart   # 24 张 golden（1080×2400）
 ```
 
@@ -7067,3 +7068,38 @@ Flutter 要做这个得上 `AnimatedList`/`SliverAnimatedList`，改动面比收
 - `backup_sheet.png` golden 重出（24 张）。
 
 - `flutter test` **1309 passed**；golden 重出。
+
+## 119. 待办列表项的出现/消失过渡（§117.2 第 7 条清零）
+
+鸿蒙 `TodoInbox` 的两处卡片根节点都挂了：
+
+```ets
+.transition(TransitionEffect.OPACITY
+  .combine(TransitionEffect.translate({ y: -10 }))
+  .animation({ duration: dur(DUR_ITEM), curve: curveOrLinear(motionCurve) }))
+```
+
+即：**出现 = 淡入 + 从上方 10vp 滑下来；消失 = 反向**，时长 `DUR_ITEM = 240ms`、
+曲线 `motionCurve`（关掉动效时 `dur()` 给 0、`curveOrLinear` 给线性 → 瞬切）。
+安卓原来是即时出现/消失（只有待确认卡的碎裂有动画）。
+
+### 119.1 实现
+
+- `ui/todo_page.dart` 新增 `_ItemFx`：一个 `Animation<double>` → `Opacity` + `Transform.translate(0, -10·(1-t))`，
+  `t` 走 `curveOr(motionCurve)`（与鸿蒙同一个曲线/开关）。
+- `_PendingCard`：新增 `_appear` 控制器，进场用它；「确认」改成
+  `await _appear.reverse(); widget.onConfirm();` —— 先淡出再落库（鸿蒙 transition 也是播完才变）。
+  删除仍是「碎裂 → 收起高度 → 真删」（§116.14），两条路径互不影响。
+- `_ActiveRow`：从 `StatelessWidget` 改成 `StatefulWidget`，同一套控制器管进场，
+  点「○」= `await _c.reverse(); widget.onComplete();`（淡出上滑后再改 done）。
+- 四个列表控件（待确认 / 考试 / 待办 / 已完成）都加了 `ValueKey('xxx-${t.id}')`：
+  没有 key 时 Flutter 按位置复用 element，删中间一条会让后面那条"继承"动画状态、
+  新插入的条反而不播；有 key 才是鸿蒙 `ForEach` 的"一行一个身份"。
+
+### 119.2 测试
+
+- `todo_page_test` 新增 2 条：点「确认」/ 点「○」后 `pump(100ms)` 时数据**还没变**、
+  对应 `_ItemFx` 的 `Opacity.opacity < 1`；`pumpAndSettle` 后状态才落库。
+- 原来的「动画总开关关掉 → 直接删」仍绿（`dur(240)` 变 0）。
+
+- `flutter test` **1311 passed**；24 张 golden 重出（没有像素变化：截图都在动画结束后）。

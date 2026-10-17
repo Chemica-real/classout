@@ -103,6 +103,7 @@ class _TodoPageState extends State<TodoPage> {
                   ),
                   for (final t in s.pending)
                     _PendingCard(
+                      key: ValueKey('pending-${t.id}'),
                       t: t,
                       course: courses[t.courseId],
                       categoryText: categoryLabel(t.category, _custom),
@@ -133,6 +134,7 @@ class _TodoPageState extends State<TodoPage> {
                   ),
                   for (final t in s.exams)
                     _ExamCard(
+                      key: ValueKey('exam-${t.id}'),
                       t: t,
                       course: courses[t.courseId],
                       countdown: countdownOf(t),
@@ -161,6 +163,7 @@ class _TodoPageState extends State<TodoPage> {
                   ),
                 for (final t in s.tasks)
                   _ActiveRow(
+                    key: ValueKey('active-${t.id}'),
                     t: t,
                     course: courses[t.courseId],
                     categoryText: categoryLabel(t.category, _custom),
@@ -181,6 +184,7 @@ class _TodoPageState extends State<TodoPage> {
                   if (_doneOpen)
                     for (final t in s.done)
                       _DoneRow(
+                        key: ValueKey('done-${t.id}'),
                         t: t,
                         categoryText: categoryLabel(t.category, _custom),
                         confirming: _pendingDeleteId == t.id,
@@ -524,6 +528,32 @@ const List<double> _shardDx = [-30, 34, -20, 26];
 const List<double> _shardDy = [-22, -10, 30, 22];
 const List<double> _shardRot = [-46, 38, 28, -34];
 
+/// 鸿蒙列表项的 `transition(OPACITY + translate y -10, DUR_ITEM)`：
+/// 出现 = 淡入 + 从上方 10vp 滑下来；消失 = 反向淡出 + 上滑。
+/// 鸿蒙那边 `transition` 挂在卡片根节点上，新条/被移走的条都走同一套；
+/// 这里用一个控制器同时喂「进场」和「退场」，两条路线的时长/曲线与 `DUR_ITEM`
+/// / `motionCurve` 同源。
+class _ItemFx extends StatelessWidget {
+  final Animation<double> a;
+  final Widget child;
+  const _ItemFx({required this.a, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: a,
+      builder: (_, __) {
+        final t = a.value.clamp(0.0, 1.0);
+        final dy = -10 * (1 - curveOr(motionCurve).transform(t));
+        return Opacity(
+          opacity: t,
+          child: Transform.translate(offset: Offset(0, dy), child: child),
+        );
+      },
+    );
+  }
+}
+
 class _PendingCard extends StatefulWidget {
   final Todo t;
   final Course? course;
@@ -536,6 +566,7 @@ class _PendingCard extends StatefulWidget {
   final VoidCallback onConfirm;
 
   const _PendingCard({
+    super.key,
     required this.t,
     required this.course,
     required this.categoryText,
@@ -562,6 +593,13 @@ class _PendingCardState extends State<_PendingCard>
   late final AnimationController _collapse =
       AnimationController(vsync: this, duration: dur(durItem));
 
+  /// 进场：鸿蒙 `transition` 在新建卡片时也会跑一遍
+  late final AnimationController _appear = AnimationController(
+      vsync: this,
+      duration: dur(durItem),
+      value: motionOn ? 0 : 1)
+    ..forward();
+
   bool _shatter = false;
   bool _collapsing = false;
 
@@ -569,7 +607,18 @@ class _PendingCardState extends State<_PendingCard>
   void dispose() {
     _shake.dispose();
     _collapse.dispose();
+    _appear.dispose();
     super.dispose();
+  }
+
+  /// 「确认」= 这一条从待确认挪到待办：先按鸿蒙的 transition 淡出，再把状态改掉
+  Future<void> _confirm() async {
+    if (_appear.value < 1) {
+      widget.onConfirm();
+      return;
+    }
+    await _appear.reverse();
+    if (mounted) widget.onConfirm();
   }
 
   void _confirmDelete() {
@@ -649,7 +698,7 @@ class _PendingCardState extends State<_PendingCard>
                       color: const Color(0xFFA9B5C9),
                       onTap: widget.onEdit),
                   _SmallButton(
-                      text: '确认', color: accentBlue, onTap: widget.onConfirm),
+                      text: '确认', color: accentBlue, onTap: _confirm),
                 ],
               ],
             ),
@@ -670,7 +719,7 @@ class _PendingCardState extends State<_PendingCard>
         ),
       );
     }
-    if (!_shatter) return body;
+    if (!_shatter) return _ItemFx(a: _appear, child: body);
     // 碎片：四个 16×16 小块，从卡片里飞散、旋转、淡出（鸿蒙 `SHARD_*` 同款参数）
     return AnimatedBuilder(
       animation: _shake,
@@ -721,7 +770,7 @@ class _PendingCardState extends State<_PendingCard>
   }
 }
 
-class _ActiveRow extends StatelessWidget {
+class _ActiveRow extends StatefulWidget {
   final Todo t;
   final Course? course;
   final String categoryText;
@@ -729,6 +778,7 @@ class _ActiveRow extends StatelessWidget {
   final VoidCallback onOpen;
 
   const _ActiveRow({
+    super.key,
     required this.t,
     required this.course,
     required this.categoryText,
@@ -737,16 +787,49 @@ class _ActiveRow extends StatelessWidget {
   });
 
   @override
+  State<_ActiveRow> createState() => _ActiveRowState();
+}
+
+class _ActiveRowState extends State<_ActiveRow>
+    with SingleTickerProviderStateMixin {
+  /// 出现/消失：鸿蒙 `transition(OPACITY + translate y -10, DUR_ITEM)`
+  late final AnimationController _c = AnimationController(
+      vsync: this,
+      duration: dur(durItem),
+      value: motionOn ? 0 : 1)
+    ..forward();
+
+  /// 点「○」= 完成：先淡出上滑，再真正改状态（鸿蒙删项时也走 transition）
+  bool _leaving = false;
+  Future<void> _complete() async {
+    if (_leaving) return;
+    _leaving = true;
+    await _c.reverse();
+    if (mounted) widget.onComplete();
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onOpen,
+    final t = widget.t;
+    final course = widget.course;
+    final categoryText = widget.categoryText;
+    return _ItemFx(
+      a: _c,
+      child: GestureDetector(
+      onTap: widget.onOpen,
       behavior: HitTestBehavior.opaque,
       child: _RowCard(
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             GestureDetector(
-              onTap: onComplete,
+              onTap: _complete,
               behavior: HitTestBehavior.opaque,
               child: const Padding(
                 padding: EdgeInsets.only(right: 10),
@@ -762,7 +845,7 @@ class _ActiveRow extends StatelessWidget {
                   Row(
                     children: [
                       if (course != null)
-                        _CourseChip(course: course!, fontSize: 10),
+                        _CourseChip(course: course, fontSize: 10),
                       if (categoryText.isNotEmpty) _CategoryChip(categoryText),
                       Expanded(
                         child: Text(t.title,
@@ -795,6 +878,7 @@ class _ActiveRow extends StatelessWidget {
           ],
         ),
       ),
+      ),
     );
   }
 }
@@ -807,6 +891,7 @@ class _ExamCard extends StatelessWidget {
   final VoidCallback onDone;
 
   const _ExamCard({
+    super.key,
     required this.t,
     required this.course,
     required this.countdown,
@@ -892,6 +977,7 @@ class _DoneRow extends StatelessWidget {
   final VoidCallback onOpen;
 
   const _DoneRow({
+    super.key,
     required this.t,
     required this.categoryText,
     required this.confirming,

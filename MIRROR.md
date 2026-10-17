@@ -23,7 +23,7 @@
 | `pages/Index.ets` → 课表（`WeekHeaderRow` / `Grid` / `SessionBlock` / `TabBar`） | `lib/ui/timetable_page.dart` + `lib/ui/app_frame.dart` | 周条、时间轴、7 列、课程块；**底部导航与课表/待办页头都是悬浮浮层**（`tabBarInset` / `topInset`，内容从下面滑过） |
 | `pages/Index.ets` → `PageBackground`（`Glass.ets`） | `app_frame.dart`（渐变 + 光晕 + 壁纸） | 壁纸数据来自 `data/wallpaper.dart` |
 | `pages/Index.ets` → `LoadingScreen()` + `playBootExit()` | `lib/ui/boot_screen.dart` | 启动加载页：网格底纹 / 双圆环 + 雷达 / ClassOUT 字标 + 标语 / 5 步清单 + 打字机 + 五点 / 浓缩成球 + 喷射 + 白球扩张 |
-| `view/TodoInbox.ets` | `lib/ui/todo_page.dart` | 四段列表、卡片；底部双按钮托盘是**浮层**（`Stack` + `Positioned` + `MeasureSize`，列表从它下面滑过）；待确认卡片的删除走**碎裂掉出**（`SHARD_DX/DY/ROT` 四块 16×16，`DUR_SHARD=320`，播完再收起高度） |
+| `view/TodoInbox.ets` | `lib/ui/todo_page.dart` | 四段列表、卡片；底部双按钮托盘是**浮层**（`Stack` + `Positioned` + `MeasureSize`，列表从它下面滑过）；待确认卡片的删除走**碎裂掉出**（`SHARD_DX/DY/ROT` 四块 16×16，`DUR_SHARD=320`，播完再收起高度）；列表项进出场 `OPACITY + translate y -10`（`DUR_ITEM`）+ `ValueKey(id)` |
 | `view/TodoInbox.ets` → `EditorPanel()` | `lib/ui/todo_editor.dart` | 右侧 84% 抽屉（标题 + ✕ + 可滚表单） |
 | `view/PlanDayView.ets`（`DayBarFloat` / `ColHeadRow` / `HourLines` / `RestBands` / `ClassBlock` / `PlanBlockView` / `DdlMarkers` / `TodoPool`） | `lib/ui/plan_page.dart` | 日/三日、时间轴、课表灰带、斜纹不可排带、计划块、截止标记（**挂在标记下方的无遮罩浮层**，等价 `bindPopup`）、待安排托盘（高度实测）；日期条与托盘都是悬浮浮层（`topInset` / `tabBarInset`），内容 padding 含 `DDL_MARK_ALLOW=36` |
 | `view/SettingsPage.ets`（`WallpaperCard`/`MottoCard`/`MotionCard`/`ReminderCard`/…） | `lib/ui/settings_page.dart` | 10 张玻璃卡；内容 padding 与鸿蒙同式（`12 + 标题条 + FLOAT_GAP` / `30 + bottomInset`） |
@@ -51,6 +51,7 @@
 |---|---|---|
 | `Index.BootLayer` / `bootIn` / `playBootExit` | `lib/ui/boot_screen.dart` ✅ | 启动：打字机 + 步骤清单 + 浓缩成球 + 喷射 + 白球扩张 |
 | `TodoInbox` 碎裂（`SHARD_*`） | `todo_page.dart`（`_PendingCardState`）✅ | 确认删除待办：四块碎片飞散旋转 + 本体缩到 0.86 淡出（`DUR_SHARD=320`）→ 高度收起（`DUR_ITEM=240`）→ 才落库；动效关掉时直接删 |
+| 列表项 `transition(OPACITY + translate y -10, DUR_ITEM)` | `todo_page.dart`（`_ItemFx`）✅ | 待确认卡 / 待办行进场淡入下滑、退场淡出上滑；「确认」「点○完成」都先播完再落库；关动效瞬切 |
 | `PlanDayView` 长按选中 → 拖动、双指缩放 | 两步拖 ✅ + 双指缩放 ✅（`_Block`：长按手势 + 外层 `Listener` 数手指） | 轻点开属性面板；长按 400ms 才拖；两指间距比例 → 改时长 |
 | `SettingsPage` toast | `lib/ui/inline_toast.dart`（`InlineToastMixin`） | 鸿蒙端 `showToast` 是**内容顶部一行蓝字**（2.2 秒），不是 SnackBar（SnackBar 会盖住悬浮导航栏） |
 

@@ -153,6 +153,63 @@ void main() {
     expect(find.text('待确认'), findsNothing);
   });
 
+  testWidgets('点「确认」→ 先按鸿蒙 transition 淡出，播完才变 active', (tester) async {
+    BackupBundle? last;
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: StatefulBuilder(
+          builder: (context, setState) => TodoPage(
+            bundle: last ?? _demo(),
+            onChanged: (next) => setState(() => last = next),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确认'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    // 动画中：数据没动，卡片已经在淡出（鸿蒙 `.transition(OPACITY + translate y -10)`）
+    expect(last, isNull, reason: 'transition 播完才落库');
+    final fx = find.descendant(
+        of: find.byKey(const ValueKey('pending-1')),
+        matching: find.byType(Opacity));
+    expect(fx, findsWidgets);
+    expect(tester.widget<Opacity>(fx.first).opacity, lessThan(1));
+    await tester.pumpAndSettle();
+    expect(_byId(last!, 1).status, TodoStatus.active);
+  });
+
+  testWidgets('点圆圈完成 → 待办行同样先淡出再改成 done', (tester) async {
+    BackupBundle? last;
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: StatefulBuilder(
+          builder: (context, setState) => TodoPage(
+            bundle: last ?? _demo(),
+            onChanged: (next) => setState(() => last = next),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    final card = find
+        .ancestor(of: find.text('实验报告'), matching: find.byType(Container))
+        .first;
+    await tester.tap(find.descendant(of: card, matching: find.text('○')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(last, isNull, reason: '淡出期间不该已经改状态');
+    await tester.pumpAndSettle();
+    expect(_byId(last!, 3).status, TodoStatus.done);
+  });
+
   testWidgets('点卡片正文 → 编辑已有条目（id/状态/时间戳都保留）', (tester) async {
     BackupBundle? last;
     tester.view.physicalSize = const Size(1080, 2400);
