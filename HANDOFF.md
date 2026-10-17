@@ -3650,14 +3650,20 @@ Dart 和 ArkTS 在**边界**上不是同一个语义，直接"照抄函数名"�
 
 ### 36.5 当前状态 / 下一步
 
-- ✅ `shared/` 合同层 + `tools/sync-contract.sh` + `tools/fixtures/gen.js` **已提交并推送**
+- ✅ `shared/` 合同层 + `tools/sync-contract.sh` + `tools/fixtures/gen.js` 已提交并推送
   （`shared/` 与鸿蒙端 524 条断言一起绿）。
-- 🚧 `app_flutter/`：`lib/model/types.dart`（Todo/PlanBlock）、`lib/domain/plan_math.dart`（388 行，
-  逐函数移植 + 3 个 JS 兼容闸门）、`test/fixtures_test.dart`（读 122 条 fixtures 逐条对比）
-  **已写完但尚未编译验证** —— 等 Flutter SDK 下完（国内镜像 ~140 KB/s，约 1 GB）。
-- 下一步（拿到 SDK 后）：
-  1. `flutter create --project-name classout --platforms=ios,android .`（补 pubspec / ios / android 骨架）
-  2. `flutter analyze && flutter test`（122 条 fixtures 必须全绿，红了以鸿蒙端为准）
-  3. 再按同样方式移植 `Timetable` / `Validate` / `TodoGenerator` / `Briefing` / `SyncCadence`，
-     每搬一个就在 `tools/fixtures/gen.js` 里加一节
-  4. 然后才是 UI（Compose→Compose 的坑在 Flutter 这边换成 Cupertino + `BackdropFilter`）
+- ✅ **`app_flutter/` 规则层已编译验证**（Dart 3.12.2）：
+  `lib/model/types.dart`、`lib/domain/js_compat.dart`（JS 兼容闸门）、
+  `plan_math.dart`(283) / `sync_cadence.dart`(34) / `validate.dart`(120)、`test/fixtures_test.dart`。
+  `dart test` → **358 条全绿**（353 条 fixtures + 4 条 TimeAxis 不变式 + 1 条非空检查）。
+- ✅ **变异测试**（证明这套测试不是摆设）：注入 3 处变异（`snap` 改 10 分钟刻度 /
+  `ddlGroupsOn` 不跳过考试 / `isStepMultiple` 恒真）→ **26 条 FAIL**；还原 → 358 条全绿。
+- 🚧 下一步：
+  1. Flutter SDK（git 浅克隆 + 引擎产物，约 500 MB；这条线只有 ~200 KB/s，要半小时以上）
+  2. `flutter create --project-name classout --platforms=ios,android .` 把纯 Dart 包变成 Flutter 工程
+     —— `lib/`、`test/` 一个字都不用改，只在 pubspec 里加 `flutter` / `flutter_test`
+  3. `flutter run -d web-server` 用浏览器预览 UI；iOS 的真实布局以 CI 的模拟器截图为准
+  4. 再按同样方式移植 `Timetable` / `TodoGenerator` / `Briefing`
+     （每搬一个就在 `tools/fixtures/gen.js` 里加一节，然后 `./tools/sync-contract.sh`）
+  5. 最后才是 UI：ArkUI → Flutter（玻璃态用 `BackdropFilter`；
+     `BackStack` → `WillPopScope` / `Navigator`；`@StorageLink` → `InheritedNotifier` / provider）
