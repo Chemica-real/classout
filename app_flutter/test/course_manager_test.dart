@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:classout/data/backup.dart';
+import 'package:classout/data/backup_export.dart';
 import 'package:classout/data/repo.dart';
 import 'package:classout/ui/home_shell.dart';
 
@@ -333,5 +334,22 @@ void main() {
     await _tapVisible(tester, find.text('确定重载'));
     expect(find.text('已清空本学期的课程'), findsOneWidget);
     expect(find.text('课程（0）'), findsOneWidget);
+  });
+
+  testWidgets('备份子页：导出后显示路径、adb pull 命令与顶部提示', (tester) async {
+    // path_provider 在测试里没有原生实现：用备份模块的测试注入点写到临时目录
+    backupDirOverride = Directory.systemTemp;
+    addTearDown(() => backupDirOverride = null);
+    await _pump(tester);
+    await _tapVisible(tester, find.byKey(const ValueKey('entry-backup')));
+    // 真实文件 I/O 要在 runAsync 里跑（FakeAsync 不会推进它）
+    await tester.runAsync(() async {
+      await tester.tap(find.text('导出备份到文件'));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    await tester.pump();
+    expect(find.text('已导出到 App 文档目录'), findsOneWidget);
+    expect(find.textContaining('adb pull'), findsOneWidget);
+    expect(find.text('复制路径'), findsOneWidget);
   });
 }

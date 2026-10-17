@@ -12,7 +12,7 @@ ClassOUT 是一款**纯离线**的「课表 + 待办 + 计划」三合一 App，
 |---|---|---|
 | 版本 | v1.5.1（上架准备中，未提审） | 0.2.0（Android 已装真机 OPPO A97） |
 | 页面 | 课表 / 待办 / 计划 / 设置 + 启动加载页 + 悬浮浮窗 | **同样四页 + 启动页 + 浮窗（§52–§68 逐页复刻）** |
-| 测试 | 离线断言 524 项（`tools/domain-check`） | **1267 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
+| 测试 | 离线断言 524 项（`tools/domain-check`） | **1268 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
 | 差异基准 | 本目录 `docs/manual/01..09.jpg`（真机截图） | `app_flutter/tool/goldens/*.png` 对照上面九张 + `shared/fixtures/`（1115 条规则用例） |
 
 **安卓版与鸿蒙版的 1:1 复刻已经完成**：主题 token 抄自 ArkTS（§52）、六个页面重做、
@@ -6251,3 +6251,30 @@ Material 关闭图标。连同下面几处一起对齐：
   2) 标题条 Glass 的 `BackdropFilter` 换成 `ImageFiltered` + 预模糊（会失去"透过壁纸"的真实感，
      只在必须时用）。
 - 记在这里，免得下次看到重影又当成布局 bug 去查。
+
+---
+
+## 112. 提示条抽成 `InlineToastMixin`；学期/备份子页也改行内提示 + adb pull 提示
+
+### 112.1 `lib/ui/inline_toast.dart`（新）
+
+把"鸿蒙式行内提示"抽成一个混入：`showToast(text)` + `toastLine()`（蓝底圆角 12 号小字，
+2.2 秒自动消失），设置页、课程管理的学期/备份子页共用，避免三处各写一份 Timer。
+
+### 112.2 学期 / 备份子页
+
+- 保存学期设置 → 「学期设置已保存」；复制学期 → 「已复制 N 门课到当前学期」/「没有可复制的课…」；
+  导出备份 → 「已导出到 App 文档目录」（失败则「导出失败：…」）；复制路径 → 「路径已复制」。
+  全部从 SnackBar 换成子页内容顶部的行内提示。
+- 备份导出后，除路径与「复制路径」外，补上安卓等价命令块（鸿蒙那边是
+  `./hdc.sh file recv …`）：
+  `想把它存到电脑上（或发给我排查问题），在这个项目目录里跑：` + `adb pull '<路径>' ./`。
+
+### 112.3 测试便利（不是产品逻辑）
+
+`data/backup_export.dart` 加了 `backupDirOverride`（默认 null）：测试环境没有
+`path_provider` 原生实现，`getApplicationDocumentsDirectory()` 会一直挂起；测试里把它指到
+系统临时目录，并在 `tester.runAsync` 里跑真实文件 I/O。新增用例验证导出后的路径、`adb pull`
+命令与顶部提示。
+
+- **1268 passed**（+1）；`flutter analyze` 无问题（顺手清掉了调试用的临时测试文件）。

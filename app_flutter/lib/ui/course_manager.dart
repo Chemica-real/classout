@@ -21,6 +21,7 @@ import '../domain/todo_generator.dart' show renderTitle;
 import '../domain/week_mask.dart';
 import '../model/types.dart';
 import 'app_frame.dart';
+import 'inline_toast.dart';
 import 'section_times_editor.dart';
 import 'theme.dart';
 
@@ -1946,7 +1947,8 @@ class _SemesterSheet extends StatefulWidget {
   State<_SemesterSheet> createState() => _SemesterSheetState();
 }
 
-class _SemesterSheetState extends State<_SemesterSheet> {
+class _SemesterSheetState extends State<_SemesterSheet>
+    with InlineToastMixin {
   late BackupBundle _b = widget.b;
   late final TextEditingController _name =
       TextEditingController(text: _b.semester?.name ?? '');
@@ -2007,8 +2009,7 @@ class _SemesterSheetState extends State<_SemesterSheet> {
             : s)
         .toList();
     _apply(_with(_b, semesters: list));
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('学期设置已保存')));
+    showToast('学期设置已保存');
   }
 
   Future<void> _createSemester() async {
@@ -2086,10 +2087,9 @@ class _SemesterSheetState extends State<_SemesterSheet> {
     }
     _apply(_with(_b,
         courses: courses, rules: rules, templates: templates));
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(added == 0
-            ? '没有可复制的课（可能已存在同名课程）'
-            : '已复制 $added 门课到当前学期')));
+    showToast(added == 0
+        ? '没有可复制的课（可能已存在同名课程）'
+        : '已复制 $added 门课到当前学期');
   }
 
   @override
@@ -2133,6 +2133,7 @@ class _SemesterSheetState extends State<_SemesterSheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      toastLine(),
                       const Text('学期名称',
                           style: TextStyle(
                               fontSize: 12, color: Color(0xFF94A0B5))),
@@ -2284,7 +2285,8 @@ class _BackupSheet extends StatefulWidget {
   State<_BackupSheet> createState() => _BackupSheetState();
 }
 
-class _BackupSheetState extends State<_BackupSheet> {
+class _BackupSheetState extends State<_BackupSheet>
+    with InlineToastMixin {
   late final BackupBundle _b = widget.b;
   String? _exportPath;
 
@@ -2293,12 +2295,10 @@ class _BackupSheetState extends State<_BackupSheet> {
       final path = await writeBackupFile(backupToJson(_b));
       if (!mounted) return;
       setState(() => _exportPath = path);
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('已导出到 App 文档目录')));
+      showToast('已导出到 App 文档目录');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('导出失败：$e')));
+      showToast('导出失败：$e');
     }
   }
 
@@ -2342,6 +2342,7 @@ class _BackupSheetState extends State<_BackupSheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      toastLine(),
                       const Text(
                           '数据只在这台手机里。导出会把全部内容写成一个 JSON 文件放在应用文档目录，'
                           '恢复则用它整份覆盖当前数据。',
@@ -2362,12 +2363,29 @@ class _BackupSheetState extends State<_BackupSheet> {
                         _PillAction(
                           text: '复制路径',
                           onTap: () async {
-                            final messenger = ScaffoldMessenger.of(context);
                             await Clipboard.setData(
                                 ClipboardData(text: _exportPath!));
-                            messenger.showSnackBar(
-                                const SnackBar(content: Text('路径已复制')));
+                            if (mounted) showToast('路径已复制');
                           },
+                        ),
+                        // 鸿蒙那边给的是 `./hdc.sh file recv …`；安卓的等价命令是 adb pull
+                        const Padding(
+                          padding: EdgeInsets.only(top: 10, bottom: 4),
+                          child: Text('想把它存到电脑上（或发给我排查问题），在这个项目目录里跑：',
+                              style: TextStyle(
+                                  fontSize: 11, color: Color(0xFF94A0B5))),
+                        ),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: SelectableText(
+                              "adb pull '${_exportPath!}' ./",
+                              style: const TextStyle(
+                                  fontSize: 10, color: Color(0xFFCBD6E8))),
                         ),
                       ],
                       const SizedBox(height: 16),

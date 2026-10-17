@@ -160,10 +160,13 @@ String backupFileName([DateTime? now]) {
       '-${two(t.hour)}${two(t.minute)}.json';
 }
 
+/// 测试可注入的目录（null = 真机走 path_provider；测试环境里没有原生实现）
+Directory? backupDirOverride;
+
 /// 写一份备份到应用文档目录，返回文件路径。
 /// [dir] 可注入（测试写临时目录，不碰真机沙箱）。
 Future<String> writeBackupFile(String json, {Directory? dir}) async {
-  final target = dir ?? await getApplicationDocumentsDirectory();
+  final target = dir ?? backupDirOverride ?? await getApplicationDocumentsDirectory();
   if (!await target.exists()) await target.create(recursive: true);
   final file = File('${target.path}${Platform.pathSeparator}${backupFileName()}');
   await file.writeAsString(json, flush: true);
