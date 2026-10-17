@@ -8,6 +8,7 @@ import '../data/repo.dart';
 import '../data/settings.dart';
 import '../domain/reminders.dart';
 import '../domain/dates.dart';
+import '../domain/motto.dart';
 import '../domain/timetable.dart';
 import '../domain/todo_generator.dart';
 import '../notify/flutter_notifier.dart';
@@ -19,6 +20,7 @@ import 'import_dialog.dart';
 import 'palette.dart';
 import 'plan_page.dart';
 import 'settings_page.dart';
+import 'boot_screen.dart';
 import 'course_header.dart';
 import 'course_manager.dart';
 import 'session_sheet.dart';
@@ -58,6 +60,13 @@ class _HomeShellState extends State<HomeShell> {
   int _tab = 0;
   bool _syncing = false;
 
+  /// 启动清单走到第几步（0..4），见 boot_screen.dart 的 bootSteps
+  int _bootStep = 0;
+  bool _bootReady = false;
+
+  /// 过场层是否还在（true = 显示加载页/小球）
+  bool _bootVisible = true;
+
   /// 当前周次（页头 ‹ › 改它；课表页照着画）
   int _week = 1;
   late final ReminderNotifier _notifier = widget.notifier ?? FlutterNotifier();
@@ -69,7 +78,12 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   Future<void> _reload() async {
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _bootStep = 0;
+      _bootReady = false;
+      _bootVisible = true;
+    });
     try {
       final settings = await AppSettings.load(widget.repo);
       var data = await widget.repo.load();
@@ -88,13 +102,27 @@ class _HomeShellState extends State<HomeShell> {
         _settings = settings;
         _loading = false;
         _error = null;
+        _bootStep = 1;
         final sem = data?.semester;
         if (sem != null) {
           _week = weekOfDate(sem, DateTime.now()).clamp(1, sem.totalWeeks);
         }
       });
       // 打开 App 时静默补生成「已经下课」的待办（鸿蒙端 generateMissedTodos）
-      if (data != null) await _generateMissed(data);
+      if (data != null) {
+        setState(() => _bootStep = 2);
+        await _generateMissed(data);
+      }
+      // 提醒同步这一步没有真实工作（排提醒是用户手动/定时触发的），只让清单走完
+      if (!mounted) return;
+      setState(() => _bootStep = 3);
+      // 「人为放慢」只在真机生效；测试里不等，免得留下未完成的定时器
+      if (ambientMotion) await Future<void>.delayed(dur(bootStepMs));
+      if (!mounted) return;
+      setState(() {
+        _bootStep = 4;
+        _bootReady = true;
+      });
     } catch (e) {
       debugPrint('[ClassOUT] load error: $e');
       if (!mounted) return;
@@ -220,6 +248,28 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
+    // 测试/截图（ambientMotion=false）不播启动流程：直接给应用本体
+    if (!ambientMotion) return _buildApp(context);
+    return Stack(
+      children: [
+        Positioned.fill(child: _buildApp(context)),
+        if (_bootVisible)
+          Positioned.fill(
+            child: BootScreen(
+              step: _bootStep,
+              motto: normalMotto(_settings.motto),
+              ready: _bootReady,
+              onReveal: () {}, // 应用本体一直挂在下层，扩张时自然露出
+              onDone: () {
+                if (mounted) setState(() => _bootVisible = false);
+              },
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildApp(BuildContext context) {
     if (_loading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }

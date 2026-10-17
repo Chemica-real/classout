@@ -4641,3 +4641,40 @@ iOS 侧这次改动**还需 CI 复核**（`DynamicLibrary.process()` + 插件同
   路径 `/data/user/0/com.chemica.classout/app_flutter/classout-backup-20261018-0025.json`，
   `adb shell run-as ... cat` 拉回来能正常 `json.load`：`app=ClassOUT, version=1`，
   `courses=4 rules=6 todos=6 blocks=4`，`rules[2].isQuiz == 1` ✅
+
+## 59. 2026-10-17 安卓版：启动加载页（网格 + 双环 + 字标 + 五步清单 + 浓缩成球 + 白球扩张）
+
+之前安卓版冷启动只有一个 `CircularProgressIndicator`。这轮把鸿蒙端 `LoadingScreen()` +
+`playBootExit()` 整段搬了过来。
+
+### 59.1 新文件 `lib/ui/boot_screen.dart`
+
+- **底纹**：横 7 竖 5 的极淡网格（`_GridPainter`）
+- **圆环**：300 实线圆环（9s 自转）+ 360 虚线圆环（16s 反向）+ 2400ms 雷达脉冲（`_DashedCirclePainter`）
+- **字标**：`ClassOUT` 38 粗体 / 字距 2 + 96×3 渐变细线 + 首页标语（字距 3，空则不占位）
+- **启动清单**：5 条真实阶段（`初始化本地数据 / 载入课表与节次 / 补生成下课待办 / 同步系统日历提醒 / 就绪`），
+  已完成打勾（绿）、当前高亮（蓝）并标「进行中」；下面是打字机状态行（`typeMs` 45/字）与**模仿 Ubuntu 开机的五点阵**
+- **就绪过场**（时长全在 `theme.dart`）：停顿 320ms → 整页（网格+圆环+主体一起）浓缩 2400ms（`collapseCurve`）
+  → 小白球（44vp）停留 1360ms + 12 颗粒子按 `SPRAY_R` 表向外喷射 1100ms → 白球扩张 1500ms（`expandCurve`）淡出露出应用
+- 关掉动画（设置里 `motionOn=false`）时**整段跳过**，直接进应用
+
+### 59.2 接线
+
+`HomeShell` 新增 `_bootStep/_bootReady/_bootVisible`：`_reload()` 里按真实进度推进
+（0 初始化 → 1 读完设置+数据 → 2 读完课表 → 3 补生成完 → 4 就绪），`_bootReady` 变 true 后 `BootScreen`
+自己播过场，`onDone` 把过场层卸掉。应用本体一直挂在下面，白球扩张时自然露出。
+
+### 59.3 两个坑（都记在代码注释里）
+
+1. **测试/截图环境必须跳过整段启动流程**：`ambientMotion=false` 时 `HomeShell` 直接给应用本体
+   （否则无限循环的圆环动画会让 `pumpAndSettle` 永不静止）。另外「人为放慢 380ms」也只在
+   `ambientMotion` 为真时才 `await`，否则测试结束会报 `!timersPending`。
+2. **`✓` / `▸` 在 CJK 子集字体里没有字形**：golden 里会掉成豆腐块（真机靠系统兜底字体才没露馅）。
+   清单里的三个标记改成 `Icons.check / chevron_right / circle`，两处观感一致。
+
+### 59.4 验证
+
+- `flutter test`：**706 passed**；新增 golden `tool/goldens/boot.png`（与真机截图逐项一致）
+- **真机（OPPO A97）实测**：冷启动 → 加载页（清单打勾、进行中、打字机、五点）→
+  整页向内浓缩（网格一起缩）→ 白色小球 + 12 颗粒子喷射 → 白球扩张淡出 → 课表页。
+  四张过程截图都核对过。

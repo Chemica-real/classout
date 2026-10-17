@@ -22,6 +22,7 @@
 | `pages/Index.ets` → `Header()` | `lib/ui/course_header.dart` | 三行页头，**课表/待办/计划共用**（设置页没有） |
 | `pages/Index.ets` → 课表（`WeekHeaderRow` / `Grid` / `SessionBlock` / `TabBar`） | `lib/ui/timetable_page.dart` + `lib/ui/app_frame.dart` | 周条、时间轴、7 列、课程块、底部导航 |
 | `pages/Index.ets` → `PageBackground`（`Glass.ets`） | `app_frame.dart`（渐变 + 光晕 + 壁纸） | 壁纸数据来自 `data/wallpaper.dart` |
+| `pages/Index.ets` → `LoadingScreen()` + `playBootExit()` | `lib/ui/boot_screen.dart` | 启动加载页：网格底纹 / 双圆环 + 雷达 / ClassOUT 字标 + 标语 / 5 步清单 + 打字机 + 五点 / 浓缩成球 + 喷射 + 白球扩张 |
 | `view/TodoInbox.ets` | `lib/ui/todo_page.dart` | 四段列表、卡片、底部双按钮托盘 |
 | `view/TodoInbox.ets` → `EditorPanel()` | `lib/ui/todo_editor.dart` | 右侧 84% 抽屉（标题 + ✕ + 可滚表单） |
 | `view/PlanDayView.ets`（`DayBarFloat` / `ColHeadRow` / `HourLines` / `RestBands` / `ClassBlock` / `PlanBlockView` / `DdlMarkers` / `TodoPool`） | `lib/ui/plan_page.dart` | 日/三日、时间轴、课表灰带、斜纹不可排带、计划块、截止标记、待安排托盘 |
@@ -39,7 +40,7 @@
 
 | ArkTS | Dart | 说明 |
 |---|---|---|
-| `Index.BootLayer` / `bootIn` | 待做（下一步） | 启动：打字机 + 步骤清单 + 浓缩成球 + 白球扩张 |
+| `Index.BootLayer` / `bootIn` / `playBootExit` | `lib/ui/boot_screen.dart` ✅ | 启动：打字机 + 步骤清单 + 浓缩成球 + 喷射 + 白球扩张 |
 | `TodoInbox` 碎裂（`SHARD_*`） | 待做 | 确认待办时的碎片动画 |
 | `PlanDayView` 长按选中 → 拖动、双指缩放 | 部分（`_Block` + `Listener` 拖动；选中模型未做） | 两步模型：先选中、再长按拖 |
 | `SettingsPage` toast | `SnackBar` | 鸿蒙端 `showToast`，这边统一 SnackBar |

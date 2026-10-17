@@ -17,6 +17,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:classout/data/backup.dart';
 import 'package:classout/ui/app_frame.dart';
+import 'package:classout/ui/boot_screen.dart';
 import 'package:classout/ui/course_header.dart';
 import 'package:classout/ui/course_manager.dart';
 import 'package:classout/ui/theme.dart' as theme;
@@ -253,5 +254,29 @@ void main() {
         bundle: demo, onChanged: (_) {}));
     await tester.pumpAndSettle();
     await _capture(tester, 'course_manager');
+  });
+
+  testWidgets('启动加载页截图', (tester) async {
+    final family = await _loadFonts();
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+          brightness: Brightness.dark, useMaterial3: true, fontFamily: family),
+      // 要有 Scaffold/Material：否则 Text 拿不到 theme 的正文字体，golden 会全是 Ahem 方块
+      home: Scaffold(
+        body: BootScreen(
+          step: 3,
+          motto: '离线课表 · 待办 · 计划',
+          ready: false,
+          onReveal: () {},
+          onDone: () {},
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await _capture(tester, 'boot');
   });
 }
