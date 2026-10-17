@@ -24,6 +24,9 @@ class BackupBundle {
   /// 否则「下课自动生成待办」在 iOS/Android 上永远不会发生。
   final List<TodoTemplate> templates;
 
+  /// 虚拟课程的课时（鸿蒙端 backup 里的 `lessons`）
+  final List<VirtualLesson> lessons;
+
   const BackupBundle({
     required this.app,
     required this.version,
@@ -37,6 +40,7 @@ class BackupBundle {
     required this.blocks,
     this.restWindows = const [],
     this.templates = const [],
+    this.lessons = const [],
   });
 
   /// 当前学期（暂时取第一条；以后有学期切换再说）
@@ -70,6 +74,7 @@ class BackupBundle {
       blocks: _list(j, 'blocks', PlanBlock.fromJson),
       restWindows: _list(j, 'restWindows', RestWindow.fromJson),
       templates: _list(j, 'templates', TodoTemplate.fromJson),
+      lessons: _list(j, 'lessons', VirtualLesson.fromJson),
     );
   }
 

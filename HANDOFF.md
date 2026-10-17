@@ -5279,3 +5279,26 @@ fixtures 与单测里跑，**界面层根本没接线** —— 也就是鸿蒙�
   填 `1-8` → 存成 `1111111100000000`）
 - 单测里踩到一个"堆叠弹窗"的坑：课程编辑抽屉底下还开着，`find.byType(TextField).first`
   会拿到抽屉里的输入框 —— 必须 `find.descendant(of: find.byType(Dialog).last, …)`
+
+## 78. 2026-10-17 安卓版：虚拟课程课时（`VirtualLesson`）数据层打通
+
+对照 `shared/schema.sql` 发现最后一个没移植的数据模型：`virtual_lesson`（虚拟课程的课时）。
+它在 `BackupBundle` 里叫 `lessons` —— 之前**导入鸿蒙备份时会被静默丢掉**（和 §56 的 templates 同一类问题）。
+
+### 78.1 这轮做的（数据层）
+
+- `model/types.dart`：新增 `VirtualLesson`（id / courseId / seq / title / done / doneAt），
+  `fromJson/toJson` 与 `virtual_lesson` 表逐列对应
+- `data/backup.dart`：`BackupBundle.lessons` 解析 `lessons` 数组
+- `data/sqlite_repo.dart`：`virtual_lesson` 进 `_tableOrder`，`load()` 读、`replaceAll()` 写
+- `data/backup_export.dart`：导出时序列化 `lessons`（原来写的是空数组占位），
+  诊断摘要加 `课时 N`
+- 所有"整份复制 bundle"的地方补 `lessons`（plan/todo/settings/session_sheet/home_shell/
+  block_editor/course_manager 七处）—— 少了任何一处，编辑一次就会把课时清空
+
+### 78.2 验证
+
+- `backup_export_test` 加 1 条：`lessons` 往返（id/courseId/seq/title/done/doneAt 全等）
+- `flutter test`：**881 passed**
+- 还没做（诚实记）：虚拟课程的**界面**（课程编辑里的"课时池"、把某一讲排进计划、
+  完成后触发生成待办）—— 数据已经不会丢了，UI 是下一步

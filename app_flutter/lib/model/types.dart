@@ -339,6 +339,46 @@ class CourseSession {
   });
 }
 
+/// 虚拟课程的课时（`virtual_lesson` 表）：虚拟课程没有固定上课时间，
+/// 它就是"一串等着被排进计划的课时"；每一讲排进计划并完成时，跟真课下课一样触发模板生成。
+class VirtualLesson {
+  int id;
+  int courseId;
+
+  /// 第几讲，从 1 开始
+  int seq;
+  String title;
+  bool done;
+  int doneAt;
+
+  VirtualLesson({
+    this.id = 0,
+    this.courseId = 0,
+    this.seq = 1,
+    this.title = '',
+    this.done = false,
+    this.doneAt = 0,
+  });
+
+  factory VirtualLesson.fromJson(Map<String, dynamic> j) => VirtualLesson(
+        id: _int(j['id']),
+        courseId: _int(j['courseId']),
+        seq: _int(j['seq'], 1),
+        title: _str(j['title']),
+        done: _int(j['done']) != 0,
+        doneAt: _int(j['doneAt']),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'courseId': courseId,
+        'seq': seq,
+        'title': title,
+        'done': done ? 1 : 0,
+        'doneAt': doneAt,
+      };
+}
+
 /// 课程的待办模板（`todo_template` 表）：一节课下课后按它自动生成「待确认」待办。
 /// 字段与 `shared/schema.sql` / 鸿蒙端 `model/Types.ets` 一一对应。
 class TodoTemplate {

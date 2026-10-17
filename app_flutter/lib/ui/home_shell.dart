@@ -412,6 +412,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         blocks: data.blocks,
         restWindows: data.restWindows,
         templates: data.templates,
+        lessons: data.lessons,
       );
     });
     await widget.repo.replaceAll(_bundle!);

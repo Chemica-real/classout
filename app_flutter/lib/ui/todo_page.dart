@@ -271,6 +271,7 @@ class _TodoPageState extends State<TodoPage> {
         blocks: widget.bundle.blocks,
         restWindows: widget.bundle.restWindows,
         templates: widget.bundle.templates,
+        lessons: widget.bundle.lessons,
       );
 
   Future<void> _openEditor(BuildContext context,

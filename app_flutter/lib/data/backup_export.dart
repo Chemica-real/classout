@@ -84,6 +84,15 @@ Map<String, dynamic> _template(TodoTemplate t) => {
       'note': t.note,
     };
 
+Map<String, dynamic> _lesson(VirtualLesson l) => {
+      'id': l.id,
+      'courseId': l.courseId,
+      'seq': l.seq,
+      'title': l.title,
+      'done': l.done ? 1 : 0,
+      'doneAt': l.doneAt,
+    };
+
 Map<String, dynamic> _todo(Todo t) => {
       'id': t.id,
       'title': t.title,
@@ -136,7 +145,7 @@ String backupToJson(BackupBundle b) {
     'overrides': b.overrides.map(_override).toList(),
     'templates': b.templates.map(_template).toList(),
     'todos': b.todos.map(_todo).toList(),
-    'lessons': const <Object>[], // 虚拟课程还没移植；写空数组保持字段齐全
+    'lessons': b.lessons.map(_lesson).toList(),
     'blocks': b.blocks.map(_block).toList(),
     'restWindows': b.restWindows.map(_rest).toList(),
   };
@@ -170,5 +179,6 @@ String backupSummary(BackupBundle b) {
       '时段 ${b.rules.length} · 模板 ${b.templates.length} · '
       '单周调整 ${b.overrides.length}\n'
       '待办 ${b.todos.length}（待确认 $pending / 进行中 $active / 已完成 $done）· '
-      '计划块 ${b.blocks.length} · 不可排 ${b.restWindows.length}';
+      '计划块 ${b.blocks.length} · 课时 ${b.lessons.length} · '
+      '不可排 ${b.restWindows.length}';
 }

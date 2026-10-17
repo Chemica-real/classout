@@ -106,6 +106,7 @@ class _SettingsPageState extends State<SettingsPage> {
       blocks: b.blocks,
       restWindows: rest,
       templates: b.templates,
+      lessons: b.lessons,
     );
   }
 

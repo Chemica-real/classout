@@ -28,6 +28,7 @@ BackupBundle _with(
   List<Course>? courses,
   List<SessionRule>? rules,
   List<TodoTemplate>? templates,
+  List<VirtualLesson>? lessons,
 }) =>
     BackupBundle(
       app: b.app,
@@ -42,6 +43,7 @@ BackupBundle _with(
       blocks: b.blocks,
       restWindows: b.restWindows,
       templates: templates ?? b.templates,
+      lessons: lessons ?? b.lessons,
     );
 
 int _nextId<T>(List<T> list, int Function(T) id) =>
@@ -1499,6 +1501,7 @@ class _SemesterDialogState extends State<_SemesterDialog> {
       courses: courses,
       rules: rules,
       templates: templates,
+      lessons: b.lessons,
     );
     Navigator.of(context).pop(next);
   }

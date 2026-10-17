@@ -102,6 +102,34 @@ void main() {
     expect(after.restWindows.first.label, '午休');
   });
 
+  test('虚拟课程课时（lessons）往返不丢', () {
+    final b = BackupBundle(
+      app: 'ClassOUT',
+      version: 1,
+      exportedAt: '',
+      semesters: const [],
+      sectionTimes: const [],
+      courses: const [],
+      rules: const [],
+      overrides: const [],
+      todos: const [],
+      blocks: const [],
+      lessons: [
+        VirtualLesson(
+            id: 2, courseId: 7, seq: 3, title: '第三章', done: true, doneAt: 123),
+      ],
+    );
+    final after = BackupBundle.decode(backupToJson(b));
+    expect(after.lessons.length, 1);
+    final l = after.lessons.first;
+    expect(l.id, 2);
+    expect(l.courseId, 7);
+    expect(l.seq, 3);
+    expect(l.title, '第三章');
+    expect(l.done, isTrue);
+    expect(l.doneAt, 123);
+  });
+
   test('写文件：文件名带日期，内容可解析', () async {
     final dir = await Directory.systemTemp.createTemp('classout-backup-test');
     addTearDown(() => dir.delete(recursive: true));

@@ -296,6 +296,7 @@ class _PlanPageState extends State<PlanPage> {
         blocks: blocks,
         restWindows: widget.bundle.restWindows,
         templates: widget.bundle.templates,
+        lessons: widget.bundle.lessons,
       );
 
   int _nextBlockId() =>

@@ -39,6 +39,7 @@ class SqliteRepo implements ClassOutRepo {
       blocks: _rows('plan_block').map(PlanBlock.fromJson).toList(),
       restWindows: _rows('rest_window').map(RestWindow.fromJson).toList(),
       templates: _rows('todo_template').map(TodoTemplate.fromJson).toList(),
+      lessons: _rows('virtual_lesson').map(VirtualLesson.fromJson).toList(),
     );
   }
 
@@ -128,6 +129,16 @@ class SqliteRepo implements ClassOutRepo {
           'done_at': t.doneAt,
         });
       }
+      for (final l in b.lessons) {
+        _insert('virtual_lesson', {
+          if (l.id > 0) 'id': l.id,
+          'course_id': l.courseId,
+          'seq': l.seq,
+          'title': l.title,
+          'done': l.done ? 1 : 0,
+          'done_at': l.doneAt,
+        });
+      }
       for (final t in b.templates) {
         _insert('todo_template', {
           if (t.id > 0) 'id': t.id,
@@ -199,6 +210,7 @@ class SqliteRepo implements ClassOutRepo {
     'semester',
     'rest_window',
     'todo_template',
+    'virtual_lesson',
   ];
 
   int _count(String table) =>

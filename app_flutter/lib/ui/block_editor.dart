@@ -35,6 +35,7 @@ BackupBundle _with(
       blocks: blocks ?? b.blocks,
       restWindows: b.restWindows,
       templates: b.templates,
+      lessons: b.lessons,
     );
 
 Future<void> showBlockEditor(
