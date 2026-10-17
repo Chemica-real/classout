@@ -8,7 +8,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:classout/data/backup.dart';
 import 'package:classout/data/repo.dart';
-import 'package:classout/model/types.dart';
 import 'package:classout/ui/home_shell.dart';
 
 BackupBundle _demo() =>
@@ -252,4 +251,3 @@ void main() {
   });
 }
 
-void _semesterTests(WidgetTester tester) {}

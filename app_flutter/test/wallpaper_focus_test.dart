@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:classout/data/backup.dart';
-import 'package:classout/data/repo.dart';
 import 'package:classout/data/settings.dart';
 import 'package:classout/ui/settings_page.dart';
 import 'package:classout/ui/theme.dart';
@@ -33,7 +32,6 @@ void main() {
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 3.0;
     addTearDown(tester.view.reset);
-    final repo = MemoryRepo(_demo());
     // 造一个存在的壁纸文件（AppFrame/Settings 的预览会用 File.existsSync）
     final tmp = File('${Directory.systemTemp.path}/wp_test.jpg')
       ..writeAsBytesSync(const [0xFF, 0xD8, 0xFF, 0xD9]);
