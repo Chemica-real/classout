@@ -5226,3 +5226,34 @@ extras: Bundle[{STRIPPED=1}]
 结论：**`dumpsys` 的 NotificationRecord 不适合用来判定"用户是否看到通知"**（ColorOS 会把
 横幅/通知栏条目收起或延迟，record 也可能被系统移走）。**以真机观感为准**——用户已确认能收到。
 以后写验证脚本时，别把"dumpsys 里没有 record"直接当成"没弹通知"。
+
+## 76. 2026-10-17 安卓版：把「同步节奏」接进真实界面（连续使用 n 分钟的整数倍自动同步 / 闲置重启）
+
+`domain/sync_cadence.dart` 里的规则（`isSyncBoundary` / `shouldRestartAfterIdle`）一直只在
+fixtures 与单测里跑，**界面层根本没接线** —— 也就是鸿蒙端 v1.5.0 的"连续使用到 n 分钟自动同步、
+闲置超过 n 分钟再打开重新走一遍启动流程"在安卓版其实没生效。这轮接上。
+
+### 76.1 接线（`HomeShell`）
+
+- `WidgetsBindingObserver` + 1 秒一次的 `Timer.periodic`（**只在 `ambientMotion` 为真时启动**，
+  测试里不能挂周期定时器）：
+  - 每满一分钟：`if (isSyncBoundary(activeMin, syncIntervalMin)) _manualSync()`
+    → 顶部闪「正在与日历同步…」并真的重排提醒（和页头手动同步同一条路径）
+  - 每满 n 分钟会打一行 `[ClassOUT] sync boundary: activeMin=… interval=…` 方便真机核对
+- `didChangeAppLifecycleState`：只把 `paused` 当成"真的退到后台"记时间；
+  回到 `resumed` 时 `idle = now - lastActive`，`shouldRestartAfterIdle(...)` 为真就
+  `_reload(boot: true)` —— 重播启动过场，等于"重新启动一次"
+- ⚠️ 踩到的坑：**不能把时间记在 `inactive` / `hidden` 上**。真机日志显示回到前台时的序列是
+  `hidden → inactive → resumed`，记在它们上面会把 idle 清零（实测 `idle=0s`）——只有 `paused`
+  是"真的退到后台"。
+
+### 76.2 验证
+
+- **真机已验证**：把同步间隔设为 5 分钟，停在课表页连续使用 →
+  `01:32:44` 启动，`01:33:43` 打点 `sync boundary: activeMin=5 interval=5`，
+  随后日志里连续 `schedule #1009… kind=brief / kind=class` —— 自动同步**真的执行并重排了提醒**
+- 闲置重启：规则函数由 `sync_cadence.json` 63 条 fixture 钉住；界面接线已实现，
+  但**本轮真机没验成**——`adb input keyevent HOME` 之后 Flutter 的
+  `paused` 事件在这台 ColorOS 上时有时无（同一套命令两次结果不同），
+  导致 `idle` 起不来。这条留给手动（把 App 放后台 6 分钟再点开）确认。
+- `flutter test`：**863 passed**

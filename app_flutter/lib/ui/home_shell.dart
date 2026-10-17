@@ -1,6 +1,8 @@
 // 应用外壳：负责「读数据 → 画界面 → 导入后重画」。
 // 数据仓库是注入的，所以 web 用内存版、原生用 SQLite 版都能跑同一套 UI。
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
@@ -10,6 +12,7 @@ import '../data/note_pref.dart';
 import '../data/repo.dart';
 import '../data/settings.dart';
 import '../domain/reminders.dart';
+import '../domain/sync_cadence.dart';
 import '../domain/dates.dart';
 import '../domain/guide.dart';
 import '../domain/motto.dart';
@@ -57,7 +60,7 @@ class HomeShell extends StatefulWidget {
   State<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends State<HomeShell> {
+class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   BackupBundle? _bundle;
   AppSettings _settings = AppSettings();
   bool _loading = true;
@@ -75,6 +78,12 @@ class _HomeShellState extends State<HomeShell> {
   /// 悬浮页头的实测高度（课表/待办页据此在滚动内容顶部留白）
   double _headerH = 134;
 
+  // ---- 同步节奏（鸿蒙端 SyncCadence：连续使用到 n 分钟的整数倍自动同步；
+  //      闲置超过 n 分钟再打开会重新走一遍启动流程）----
+  Timer? _tick;
+  DateTime _lastActiveAt = DateTime.now();
+  int _activeSec = 0;
+
   /// 新手演练：是否在沙箱里、走到第几步、这次运行里问过没有
   bool _sandbox = false;
   int _guideStep = 0;
@@ -87,7 +96,51 @@ class _HomeShellState extends State<HomeShell> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _reload(boot: true);
+    // 计时器只在真机跑（测试里不能让 1s 周期定时器挂着）
+    if (ambientMotion) {
+      _tick = Timer.periodic(const Duration(seconds: 1), (_) => _onTick());
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    debugPrint('[ClassOUT] lifecycle: $state');
+    if (state == AppLifecycleState.resumed) {
+      final idle = DateTime.now().difference(_lastActiveAt);
+      debugPrint('[ClassOUT] idle=${idle.inSeconds}s '
+          'interval=${_settings.syncIntervalMin}min');
+      if (shouldRestartAfterIdle(
+          idle.inMilliseconds, _settings.syncIntervalMin)) {
+        // 闲置太久 → 当成一次冷启动（鸿蒙端就是这么做的：重新走一遍启动流程）
+        _activeSec = 0;
+        _reload(boot: true);
+      }
+    } else {
+      _lastActiveAt = DateTime.now();
+    }
+  }
+
+  /// 每秒走一格：连续使用到 n 分钟的整数倍时自动同步一次
+  void _onTick() {
+    if (!mounted) return;
+    _activeSec++;
+    if (_activeSec % 60 != 0) return;
+    final activeMin = _activeSec ~/ 60;
+    if (isSyncBoundary(activeMin, _settings.syncIntervalMin)) {
+      debugPrint('[ClassOUT] sync boundary: activeMin=$activeMin '
+          'interval=${_settings.syncIntervalMin}');
+      _manualSync();
+    }
   }
 
   /// [boot] = 是否重播启动过场（只有冷启动那一次；导入/演练/补生成之后只静默重读）
