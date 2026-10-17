@@ -69,6 +69,12 @@ Future<void> _revealBlock(WidgetTester tester, Finder block) async {
 }
 
 
+/// 鸿蒙两步模型的第一步：轻点选中块（未选中的块长按/双指都不响应）
+Future<void> _selectBlock(WidgetTester tester, Finder block) async {
+  await tester.tap(block);
+  await tester.pumpAndSettle();
+}
+
 /// 两步模型：**长按**才开始拖（轻滑留给滚动）。
 Future<void> _longPressDragFrom(
     WidgetTester tester, Offset start, Offset delta) async {
@@ -144,6 +150,7 @@ void main() {
 
     final block = find.byKey(ValueKey('plan-block-${before.id}'));
     await _revealBlock(tester, block);
+    await _selectBlock(tester, block);
     // 往下拖 60px = 60 分钟（1 分钟 = 1vp），吸附后仍是 60 的倍数
     await _longPressDrag(tester, block, const Offset(0, 60));
     await tester.pumpAndSettle();
@@ -162,6 +169,7 @@ void main() {
 
     final blockFinder = find.byKey(ValueKey('plan-block-${before.id}'));
     await _revealBlock(tester, blockFinder);
+    await _selectBlock(tester, blockFinder);
     // 从块底边上方 6px 处按下 = 拖底边缩放
     final rect = tester.getRect(blockFinder);
     await _longPressDragFrom(
@@ -180,6 +188,7 @@ void main() {
     final before = _demo().blocks.firstWhere((b) => b.date == '2026-10-16');
     final block = find.byKey(ValueKey('plan-block-${before.id}'));
     await _revealBlock(tester, block);
+    await _selectBlock(tester, block);
     // 往上拖很远：moveRange 会夹到时间窗起点
     await _longPressDrag(tester, block, const Offset(0, -3000));
     await tester.pumpAndSettle();
@@ -196,6 +205,7 @@ void main() {
     final before = _demo().blocks.firstWhere((b) => b.date == '2026-10-16');
     final block = find.byKey(ValueKey('plan-block-${before.id}'));
     await _revealBlock(tester, block);
+    await _selectBlock(tester, block);
 
     final c = tester.getCenter(block);
     final g1 = await tester.startGesture(c - const Offset(8, 0));
@@ -276,6 +286,7 @@ void main() {
     final before = _demo().blocks.firstWhere((b) => b.date == '2026-10-16');
     final block = find.byKey(ValueKey('plan-block-${before.id}'));
     await _revealBlock(tester, block);
+    await _selectBlock(tester, block);
 
     // ① 轻滑（没有长按）→ 不该改数据
     final rect = tester.getRect(block);
@@ -430,5 +441,66 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('没有待安排的事项。先去『待办』里确认几条。'), findsOneWidget);
     expect(find.text('展开 ▴'), findsNothing);
+  });
+
+  testWidgets('两步模型：第一下选中（弹提示、不开面板），第二下才打开属性面板',
+      (tester) async {
+    final h = await _pump(tester, initialDay: DateTime(2026, 10, 16));
+    final before = _demo().blocks.firstWhere((b) => b.date == '2026-10-16');
+    final block = find.byKey(ValueKey('plan-block-${before.id}'));
+    await _revealBlock(tester, block);
+
+    await tester.tap(block);
+    await tester.pumpAndSettle();
+    expect(find.text('标记完成'), findsNothing, reason: '第一下不该开面板');
+    expect(find.text('开始时间（HH:MM）'), findsNothing);
+
+    await tester.tap(block);
+    await tester.pumpAndSettle();
+    expect(find.text('开始时间（HH:MM）'), findsOneWidget, reason: '第二下才开面板');
+    expect(h.last, isNull, reason: '选中/开面板都不改数据');
+  });
+
+  testWidgets('未选中的块长按不响应（想滚时间轴的人不会误拖）', (tester) async {
+    final h = await _pump(tester, initialDay: DateTime(2026, 10, 16));
+    final before = _demo().blocks.firstWhere((b) => b.date == '2026-10-16');
+    final block = find.byKey(ValueKey('plan-block-${before.id}'));
+    await _revealBlock(tester, block);
+    await _longPressDrag(tester, block, const Offset(0, 60));
+    await tester.pumpAndSettle();
+    expect(h.last, isNull, reason: '未选中时长按不该挪块');
+  });
+
+  testWidgets('点空白：无选中时弹提示；有选中块时取消选中', (tester) async {
+    final h = await _pump(tester, initialDay: DateTime(2026, 10, 16));
+    final col = find.byKey(const ValueKey('plan-day-2026-10-16'));
+    final rect = tester.getRect(col);
+    // 07:30 左右（块在 13:00，点这里不会撞块）
+    final y = rect.top + (7 * 60 + 30 - defaultWindow.startMin) * 1.0;
+    await tester.tapAt(Offset(rect.center.dx, y));
+    await tester.pump();
+    expect(find.textContaining('单击块选中它'), findsOneWidget);
+
+    final before = _demo().blocks.firstWhere((b) => b.date == '2026-10-16');
+    final block = find.byKey(ValueKey('plan-block-${before.id}'));
+    await _revealBlock(tester, block);
+    await tester.tap(block);
+    await tester.pumpAndSettle();
+    await tester.tapAt(Offset(rect.center.dx, y));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('单击块选中它'), findsNothing, reason: '取消选中时清提示');
+    expect(h.last, isNull);
+  });
+
+  testWidgets('块上的 ○ 直接勾完成（连虚拟课时一起标）', (tester) async {
+    final h = await _pump(tester, initialDay: DateTime(2026, 10, 16));
+    final before = _demo().blocks.firstWhere((b) => b.date == '2026-10-16');
+    final block = find.byKey(ValueKey('plan-block-${before.id}'));
+    await _revealBlock(tester, block);
+
+    await tester.tap(find.descendant(of: block, matching: find.text('○')));
+    await tester.pumpAndSettle();
+    expect(h.last, isNotNull);
+    expect(_byIdBlock(h.last!, before.id).done, isTrue);
   });
 }

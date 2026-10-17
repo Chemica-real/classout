@@ -72,6 +72,9 @@ class _PlanPageState extends State<PlanPage> {
   int _selectedTodoId = 0; // 托盘里选中、等着落到网格上的那条
   int _selectedLessonId = 0; // 托盘里选中的虚拟课程课时（0 = 没选）
 
+  /// 网格里选中的块（鸿蒙两步模型：第一下选中、第二下开编辑窗）
+  int _selectedBlockId = 0;
+
   /// 待安排托盘是否展开（鸿蒙端 TraySummonBar ↔ TodoPool）
   bool _trayOpen = false;
 
@@ -138,6 +141,8 @@ class _PlanPageState extends State<PlanPage> {
   }
 
   void _startDrag(PlanBlock b, bool resize, double globalY) {
+    // 两步模型：只有**已选中**的块才能开始拖（否则想滚时间轴的人一按就误拖）
+    if (b.id != _selectedBlockId) return;
     setState(() {
       _dragId = b.id;
       _dragResize = resize;
@@ -424,12 +429,30 @@ class _PlanPageState extends State<PlanPage> {
                   rests: {for (final d in days) formatDate(d): _restsOn(d)},
                   todoOf: _todoOf,
                   onTapMinute: (day, min) {
-                    if (_selectedTodoId == 0 && _selectedLessonId == 0) return;
-                    final todo = _todoOf(_selectedTodoId);
-                    // 课时默认 90 分钟，待办用自己的预计耗时
-                    _place(day, min, todo?.estimateMin ?? 90);
+                    if (_selectedTodoId > 0 || _selectedLessonId > 0) {
+                      final todo = _todoOf(_selectedTodoId);
+                      // 课时默认 90 分钟，待办用自己的预计耗时
+                      _place(day, min, todo?.estimateMin ?? 90);
+                      return;
+                    }
+                    if (_selectedBlockId > 0) {
+                      setState(() => _selectedBlockId = 0);
+                      _showHint('');
+                      return;
+                    }
+                    _showHint('单击块选中它；再点一下打开详情。长按选中的块可以拖时间。');
                   },
-                  onTapBlock: _showBlockSheet,
+                  onTapBlock: _onBlockTap,
+                  onToggleDone: _toggleBlockDone,
+                  selectedBlockId: _selectedBlockId,
+                  courseLabelOf: (id) {
+                    final c = widget.bundle.courses
+                        .where((x) => x.id == id)
+                        .firstOrNull;
+                    return c == null
+                        ? ''
+                        : (c.shortName.isNotEmpty ? c.shortName : c.name);
+                  },
                   dragId: _dragId,
                   dragResize: _dragResize,
                   dragDeltaMin: _dragDeltaMin,
@@ -473,8 +496,14 @@ class _PlanPageState extends State<PlanPage> {
               onPrev: () => _shift(_threeDay ? -3 : -1),
               onNext: () => _shift(_threeDay ? 3 : 1),
               onToday: _jumpToday,
-              onDay: () => setState(() => _threeDay = false),
-              onThreeDay: () => setState(() => _threeDay = true),
+              onDay: () => setState(() {
+                _threeDay = false;
+                _selectedBlockId = 0;
+              }),
+              onThreeDay: () => setState(() {
+                _threeDay = true;
+                _selectedBlockId = 0;
+              }),
             ),
           ),
         ),
@@ -544,6 +573,68 @@ class _PlanPageState extends State<PlanPage> {
     _findSlot();
   }
 
+  /// 网格里轻点一块：未选中 → 选中；已选中 → 打开属性面板（鸿蒙 `tapAction`）
+  void _onBlockTap(PlanBlock b) {
+    if (_selectedBlockId == b.id) {
+      _showBlockSheet(b);
+      return;
+    }
+    setState(() {
+      _selectedBlockId = b.id;
+      _selectedTodoId = 0; // 选中块时清掉托盘选择，避免"两种选中"打架
+      _selectedLessonId = 0;
+    });
+    _showHint('');
+  }
+
+  /// 块上的 ○ / ● ：直接勾完成/取消（鸿蒙 `onBlockToggleDone`）
+  void _toggleBlockDone(PlanBlock b) {
+    final next = !b.done;
+    final blocks = widget.bundle.blocks
+        .map((x) => x.id == b.id
+            ? PlanBlock(
+                id: x.id,
+                todoId: x.todoId,
+                lessonId: x.lessonId,
+                date: x.date,
+                startMin: x.startMin,
+                endMin: x.endMin,
+                done: next,
+              )
+            : x)
+        .toList();
+    final lessons = b.lessonId > 0
+        ? widget.bundle.lessons
+            .map((l) => l.id == b.lessonId
+                ? VirtualLesson(
+                    id: l.id,
+                    courseId: l.courseId,
+                    seq: l.seq,
+                    title: l.title,
+                    done: next,
+                    doneAt:
+                        next ? DateTime.now().millisecondsSinceEpoch : 0,
+                  )
+                : l)
+            .toList()
+        : widget.bundle.lessons;
+    widget.onChanged(BackupBundle(
+      app: widget.bundle.app,
+      version: widget.bundle.version,
+      exportedAt: widget.bundle.exportedAt,
+      semesters: widget.bundle.semesters,
+      sectionTimes: widget.bundle.sectionTimes,
+      courses: widget.bundle.courses,
+      rules: widget.bundle.rules,
+      overrides: widget.bundle.overrides,
+      todos: widget.bundle.todos,
+      blocks: blocks,
+      restWindows: widget.bundle.restWindows,
+      templates: widget.bundle.templates,
+      lessons: lessons,
+    ));
+  }
+
   /// 虚拟课时的一讲（鸿蒙端 autoPlaceLesson）：固定 90 分钟，从"现在"往后找。
   void _findSlotForLesson(VirtualLesson l) {
     final day = _day;
@@ -569,6 +660,8 @@ class _PlanPageState extends State<PlanPage> {
   /// 原始指针：两指时按间距比例缩放当前块；单指/抬指时结束
   void _onBlockPointer(
       PlanBlock block, int pointer, Offset position, bool down) {
+    // 双指缩放只对**选中的那一块**生效（鸿蒙 beginPinch 的守卫）
+    if (block.id != _selectedBlockId) return;
     final before = _pointers.length;
     if (down) {
       _pointers[pointer] = position;
@@ -846,6 +939,13 @@ class _Grid extends StatelessWidget {
   final Todo? Function(int) todoOf;
   final void Function(DateTime, int) onTapMinute;
   final void Function(PlanBlock) onTapBlock;
+  final void Function(PlanBlock) onToggleDone;
+
+  /// 选中的块 id（两步模型的"选中态"：2px 白框）
+  final int selectedBlockId;
+
+  /// 课程 id → 简称（块的副文字/紧凑标题用）
+  final String Function(int) courseLabelOf;
 
   // 拖动 / 缩放
   final int dragId;
@@ -875,6 +975,9 @@ class _Grid extends StatelessWidget {
     required this.todoOf,
     required this.onTapMinute,
     required this.onTapBlock,
+    required this.onToggleDone,
+    required this.selectedBlockId,
+    required this.courseLabelOf,
     required this.dragId,
     required this.dragResize,
     required this.dragDeltaMin,
@@ -944,6 +1047,9 @@ class _Grid extends StatelessWidget {
                         todoOf: todoOf,
                         onTapMinute: onTapMinute,
                         onTapBlock: onTapBlock,
+                        onToggleDone: onToggleDone,
+                        selectedBlockId: selectedBlockId,
+                        courseLabelOf: courseLabelOf,
                       ),
                     ),
                 ],
@@ -979,6 +1085,9 @@ class _DayColumn extends StatelessWidget {
   final Todo? Function(int) todoOf;
   final void Function(DateTime, int) onTapMinute;
   final void Function(PlanBlock) onTapBlock;
+  final void Function(PlanBlock) onToggleDone;
+  final int selectedBlockId;
+  final String Function(int) courseLabelOf;
 
   const _DayColumn({
     super.key,
@@ -1003,6 +1112,9 @@ class _DayColumn extends StatelessWidget {
     required this.todoOf,
     required this.onTapMinute,
     required this.onTapBlock,
+    required this.onToggleDone,
+    required this.selectedBlockId,
+    required this.courseLabelOf,
   });
 
   @override
@@ -1055,6 +1167,7 @@ class _DayColumn extends StatelessWidget {
                 resizing: dragId == b.id && dragResize,
                 dragDeltaMin: dragId == b.id ? dragDeltaMin : 0,
                 onTap: () => onTapBlock(b),
+                onToggleDone: () => onToggleDone(b),
                 onDragStart: onDragStart,
                 onDragUpdate: onDragUpdate,
                 onDragEnd: onDragEnd,
@@ -1062,6 +1175,8 @@ class _DayColumn extends StatelessWidget {
                 lessonTitle: lessonTitles[b.lessonId],
                 lessonColor: lessonColors[b.lessonId],
                 pinchEndMin: pinchId == b.id ? pinchEndMin : 0,
+                selected: selectedBlockId == b.id,
+                courseLabel: courseLabelOf(todoOf(b.todoId)?.courseId ?? 0),
               ),
             // 截止标记
             for (final g in ddls)
@@ -1213,9 +1328,16 @@ class _Block extends StatelessWidget {
 
   /// 双指缩放预览的结束分钟（0 = 没在缩这个块）
   final int pinchEndMin;
+
+  /// 是否选中（选中 = 2px 白框）
+  final bool selected;
+
+  /// 所属课程简称（副文字 / 紧凑标题用；空 = 没课程）
+  final String courseLabel;
   final void Function(PlanBlock b, int pointer, Offset position, bool down)
       onPointer;
   final VoidCallback onTap;
+  final VoidCallback onToggleDone;
   final void Function(PlanBlock, bool resize, double globalY) onDragStart;
   final void Function(double globalY) onDragUpdate;
   final VoidCallback onDragEnd;
@@ -1230,40 +1352,144 @@ class _Block extends StatelessWidget {
     this.lessonTitle,
     this.lessonColor,
     required this.pinchEndMin,
+    required this.selected,
+    required this.courseLabel,
     required this.onPointer,
     required this.onTap,
+    required this.onToggleDone,
     required this.onDragStart,
     required this.onDragUpdate,
     required this.onDragEnd,
   });
+
+  /// 紧凑排版阈值（鸿蒙 `compactThreshold()` = ceil(14*1.35)+ceil(11*1.35) = 34）
+  static const double compactThreshold = 34;
+
+  /// 块在屏幕上的高度（鸿蒙 `blockH`：时长 - 2，再夹到最小可见高/紧凑最小高）
+  double get _paintedH {
+    final endMin = pinchEndMin > 0
+        ? pinchEndMin
+        : (resizing ? block.endMin : block.endMin + dragDeltaMin);
+    final startMin = resizing ? block.startMin : block.startMin + dragDeltaMin;
+    final timed = (endMin - startMin).toDouble() - 2;
+    if (timed < 6) return 6;
+    if (timed < compactThreshold) return 14;
+    return timed;
+  }
+
+  /// 副文字（鸿蒙 `blockSubText`）：12:00-12:15 · 高数
+  String get _subText {
+    final endMin = pinchEndMin > 0 ? pinchEndMin : block.endMin;
+    final t = '${minToHHmm(block.startMin)}-${minToHHmm(endMin)}';
+    return courseLabel.isEmpty ? t : '$t · $courseLabel';
+  }
+
+  /// 紧凑标题（鸿蒙 `blockCompactTitle`）：课程简称·标题
+  String get _compactTitle {
+    final title = todo?.title ?? (lessonTitle ?? '计划块');
+    return courseLabel.isEmpty ? title : '$courseLabel·$title';
+  }
 
   @override
   Widget build(BuildContext context) {
     final color = todo != null
         ? courseColor(todo!.courseId)
         : (lessonColor ?? const Color(0xFF4A5B75));
-    // 拖动中只改预览：移动 → 顶边跟着走、高度不变；缩放 → 顶边不动、高度跟着变
     final topMin = resizing ? block.startMin : block.startMin + dragDeltaMin;
-    // 双指缩放时用预览的结束分钟（块高跟着手指走）
-    final endMin = pinchEndMin > 0
-        ? pinchEndMin
-        : (resizing ? block.endMin : block.endMin + dragDeltaMin);
     final top = (topMin - axis.startMin).toDouble();
-    final height = (endMin - (resizing ? block.startMin : topMin)).toDouble();
+    final h = _paintedH;
+    final compact = h < compactThreshold;
+    final opacity = dragging ? 0.72 : (block.done ? 0.5 : 0.95);
+    final showBorder = selected || dragging;
+
+    final content = compact
+        // 紧凑排版：单行「课程简称·标题 + 开始时间」，不画完成圆圈
+        ? Container(
+            width: double.infinity,
+            height: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 5)
+                .copyWith(left: 7),
+            alignment: Alignment.centerLeft,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(_compactTitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w500,
+                          color: inkPrimary,
+                          decoration: block.done
+                              ? TextDecoration.lineThrough
+                              : null)),
+                ),
+                const SizedBox(width: 6),
+                Text(minToHHmm(block.startMin),
+                    style: const TextStyle(
+                        fontSize: 9, color: Color(0xFFCBD6E8))),
+              ],
+            ),
+          )
+        // 常规排版：○ / ● + 标题（两行） + 时间·课程（一行）
+        : Container(
+            width: double.infinity,
+            height: double.infinity,
+            padding: const EdgeInsets.fromLTRB(8, 3, 6, 0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                GestureDetector(
+                  onTap: onToggleDone,
+                  behavior: HitTestBehavior.opaque,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: Text(block.done ? '●' : '○',
+                        style: TextStyle(
+                            fontSize: 14,
+                            height: 1.1,
+                            color: block.done
+                                ? const Color(0xFF7FA8FF)
+                                : Colors.white)),
+                  ),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(todo?.title ?? (lessonTitle ?? '计划块'),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 14,
+                              height: 1.15,
+                              fontWeight: FontWeight.w500,
+                              color: inkPrimary,
+                              decoration: block.done
+                                  ? TextDecoration.lineThrough
+                                  : null)),
+                      Text(_subText,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 11, color: Color(0xFFCBD6E8))),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+
     return Positioned(
       top: top,
       left: 3,
       right: 3,
-      height: height < 12 ? 12 : height,
+      height: h,
       // 两步模型（鸿蒙端：先选中、再长按拖）：
-      //   轻点 = 打开属性面板；**长按 400ms** 才开始拖动（拖底边 = 改时长）。
+      //   轻点 = 选中（再点 = 打开属性面板）；**长按 400ms** 才开始拖动。
       // 用 GestureDetector 的 longPress 而不是 Listener：长按会赢手势竞技场，
       // 轻滑（想滚时间轴）时长按被系统 cancel，Scroll 照常接管 —— 和鸿蒙端
       // `parallelGesture(LongPress)` 的效果一致。
-      //
-      // 双指缩放挂在**外层 Listener** 上：它只收原始指针、不参与竞技场
-      // （GestureDetector 的 scale 和 tap/longPress 抢竞技场，实测两指分开时
-      // 缩放回调根本不来），靠"按着的手指数量 + 两指间距"来算缩放比例。
       child: Listener(
         onPointerDown: (e) => onPointer(block, e.pointer, e.position, true),
         onPointerMove: (e) => onPointer(block, e.pointer, e.position, true),
@@ -1273,60 +1499,27 @@ class _Block extends StatelessWidget {
           onTap: onTap,
           onLongPressStart: (e) {
             final box = context.findRenderObject() as RenderBox?;
-            final h = box?.size.height ?? 0;
+            final bh = box?.size.height ?? 0;
             // 按在底部 18vp 内 = 拖底边改时长，否则整块平移
             onDragStart(
-                block, e.localPosition.dy > h - 18, e.globalPosition.dy);
+                block, e.localPosition.dy > bh - 18, e.globalPosition.dy);
           },
           onLongPressMoveUpdate: (e) => onDragUpdate(e.globalPosition.dy),
           onLongPressEnd: (_) => onDragEnd(),
           onLongPressCancel: onDragEnd,
-          child: GestureDetector(
+          child: Opacity(
             key: ValueKey('plan-block-${block.id}'),
-            onTap: onTap,
+            opacity: opacity,
             child: Container(
-              padding: const EdgeInsets.fromLTRB(4, 2, 3, 8),
               decoration: BoxDecoration(
-                color: color.withValues(alpha: dragging ? 0.98 : 0.92),
-                borderRadius: BorderRadius.circular(7),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: dragging ? 0.85 : 0.25),
-                  width: dragging ? 1.5 : 1,
-                ),
+                color: color,
+                borderRadius: BorderRadius.circular(6),
+                border: showBorder
+                    ? Border.all(color: const Color(0xFFF2F5FA), width: 2)
+                    : null,
               ),
-              child: Stack(
-                children: [
-                  Text(
-                    todo?.title ?? '计划块',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: inkPrimary,
-                      decoration:
-                          block.done ? TextDecoration.lineThrough : null,
-                    ),
-                  ),
-                  // 底边缩放手柄（只是视觉提示；判定是按按下位置算的）
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    height: 8,
-                    child: Center(
-                      child: Container(
-                        key: ValueKey('plan-resize-${block.id}'),
-                        width: 22,
-                        height: 3,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.55),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+              clipBehavior: Clip.hardEdge,
+              child: content,
             ),
           ),
         ),

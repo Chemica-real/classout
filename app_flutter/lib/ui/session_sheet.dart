@@ -286,19 +286,27 @@ class _SessionSheetState extends State<_SessionSheet> {
               _Label(s.isExtra ? '改这次补课的地点' : '换教室（只改这一周）'),
               Row(
                 children: [
+                  // 鸿蒙裸 TextInput（胶囊底、高 40）
                   Expanded(
-                    child: TextField(
-                      controller: _room,
-                      style: const TextStyle(fontSize: 14, color: inkPrimary),
-                      cursorColor: accentBlue,
-                      decoration: const InputDecoration(
-                        hintText: '教学楼 101',
-                        hintStyle:
-                            TextStyle(fontSize: 13, color: Color(0xFF8B97AC)),
-                        enabledBorder: UnderlineInputBorder(
-                            borderSide: BorderSide(color: Color(0x24FFFFFF))),
-                        focusedBorder: UnderlineInputBorder(
-                            borderSide: BorderSide(color: accentBlue)),
+                    child: Container(
+                      height: 40,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      alignment: Alignment.centerLeft,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: TextField(
+                        controller: _room,
+                        style: const TextStyle(fontSize: 14, color: inkPrimary),
+                        cursorColor: accentBlue,
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          border: InputBorder.none,
+                          hintText: '教学楼 101',
+                          hintStyle:
+                              TextStyle(fontSize: 14, color: Color(0xFF8B97AC)),
+                        ),
                       ),
                     ),
                   ),

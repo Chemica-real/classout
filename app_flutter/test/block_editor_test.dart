@@ -50,6 +50,9 @@ Future<Finder> _openBlock(WidgetTester tester) async {
     pos.jumpTo((pos.pixels - 60).clamp(0.0, pos.maxScrollExtent));
     await tester.pumpAndSettle();
   }
+  // 鸿蒙两步模型：第一下选中，第二下才打开属性面板
+  await tester.tap(block);
+  await tester.pumpAndSettle();
   await tester.tap(block);
   await tester.pumpAndSettle();
   return block;
@@ -182,6 +185,8 @@ void main() {
       pos.jumpTo((pos.pixels - 60).clamp(0.0, pos.maxScrollExtent));
       await tester.pumpAndSettle();
     }
+    await tester.tap(block);
+    await tester.pumpAndSettle();
     await tester.tap(block);
     await tester.pumpAndSettle();
     expect(find.textContaining('第一讲'), findsWidgets);
