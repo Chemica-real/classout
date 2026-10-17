@@ -901,7 +901,8 @@ class _Pill extends StatelessWidget {
         ),
         child: Text(text,
             style: TextStyle(
-                fontSize: height >= 36 ? 14 : 12,
+                // 鸿蒙：整宽「取消 / 保存 / 删除」是默认 Button（16），小胶囊（32 高）用 12
+                fontSize: height >= 36 ? 16 : 12,
                 fontWeight: FontWeight.w500,
                 color: foreground)),
       ),

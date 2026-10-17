@@ -622,7 +622,8 @@ class _PillAction extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
         ),
         child:
-            Text(text, style: const TextStyle(fontSize: 12, color: accentBlue)),
+            // 鸿蒙「选择日期…」这类小按钮是 fontSize 13
+            Text(text, style: const TextStyle(fontSize: 13, color: accentBlue)),
       ),
     );
   }
@@ -2405,8 +2406,9 @@ Widget _sheetButton(String text, VoidCallback onTap,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(text,
+          // 鸿蒙这些都是**默认 Button**（没写 fontSize = 16）
           style: TextStyle(
-              fontSize: 14, fontWeight: FontWeight.w500, color: fg)),
+              fontSize: 16, fontWeight: FontWeight.w500, color: fg)),
     ),
   );
 }
