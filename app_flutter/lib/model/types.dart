@@ -29,6 +29,14 @@ class Todo {
   String endAt;
   int estimateMin;
   String note;
+  String source;
+  String generationKey;
+  String submitChannel;
+  String repeatRule;
+  String photos;
+  int createdAt;
+  int confirmedAt;
+  int doneAt;
 
   Todo({
     this.id = 0,
@@ -41,6 +49,14 @@ class Todo {
     this.endAt = '',
     this.estimateMin = 60,
     this.note = '',
+    this.source = 'manual',
+    this.generationKey = '',
+    this.submitChannel = '',
+    this.repeatRule = '',
+    this.photos = '',
+    this.createdAt = 0,
+    this.confirmedAt = 0,
+    this.doneAt = 0,
   });
 
   factory Todo.fromJson(Map<String, dynamic> j) => Todo(
@@ -54,6 +70,14 @@ class Todo {
         endAt: _str(j['endAt']),
         estimateMin: _int(j['estimateMin'], 60),
         note: _str(j['note']),
+        source: _strOr(j['source'], 'manual'),
+        generationKey: _str(j['generationKey']),
+        submitChannel: _str(j['submitChannel']),
+        repeatRule: _str(j['repeatRule']),
+        photos: _str(j['photos']),
+        createdAt: _int(j['createdAt']),
+        confirmedAt: _int(j['confirmedAt']),
+        doneAt: _int(j['doneAt']),
       );
 }
 

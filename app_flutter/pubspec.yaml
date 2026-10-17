@@ -9,6 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # SQLite（iOS 自带 libsqlite3，直接 FFI 打开；Android 端以后加 sqlite3_flutter_libs）
+  sqlite3: ^2.4.0
 
 dev_dependencies:
   flutter_test:
@@ -23,3 +25,5 @@ flutter:
   assets:
     # 演示用备份：通用演示数据（高数/英语/计导/线代），不含任何个人信息
     - assets/demo_backup.json
+    # 建库用的权威 DDL（从 ../shared/schema.sql 复制而来，db_test 会校验两边一致）
+    - assets/schema.sql

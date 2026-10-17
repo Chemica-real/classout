@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:classout/data/backup.dart';
-import 'package:classout/domain/dates.dart';
 import 'package:classout/domain/timetable.dart';
 import 'package:classout/ui/timetable_page.dart';
 

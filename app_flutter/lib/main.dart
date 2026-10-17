@@ -1,13 +1,16 @@
-// ClassOUT（iOS / Android）—— 第一版：备份 JSON → 周课表。
+// ClassOUT（iOS / Android）—— 第二版：备份 JSON → 本地仓库 → 周课表。
 //
-// 现在数据来自打包进来的演示备份（assets/demo_backup.json）；
-// 下一步是「从文件导入用户的备份」+ 接本地数据库（schema 见 ../shared/schema.sql）。
+// 现在数据流：assets/demo_backup.json（兜底）→ ClassOutRepo → 课表页；
+// 页头「导入」可以把一份备份 JSON 粘进来替换全部数据。
+// 仓库实现：web 用 MemoryRepo，原生用 SqliteRepo（见 data/sqlite_repo.dart，
+// 已在本机 Linux 上用真 SQLite 验过；原生接线还需要 path_provider 取 App 目录）。
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
 import 'data/backup.dart';
-import 'ui/timetable_page.dart';
+import 'data/repo.dart';
+import 'ui/home_shell.dart';
 
 void main() => runApp(const ClassOutApp());
 
@@ -61,7 +64,7 @@ class _BootState extends State<_Boot> {
         if (!snap.hasData) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
-        return TimetablePage(bundle: snap.data!);
+        return HomeShell(repo: MemoryRepo(), fallback: snap.data!);
       },
     );
   }

@@ -15,7 +15,11 @@ import 'palette.dart';
 
 class TimetablePage extends StatefulWidget {
   final BackupBundle bundle;
-  const TimetablePage({super.key, required this.bundle});
+
+  /// 有「导入备份」入口时传进来（HomeShell 提供；截图测试可以不传）
+  final Future<void> Function()? onImport;
+
+  const TimetablePage({super.key, required this.bundle, this.onImport});
 
   @override
   State<TimetablePage> createState() => _TimetablePageState();
@@ -75,6 +79,7 @@ class _TimetablePageState extends State<TimetablePage> {
                 onPrev: () => setState(() => _week = _clampedWeek - 1),
                 onNext: () => setState(() => _week = _clampedWeek + 1),
                 onToday: _jumpToToday,
+                onImport: widget.onImport,
                 dayCount: showWeekend ? 7 : 5,
               ),
               Expanded(
@@ -113,6 +118,7 @@ class _Header extends StatelessWidget {
   final VoidCallback onPrev;
   final VoidCallback onNext;
   final VoidCallback onToday;
+  final Future<void> Function()? onImport;
   final int dayCount;
 
   const _Header({
@@ -121,6 +127,7 @@ class _Header extends StatelessWidget {
     required this.onPrev,
     required this.onNext,
     required this.onToday,
+    required this.onImport,
     required this.dayCount,
   });
 
@@ -171,6 +178,17 @@ class _Header extends StatelessWidget {
                 child: const Text('今天',
                     style: TextStyle(fontSize: 12, color: goodGreen)),
               ),
+              if (onImport != null) ...[
+                const SizedBox(width: 12),
+                GestureDetector(
+                  onTap: onImport,
+                  child: Row(children: const [
+                    Icon(Icons.move_to_inbox, size: 14, color: goodGreen),
+                    SizedBox(width: 3),
+                    Text('导入', style: TextStyle(fontSize: 12, color: goodGreen)),
+                  ]),
+                ),
+              ],
             ],
           ),
         ],
@@ -348,7 +366,7 @@ class _SessionBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final bg = courseColor(s.course.colorIndex);
     return Container(
-      padding: const EdgeInsets.fromLTRB(5, 4, 4, 4),
+      padding: const EdgeInsets.fromLTRB(3, 3, 2, 3),
       decoration: BoxDecoration(
         color: bg.withValues(alpha: 0.92),
         borderRadius: BorderRadius.circular(8),
@@ -363,12 +381,12 @@ class _SessionBlock extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                  fontSize: 12, fontWeight: FontWeight.w600, color: inkPrimary)),
+                  fontSize: 12, fontWeight: FontWeight.w600, color: inkPrimary, height: 1.15)),
           if (s.location.isNotEmpty)
             Text(s.location,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 9, color: Color(0xFFDCE4F0))),
+                style: const TextStyle(fontSize: 8.5, height: 1.15, color: Color(0xFFDCE4F0))),
         ],
       ),
     );

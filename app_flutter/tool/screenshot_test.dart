@@ -68,7 +68,7 @@ void main() {
         useMaterial3: true,
         fontFamily: family,
       ),
-      home: TimetablePage(bundle: bundle),
+      home: TimetablePage(bundle: bundle, onImport: () async {}),
     ));
     await tester.pumpAndSettle();
 
