@@ -1,0 +1,94 @@
+# Android 模拟器验收（不需要真机）
+#
+# 与 ios-sim.yml 对称：在 GitHub 的 ubuntu runner 上起一个 x86_64 Android 模拟器，
+# 装 APK、启动、再从 logcat 里断言 [ClassOUT] 自检行。
+# 能验：Android 能否构建、能否启动、**SQLite 能否打开**（这条在 Android 上最容易翻车：
+#        系统 libsqlite3 不在公开 NDK 里，必须靠 sqlite3_flutter_libs 打包进来）。
+# 不能验：真机性能、国产 ROM 的后台策略、各家通知权限差异。
+
+name: Android 模拟器验收
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'app_flutter/**'
+      - 'shared/**'
+      - '.github/workflows/android-emu.yml'
+  workflow_dispatch:
+
+jobs:
+  android-emulator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: app_flutter
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 装 Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: 依赖
+        run: flutter pub get
+
+      - name: 静态检查
+        run: flutter analyze
+
+      - name: 打包 debug APK
+        run: flutter build apk --debug
+
+      - name: 起模拟器 → 安装 → 启动 → 断言数据层 → 截图
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          working-directory: app_flutter
+          script: |
+            set -euo pipefail
+            adb install -r build/app/outputs/flutter-apk/app-debug.apk
+            adb logcat -c
+            adb shell am start -W -n com.chemica.classout/.MainActivity
+            echo "--- 等 App 起来并读完数据 ---"
+            sleep 25
+            adb logcat -d | grep -F '[ClassOUT]' | tail -20 || true
+            adb logcat -d | grep -q '\[ClassOUT\] db opened' || { echo "::error::没看到 db opened —— Android 上 SQLite 没打开（八成是 libsqlite3 没打包进来）"; exit 1; }
+            adb logcat -d | grep -q '\[ClassOUT\] loaded:' || { echo "::error::没看到 loaded: —— 数据没读进界面"; exit 1; }
+            if adb logcat -d | grep -qE '\[ClassOUT\] (boot error|load error|boot failed)'; then
+              echo "::error::App 报了数据层错误"
+              adb logcat -d | grep -E '\[ClassOUT\] (boot error|load error|boot failed)' | tail -5
+              exit 1
+            fi
+            adb exec-out screencap -p > shot-android.png
+            echo "数据层自检通过 ✓（db opened + loaded，无错误）"
+
+      - name: 抓崩溃日志（兜底）
+        if: always()
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          profile: pixel_6
+          working-directory: app_flutter
+          script: |
+            adb logcat -d | grep -iE "FATAL|AndroidRuntime|sqlite|ClassOUT" | tail -80 || true
+
+      - name: 上传截图
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-emulator-shots
+          path: app_flutter/shot-android.png
+          if-no-files-found: warn

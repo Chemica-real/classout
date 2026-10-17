@@ -18,6 +18,11 @@ dependencies:
   path_provider: ^2.1.4
   flutter_local_notifications: ^22.3.2
   timezone: ^0.11.2
+  # Android 需要它来打包 libsqlite3（系统库不在公开 NDK 里，不能指望）。
+  # ⚠️ 别升到 0.6.x：那是官方 EOL 的空壳（"no longer does anything"），
+  #    它对应的迁移目标是 sqlite3 3.x 的 native assets 方案；
+  #    我们还在 sqlite3 2.4，所以用 0.5.x 这条线。
+  sqlite3_flutter_libs: ^0.5.0
 
 dev_dependencies:
   flutter_test:
