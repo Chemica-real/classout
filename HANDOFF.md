@@ -11,8 +11,8 @@ ClassOUT 是一款**纯离线鸿蒙原生（ArkTS）「课表 + 待办 + 计划�
 自动生成待办跑通、提醒已落入系统日历。
 
 **当前状态：v1.5.0（鸿蒙端，上架准备中，**尚未提交审核**）**；**iOS/Android 版（Dart+Flutter）
-正在开发中**，已完成规则层 + 数据层 + 课表页 + 待办页 + 计划页 + 设置页（568 条测试），
-见 **§36–§39**；下一步是「原生接线（SqliteRepo 进启动流程）+ 通知提醒」。
+正在开发中**，已完成规则层 + 数据层 + 四标签页 + 原生接线（570 条测试），
+见 **§36–§40**；下一步是「通知提醒」（纯逻辑 → 平台通道）。
 ⚠️ git 历史**已重写并强推**（清掉 UDID + 真实课表，见 **§35**）—— 远端、tag、本地都是新 SHAs，
 旧 SHA 只在 `ClassOUT-history-backup-*.git` 那份镜像备份里。
 健康度：干净构建 `ERROR: 0`、警告 6 条（均为刻意保留）、离线断言 **524 项全绿**、
@@ -3844,3 +3844,40 @@ flutter build web --release && (cd build/web && python3 -m http.server 8081)  # 
    （那边配额也是 64）。注意 iOS 需要在 `Info.plist` 里加用途说明、首次请求通知权限。
 6. 还差的小东西：待办编辑已有条目 / 考试时间段 / 备注折叠 / 预计耗时；计划页的拖动与缩放
    （`dropRange`/`moveRange`/`resizeRange` 已移植并有 fixtures，只差手势）。
+
+
+## 40. 2026-10-17 iOS/Android 版：原生接线（里程碑 ④）
+
+### 40.1 做了什么
+
+| 东西 | 说明 |
+|---|---|
+| `data/repo_factory.dart` | **条件导出**：`export 'repo_factory_web.dart' if (dart.library.io) 'repo_factory_io.dart';` |
+| `data/repo_factory_io.dart` | `path_provider` 取 `getApplicationSupportDirectory()` → `<dir>/classout.db`；schema 从 `assets/schema.sql` 读 |
+| `data/repo_factory_web.dart` | `MemoryRepo()`（浏览器里没有 FFI/SQLite） |
+| `main.dart` | 启动时 `await openRepo()` → 交给 `HomeShell`；空库仍用演示备份兜底 |
+| `pubspec.yaml` | 加 `path_provider`（只在 io 端 import，web 端不碰） |
+| 测试 | **570 条**。新增两条：① 文件库：建库→导入→关→重开→数据还在（证明真的落盘、且不会重复建表）；② **工厂测试**：把 `path_provider` 的 MethodChannel 与 assets 通道 mock 成临时目录，跑 `openRepo()` → 断言拿到 `SqliteRepo`、`classout.db` 真的存在、空库返回 null、导入后能读回、kv 读写正常 |
+
+验证：`flutter test` 570 绿；`flutter build web --release` 通过（web 端解析到 MemoryRepo）；
+`flutter build apk` **只差 Android SDK**（报 `No Android SDK found`，不是代码问题）。
+
+### 40.2 这件事的意义 / 边界
+
+- **启动链路现在是真的**：iOS/Android 上会打开一个持久化的 `classout.db`，不再是内存。
+- **仍然没验的**：真机上的 `path_provider` 是否给对目录（iOS 是
+  `Library/Application Support`）、`sqlite3` 在 iOS 上能否用系统
+  `libsqlite3.dylib` 打开（理论上可以，但**必须在 Mac/真机上验一次**）。
+  所以 §39.3 里的第 4 条只算"代码接上了、逻辑验过了"，**真机验证仍待做**。
+- Android 端还要 `sqlite3_flutter_libs`（Android 的系统 libsqlite3 不在公开 NDK 里），
+  做 Android 时再补。
+
+### 40.3 下一步（里程碑 ⑤ 通知提醒）
+
+建议顺序（先纯逻辑、后平台通道，这样能在这台机器上验掉大半）：
+1. **纯 Dart 的"提醒计划"**：把 `Todo`/`CourseSession` 变成 `(触发时刻, 标题, 正文)` 列表，
+   带 **64 条预算截断**（iOS `UNUserNotificationCenter` 的待发上限；鸿蒙端配额也是 64，
+   思路可直接照搬 `ReminderScheduler`）。这部分可以进 fixtures、可以测试。
+2. **平台通道**：`flutter_local_notifications`（iOS 走 `UNUserNotificationCenter`，
+   Android 走 AlarmManager/通知）。需要在真机验：权限弹窗、免打扰、锁屏显示。
+3. iOS 记得在 `Info.plist` 里写用途说明；首次进入时请求权限，被拒要有兜底文案。

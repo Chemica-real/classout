@@ -1,15 +1,17 @@
 // ClassOUT（iOS / Android）—— 第二版：备份 JSON → 本地仓库 → 周课表。
 //
-// 现在数据流：assets/demo_backup.json（兜底）→ ClassOutRepo → 课表页；
+// 数据流：assets/demo_backup.json（空库时兜底）→ ClassOutRepo → 各页面；
 // 页头「导入」可以把一份备份 JSON 粘进来替换全部数据。
-// 仓库实现：web 用 MemoryRepo，原生用 SqliteRepo（见 data/sqlite_repo.dart，
-// 已在本机 Linux 上用真 SQLite 验过；原生接线还需要 path_provider 取 App 目录）。
+// 仓库实现按平台自动选（data/repo_factory.dart）：
+//   web   → MemoryRepo（刷新即回到演示数据）
+//   原生  → SqliteRepo（App 数据目录下的 classout.db，schema 来自 assets/schema.sql）
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
 import 'data/backup.dart';
 import 'data/repo.dart';
+import 'data/repo_factory.dart';
 import 'ui/home_shell.dart';
 
 void main() => runApp(const ClassOutApp());
@@ -36,19 +38,21 @@ class _Boot extends StatefulWidget {
 }
 
 class _BootState extends State<_Boot> {
-  Future<BackupBundle>? _future;
+  Future<(ClassOutRepo, BackupBundle)>? _future;
 
   @override
   void initState() {
     super.initState();
-    _future = rootBundle
-        .loadString('assets/demo_backup.json')
-        .then(BackupBundle.decode);
+    _future = () async {
+      final repo = await openRepo();
+      final demo = BackupBundle.decode(await rootBundle.loadString('assets/demo_backup.json'));
+      return (repo, demo);
+    }();
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<BackupBundle>(
+    return FutureBuilder<(ClassOutRepo, BackupBundle)>(
       future: _future,
       builder: (context, snap) {
         if (snap.hasError) {
@@ -64,7 +68,8 @@ class _BootState extends State<_Boot> {
         if (!snap.hasData) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
-        return HomeShell(repo: MemoryRepo(), fallback: snap.data!);
+        final (repo, demo) = snap.data!;
+        return HomeShell(repo: repo, fallback: demo);
       },
     );
   }

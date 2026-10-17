@@ -11,6 +11,8 @@ dependencies:
     sdk: flutter
   # SQLite（iOS 自带 libsqlite3，直接 FFI 打开；Android 端以后加 sqlite3_flutter_libs）
   sqlite3: ^2.4.0
+  # 只有 io 端用：取 App 数据目录（web 端不走这条路）
+  path_provider: ^2.1.4
 
 dev_dependencies:
   flutter_test:

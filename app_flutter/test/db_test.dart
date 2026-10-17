@@ -192,6 +192,29 @@ void main() {
     expect(await repo.getKv('motto'), '离线课表');
   });
 
+  test('文件库：建库→导入→关掉→重新打开还能读回来', () async {
+    final dir = Directory.systemTemp.createTempSync('classout_db_');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final path = '${dir.path}/classout.db';
+    final demo = _demo();
+
+    final repo = SqliteRepo.withSchema(path: path, schemaSql: _schemaText());
+    await repo.replaceAll(demo);
+    await repo.close();
+
+    expect(File(path).existsSync(), isTrue, reason: '应该真的落盘了');
+    final again = SqliteRepo.withSchema(path: path, schemaSql: _schemaText());
+    addTearDown(again.close);
+    final loaded = await again.load();
+    expect(loaded, isNotNull);
+    expect(loaded!.courses.length, demo.courses.length);
+    for (final week in [1, 2, 5]) {
+      expect(_weekFingerprint(loaded, week), _weekFingerprint(demo, week));
+    }
+    // 再次打开不能重复建表/重建数据
+    expect(loaded.rules.length, demo.rules.length);
+  });
+
   test('空库返回 null', () async {
     final repo = SqliteRepo.withSchema(schemaSql: _schemaText());
     addTearDown(repo.close);
