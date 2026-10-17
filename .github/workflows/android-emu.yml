@@ -17,6 +17,9 @@ on:
       - '.github/workflows/android-emu.yml'
   workflow_dispatch:
 
+permissions:
+  contents: write   # 失败时要把日志推到 ci-logs 分支
+
 jobs:
   android-emulator:
     runs-on: ubuntu-latest
@@ -46,7 +49,9 @@ jobs:
         run: flutter analyze
 
       - name: 打包 debug APK
-        run: flutter build apk --debug
+        run: |
+          set -o pipefail
+          flutter build apk --debug 2>&1 | tee build-apk.log
 
       - name: 起模拟器 → 安装 → 启动 → 断言数据层 → 截图
         uses: reactivecircus/android-emulator-runner@v2
@@ -84,6 +89,28 @@ jobs:
           working-directory: app_flutter
           script: |
             adb logcat -d | grep -iE "FATAL|AndroidRuntime|sqlite|ClassOUT" | tail -80 || true
+
+
+      - name: 失败时把日志推到 ci-logs 分支（没有 token 也能排查）
+        if: failure()
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/cilog
+          cp app_flutter/build-*.log /tmp/cilog/ 2>/dev/null || true
+          cp app_flutter/app.log /tmp/cilog/ 2>/dev/null || true
+          (cd app_flutter && flutter --version > /tmp/cilog/flutter-version.txt 2>&1 || true)
+          git config user.name "ci-logs"
+          git config user.email "ci-logs@users.noreply.github.com"
+          git checkout --orphan ci-logs-tmp >/dev/null 2>&1 || true
+          git rm -rf --cached . >/dev/null 2>&1 || true
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} + 2>/dev/null || true
+          cp /tmp/cilog/* . 2>/dev/null || true
+          git add -A
+          git commit -m "CI 失败日志 run ${{ github.run_number }} (${{ github.workflow }})" >/dev/null
+          git push -f origin HEAD:ci-logs
 
       - name: 上传截图
         if: always()

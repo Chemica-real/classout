@@ -21,6 +21,9 @@ on:
       - '.github/workflows/ios-sim.yml'
   workflow_dispatch:
 
+permissions:
+  contents: write   # 失败时要把日志推到 ci-logs 分支
+
 jobs:
   ios-simulator:
     runs-on: macos-14
@@ -47,7 +50,9 @@ jobs:
         run: flutter test
 
       - name: 编译 iOS 模拟器版（不需要签名）
-        run: flutter build ios --simulator --no-codesign --debug
+        run: |
+          set -o pipefail
+          flutter build ios --simulator --no-codesign --debug 2>&1 | tee build-ios.log
 
       - name: 启动模拟器、安装、运行、截图
         run: |
@@ -118,6 +123,28 @@ jobs:
           UDID=$(xcrun simctl list devices available | grep -E "iPhone" | head -1 | sed -E 's/.*\(([0-9A-Fa-f-]{36})\).*/\1/')
           xcrun simctl spawn "$UDID" log show --last 3m --predicate 'process == "Runner"' 2>/dev/null \
             | grep -iE "error|exception|fatal|sqlite" | tail -60 || true
+
+
+      - name: 失败时把日志推到 ci-logs 分支（没有 token 也能排查）
+        if: failure()
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/cilog
+          cp app_flutter/build-*.log /tmp/cilog/ 2>/dev/null || true
+          cp app_flutter/app.log /tmp/cilog/ 2>/dev/null || true
+          (cd app_flutter && flutter --version > /tmp/cilog/flutter-version.txt 2>&1 || true)
+          git config user.name "ci-logs"
+          git config user.email "ci-logs@users.noreply.github.com"
+          git checkout --orphan ci-logs-tmp >/dev/null 2>&1 || true
+          git rm -rf --cached . >/dev/null 2>&1 || true
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} + 2>/dev/null || true
+          cp /tmp/cilog/* . 2>/dev/null || true
+          git add -A
+          git commit -m "CI 失败日志 run ${{ github.run_number }} (${{ github.workflow }})" >/dev/null
+          git push -f origin HEAD:ci-logs
 
       - name: 上传截图
         if: always()
