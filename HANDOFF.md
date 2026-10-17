@@ -11,8 +11,9 @@ ClassOUT 是一款**纯离线鸿蒙原生（ArkTS）「课表 + 待办 + 计划�
 自动生成待办跑通、提醒已落入系统日历。
 
 **当前状态：v1.5.0（鸿蒙端，上架准备中，**尚未提交审核**）**；**iOS/Android 版（Dart+Flutter）
-正在开发中**，已完成规则层 + 数据层 + 四标签页 + 原生接线（570 条测试），
-见 **§36–§40**；下一步是「通知提醒」（纯逻辑 → 平台通道）。
+正在开发中**，已完成规则层 + 数据层 + 四标签页 + 原生接线 + 提醒排期纯逻辑（**548 条测试**），
+见 **§36–§41**；下一步是「通知的平台通道」（需真机/CI）。
+⚠️ **§41.2 发现鸿蒙端一个待修的 bug**：提醒里仍给「考试」推"即将截止"。
 ⚠️ git 历史**已重写并强推**（清掉 UDID + 真实课表，见 **§35**）—— 远端、tag、本地都是新 SHAs，
 旧 SHA 只在 `ClassOUT-history-backup-*.git` 那份镜像备份里。
 健康度：干净构建 `ERROR: 0`、警告 6 条（均为刻意保留）、离线断言 **524 项全绿**、
@@ -3881,3 +3882,54 @@ flutter build web --release && (cd build/web && python3 -m http.server 8081)  # 
 2. **平台通道**：`flutter_local_notifications`（iOS 走 `UNUserNotificationCenter`，
    Android 走 AlarmManager/通知）。需要在真机验：权限弹窗、免打扰、锁屏显示。
 3. iOS 记得在 `Info.plist` 里写用途说明；首次进入时请求权限，被拒要有兜底文案。
+
+
+## 41. 2026-10-17 iOS/Android 版：提醒排期（里程碑 ⑤ 的纯逻辑部分）
+
+### 41.1 做了什么
+
+| 东西 | 说明 |
+|---|---|
+| `domain/briefing.dart` | 每日简报正文（移植自 `domain/Briefing.ets`），**进 fixtures 5 条** |
+| `domain/reminders.dart` | `buildReminderCandidates()` + `planReminders()`：上课提前量、每日简报、作业截止（前一天 20:00，已过则退化为截止前 2h）、计划块到点；按时间升序 + **预算截断**（`reminderBudget = 60`，与 iOS/鸿蒙的 64 条上限对齐并留余量） |
+| 测试 | `test/reminders_test.dart` 10 条：简报数量（今天的 07:30 已过就不排）、上课提醒正好是开课前 N 分钟、**考试不进「即将截止」**、只排 now 之后、时间升序、预算截断保留最早 N 条、关简报、提前量可配、计划块只排近 3 天未完成、`ddlDateTime` 解析 |
+| 总数 | suite 533 条 fixtures + … = **548 条测试全绿** |
+
+### 41.2 ★ 发现鸿蒙端一个真 bug（提醒里的「考试即将截止」）
+
+`domain/ReminderScheduler.ets` 的 ddl 提醒是这样的：
+
+```ts
+for (const t of todos) {              // ← 没有排除 category === 'exam'
+  const due = ddlDate(t.ddl);         //    而考试的 ddl 存的是"开始时刻"
+  ...
+  title: `${t.title} 即将截止`,        // ← 于是会推"线性代数 期中考试 即将截止"
+```
+
+而用户的规则是「**考试无需显示截止**」（2026-10-16），当时改了三处 UI：
+计划网格的 ⚑ 标记、计划块属性面板、每日简报——**唯独漏了提醒这一处**。
+所以鸿蒙端现在仍会给考试推"XX 即将截止"（截止时刻其实是开考时刻，语义错）。
+
+- Dart 端：`reminders.dart` 里**有意跳过考试**，并在注释里写明与鸿蒙端不一致的原因。
+- 鸿蒙端：**待修**（一行 `if (t.category === TodoCategory.Exam) continue;`），
+  改完要 `./build.sh` + 装机验证。已告知用户，等确认。
+- 考试的提醒改为交给它的**计划块**（`syncExamBlock` 会给考试建块，到点推送
+  "该做「XX」了"），语义正确。
+
+### 41.3 为什么这一段没有 fixtures
+
+鸿蒙端 `syncReminders()` 把「查库 + 算 + 调 `reminderAgentManager` + 失败回落系统日历」
+写在一个函数里，**不是纯函数**，`tools/fixtures/gen.js` 调不到。
+
+- 现在：Dart 端把"算"抽成纯函数，用 10 条手写断言钉住（上面那些行为）。
+- 建议（下次动鸿蒙端时）：在 `ReminderScheduler.ets` 里也抽出
+  `buildCandidates(now, settings, courses, rules, times, overrides, todos, blocks)`
+  → 就能用 `gen.js` 生成 fixtures 与 Dart 端逐条对拍。**这是目前两端规则层唯一没对齐的模块。**
+
+### 41.4 下一步（⑤ 的平台通道部分）
+
+1. 接 `flutter_local_notifications`（iOS 走 `UNUserNotificationCenter`，Android 走
+   AlarmManager/通知渠道），把 `planReminders()` 的结果逐条 `zonedSchedule()` 出去；
+   换时区/改了数据就整份重排（撤销旧的再排新的）。
+2. iOS：`Info.plist` 加用途说明；首次进设置页/启动时请求权限；被拒要有兜底文案。
+3. 这些**必须在真机/CI 上验**（权限弹窗、锁屏、免打扰），本机只能保证编译与纯逻辑。

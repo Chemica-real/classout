@@ -253,6 +253,38 @@ for (const se of [[1, 2], [5, 6], [12, 12], [9, 10]]) {
   }, 'timetable');
 }
 
+// ================= Briefing（每日简报正文）=================
+const BR = require(path.join(DIST, 'Briefing.js'));
+{
+  const mkSess = (shortName, startMin, location) => ({
+    course: { id: 1, name: shortName, shortName, teacher: '', location: '', colorIndex: 0,
+              autoTodoEnabled: 1, isVirtual: 0, note: '', semesterId: 1 },
+    rule: { id: 1, courseId: 1, weekday: 1, startSection: 1, endSection: 2, weeksMask: '', location: '', isQuiz: 0 },
+    date: '2026-10-18', originDate: '2026-10-18', weekday: 7,
+    startSection: 1, endSection: 2, startMin, endMin: startMin + 50,
+    location, isQuiz: false, fromOverride: false, isExtra: false
+  });
+  const todoOf = (id, title, category, ddl) =>
+    ({ id, title, courseId: 1, category, priority: 1, ddl, endAt: '', estimateMin: 60,
+       status: 'active', source: 'manual', generationKey: '', note: '', submitChannel: '',
+       repeatRule: '', photos: '', createdAt: 0, confirmedAt: 0, doneAt: 0 });
+  const scenarios = [
+    { sessions: [], todos: [] },
+    { sessions: [mkSess('课甲', 480, 'A101')], todos: [] },
+    { sessions: [mkSess('课甲', 480, 'A101'), mkSess('课乙', 600, '')], todos: [] },
+    { sessions: [mkSess('课甲', 480, 'A101')],
+      todos: [todoOf(1, '作业甲', 'homework', '2026-10-18 23:59'),
+              todoOf(2, '考试甲', 'exam', '2026-10-18 09:00')] },
+    { sessions: [],
+      todos: [todoOf(3, '作业乙', 'self', '2026-10-18'),
+              todoOf(4, '作业丙', 'homework', '2026-10-19 10:00')] },
+  ];
+  for (const sc of scenarios) {
+    add('buildBriefing', ['2026-10-18', sc.sessions, sc.todos],
+      BR.buildBriefing('2026-10-18', sc.sessions, sc.todos), 'briefing');
+  }
+}
+
 // ================= DateUtil（纯日期文案）=================
 const iso = (d) => DU.formatDate(d);
 for (const t of [['2026-10-18', '2026-10-16'], ['2026-10-17', '2026-10-16'],
@@ -306,7 +338,8 @@ const SOURCE = {
   validate: 'entry/src/main/ets/domain/Validate.ets',
   timetable: 'entry/src/main/ets/domain/Timetable.ets',
   dates: 'entry/src/main/ets/util/DateUtil.ets',
-  categories: 'entry/src/main/ets/domain/Categories.ets'
+  categories: 'entry/src/main/ets/domain/Categories.ets',
+  briefing: 'entry/src/main/ets/domain/Briefing.ets'
 };
 fs.mkdirSync(OUT, { recursive: true });
 for (const mod of Object.keys(SOURCE)) {

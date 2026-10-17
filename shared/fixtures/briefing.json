@@ -1,0 +1,277 @@
+{
+ "module": "briefing",
+ "note": "由 tools/fixtures/gen.js 从鸿蒙端实现生成（等价性基准，不是正确性证明）；iOS/Android 必须逐条一致。",
+ "generatedFrom": "entry/src/main/ets/domain/Briefing.ets",
+ "cases": [
+  {
+   "fn": "buildBriefing",
+   "args": [
+    "2026-10-18",
+    [],
+    []
+   ],
+   "expect": "今天没有课。"
+  },
+  {
+   "fn": "buildBriefing",
+   "args": [
+    "2026-10-18",
+    [
+     {
+      "course": {
+       "id": 1,
+       "name": "课甲",
+       "shortName": "课甲",
+       "teacher": "",
+       "location": "",
+       "colorIndex": 0,
+       "autoTodoEnabled": 1,
+       "isVirtual": 0,
+       "note": "",
+       "semesterId": 1
+      },
+      "rule": {
+       "id": 1,
+       "courseId": 1,
+       "weekday": 1,
+       "startSection": 1,
+       "endSection": 2,
+       "weeksMask": "",
+       "location": "",
+       "isQuiz": 0
+      },
+      "date": "2026-10-18",
+      "originDate": "2026-10-18",
+      "weekday": 7,
+      "startSection": 1,
+      "endSection": 2,
+      "startMin": 480,
+      "endMin": 530,
+      "location": "A101",
+      "isQuiz": false,
+      "fromOverride": false,
+      "isExtra": false
+     }
+    ],
+    []
+   ],
+   "expect": "1 节课：08:00 课甲 A101"
+  },
+  {
+   "fn": "buildBriefing",
+   "args": [
+    "2026-10-18",
+    [
+     {
+      "course": {
+       "id": 1,
+       "name": "课甲",
+       "shortName": "课甲",
+       "teacher": "",
+       "location": "",
+       "colorIndex": 0,
+       "autoTodoEnabled": 1,
+       "isVirtual": 0,
+       "note": "",
+       "semesterId": 1
+      },
+      "rule": {
+       "id": 1,
+       "courseId": 1,
+       "weekday": 1,
+       "startSection": 1,
+       "endSection": 2,
+       "weeksMask": "",
+       "location": "",
+       "isQuiz": 0
+      },
+      "date": "2026-10-18",
+      "originDate": "2026-10-18",
+      "weekday": 7,
+      "startSection": 1,
+      "endSection": 2,
+      "startMin": 480,
+      "endMin": 530,
+      "location": "A101",
+      "isQuiz": false,
+      "fromOverride": false,
+      "isExtra": false
+     },
+     {
+      "course": {
+       "id": 1,
+       "name": "课乙",
+       "shortName": "课乙",
+       "teacher": "",
+       "location": "",
+       "colorIndex": 0,
+       "autoTodoEnabled": 1,
+       "isVirtual": 0,
+       "note": "",
+       "semesterId": 1
+      },
+      "rule": {
+       "id": 1,
+       "courseId": 1,
+       "weekday": 1,
+       "startSection": 1,
+       "endSection": 2,
+       "weeksMask": "",
+       "location": "",
+       "isQuiz": 0
+      },
+      "date": "2026-10-18",
+      "originDate": "2026-10-18",
+      "weekday": 7,
+      "startSection": 1,
+      "endSection": 2,
+      "startMin": 600,
+      "endMin": 650,
+      "location": "",
+      "isQuiz": false,
+      "fromOverride": false,
+      "isExtra": false
+     }
+    ],
+    []
+   ],
+   "expect": "2 节课：08:00 课甲 A101；10:00 课乙"
+  },
+  {
+   "fn": "buildBriefing",
+   "args": [
+    "2026-10-18",
+    [
+     {
+      "course": {
+       "id": 1,
+       "name": "课甲",
+       "shortName": "课甲",
+       "teacher": "",
+       "location": "",
+       "colorIndex": 0,
+       "autoTodoEnabled": 1,
+       "isVirtual": 0,
+       "note": "",
+       "semesterId": 1
+      },
+      "rule": {
+       "id": 1,
+       "courseId": 1,
+       "weekday": 1,
+       "startSection": 1,
+       "endSection": 2,
+       "weeksMask": "",
+       "location": "",
+       "isQuiz": 0
+      },
+      "date": "2026-10-18",
+      "originDate": "2026-10-18",
+      "weekday": 7,
+      "startSection": 1,
+      "endSection": 2,
+      "startMin": 480,
+      "endMin": 530,
+      "location": "A101",
+      "isQuiz": false,
+      "fromOverride": false,
+      "isExtra": false
+     }
+    ],
+    [
+     {
+      "id": 1,
+      "title": "作业甲",
+      "courseId": 1,
+      "category": "homework",
+      "priority": 1,
+      "ddl": "2026-10-18 23:59",
+      "endAt": "",
+      "estimateMin": 60,
+      "status": "active",
+      "source": "manual",
+      "generationKey": "",
+      "note": "",
+      "submitChannel": "",
+      "repeatRule": "",
+      "photos": "",
+      "createdAt": 0,
+      "confirmedAt": 0,
+      "doneAt": 0
+     },
+     {
+      "id": 2,
+      "title": "考试甲",
+      "courseId": 1,
+      "category": "exam",
+      "priority": 1,
+      "ddl": "2026-10-18 09:00",
+      "endAt": "",
+      "estimateMin": 60,
+      "status": "active",
+      "source": "manual",
+      "generationKey": "",
+      "note": "",
+      "submitChannel": "",
+      "repeatRule": "",
+      "photos": "",
+      "createdAt": 0,
+      "confirmedAt": 0,
+      "doneAt": 0
+     }
+    ]
+   ],
+   "expect": "1 节课：08:00 课甲 A101 ｜ 今天截止：作业甲 23:59"
+  },
+  {
+   "fn": "buildBriefing",
+   "args": [
+    "2026-10-18",
+    [],
+    [
+     {
+      "id": 3,
+      "title": "作业乙",
+      "courseId": 1,
+      "category": "self",
+      "priority": 1,
+      "ddl": "2026-10-18",
+      "endAt": "",
+      "estimateMin": 60,
+      "status": "active",
+      "source": "manual",
+      "generationKey": "",
+      "note": "",
+      "submitChannel": "",
+      "repeatRule": "",
+      "photos": "",
+      "createdAt": 0,
+      "confirmedAt": 0,
+      "doneAt": 0
+     },
+     {
+      "id": 4,
+      "title": "作业丙",
+      "courseId": 1,
+      "category": "homework",
+      "priority": 1,
+      "ddl": "2026-10-19 10:00",
+      "endAt": "",
+      "estimateMin": 60,
+      "status": "active",
+      "source": "manual",
+      "generationKey": "",
+      "note": "",
+      "submitChannel": "",
+      "repeatRule": "",
+      "photos": "",
+      "createdAt": 0,
+      "confirmedAt": 0,
+      "doneAt": 0
+     }
+    ]
+   ],
+   "expect": "今天没有课。 ｜ 今天截止：作业乙 "
+  }
+ ]
+}

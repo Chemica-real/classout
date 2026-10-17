@@ -10,6 +10,7 @@ import 'dart:io';
 import 'package:test/test.dart';
 
 import 'package:classout/domain/plan_math.dart';
+import 'package:classout/domain/briefing.dart';
 import 'package:classout/domain/categories.dart';
 import 'package:classout/domain/dates.dart';
 import 'package:classout/domain/sync_cadence.dart';
@@ -40,6 +41,27 @@ List<Map<String, dynamic>> _allCases() {
     }
   }
   return out;
+}
+
+CourseSession _sessionFromJson(Object? raw) {
+  final j = raw as Map<String, dynamic>;
+  final c = Course.fromJson(j['course'] as Map<String, dynamic>);
+  final r = SessionRule.fromJson(j['rule'] as Map<String, dynamic>);
+  return CourseSession(
+    course: c,
+    rule: r,
+    date: j['date'] as String? ?? '',
+    originDate: j['originDate'] as String? ?? '',
+    weekday: _n(j['weekday']),
+    startSection: _n(j['startSection']),
+    endSection: _n(j['endSection']),
+    startMin: _n(j['startMin']),
+    endMin: _n(j['endMin']),
+    location: j['location'] as String? ?? '',
+    isQuiz: j['isQuiz'] == true,
+    fromOverride: j['fromOverride'] == true,
+    isExtra: j['isExtra'] == true,
+  );
 }
 
 List<Todo> _todos(Object? raw) =>
@@ -195,6 +217,13 @@ Object? _call(String fn, List<dynamic> a) {
       );
     case 'sortBlocksByTime':
       return sortBlocksByTime(_blocks(a[0])).map((b) => b.id).toList();
+
+    case 'buildBriefing':
+      return buildBriefing(
+        a[0] as String,
+        (a[1] as List).map(_sessionFromJson).toList(),
+        _todos(a[2]),
+      );
 
     default:
       throw StateError('fixture 里有本端还没实现的函数：$fn');
