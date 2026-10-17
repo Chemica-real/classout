@@ -410,7 +410,11 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       barrierLabel: '关闭演练提示',
       barrierColor: const Color(0x8C0C121C), // rgba(12,18,28,0.55)
       transitionDuration: const Duration(milliseconds: 200),
-      pageBuilder: (ctx, _, __) => Center(
+      // Overlay 里的内容不在 Material 之下 → 拿不到主题字体（golden 会变方块字），
+      // 所以自己包一层透明 Material（引导条/截止浮层同一个坑）
+      pageBuilder: (ctx, _, __) => Material(
+        type: MaterialType.transparency,
+        child: Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Glass(
@@ -453,6 +457,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             ),
           ),
         ),
+      ),
       ),
     );
     await widget.repo.setKv(guidePromptedKey, '1');

@@ -16,17 +16,20 @@ import 'package:flutter/services.dart' show FontLoader;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:classout/data/backup.dart';
+import 'package:classout/data/repo.dart';
 import 'package:classout/ui/app_frame.dart';
 import 'package:classout/ui/boot_screen.dart';
 import 'package:classout/ui/course_header.dart';
 import 'package:classout/ui/course_manager.dart';
 import 'package:classout/ui/guide_bar.dart';
+import 'package:classout/ui/home_shell.dart';
 import 'package:classout/domain/timetable.dart';
 import 'package:classout/ui/session_sheet.dart';
 import 'package:classout/ui/block_editor.dart';
 import 'package:classout/ui/privacy_page.dart';
 import 'package:classout/domain/plan_math.dart';
 import 'package:classout/domain/demo_sandbox.dart';
+import 'package:classout/domain/guide.dart';
 import 'package:classout/ui/theme.dart' as theme;
 import 'package:classout/ui/timetable_page.dart';
 import 'package:classout/data/settings.dart';
@@ -606,6 +609,23 @@ void main() {
         bundle: demo, onChanged: (_) {}));
     await tester.pumpAndSettle();
     await _capture(tester, 'course_manager');
+  });
+
+  testWidgets('首次启动询问卡截图（要不要走一遍演练）', (tester) async {
+    final family = await _loadFonts();
+    guidePromptEnabled = true;
+    addTearDown(() => guidePromptEnabled = true);
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+          brightness: Brightness.dark, useMaterial3: true, fontFamily: family),
+      home: HomeShell(repo: MemoryRepo(demo)),
+    ));
+    await tester.pumpAndSettle();
+    await _capture(tester, 'guide_prompt');
   });
 
   testWidgets('启动加载页截图', (tester) async {
