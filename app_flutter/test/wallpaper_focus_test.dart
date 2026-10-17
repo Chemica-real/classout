@@ -9,6 +9,8 @@ import 'package:classout/data/backup.dart';
 import 'package:classout/data/settings.dart';
 import 'package:classout/ui/settings_page.dart';
 import 'package:classout/domain/wallpaper.dart';
+import 'package:classout/data/wallpaper.dart';
+import 'package:classout/ui/wallpaper_view.dart';
 
 BackupBundle _demo() =>
     BackupBundle.decode(File('assets/demo_backup.json').readAsStringSync());
@@ -68,5 +70,54 @@ void main() {
     await tester.tap(center);
     await tester.pumpAndSettle();
     expect(settings.wallpaperFocus, '0,0,1');
+  });
+
+  _wallpaperImageTests();
+}
+
+// 1x1 透明 PNG（够用：cover 只看比值，1:1 图填 360x800 → 800x800）
+final List<int> _png1x1 = <int>[
+  0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
+  0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+  0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00,
+  0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+  0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
+  0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+];
+
+Future<void> _pumpWallpaper(WidgetTester tester, String focus, String path) async {
+  // 取景框就是屏幕：360x800（测试默认 800x600 会让 cover 算出别的尺寸）
+  tester.view.physicalSize = const Size(1080, 2400);
+  tester.view.devicePixelRatio = 3.0;
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(MaterialApp(
+    home: Scaffold(
+      body: Stack(children: [
+        Positioned.fill(child: WallpaperImage(path: path, focus: focus)),
+      ]),
+    ),
+  ));
+  await tester.pumpAndSettle();
+}
+
+void _wallpaperImageTests() {
+  testWidgets('WallpaperImage：按 geometry 摆图（1:1 图 → 800x800，fx=1 对齐左缘）',
+      (tester) async {
+    final tmp = File('${Directory.systemTemp.path}/wp_geom.png')
+      ..writeAsBytesSync(_png1x1);
+    addTearDown(() => tmp.deleteSync());
+
+    // 先把图片尺寸写进缓存（真机上是异步解码；FakeAsync 下要先在 runAsync 里跑一次）
+    await tester.runAsync(() => wallpaperImageSize(tmp.path));
+
+    await _pumpWallpaper(tester, '0,0,1', tmp.path);
+    var rect = tester.getRect(find.byType(Image));
+    expect(rect.width, closeTo(800, 0.5));
+    expect(rect.height, closeTo(800, 0.5));
+    expect(rect.left, closeTo(-220, 0.5)); // 居中：(360-800)/2
+
+    await _pumpWallpaper(tester, '1,0,1', tmp.path);
+    rect = tester.getRect(find.byType(Image));
+    expect(rect.left, closeTo(0, 0.5)); // fx=1 → 顶到右缘（左移 220）
   });
 }

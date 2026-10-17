@@ -12,7 +12,7 @@ ClassOUT 是一款**纯离线**的「课表 + 待办 + 计划」三合一 App，
 |---|---|---|
 | 版本 | v1.5.1（上架准备中，未提审） | 0.2.0（Android 已装真机 OPPO A97） |
 | 页面 | 课表 / 待办 / 计划 / 设置 + 启动加载页 + 悬浮浮窗 | **同样四页 + 启动页 + 浮窗（§52–§68 逐页复刻）** |
-| 测试 | 离线断言 524 项（`tools/domain-check`） | **1301 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
+| 测试 | 离线断言 524 项（`tools/domain-check`） | **1302 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
 | 差异基准 | 本目录 `docs/manual/01..09.jpg`（真机截图） | `app_flutter/tool/goldens/*.png` 对照上面九张 + `shared/fixtures/`（1115 条规则用例） |
 
 **安卓版与鸿蒙版的 1:1 复刻已经完成**：主题 token 抄自 ArkTS（§52）、六个页面重做、
@@ -6831,3 +6831,7 @@ golden 总数 19 → **23**；`flutter test` **1293 passed**。
 → 保存（提示「背景位置已保存」+ 预览同步）→ 重新进入停在 **2.15×** 的保存构图 → 居中 + 保存还原。
 测试 +6（`test/wallpaper_geometry_test.dart` 与鸿蒙断言同值；`wallpaper_focus_test` 改成 domain API）。
 `flutter test` **1301 passed**。
+
+补充（§116.26 的回归测试）：`WallpaperImage` 现在有渲染级断言 —— 1:1 图放进 360x800 的取景框后
+`Image` 的实际矩形必须是 **800×800、left = −220**（居中），`fx=1` 时 **left = 0**。
+老实现（先平移再缩放、按屏宽乘 0.4）在这条断言下会直接失败，所以这个模型以后不会再被改回去。
