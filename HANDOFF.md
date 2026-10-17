@@ -12,7 +12,7 @@ ClassOUT 是一款**纯离线**的「课表 + 待办 + 计划」三合一 App，
 |---|---|---|
 | 版本 | v1.5.1（上架准备中，未提审） | 0.2.0（Android 已装真机 OPPO A97） |
 | 页面 | 课表 / 待办 / 计划 / 设置 + 启动加载页 + 悬浮浮窗 | **同样四页 + 启动页 + 浮窗（§52–§68 逐页复刻）** |
-| 测试 | 离线断言 524 项（`tools/domain-check`） | **907 条 `flutter test`**（含 775 条三端 fixture 逐条对拍） |
+| 测试 | 离线断言 524 项（`tools/domain-check`） | **923 条 `flutter test`**（含 775 条三端 fixture 逐条对拍） |
 | 差异基准 | 本目录 `docs/manual/01..09.jpg`（真机截图） | `app_flutter/tool/goldens/*.png` 对照上面九张 + `shared/fixtures/`（775 条规则用例） |
 
 **安卓版与鸿蒙版的 1:1 复刻已经完成**：主题 token 抄自 ArkTS（§52）、六个页面重做、
@@ -5621,21 +5621,23 @@ boolean → 0 → 课程被当成"关了自动生成"。
 - 备份卡说明改成鸿蒙口径；`import_test` / `import_file_test` 的入口导航改成
   课表 → 管理课程 → 备份与恢复 → 导入备份。
 
-### 86.8 新移植的纯函数（缺 fixtures，下一轮补）
+### 86.8 新移植的纯函数（已补 fixtures）
 
 `domain/Validate.ets` 里的两个函数原来没移植（设置页也用不到）：
 
 - `validateRestWindow(w)`：星期 0..7、时间在 00:00–24:00、结束晚于开始；
 - `normalizeRestEnd(picked, start)`：系统滚轮选不到 24:00，结束选 00:00 且开始非 0 → 按"到午夜"。
 
-Dart 端已按 ArkTS 同值实现（`lib/domain/validate.dart`），并加了 `weekdayCn`（`周一…周日` 的那个字）。
-⚠️ 它们**还没有进 `shared/fixtures`**（`tools/fixtures/gen.js` 里还没有这两条），下轮补 fixtures
-把"只抄一遍"的漂移风险堵掉。
+Dart 端按 ArkTS 同值实现（`lib/domain/validate.dart` + `validateRestWindowAt` 的 raw 版本，
+能喂 3.5 这种非法星期），并加了 `weekdayCn`（`周一…周日` 的那个字）。
+
+- `tools/fixtures/gen.js` 补了 10 条 `validateRestWindow` + 6 条 `normalizeRestEnd`
+  （从编译后的 ArkTS 直接算，不是手抄）→ `shared/fixtures/validate.json` 168 → 184 条；
+  全部 fixture 775 → **791**。`fixtures_test.dart` 加了对应 dispatch。
+- `./tools/domain-check/run.sh`：524 项仍全绿（这轮没改规则，只加用例）
 
 ### 86.9 验证
 
-- `flutter test`：**907 passed**（+5：提醒保存/隐藏简报时间、不可排时段连续添加、类型重复名、
-  关于卡版本与入口；另外 3 条按新 UI 改了导航或断言）
+- `flutter test`：**923 passed**（+5 设置页行为；+16 新 fixtures；另外 3 条按新 UI 改了导航或断言）
 - 真机（OPPO A97）：设置页从顶到底逐屏截图核对 —— 十张卡的顺序、字号、胶囊、行内表单、
   两段式确认与鸿蒙源码一致；「开始演练」「恢复默认 07:00–24:00」「导入备份…」都能点
-- `./tools/domain-check/run.sh` 未跑（本轮没动 ArkTS）；下轮补 fixtures 时一起跑

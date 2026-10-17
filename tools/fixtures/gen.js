@@ -139,6 +139,22 @@ for (const t of [[480, 540, 2, 1440], [480, 540, 0.5, 1440], [480, 540, 1, 1440]
   add('pinchEnd', [t[0], t[1], t[2], t[3]], VD.pinchEnd(t[0], t[1], t[2], t[3]), 'validate');
 }
 for (const d of [-30, -5, 0, 5, 30]) add('pinchDeltaLabel', [d], VD.pinchDeltaLabel(d), 'validate');
+// 不可排时段：鸿蒙端 domain/Validate.ets 的 validateRestWindow / normalizeRestEnd
+for (const w of [
+  { weekday: 0, startMin: 720, endMin: 780 },
+  { weekday: 0, startMin: 0, endMin: 420 },
+  { weekday: 7, startMin: 1410, endMin: 1440 },
+  { weekday: -1, startMin: 720, endMin: 780 },
+  { weekday: 8, startMin: 720, endMin: 780 },
+  { weekday: 3.5, startMin: 720, endMin: 780 },
+  { weekday: 1, startMin: -1, endMin: 60 },
+  { weekday: 1, startMin: 0, endMin: 1441 },
+  { weekday: 1, startMin: 600, endMin: 600 },
+  { weekday: 1, startMin: 601, endMin: 600 }
+]) add('validateRestWindow', [w], VD.validateRestWindow(w), 'validate');
+for (const pair of [[0, 0], [0, 600], [600, 600], [45, 0], [1440, 60], [0, 1440]]) {
+  add('normalizeRestEnd', [pair[0], pair[1]], VD.normalizeRestEnd(pair[0], pair[1]), 'validate');
+}
 {
   // ⚠️ 必须带 startMin/endMin：漏了会算出 NaN，JSON 里变成 null，等于没测
   const b2 = [

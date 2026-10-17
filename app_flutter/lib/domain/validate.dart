@@ -117,14 +117,22 @@ int totalBlockMinutes(List<PlanBlockLike> blocks, int todoId) {
 // ---------------- 不可排时段（与 ArkTS `domain/Validate.ets` 同值）----------------
 
 /// 校验一条不可排时段：适用星期、时间范围、结束晚于开始。
-Validation validateRestWindow(RestWindow w) {
-  if (w.weekday < 0 || w.weekday > 7 || w.weekday.round() != w.weekday) {
+Validation validateRestWindow(RestWindow w) =>
+    validateRestWindowAt(w.weekday, w.startMin, w.endMin);
+
+/// 同上，但接受任意数字 —— 三端 fixture 要把 3.5 这种非法星期也喂进来，
+/// 而 [RestWindow.weekday] 是 int（会先被截断，测不出来）。
+Validation validateRestWindowAt(num weekday, num startMin, num endMin) {
+  if (weekday < 0 || weekday > 7 || weekday.round() != weekday) {
     return const Validation(false, '适用日期不合法');
   }
-  if (w.startMin < 0 || w.endMin > dayMin) {
+  if (!startMin.isFinite || !endMin.isFinite) {
+    return const Validation(false, '时间要填成 HH:MM');
+  }
+  if (startMin < 0 || endMin > dayMin) {
     return const Validation(false, '时间要在 00:00–24:00 之间');
   }
-  if (w.startMin >= w.endMin) {
+  if (startMin >= endMin) {
     return const Validation(false, '结束时间必须晚于开始时间');
   }
   return const Validation(true, '');

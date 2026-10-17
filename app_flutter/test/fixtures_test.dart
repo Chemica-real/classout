@@ -232,6 +232,13 @@ Object? _call(String fn, List<dynamic> a) {
       return pinchEnd(_num(a[0]), _num(a[1]), _num(a[2]), _num(a[3]));
     case 'pinchDeltaLabel':
       return pinchDeltaLabel(_n(a[0]));
+    case 'validateRestWindow':
+      final w = (a[0] as Map).cast<String, dynamic>();
+      return validateRestWindowAt(
+              _num(w['weekday']), _num(w['startMin']), _num(w['endMin']))
+          .toJson();
+    case 'normalizeRestEnd':
+      return normalizeRestEnd(_n(a[0]), _n(a[1]));
     case 'totalBlockMinutes':
       return totalBlockMinutes(_blocks(a[0]), _n(a[1]));
 
