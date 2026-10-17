@@ -203,15 +203,15 @@ void main() {
   testWidgets('新建学期（不复制）→ 学期 +1，当前学期不变', (tester) async {
     final repo = await _pump(tester);
     await _tapVisible(tester, find.byKey(const ValueKey('entry-semester')));
-    await _tapVisible(tester, find.text('+ 新建学期'));
-    // 关掉「复制课表」再创建
+    // 关掉「顺便复制」再创建
     await _tapVisible(tester, find.byType(Switch).last);
-    await _tapVisible(tester, find.widgetWithText(FilledButton, '创建'));
+    await _tapVisible(tester, find.text('新建并切换到这个学期'));
 
     final saved = (await repo.load())!;
     expect(saved.semesters.length, 2);
-    expect(saved.semesters.first.name, '演示学期', reason: '当前学期仍是第一个');
-    expect(saved.semesters.last.totalWeeks, 16);
+    // 鸿蒙按钮是「新建并切换到这个学期」：新建后它成为当前学期
+    expect(saved.semesters.first.name, isNot('演示学期'));
+    expect(saved.semesters.first.totalWeeks, 16);
     expect(saved.courses.length, 4, reason: '没勾复制就不该多出课程');
   });
 
@@ -219,8 +219,7 @@ void main() {
       (tester) async {
     final repo = await _pump(tester);
     await _tapVisible(tester, find.byKey(const ValueKey('entry-semester')));
-    await _tapVisible(tester, find.text('+ 新建学期'));
-    await _tapVisible(tester, find.widgetWithText(FilledButton, '创建'));
+    await _tapVisible(tester, find.text('新建并切换到这个学期'));
 
     final saved = (await repo.load())!;
     final oldSem = saved.semesters.first;
@@ -254,13 +253,12 @@ void main() {
   testWidgets('把第二个学期设为当前 → 顺序换了、课表切过去', (tester) async {
     final repo = await _pump(tester);
     await _tapVisible(tester, find.byKey(const ValueKey('entry-semester')));
-    await _tapVisible(tester, find.text('+ 新建学期'));
-    await _tapVisible(tester, find.widgetWithText(FilledButton, '创建'));
-    // 鸿蒙的学期行没有「设为当前」按钮：点整行 = 切换当前学期
+    await _tapVisible(tester, find.text('新建并切换到这个学期'));
+    // 新建后新学期是当前；点另一行（演示学期）= 切回它
     await _tapVisible(tester, find.textContaining('起 ·').last);
 
     final saved = (await repo.load())!;
-    expect(saved.semesters.first.name, isNot('演示学期'));
+    expect(saved.semesters.first.name, '演示学期');
     expect(saved.semester!.name, saved.semesters.first.name);
   });
 
@@ -268,10 +266,9 @@ void main() {
       (tester) async {
     final repo = await _pump(tester);
     await _tapVisible(tester, find.byKey(const ValueKey('entry-semester')));
-    await _tapVisible(tester, find.text('+ 新建学期'));
-    // 不勾「复制课表」→ 新学期的课程是空的
+    // 鸿蒙是子页底部内联表单：关掉「顺便复制」再点「新建并切换到这个学期」
     await _tapVisible(tester, find.byType(Switch).last);
-    await _tapVisible(tester, find.widgetWithText(FilledButton, '创建'));
+    await _tapVisible(tester, find.text('新建并切换到这个学期'));
     // 切到新学期（点行），再点另一行的「复制到当前学期」
     await _tapVisible(tester, find.textContaining('起 ·').last);
     await _tapVisible(tester, find.text('复制到当前学期'));
