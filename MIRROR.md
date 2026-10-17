@@ -29,6 +29,7 @@
 | `view/CourseManager.ets` | `lib/ui/course_manager.dart` | 课程管理浮层：学期/节次摘要、课程卡、课程编辑抽屉（名称/简称/教师/地点/颜色/自动生成/虚拟课 + 时段规则 + 待办模板 + 删除课程） |
 | `view/ChipButton.ets` | `_Choice`/`_Chip`/`_ChipButton`（各页面内） | 选中 = `#2E6BE6` 底 + 白字 |
 | `data/Prefs.ets`（`MOTTO_*`、`mottoUnits`、`clampMottoUnits`、`cleanMotto`） | `lib/domain/motto.dart` | 标语：按显示宽度 32（汉字 2 / 半角 1） |
+| `data/BackupRepo.ets`（导出/恢复/诊断） | `lib/data/backup_export.dart` + `backup.dart` | 备份 JSON 序列化（布尔写 1/0）、写文件、诊断摘要；恢复走「设置 → 导入备份」 |
 | `data/WallpaperRepo.ets` | `lib/data/wallpaper.dart` | 选图 → 拷进 App 私有目录 → kv `wallpaper_path` |
 | `data/*Repo.ets`（`TimetableRepo`/`TodoRepo`/`KvRepo`…） | `lib/data/sqlite_repo.dart` + `repo.dart` | 同一套 SQL schema（`shared/schema.sql`）；`todo_template` 也读写 |
 | `domain/TodoGenerator.ets` | `lib/domain/todo_generator.dart` | 下课自动生成待办：`renderTitle`（%C/%c/%D/%d/%W/%T/%N/%R）、6 种 `computeDdl`、`nextSessionOfCourse`、`generateMissedTodos`（去重键 `course|date|template`、只看已下课、备注不带） |

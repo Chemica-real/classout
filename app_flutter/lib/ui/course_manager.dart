@@ -10,8 +10,10 @@
 // 数据整份写回仓库（`onChanged(bundle)`），与其它页面一致。
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../data/backup.dart';
+import '../data/backup_export.dart';
 import '../domain/dates.dart';
 import '../model/types.dart';
 import 'app_frame.dart';
@@ -77,6 +79,9 @@ class _Manager extends StatefulWidget {
 
 class _ManagerState extends State<_Manager> {
   late BackupBundle _b = widget.bundle;
+
+  /// 上次「导出备份」写出来的文件路径（同一次打开里一直显示，方便复制）
+  String? _exportPath;
 
   void _apply(BackupBundle next) {
     setState(() => _b = next);
@@ -170,6 +175,8 @@ class _ManagerState extends State<_Manager> {
                                     fontSize: 12, color: Color(0xFF8B97AC))),
                           ),
                         for (final c in _b.courses) _courseCard(c),
+                        const SizedBox(height: 6),
+                        _backupCard(),
                       ],
                     ),
                   ),
@@ -259,6 +266,75 @@ class _ManagerState extends State<_Manager> {
         ),
       ),
     );
+  }
+
+  /// 「备份与恢复」：导出 JSON 到应用文档目录（鸿蒙端是同名子页）
+  Widget _backupCard() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: glassEdgeSoft),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('备份与恢复',
+              style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: inkPrimary)),
+          const SizedBox(height: 4),
+          const Text(
+              '导出一个 JSON 文件（放在 App 的文档目录），可以拷到电脑或发给别人排查；'
+              '恢复在「设置 → 数据 → 导入备份…」里。',
+              style: TextStyle(fontSize: 11, color: Color(0xFF94A0B5))),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              _PillAction(text: '导出备份', onTap: _export),
+              if (_exportPath != null) const SizedBox(width: 8),
+              if (_exportPath != null)
+                _PillAction(
+                  text: '复制路径',
+                  onTap: () async {
+                    await Clipboard.setData(ClipboardData(text: _exportPath!));
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context)
+                        .showSnackBar(const SnackBar(content: Text('路径已复制')));
+                  },
+                ),
+            ],
+          ),
+          if (_exportPath != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: SelectableText(_exportPath!,
+                  style:
+                      const TextStyle(fontSize: 11, color: Color(0xFF8FC9A0))),
+            ),
+          const SizedBox(height: 8),
+          Text(backupSummary(_b),
+              style: const TextStyle(
+                  fontSize: 11, height: 1.5, color: Color(0xFF8B97AC))),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _export() async {
+    try {
+      final path = await writeBackupFile(backupToJson(_b));
+      if (!mounted) return;
+      setState(() => _exportPath = path);
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('已导出到 App 文档目录')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('导出失败：$e')));
+    }
   }
 
   Future<void> _openCourse(Course? existing) async {

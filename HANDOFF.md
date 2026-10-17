@@ -4605,3 +4605,39 @@ iOS 侧这次改动**还需 CI 复核**（`DynamicLibrary.process()` + 插件同
 
 - 学期管理（新建学期 / 复制到当前学期 / 当前学期标记）
 - 备份与恢复子页（导出 JSON 到沙箱、整份恢复、诊断信息）
+
+## 58. 2026-10-17 安卓版：备份导出（JSON 文件 + 诊断摘要）
+
+到这一轮之前，安卓版**只能导入、不能导出**——换机/排查/给同学都是单向的。这轮补上，
+对应鸿蒙端 `BackupRepo` 的导出那一路。
+
+### 58.1 新文件 `lib/data/backup_export.dart`
+
+- `backupToJson(bundle)`：手写序列化（字段名照 `shared/backup-v1.md` 的 camelCase），
+  **布尔一律写 `1/0`**；`lessons` 写空数组占位（虚拟课程还没移植）；`restWindows` 的 `id=0` 不写
+- `backupFileName()`：`classout-backup-20261018-0025.json`
+- `writeBackupFile(json, {dir})`：默认写 `getApplicationDocumentsDirectory()`，**`dir` 可注入**
+  （测试写临时目录，不碰真机沙箱）
+- `backupSummary(bundle)`：`学期/课程/时段/模板/单周调整` + `待办(待确认/进行中/已完成)/计划块/不可排`
+
+### 58.2 UI：课程管理里多一块「备份与恢复」
+
+`课程管理 → 备份与恢复`：`导出备份` 按钮 → 写出文件 → 显示完整路径（`SelectableText`，可长按选中）
++ `复制路径`（`Clipboard`）+ 诊断摘要；恢复仍是「设置 → 数据 → 导入备份…」。
+（鸿蒙端这一块是独立子页，这边先做成管理页里的一张卡，位置与信息一致。）
+
+### 58.3 往返测试抓到一个真 bug（已修）
+
+新写的 `test/backup_export_test.dart` 做 **encode → decode → 再 encode** 对拍，
+第一次跑就发现：序列化把 `isQuiz/autoTodoEnabled/showWeekend/done/enabled` 写成了 `true/false`，
+而解析器是 `_int(j['isQuiz'])` —— 于是**导出再导入，习题课标记、自动生成开关、块完成状态全变 false**。
+改成 1/0 后正常。这条坑已写进文件头注释，别再踩。
+
+### 58.4 验证
+
+- `flutter test`：**706 passed**（新增 `backup_export_test.dart` 5 条：往返字段、二次往返稳定、
+  模板不丢、写文件、摘要文本）
+- 真机（OPPO A97）实测：`管理课程 → 导出备份` →
+  路径 `/data/user/0/com.chemica.classout/app_flutter/classout-backup-20261018-0025.json`，
+  `adb shell run-as ... cat` 拉回来能正常 `json.load`：`app=ClassOUT, version=1`，
+  `courses=4 rules=6 todos=6 blocks=4`，`rules[2].isQuiz == 1` ✅
