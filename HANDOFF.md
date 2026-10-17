@@ -5321,3 +5321,27 @@ fixtures 与单测里跑，**界面层根本没接线** —— 也就是鸿蒙�
 还没做（留给下一步）：**计划页的课时池**（把某一讲排进时间、完成时触发生成待办）——
 `PlanBlock.lessonId` 字段早就有，缺的是 UI 与 `_course` 的映射（现在计划页把 `lessonId`
 当课程 id 用，等做课时池时要一起改成"lesson → courseId"）。
+
+## 80. 2026-10-17 安卓版：计划页的「课时池」—— 虚拟课程终于能排进时间
+
+§79 之后虚拟课程能编辑课时了，但计划页看不到它们。这轮补上：
+
+- `PlanPage` 新增 `_lessonPool`（未完成、且还没排进计划的课时）与 `_selectedLessonId`；
+  选中课时与选中待办**互斥**（选一个清另一个）
+- 待安排托盘：在待办卡片后面接上课时卡片（`第 N 讲 · 标题` + 课程色胶囊 + `第 N 讲 · 点一下选中`），
+  键位 `pool-lesson-<id>`；展开态的空判断改成"待办与课时都空"
+- 点网格落块：有课时选中时创建 `PlanBlock(todoId: 0, lessonId: 课时id)`，默认 90 分钟
+- 块渲染：`_Block` 新增 `lessonTitle` / `lessonColor`（由 PlanPage 传两张表进来），
+  课时块显示 `第 N 讲 · 标题` 并用课程色
+- **顺手修掉一个真 bug**：`BlockEditorView._course` 原来把 `lessonId` 当课程 id 用
+  （`final id = todoId > 0 ? todo.courseId : lessonId`）——课时块会拿不到课程、颜色也错。
+  现在先查到那一讲再取它的 `courseId`，标题也显示 `第 N 讲 · 标题`
+- 块标完成时**联动把那一讲标记完成**（写 `doneAt`）——鸿蒙端同款；自动生成待办那一步
+  （`generateForLesson`）还没接，等需要时把 §73 的纯规则接上即可
+
+### 验证
+
+- `plan_page_test` 新增 1 条：托盘里出现课时卡片 → 选中 → 点网格 → 落下的块 `todoId=0`、
+  `lessonId=1`、`startMin=540`
+- `block_editor_test` 新增 1 条：课时块标完成 → 对应 `VirtualLesson.done=true` 且 `doneAt>0`
+- `flutter test`：**884 passed**；golden 重出

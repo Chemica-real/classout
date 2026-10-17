@@ -21,6 +21,7 @@ BackupBundle _with(
   BackupBundle b, {
   List<PlanBlock>? blocks,
   List<Todo>? todos,
+  List<VirtualLesson>? lessons,
 }) =>
     BackupBundle(
       app: b.app,
@@ -35,7 +36,7 @@ BackupBundle _with(
       blocks: blocks ?? b.blocks,
       restWindows: b.restWindows,
       templates: b.templates,
-      lessons: b.lessons,
+      lessons: lessons ?? b.lessons,
     );
 
 Future<void> showBlockEditor(
@@ -170,8 +171,17 @@ class _BodyState extends State<_Body> {
 
   bool get _isExam => _todo?.category == TodoCategory.exam;
 
+  VirtualLesson? get _lesson {
+    if (_b.lessonId <= 0) return null;
+    for (final l in widget.bundle.lessons) {
+      if (l.id == _b.lessonId) return l;
+    }
+    return null;
+  }
+
   Course? get _course {
-    final id = _b.todoId > 0 ? (_todo?.courseId ?? 0) : _b.lessonId;
+    // ⚠️ lessonId 是**课时 id**，不是课程 id：要先查到那一讲，再拿它的 courseId
+    final id = _b.todoId > 0 ? (_todo?.courseId ?? 0) : (_lesson?.courseId ?? 0);
     for (final c in widget.bundle.courses) {
       if (c.id == id) return c;
     }
@@ -181,6 +191,8 @@ class _BodyState extends State<_Body> {
   String get _title {
     final t = _todo;
     if (t != null) return t.title;
+    final l = _lesson;
+    if (l != null) return '第 ${l.seq} 讲 · ${l.title}';
     return _course?.label ?? '计划块';
   }
 
@@ -191,8 +203,25 @@ class _BodyState extends State<_Body> {
     final todos = todo == null
         ? widget.bundle.todos
         : widget.bundle.todos.map((x) => x.id == todo.id ? todo : x).toList();
+    // 虚拟课程的一讲：块标完成/取消时，把这一讲也一起标记（鸿蒙端同款联动）
+    final lessons = nb.lessonId > 0 && nb.done != _b.done
+        ? widget.bundle.lessons
+            .map((l) => l.id == nb.lessonId
+                ? VirtualLesson(
+                    id: l.id,
+                    courseId: l.courseId,
+                    seq: l.seq,
+                    title: l.title,
+                    done: nb.done,
+                    doneAt:
+                        nb.done ? DateTime.now().millisecondsSinceEpoch : 0,
+                  )
+                : l)
+            .toList()
+        : widget.bundle.lessons;
     setState(() => _b = nb);
-    widget.onChanged(_with(widget.bundle, blocks: blocks, todos: todos));
+    widget.onChanged(_with(widget.bundle,
+        blocks: blocks, todos: todos, lessons: lessons));
   }
 
   PlanBlock _copy({

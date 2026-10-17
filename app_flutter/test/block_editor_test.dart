@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:classout/data/backup.dart';
+import 'package:classout/model/types.dart';
 import 'package:classout/domain/plan_math.dart';
 import 'package:classout/ui/plan_page.dart';
 
@@ -124,6 +125,72 @@ void main() {
     final todo = seen.last!.todos.firstWhere((t) => t.id == 3);
     expect(todo.ddl.length, 16, reason: 'YYYY-MM-DD HH:mm');
     expect(todo.ddl.endsWith('23:59'), isTrue, reason: '初始时间就是原截止的 23:59');
+  });
+
+  testWidgets('虚拟课时块标完成 → 那一讲也标完成', (tester) async {
+    final demo = _demo();
+    final bundle = BackupBundle(
+      app: demo.app,
+      version: demo.version,
+      exportedAt: demo.exportedAt,
+      semesters: demo.semesters,
+      sectionTimes: demo.sectionTimes,
+      courses: demo.courses,
+      rules: demo.rules,
+      overrides: demo.overrides,
+      todos: demo.todos,
+      blocks: [
+        PlanBlock(
+            id: 77,
+            todoId: 0,
+            lessonId: 5,
+            date: '2026-10-16',
+            startMin: 10 * 60,
+            endMin: 11 * 60 + 30),
+      ],
+      lessons: [
+        VirtualLesson(id: 5, courseId: 1, seq: 1, title: '第一讲'),
+      ],
+    );
+    BackupBundle? last;
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: StatefulBuilder(
+          builder: (context, setState) => PlanPage(
+            bundle: last ?? bundle,
+            onChanged: (next) => setState(() => last = next),
+            window: defaultWindow,
+            initialDay: DateTime(2026, 10, 16),
+            now: () => DateTime(2026, 10, 16, 9, 0),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    final block = find.byKey(const ValueKey('plan-block-77'));
+    await tester.ensureVisible(block);
+    await tester.pumpAndSettle();
+    final pos =
+        tester.state<ScrollableState>(find.byType(Scrollable).first).position;
+    for (var i = 0; i < 6; i++) {
+      if (tester.getRect(block).top > 110) break;
+      pos.jumpTo((pos.pixels - 60).clamp(0.0, pos.maxScrollExtent));
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(block);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('第一讲'), findsWidgets);
+    await tester.tap(find.text('标记完成'));
+    await tester.pumpAndSettle();
+
+    expect(last, isNotNull);
+    final l = last!.lessons.firstWhere((x) => x.id == 5);
+    expect(l.done, isTrue);
+    expect(l.doneAt, greaterThan(0));
   });
 
   testWidgets('对半分 → 变两块、总时长不变', (tester) async {

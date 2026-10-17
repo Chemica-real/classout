@@ -213,6 +213,64 @@ void main() {
     expect(after.endMin, greaterThan(before.endMin), reason: '两指分开 = 变长');
   });
 
+  testWidgets('虚拟课程课时：托盘里能选、点网格能排（todoId=0、lessonId 指向这一讲）',
+      (tester) async {
+    final demo = _demo();
+    final withLesson = BackupBundle(
+      app: demo.app,
+      version: demo.version,
+      exportedAt: demo.exportedAt,
+      semesters: demo.semesters,
+      sectionTimes: demo.sectionTimes,
+      courses: demo.courses,
+      rules: demo.rules,
+      overrides: demo.overrides,
+      todos: demo.todos,
+      blocks: demo.blocks,
+      lessons: [
+        VirtualLesson(id: 1, courseId: 1, seq: 2, title: '第二讲'),
+      ],
+    );
+    BackupBundle? last;
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: StatefulBuilder(
+          builder: (context, setState) => PlanPage(
+            bundle: last ?? withLesson,
+            onChanged: (next) => setState(() => last = next),
+            window: defaultWindow,
+            initialDay: DateTime(2026, 10, 17),
+            now: () => DateTime(2026, 10, 17, 9, 0),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('tray-toggle')));
+    await tester.pumpAndSettle();
+    expect(find.text('第二讲'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('pool-lesson-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('tray-toggle')));
+    await tester.pumpAndSettle();
+
+    final col = find.byKey(const ValueKey('plan-day-2026-10-17'));
+    final rect = tester.getRect(col);
+    final y = rect.top + (9 * 60 - defaultWindow.startMin) * 1.0;
+    await tester.tapAt(Offset(rect.center.dx, y));
+    await tester.pumpAndSettle();
+
+    expect(last, isNotNull);
+    final b = last!.blocks.last;
+    expect(b.lessonId, 1);
+    expect(b.todoId, 0);
+    expect(b.startMin, 9 * 60);
+  });
+
   testWidgets('两步模型：轻滑不挪块（交给滚动），长按才拖', (tester) async {
     final h = await _pump(tester, initialDay: DateTime(2026, 10, 16));
     final before = _demo().blocks.firstWhere((b) => b.date == '2026-10-16');

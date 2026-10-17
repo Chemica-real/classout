@@ -64,6 +64,7 @@ class _PlanPageState extends State<PlanPage> {
   late DateTime _day;
   late bool _threeDay;
   int _selectedTodoId = 0; // 托盘里选中、等着落到网格上的那条
+  int _selectedLessonId = 0; // 托盘里选中的虚拟课程课时（0 = 没选）
 
   /// 待安排托盘是否展开（鸿蒙端 TraySummonBar ↔ TodoPool）
   bool _trayOpen = false;
@@ -271,6 +272,12 @@ class _PlanPageState extends State<PlanPage> {
     ];
   }
 
+  /// 可以排进计划的虚拟课程课时：未完成、且还没排过
+  List<VirtualLesson> get _lessonPool => [
+        for (final l in widget.bundle.lessons)
+          if (!l.done && !widget.bundle.blocks.any((b) => b.lessonId == l.id)) l
+      ];
+
   List<Todo> get _pool =>
       sortPoolTodos(selectPoolTodos(widget.bundle.todos, widget.bundle.blocks));
 
@@ -303,9 +310,24 @@ class _PlanPageState extends State<PlanPage> {
       widget.bundle.blocks.fold<int>(0, (m, b) => b.id > m ? b.id : m) + 1;
 
   void _place(DateTime day, int startMin, int durationMin) {
+    final end = startMin + normalizeDuration(durationMin);
+    if (_selectedLessonId > 0) {
+      // 虚拟课程的一讲：todoId=0、lessonId 指向这一讲
+      final block = PlanBlock(
+        id: _nextBlockId(),
+        todoId: 0,
+        lessonId: _selectedLessonId,
+        date: formatDate(day),
+        startMin: startMin,
+        endMin: end,
+        done: false,
+      );
+      widget.onChanged(_withBlocks([...widget.bundle.blocks, block]));
+      setState(() => _selectedLessonId = 0);
+      return;
+    }
     final todo = _todoOf(_selectedTodoId);
     if (todo == null) return;
-    final end = startMin + normalizeDuration(durationMin);
     final block = PlanBlock(
       id: _nextBlockId(),
       todoId: todo.id,
@@ -379,9 +401,10 @@ class _PlanPageState extends State<PlanPage> {
                   rests: {for (final d in days) formatDate(d): _restsOn(d)},
                   todoOf: _todoOf,
                   onTapMinute: (day, min) {
-                    if (_selectedTodoId == 0) return;
+                    if (_selectedTodoId == 0 && _selectedLessonId == 0) return;
                     final todo = _todoOf(_selectedTodoId);
-                    _place(day, min, todo?.estimateMin ?? 60);
+                    // 课时默认 90 分钟，待办用自己的预计耗时
+                    _place(day, min, todo?.estimateMin ?? 90);
                   },
                   onTapBlock: _showBlockSheet,
                   dragId: _dragId,
@@ -391,6 +414,18 @@ class _PlanPageState extends State<PlanPage> {
                   onDragUpdate: _updateDrag,
                   onDragEnd: _endDrag,
                   onPointer: _onBlockPointer,
+                  lessonTitles: {
+                    for (final l in widget.bundle.lessons)
+                      l.id: '第 ${l.seq} 讲 · ${l.title}',
+                  },
+                  lessonColors: {
+                    for (final l in widget.bundle.lessons)
+                      l.id: courseColor((widget.bundle.courses
+                              .where((c) => c.id == l.courseId)
+                              .firstOrNull
+                              ?.colorIndex) ??
+                          7),
+                  },
                   pinchId: _pinchId,
                   pinchEndMin: _pinchEndMin,
                 ),
@@ -427,12 +462,20 @@ class _PlanPageState extends State<PlanPage> {
           bottom: tabBarInset,
           child: _Tray(
             pool: _pool,
+            lessons: _lessonPool,
+            selectedLessonId: _selectedLessonId,
             courses: {for (final c in widget.bundle.courses) c.id: c},
             selectedId: _selectedTodoId,
             open: _trayOpen,
             onToggle: () => setState(() => _trayOpen = !_trayOpen),
-            onSelect: (id) => setState(
-                () => _selectedTodoId = _selectedTodoId == id ? 0 : id),
+            onSelect: (id) => setState(() {
+              _selectedTodoId = _selectedTodoId == id ? 0 : id;
+              _selectedLessonId = 0;
+            }),
+            onSelectLesson: (id) => setState(() {
+              _selectedLessonId = _selectedLessonId == id ? 0 : id;
+              _selectedTodoId = 0;
+            }),
             onPlace: _placeFromPool,
           ),
         ),
@@ -716,6 +759,10 @@ class _Grid extends StatelessWidget {
   final VoidCallback onDragEnd;
   final void Function(PlanBlock b, int pointer, Offset position, bool down)
       onPointer;
+
+  /// 课时 id → 标题 / 课程色（渲染虚拟课时的块用）
+  final Map<int, String> lessonTitles;
+  final Map<int, Color> lessonColors;
   final int pinchId;
   final int pinchEndMin;
 
@@ -738,6 +785,8 @@ class _Grid extends StatelessWidget {
     required this.onDragUpdate,
     required this.onDragEnd,
     required this.onPointer,
+    required this.lessonTitles,
+    required this.lessonColors,
     required this.pinchId,
     required this.pinchEndMin,
   });
@@ -782,6 +831,8 @@ class _Grid extends StatelessWidget {
                         onDragUpdate: onDragUpdate,
                         onDragEnd: onDragEnd,
                         onPointer: onPointer,
+                        lessonTitles: lessonTitles,
+                        lessonColors: lessonColors,
                         pinchId: pinchId,
                         pinchEndMin: pinchEndMin,
                         day: d,
@@ -815,6 +866,8 @@ class _DayColumn extends StatelessWidget {
   final VoidCallback onDragEnd;
   final void Function(PlanBlock b, int pointer, Offset position, bool down)
       onPointer;
+  final Map<int, String> lessonTitles;
+  final Map<int, Color> lessonColors;
   final int pinchId;
   final int pinchEndMin;
   final DateTime day;
@@ -837,6 +890,8 @@ class _DayColumn extends StatelessWidget {
     required this.onDragUpdate,
     required this.onDragEnd,
     required this.onPointer,
+    required this.lessonTitles,
+    required this.lessonColors,
     required this.pinchId,
     required this.pinchEndMin,
     required this.day,
@@ -904,6 +959,8 @@ class _DayColumn extends StatelessWidget {
                 onDragUpdate: onDragUpdate,
                 onDragEnd: onDragEnd,
                 onPointer: onPointer,
+                lessonTitle: lessonTitles[b.lessonId],
+                lessonColor: lessonColors[b.lessonId],
                 pinchEndMin: pinchId == b.id ? pinchEndMin : 0,
               ),
             // 截止标记
@@ -1050,6 +1107,10 @@ class _Block extends StatelessWidget {
   final bool resizing;
   final int dragDeltaMin;
 
+  /// 虚拟课时的标题/课程色（todoId=0 且 lessonId>0 时用）
+  final String? lessonTitle;
+  final Color? lessonColor;
+
   /// 双指缩放预览的结束分钟（0 = 没在缩这个块）
   final int pinchEndMin;
   final void Function(PlanBlock b, int pointer, Offset position, bool down)
@@ -1066,6 +1127,8 @@ class _Block extends StatelessWidget {
     required this.dragging,
     required this.resizing,
     required this.dragDeltaMin,
+    this.lessonTitle,
+    this.lessonColor,
     required this.pinchEndMin,
     required this.onPointer,
     required this.onTap,
@@ -1076,8 +1139,9 @@ class _Block extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color =
-        todo == null ? const Color(0xFF4A5B75) : courseColor(todo!.courseId);
+    final color = todo != null
+        ? courseColor(todo!.courseId)
+        : (lessonColor ?? const Color(0xFF4A5B75));
     // 拖动中只改预览：移动 → 顶边跟着走、高度不变；缩放 → 顶边不动、高度跟着变
     final topMin = resizing ? block.startMin : block.startMin + dragDeltaMin;
     // 双指缩放时用预览的结束分钟（块高跟着手指走）
@@ -1260,20 +1324,28 @@ Future<void> _showDdlList(BuildContext context, DdlGroup g) {
 ///   标题 / 课程胶囊 / 预计 N 分钟 / ⚡ 找空档，选中 = 半透明蓝 + 亮蓝描边。
 class _Tray extends StatelessWidget {
   final List<Todo> pool;
+
+  /// 虚拟课程的课时（待排）
+  final List<VirtualLesson> lessons;
   final Map<int, Course> courses;
   final int selectedId;
+  final int selectedLessonId;
   final bool open;
   final VoidCallback onToggle;
   final ValueChanged<int> onSelect;
+  final ValueChanged<int> onSelectLesson;
   final void Function(Todo t) onPlace;
 
   const _Tray({
     required this.pool,
+    required this.lessons,
     required this.courses,
     required this.selectedId,
+    required this.selectedLessonId,
     required this.open,
     required this.onToggle,
     required this.onSelect,
+    required this.onSelectLesson,
     required this.onPlace,
   });
 
@@ -1349,7 +1421,7 @@ class _Tray extends StatelessWidget {
             ),
           ),
         ),
-        if (pool.isEmpty)
+        if (pool.isEmpty && lessons.isEmpty)
           const Padding(
             padding: EdgeInsets.fromLTRB(14, 4, 14, 12),
             child: Text('没有待安排的事项。先去「待办」里确认几条。',
@@ -1361,12 +1433,65 @@ class _Tray extends StatelessWidget {
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.fromLTRB(14, 4, 14, 10),
-              itemCount: pool.length,
+              itemCount: pool.length + lessons.length,
               separatorBuilder: (_, __) => const SizedBox(width: 8),
-              itemBuilder: (context, i) => _poolCard(pool[i]),
+              itemBuilder: (context, i) => i < pool.length
+                  ? _poolCard(pool[i])
+                  : _lessonCard(lessons[i - pool.length]),
             ),
           ),
       ],
+    );
+  }
+
+  Widget _lessonCard(VirtualLesson l) {
+    final selected = l.id == selectedLessonId;
+    final course = courses[l.courseId];
+    return GestureDetector(
+      key: ValueKey('pool-lesson-${l.id}'),
+      onTap: () => onSelectLesson(l.id),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: 140,
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0x4D2E6BE6) : glassTintRow,
+          borderRadius: BorderRadius.circular(glassRadius),
+          border: Border.all(
+              width: selected ? 1.5 : 1,
+              color: selected ? accentBlue : glassEdgeSoft),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(l.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 14, color: inkPrimary)),
+            if (course != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: courseColor(course.colorIndex),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(course.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 11, color: Color(0xFFEAF0FA))),
+                ),
+              ),
+            const SizedBox(height: 2),
+            Text('第 ${l.seq} 讲 · 点一下选中',
+                maxLines: 2,
+                style: const TextStyle(fontSize: 11, color: Color(0xFF9BA7BD))),
+          ],
+        ),
+      ),
     );
   }
 
