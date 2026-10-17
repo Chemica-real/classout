@@ -71,6 +71,14 @@ class _PlanPageState extends State<PlanPage> {
   /// 日期条实测高度（首帧用估算值）
   double _dayBarH = 68;
 
+  /// 双指缩放预览：正在缩的块 id 与预览结束分钟（0 = 没在缩）
+  int _pinchId = 0;
+  int _pinchEndMin = 0;
+
+  /// 当前按在画面上的手指（只用于识别双指缩放；不参与手势竞技场）
+  final Map<int, Offset> _pointers = {};
+  double _pinchBaseDist = 0;
+
   // ---- 拖动 / 缩放（见 domain/plan_math.dart 的 moveRange / resizeRange / edgeScroll*）----
   final ScrollController _scroll = ScrollController();
   final GlobalKey _gridKey = GlobalKey();
@@ -381,6 +389,9 @@ class _PlanPageState extends State<PlanPage> {
                   onDragStart: _startDrag,
                   onDragUpdate: _updateDrag,
                   onDragEnd: _endDrag,
+                  onPointer: _onBlockPointer,
+                  pinchId: _pinchId,
+                  pinchEndMin: _pinchEndMin,
                 ),
               ],
             ),
@@ -432,6 +443,75 @@ class _PlanPageState extends State<PlanPage> {
   void _placeFromPool(Todo t) {
     setState(() => _selectedTodoId = t.id);
     _findSlot();
+  }
+
+  /// 原始指针：两指时按间距比例缩放当前块；单指/抬指时结束
+  void _onBlockPointer(
+      PlanBlock block, int pointer, Offset position, bool down) {
+    final before = _pointers.length;
+    if (down) {
+      _pointers[pointer] = position;
+    } else {
+      _pointers.remove(pointer);
+    }
+    final two = _pointers.length >= 2;
+    if (two && before < 2) {
+      // 第二根手指按下：以当前两指间距为基准
+      final pts = _pointers.values.take(2).toList();
+      _pinchBaseDist = (pts[0] - pts[1]).distance;
+      _pinchStart(block);
+    } else if (two && _pinchId != 0) {
+      final pts = _pointers.values.take(2).toList();
+      final d = (pts[0] - pts[1]).distance;
+      // 用当前这个块的原始时长做基准（_pinchUpdate 里算比例）
+      if (_pinchBaseDist > 1) {
+        final b = widget.bundle.blocks
+            .firstWhere((x) => x.id == _pinchId, orElse: () => block);
+        _pinchUpdate(b, d / _pinchBaseDist);
+      }
+    } else if (!two && before >= 2 && _pinchId != 0) {
+      final b = widget.bundle.blocks
+          .firstWhere((x) => x.id == _pinchId, orElse: () => PlanBlock(id: 0));
+      if (b.id != 0) _pinchEnd(b);
+      _pinchBaseDist = 0;
+    }
+  }
+
+  // ---- 双指缩放改时长（鸿蒙端 PinchGesture：块高随时长变） ----
+  void _pinchStart(PlanBlock b) {
+    setState(() {
+      _pinchId = b.id;
+      _pinchEndMin = b.endMin;
+    });
+  }
+
+  void _pinchUpdate(PlanBlock b, double scale) {
+    if (_pinchId != b.id) return;
+    final base = b.endMin - b.startMin;
+    final dur = (base * scale).round().clamp(15, _axis.endMin - b.startMin);
+    setState(() => _pinchEndMin = b.startMin + dur);
+  }
+
+  void _pinchEnd(PlanBlock b) {
+    final end = _pinchEndMin;
+    final id = _pinchId;
+    setState(() {
+      _pinchId = 0;
+      _pinchEndMin = 0;
+    });
+    if (id == 0 || end == 0 || end == b.endMin) return;
+    widget.onChanged(_withBlocks(widget.bundle.blocks
+        .map((x) => x.id == b.id
+            ? PlanBlock(
+                id: x.id,
+                todoId: x.todoId,
+                lessonId: x.lessonId,
+                date: x.date,
+                startMin: x.startMin,
+                endMin: end,
+                done: x.done)
+            : x)
+        .toList()));
   }
 
   Future<void> _showBlockSheet(PlanBlock b) => showBlockEditor(
@@ -633,6 +713,10 @@ class _Grid extends StatelessWidget {
   final void Function(PlanBlock, bool resize, double globalY) onDragStart;
   final void Function(double globalY) onDragUpdate;
   final VoidCallback onDragEnd;
+  final void Function(PlanBlock b, int pointer, Offset position, bool down)
+      onPointer;
+  final int pinchId;
+  final int pinchEndMin;
 
   const _Grid({
     super.key,
@@ -652,6 +736,9 @@ class _Grid extends StatelessWidget {
     required this.onDragStart,
     required this.onDragUpdate,
     required this.onDragEnd,
+    required this.onPointer,
+    required this.pinchId,
+    required this.pinchEndMin,
   });
 
   @override
@@ -693,6 +780,9 @@ class _Grid extends StatelessWidget {
                         onDragStart: onDragStart,
                         onDragUpdate: onDragUpdate,
                         onDragEnd: onDragEnd,
+                        onPointer: onPointer,
+                        pinchId: pinchId,
+                        pinchEndMin: pinchEndMin,
                         day: d,
                         sessions: sessions[formatDate(d)] ?? const [],
                         blocks: blocks[formatDate(d)] ?? const [],
@@ -722,6 +812,10 @@ class _DayColumn extends StatelessWidget {
   final void Function(PlanBlock, bool resize, double globalY) onDragStart;
   final void Function(double globalY) onDragUpdate;
   final VoidCallback onDragEnd;
+  final void Function(PlanBlock b, int pointer, Offset position, bool down)
+      onPointer;
+  final int pinchId;
+  final int pinchEndMin;
   final DateTime day;
   final List<CourseSession> sessions;
   final List<PlanBlock> blocks;
@@ -741,6 +835,9 @@ class _DayColumn extends StatelessWidget {
     required this.onDragStart,
     required this.onDragUpdate,
     required this.onDragEnd,
+    required this.onPointer,
+    required this.pinchId,
+    required this.pinchEndMin,
     required this.day,
     required this.sessions,
     required this.blocks,
@@ -805,6 +902,8 @@ class _DayColumn extends StatelessWidget {
                 onDragStart: onDragStart,
                 onDragUpdate: onDragUpdate,
                 onDragEnd: onDragEnd,
+                onPointer: onPointer,
+                pinchEndMin: pinchId == b.id ? pinchEndMin : 0,
               ),
             // 截止标记
             for (final g in ddls)
@@ -949,6 +1048,11 @@ class _Block extends StatelessWidget {
   final bool dragging;
   final bool resizing;
   final int dragDeltaMin;
+
+  /// 双指缩放预览的结束分钟（0 = 没在缩这个块）
+  final int pinchEndMin;
+  final void Function(PlanBlock b, int pointer, Offset position, bool down)
+      onPointer;
   final VoidCallback onTap;
   final void Function(PlanBlock, bool resize, double globalY) onDragStart;
   final void Function(double globalY) onDragUpdate;
@@ -961,6 +1065,8 @@ class _Block extends StatelessWidget {
     required this.dragging,
     required this.resizing,
     required this.dragDeltaMin,
+    required this.pinchEndMin,
+    required this.onPointer,
     required this.onTap,
     required this.onDragStart,
     required this.onDragUpdate,
@@ -973,7 +1079,10 @@ class _Block extends StatelessWidget {
         todo == null ? const Color(0xFF4A5B75) : courseColor(todo!.courseId);
     // 拖动中只改预览：移动 → 顶边跟着走、高度不变；缩放 → 顶边不动、高度跟着变
     final topMin = resizing ? block.startMin : block.startMin + dragDeltaMin;
-    final endMin = block.endMin + dragDeltaMin;
+    // 双指缩放时用预览的结束分钟（块高跟着手指走）
+    final endMin = pinchEndMin > 0
+        ? pinchEndMin
+        : (resizing ? block.endMin : block.endMin + dragDeltaMin);
     final top = (topMin - axis.startMin).toDouble();
     final height = (endMin - (resizing ? block.startMin : topMin)).toDouble();
     return Positioned(
@@ -986,61 +1095,73 @@ class _Block extends StatelessWidget {
       // 用 GestureDetector 的 longPress 而不是 Listener：长按会赢手势竞技场，
       // 轻滑（想滚时间轴）时长按被系统 cancel，Scroll 照常接管 —— 和鸿蒙端
       // `parallelGesture(LongPress)` 的效果一致。
-      child: GestureDetector(
-        onTap: onTap,
-        onLongPressStart: (e) {
-          final box = context.findRenderObject() as RenderBox?;
-          final h = box?.size.height ?? 0;
-          // 按在底部 18vp 内 = 拖底边改时长，否则整块平移
-          onDragStart(block, e.localPosition.dy > h - 18, e.globalPosition.dy);
-        },
-        onLongPressMoveUpdate: (e) => onDragUpdate(e.globalPosition.dy),
-        onLongPressEnd: (_) => onDragEnd(),
-        onLongPressCancel: onDragEnd,
+      //
+      // 双指缩放挂在**外层 Listener** 上：它只收原始指针、不参与竞技场
+      // （GestureDetector 的 scale 和 tap/longPress 抢竞技场，实测两指分开时
+      // 缩放回调根本不来），靠"按着的手指数量 + 两指间距"来算缩放比例。
+      child: Listener(
+        onPointerDown: (e) => onPointer(block, e.pointer, e.position, true),
+        onPointerMove: (e) => onPointer(block, e.pointer, e.position, true),
+        onPointerUp: (e) => onPointer(block, e.pointer, e.position, false),
+        onPointerCancel: (e) => onPointer(block, e.pointer, e.position, false),
         child: GestureDetector(
-          key: ValueKey('plan-block-${block.id}'),
           onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(4, 2, 3, 8),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: dragging ? 0.98 : 0.92),
-              borderRadius: BorderRadius.circular(7),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: dragging ? 0.85 : 0.25),
-                width: dragging ? 1.5 : 1,
-              ),
-            ),
-            child: Stack(
-              children: [
-                Text(
-                  todo?.title ?? '计划块',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: inkPrimary,
-                    decoration: block.done ? TextDecoration.lineThrough : null,
-                  ),
+          onLongPressStart: (e) {
+            final box = context.findRenderObject() as RenderBox?;
+            final h = box?.size.height ?? 0;
+            // 按在底部 18vp 内 = 拖底边改时长，否则整块平移
+            onDragStart(
+                block, e.localPosition.dy > h - 18, e.globalPosition.dy);
+          },
+          onLongPressMoveUpdate: (e) => onDragUpdate(e.globalPosition.dy),
+          onLongPressEnd: (_) => onDragEnd(),
+          onLongPressCancel: onDragEnd,
+          child: GestureDetector(
+            key: ValueKey('plan-block-${block.id}'),
+            onTap: onTap,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(4, 2, 3, 8),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: dragging ? 0.98 : 0.92),
+                borderRadius: BorderRadius.circular(7),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: dragging ? 0.85 : 0.25),
+                  width: dragging ? 1.5 : 1,
                 ),
-                // 底边缩放手柄（只是视觉提示；判定是按按下位置算的）
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  height: 8,
-                  child: Center(
-                    child: Container(
-                      key: ValueKey('plan-resize-${block.id}'),
-                      width: 22,
-                      height: 3,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.55),
-                        borderRadius: BorderRadius.circular(2),
+              ),
+              child: Stack(
+                children: [
+                  Text(
+                    todo?.title ?? '计划块',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: inkPrimary,
+                      decoration:
+                          block.done ? TextDecoration.lineThrough : null,
+                    ),
+                  ),
+                  // 底边缩放手柄（只是视觉提示；判定是按按下位置算的）
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    height: 8,
+                    child: Center(
+                      child: Container(
+                        key: ValueKey('plan-resize-${block.id}'),
+                        width: 22,
+                        height: 3,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.55),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

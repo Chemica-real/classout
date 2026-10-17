@@ -191,6 +191,28 @@ void main() {
     expect(after.endMin - after.startMin, before.endMin - before.startMin);
   });
 
+  testWidgets('双指放大 → 时长变长、开始时间不变', (tester) async {
+    final h = await _pump(tester, initialDay: DateTime(2026, 10, 16));
+    final before = _demo().blocks.firstWhere((b) => b.date == '2026-10-16');
+    final block = find.byKey(ValueKey('plan-block-${before.id}'));
+    await _revealBlock(tester, block);
+
+    final c = tester.getCenter(block);
+    final g1 = await tester.startGesture(c - const Offset(8, 0));
+    final g2 = await tester.startGesture(c + const Offset(8, 0));
+    await tester.pump(const Duration(milliseconds: 40));
+    await g1.moveBy(const Offset(-30, 0));
+    await g2.moveBy(const Offset(30, 0));
+    await tester.pump();
+    await g1.up();
+    await g2.up();
+    await tester.pumpAndSettle();
+
+    final after = _byIdBlock(h.last!, before.id);
+    expect(after.startMin, before.startMin, reason: '缩放不动开始时间');
+    expect(after.endMin, greaterThan(before.endMin), reason: '两指分开 = 变长');
+  });
+
   testWidgets('两步模型：轻滑不挪块（交给滚动），长按才拖', (tester) async {
     final h = await _pump(tester, initialDay: DateTime(2026, 10, 16));
     final before = _demo().blocks.firstWhere((b) => b.date == '2026-10-16');

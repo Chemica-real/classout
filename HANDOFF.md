@@ -4983,3 +4983,29 @@ PlatformException(exact_alarms_not_permitted,
     → 块 bounds 变成 `[183,979][1038,1114]`（真的往下挪了 ~90px）✅
   - 再 `input swipe 600 950 600 750 150`（快速轻滑）→ 块 bounds 变成 `[183,662]`，
     这是**网格滚上去了**（时间没变），证明轻滑不会挪块 ✅
+
+## 68. 2026-10-17 安卓版：计划块双指缩放改时长
+
+计划页最后一个手势补齐：**两指在块上分开/捏合 → 时长变长/变短**（鸿蒙端 `PinchGesture`）。
+
+### 68.1 实现（为什么不用 `GestureDetector` 的 scale）
+
+先按直觉在块上加了 `onScaleStart/Update/End`，**真机/测试都不触发**：
+scale 识别器和 tap/longPress 抢同一个手势竞技场，两指分开时回调根本不来。
+
+改成：块的 `GestureDetector`（点 / 长按拖）外面套一层 `Listener`，只数**按着的手指**：
+
+- `onPointerDown/Move/Up/Cancel` → `PlanPage._onBlockPointer(block, id, pos, down)`
+- 手指数从 1 变 2：以当前两指间距为基准 `_pinchBaseDist`，进入 `_pinchStart(block)`
+- 两指移动：`scale = 当前间距 / 基准间距` → `_pinchUpdate(block, scale)`
+  → 预览结束分钟 = `startMin + (原时长 × scale)`（夹在 15 分钟 ~ 时间窗末尾）
+- 任一手指抬起：`_pinchEnd(block)` 写回仓库（`endMin` 变了才写）
+- 块高在预览期间跟着手指走（`_Block.pinchEndMin`）
+
+### 68.2 验证
+
+- `test/plan_page_test.dart` 新增「双指放大 → 时长变长、开始时间不变」：两个 `startGesture`、
+  各向外移 30px、抬手 → 断言 `endMin` 变大、`startMin` 不变
+- `flutter test`：**725 passed**
+- ⚠️ **真机双指还没验**：`adb shell input` 只能模拟单指（`motionevent` 也是单 pointer），
+  多指要 `sendevent` 拼协议或手动操作。这条留给下一轮用手点/或写 sendevent 脚本验
