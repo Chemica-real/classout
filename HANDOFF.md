@@ -11,7 +11,8 @@ ClassOUT 是一款**纯离线鸿蒙原生（ArkTS）「课表 + 待办 + 计划�
 自动生成待办跑通、提醒已落入系统日历。
 
 **当前状态：v1.5.0（鸿蒙端，上架准备中，**尚未提交审核**）**；**iOS/Android 版（Dart+Flutter）
-正在开发中**，已完成规则层 + 数据层 + 课表页 + 待办页，见 **§36 / §37**。
+正在开发中**，已完成规则层 + 数据层 + 课表页 + 待办页 + 计划页（560 条测试），
+见 **§36 / §37 / §38**；下一步是设置页。
 ⚠️ git 历史**已重写并强推**（清掉 UDID + 真实课表，见 **§35**）—— 远端、tag、本地都是新 SHAs，
 旧 SHA 只在 `ClassOUT-history-backup-*.git` 那份镜像备份里。
 健康度：干净构建 `ERROR: 0`、警告 6 条（均为刻意保留）、离线断言 **524 项全绿**、
@@ -3761,3 +3762,46 @@ flutter build web --release && (cd build/web && python3 -m http.server 8081)  # 
 # 规则改了之后：
 ./tools/domain-check/run.sh && ./tools/sync-contract.sh   # 断言 + fixture 一条龙
 ```
+
+
+## 38. 2026-10-17 iOS/Android 版：计划页（里程碑 ②）
+
+### 38.1 做了什么
+
+| 东西 | 说明 |
+|---|---|
+| `domain/plan_math.dart` 补完 | 新增 `findFreeSlot`（⚡找空档）、`sortBlocksByTime`、`defaultRestWindows()` |
+| fixtures | `findFreeSlot` 72 条（busy × rest × 时长 × 起点）、`sortBlocksByTime` 1 条；**plan_math 共 195 条，全套 528 条** |
+| `ui/plan_page.dart` | 日/三日切换、日期前后翻、今天；时间轴（1 分钟 = 1vp，默认 07:00–24:00）；课表灰带、计划块、⚑ 截止标记；待安排托盘（选中 → 点网格落块）；⚡找空档；点块 → 底部面板（对半分 / 移除此块） |
+| 测试 | `test/plan_page_test.dart` 3 条：页面上有灰带和块；选中托盘 → 点 15:00 → 生成块（断言 startMin/时长/todoId）；⚡找空档的落点**不与当天课表、不可排时段、同日已有块重叠** |
+| golden | `tool/goldens/plan.png`（三日视图，从 2026-10-16 周五开始） |
+
+**当前测试总数 560 条**（fixtures 528 + TimeAxis 4 + 数据层 8 + 导入 3 + 待办页 4
++ 待办规则 6 + 计划页 3 + 课表页 2 + 非空 1 + ...）。
+
+### 38.2 踩到的坑
+
+1. **`selectPoolTodos` 会把「考试」也放进待安排** —— 鸿蒙端之所以看不到，是因为
+   `syncExamBlock` 会给考试建一个固定的计划块，于是它本来就不在"未排"里。
+   演示数据原来漏了这一步，托盘里就冒出「线性代数 期中考试 · 0分」。**给演示数据补块**即可
+   （真实导入的备份里本来就有这块）。
+2. **`‹ ›` 写成文本会在部分字体下变豆腐块**（截图里是 □）。翻页箭头一律用
+   `Icons.chevron_left/right`，别用中文标点或 Unicode 箭头。
+3. **Dart 的 `?` 提升在闭包里失效**：测试里 `BackupBundle? last` 被
+   `StatefulBuilder` 的 builder 闭包捕获后，`expect(last, isNotNull)` 之后仍然不能
+   `last.xxx`（"potentially null"）。用 `final b = last;` 再判空。
+4. **测试要按日期过滤**：不同天的计划块当然可以同一时间段；"不与已有块重叠"那条
+   必须限定 `x.date == added.date`，否则会被别的天的块误判。
+5. 给可点区域加 `ValueKey`（`plan-day-2026-10-17` / `pool-5` / `find-slot`），
+   测试才能精确点到几何位置（`tester.getRect` + `tapAt`）。私有 widget 类
+   在测试里拿不到类型，**Key 是唯一稳妥的抓手**。
+
+### 38.3 下一步（里程碑 ③ 设置页）
+
+设置页要接的东西大多已有纯函数：
+- 同步节奏 `SyncCadence`（63 条 fixtures ✓）
+- 待办类型 `Categories`（48 条 ✓，含自定义增删/校验）
+- 计划时间范围 `PlanMath.normalizeWindow / formatWindow / parseWindow`（✓）
+- 不可排时段：现在 `defaultRestWindows()` 是写死的默认值，**要改成从库里读**
+  （表 `rest_window` 已经在 `shared/schema.sql` 里，备份里也有 `restWindows`）
+- 首页标语 / 动画开关 / 壁纸：鸿蒙端用 kv，这边先做前两个（字符串/布尔），壁纸最后

@@ -17,6 +17,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:classout/data/backup.dart';
 import 'package:classout/ui/app_frame.dart';
 import 'package:classout/ui/timetable_page.dart';
+import 'package:classout/ui/plan_page.dart';
 import 'package:classout/ui/todo_page.dart';
 
 const _cjkCandidates = <String>[
@@ -60,7 +61,7 @@ Future<void> _shot(WidgetTester tester, Widget page, String name, String? family
   await tester.pumpWidget(MaterialApp(
     debugShowCheckedModeBanner: false,
     theme: ThemeData(brightness: Brightness.dark, useMaterial3: true, fontFamily: family),
-    home: Scaffold(body: AppFrame(tab: name == 'todos' ? 1 : 0, onTab: (_) {}, child: page)),
+    home: Scaffold(body: AppFrame(tab: name == 'todos' ? 1 : (name == 'plan' ? 2 : 0), onTab: (_) {}, child: page)),
   ));
   await tester.pumpAndSettle();
   await expectLater(
@@ -86,6 +87,21 @@ void main() {
       tester,
       TodoPage(bundle: demo, onChanged: (_) {}),
       'todos',
+      family,
+    );
+  });
+
+  testWidgets('计划页截图（三日视图，从周五开始）', (tester) async {
+    final family = await _loadFonts();
+    await _shot(
+      tester,
+      PlanPage(
+        bundle: demo,
+        onChanged: (_) {},
+        initialDay: DateTime(2026, 10, 16),
+        initialThreeDay: true,
+      ),
+      'plan',
       family,
     );
   });

@@ -1,0 +1,732 @@
+// 计划页（第一版）：日/三日时间轴 + 课表灰带 + 计划块 + 截止标记 + 待安排托盘。
+//
+// 几何完全沿用 PlanMath：1 分钟 = 1vp，时间窗默认 07:00–24:00，吸附 15 分钟。
+// 还没做的：拖动/缩放（PlanMath 的 dropRange/moveRange/resizeRange 已移植并有 fixtures，
+// 等交互打磨时接上）、属性面板里的改时间、三日视图的横向拖拽。
+
+import 'package:flutter/material.dart';
+
+import '../data/backup.dart';
+import '../domain/dates.dart';
+import '../domain/plan_math.dart';
+import '../domain/timetable.dart';
+import '../model/types.dart';
+import 'app_frame.dart';
+import 'palette.dart';
+
+class PlanPage extends StatefulWidget {
+  final BackupBundle bundle;
+  final void Function(BackupBundle next) onChanged;
+
+  /// 打开时看哪天 / 是不是三日视图（默认今天、单日）——截图和测试要用
+  final DateTime? initialDay;
+  final bool initialThreeDay;
+  const PlanPage({
+    super.key,
+    required this.bundle,
+    required this.onChanged,
+    this.initialDay,
+    this.initialThreeDay = false,
+  });
+
+  @override
+  State<PlanPage> createState() => _PlanPageState();
+}
+
+class _PlanPageState extends State<PlanPage> {
+  static const double _axisW = 46;
+
+  late DateTime _day;
+  late bool _threeDay;
+  int _selectedTodoId = 0; // 托盘里选中、等着落到网格上的那条
+
+  @override
+  void initState() {
+    super.initState();
+    _day = widget.initialDay ?? today();
+    _threeDay = widget.initialThreeDay;
+  }
+
+  Semester get _sem => widget.bundle.semester!;
+
+  TimeAxis get _axis => TimeAxis(defaultWindow);
+
+  List<DateTime> get _days {
+    if (!_threeDay) return [_day];
+    return [for (var i = 0; i < 3; i++) addDays(_day, i)];
+  }
+
+  void _shift(int days) => setState(() => _day = addDays(_day, days));
+
+  void _jumpToday() => setState(() => _day = today());
+
+  // ---------------- 数据 ----------------
+
+  /// 某天的课（灰带）
+  List<CourseSession> _sessionsOn(DateTime day) {
+    final sessions = computeWeekSessions(_sem, widget.bundle.courses, widget.bundle.rules,
+        widget.bundle.overrides, widget.bundle.sectionTimes, weekOfDate(_sem, day));
+    final ds = formatDate(day);
+    return sessions.where((s) => s.date == ds).toList();
+  }
+
+  /// 某天的计划块
+  List<PlanBlock> _blocksOn(DateTime day) =>
+      widget.bundle.blocks.where((b) => b.date == formatDate(day)).toList();
+
+  /// 某天的截止分组（★ 考试不算截止，这条在 ddlGroupsOn 里）
+  List<DdlGroup> _ddlOn(DateTime day) => ddlGroupsOn(widget.bundle.todos, formatDate(day),
+      _axis.startMin, _axis.endMin);
+
+  List<Todo> get _pool => sortPoolTodos(
+      selectPoolTodos(widget.bundle.todos, widget.bundle.blocks));
+
+  Todo? _todoOf(int id) {
+    for (final t in widget.bundle.todos) {
+      if (t.id == id) return t;
+    }
+    return null;
+  }
+
+  // ---------------- 改动 ----------------
+
+  BackupBundle _withBlocks(List<PlanBlock> blocks) => BackupBundle(
+        app: widget.bundle.app,
+        version: widget.bundle.version,
+        exportedAt: widget.bundle.exportedAt,
+        semesters: widget.bundle.semesters,
+        sectionTimes: widget.bundle.sectionTimes,
+        courses: widget.bundle.courses,
+        rules: widget.bundle.rules,
+        overrides: widget.bundle.overrides,
+        todos: widget.bundle.todos,
+        blocks: blocks,
+      );
+
+  int _nextBlockId() =>
+      widget.bundle.blocks.fold<int>(0, (m, b) => b.id > m ? b.id : m) + 1;
+
+  void _place(DateTime day, int startMin, int durationMin) {
+    final todo = _todoOf(_selectedTodoId);
+    if (todo == null) return;
+    final end = startMin + normalizeDuration(durationMin);
+    final block = PlanBlock(
+      id: _nextBlockId(),
+      todoId: todo.id,
+      date: formatDate(day),
+      startMin: startMin,
+      endMin: end,
+      done: false,
+    );
+    widget.onChanged(_withBlocks([...widget.bundle.blocks, block]));
+    setState(() => _selectedTodoId = 0);
+  }
+
+  /// ⚡ 找空档：把课表 + 已排块当 busy、不可排时段当 rest
+  void _findSlot() {
+    final todo = _todoOf(_selectedTodoId);
+    if (todo == null) return;
+    final day = _day;
+    final busy = <List<int>>[
+      for (final s in _sessionsOn(day)) [s.startMin, s.endMin],
+      for (final b in _blocksOn(day)) [b.startMin, b.endMin],
+    ];
+    final rest = <List<int>>[
+      for (final w in defaultRestWindows()) [w.$1, w.$2],
+    ];
+    final from = day == today()
+        ? (DateTime.now().hour * 60 + DateTime.now().minute)
+        : _axis.startMin;
+    final slot = findFreeSlot(_axis, busy, rest, todo.estimateMin, from);
+    if (slot < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('这一天找不到合适空档')));
+      return;
+    }
+    _place(day, slot, todo.estimateMin);
+  }
+
+  void _removeBlock(PlanBlock b) => widget.onChanged(
+      _withBlocks(widget.bundle.blocks.where((x) => x.id != b.id).toList()));
+
+  void _halveBlock(PlanBlock b) {
+    final parts = halveMinutes(b.endMin - b.startMin);
+    if (parts.isEmpty) return;
+    final blocks = widget.bundle.blocks
+        .where((x) => x.id != b.id)
+        .toList()
+      ..add(PlanBlock(
+          id: _nextBlockId(),
+          todoId: b.todoId,
+          date: b.date,
+          startMin: b.startMin,
+          endMin: b.startMin + parts[0],
+          done: b.done))
+      ..add(PlanBlock(
+          id: _nextBlockId() + 1,
+          todoId: b.todoId,
+          date: b.date,
+          startMin: b.startMin + parts[0],
+          endMin: b.endMin,
+          done: b.done));
+    widget.onChanged(_withBlocks(blocks));
+  }
+
+  // ---------------- 界面 ----------------
+
+  @override
+  Widget build(BuildContext context) {
+    final days = _days;
+    return Column(
+      children: [
+        _Header(
+          day: _day,
+          threeDay: _threeDay,
+          onPrev: () => _shift(_threeDay ? -3 : -1),
+          onNext: () => _shift(_threeDay ? 3 : 1),
+          onToday: _jumpToday,
+          onToggle: () => setState(() => _threeDay = !_threeDay),
+        ),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+            child: Column(
+              children: [
+                _DayTitles(days: days, axisW: _axisW),
+                _Grid(
+                  axis: _axis,
+                  axisW: _axisW,
+                  days: days,
+                  sessions: {for (final d in days) formatDate(d): _sessionsOn(d)},
+                  blocks: {for (final d in days) formatDate(d): _blocksOn(d)},
+                  ddls: {for (final d in days) formatDate(d): _ddlOn(d)},
+                  todoOf: _todoOf,
+                  onTapMinute: (day, min) {
+                    if (_selectedTodoId == 0) return;
+                    final todo = _todoOf(_selectedTodoId);
+                    _place(day, min, todo?.estimateMin ?? 60);
+                  },
+                  onTapBlock: _showBlockSheet,
+                ),
+              ],
+            ),
+          ),
+        ),
+        _Tray(
+          pool: _pool,
+          selectedId: _selectedTodoId,
+          onSelect: (id) => setState(() => _selectedTodoId = _selectedTodoId == id ? 0 : id),
+          onFindSlot: _selectedTodoId == 0 ? null : _findSlot,
+        ),
+      ],
+    );
+  }
+
+  Future<void> _showBlockSheet(PlanBlock b) async {
+    final todo = _todoOf(b.todoId);
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF1B2436),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: Text(todo?.title ?? '这一块',
+                  style: const TextStyle(fontSize: 15, color: inkPrimary)),
+              subtitle: Text(
+                  '${b.date} ${minToHHmm(b.startMin)}–${minToHHmm(b.endMin)}',
+                  style: const TextStyle(fontSize: 12, color: inkTertiary)),
+            ),
+            Wrap(
+              spacing: 8,
+              children: [
+                TextButton(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _halveBlock(b);
+                    },
+                    child: const Text('对半分')),
+                TextButton(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _removeBlock(b);
+                    },
+                    child: const Text('移除此块')),
+              ],
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------- 页头 ----------------
+
+class _Header extends StatelessWidget {
+  final DateTime day;
+  final bool threeDay;
+  final VoidCallback onPrev;
+  final VoidCallback onNext;
+  final VoidCallback onToday;
+  final VoidCallback onToggle;
+
+  const _Header({
+    required this.day,
+    required this.threeDay,
+    required this.onPrev,
+    required this.onNext,
+    required this.onToday,
+    required this.onToggle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const names = ['一', '二', '三', '四', '五', '六', '日'];
+    return Glass(
+      margin: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+      padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('计划',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: inkPrimary)),
+              const Spacer(),
+              _MiniButton(text: threeDay ? '三日' : '日', onTap: onToggle),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              _MiniButton(icon: Icons.chevron_left, onTap: onPrev),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Text('${day.month}/${day.day} 周${names[weekdayOf(day) - 1]}',
+                    style: const TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.w600, color: inkPrimary)),
+              ),
+              _MiniButton(icon: Icons.chevron_right, onTap: onNext),
+              const Spacer(),
+              GestureDetector(
+                onTap: onToday,
+                child: const Text('今天',
+                    style: TextStyle(fontSize: 12, color: goodGreen)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MiniButton extends StatelessWidget {
+  final String? text;
+  final IconData? icon;
+  final VoidCallback onTap;
+  const _MiniButton({this.text, this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        constraints: const BoxConstraints(minWidth: 28),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: icon != null
+            ? Icon(icon, size: 18, color: inkPrimary)
+            : Text(text ?? '',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 13, color: inkPrimary)),
+      ),
+    );
+  }
+}
+
+class _DayTitles extends StatelessWidget {
+  final List<DateTime> days;
+  final double axisW;
+  const _DayTitles({required this.days, required this.axisW});
+
+  @override
+  Widget build(BuildContext context) {
+    const names = ['一', '二', '三', '四', '五', '六', '日'];
+    final now = formatDate(today());
+    return Padding(
+      padding: EdgeInsets.only(left: axisW, bottom: 6),
+      child: Row(
+        children: [
+          for (final d in days)
+            Expanded(
+              child: Column(
+                children: [
+                  Text('周${names[weekdayOf(d) - 1]}',
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: formatDate(d) == now ? accentBlue : inkSecondary)),
+                  Text('${d.month}/${d.day}',
+                      style: TextStyle(
+                          fontSize: 10,
+                          color: formatDate(d) == now ? accentBlue : inkTertiary)),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------- 网格 ----------------
+
+class _Grid extends StatelessWidget {
+  final TimeAxis axis;
+  final double axisW;
+  final List<DateTime> days;
+  final Map<String, List<CourseSession>> sessions;
+  final Map<String, List<PlanBlock>> blocks;
+  final Map<String, List<DdlGroup>> ddls;
+  final Todo? Function(int) todoOf;
+  final void Function(DateTime, int) onTapMinute;
+  final void Function(PlanBlock) onTapBlock;
+
+  const _Grid({
+    required this.axis,
+    required this.axisW,
+    required this.days,
+    required this.sessions,
+    required this.blocks,
+    required this.ddls,
+    required this.todoOf,
+    required this.onTapMinute,
+    required this.onTapBlock,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final h = axis.height();
+    return Glass(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: SizedBox(
+        height: h + 12,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: axisW,
+              child: Stack(
+                children: [
+                  for (final m in axis.marks)
+                    Positioned(
+                      top: (m - axis.startMin).toDouble(),
+                      right: 4,
+                      child: Text(minToHHmm(m),
+                          style: const TextStyle(fontSize: 9, color: inkTertiary)),
+                    ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Row(
+                children: [
+                  for (final d in days)
+                    Expanded(
+                      child: _DayColumn(
+                        key: ValueKey('plan-day-${formatDate(d)}'),
+                        axis: axis,
+                        day: d,
+                        sessions: sessions[formatDate(d)] ?? const [],
+                        blocks: blocks[formatDate(d)] ?? const [],
+                        ddls: ddls[formatDate(d)] ?? const [],
+                        todoOf: todoOf,
+                        onTapMinute: onTapMinute,
+                        onTapBlock: onTapBlock,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DayColumn extends StatelessWidget {
+  final TimeAxis axis;
+  final DateTime day;
+  final List<CourseSession> sessions;
+  final List<PlanBlock> blocks;
+  final List<DdlGroup> ddls;
+  final Todo? Function(int) todoOf;
+  final void Function(DateTime, int) onTapMinute;
+  final void Function(PlanBlock) onTapBlock;
+
+  const _DayColumn({
+    super.key,
+    required this.axis,
+    required this.day,
+    required this.sessions,
+    required this.blocks,
+    required this.ddls,
+    required this.todoOf,
+    required this.onTapMinute,
+    required this.onTapBlock,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapUp: (details) {
+        final min = axis.startMin + details.localPosition.dy.round();
+        onTapMinute(day, snap(min));
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border(left: BorderSide(color: Colors.white.withValues(alpha: 0.06))),
+        ),
+        child: Stack(
+          children: [
+            // 整点横线
+            for (final m in axis.marks)
+              Positioned(
+                top: (m - axis.startMin).toDouble(),
+                left: 0,
+                right: 0,
+                child: Container(height: 1, color: Colors.white.withValues(alpha: 0.05)),
+              ),
+            // 课表灰带
+            for (final s in sessions)
+              _Band(
+                top: (s.startMin - axis.startMin).toDouble(),
+                height: (s.endMin - s.startMin).toDouble(),
+                color: Colors.white.withValues(alpha: s.isQuiz ? 0.10 : 0.16),
+                text: s.course.label,
+                light: true,
+              ),
+            // 计划块
+            for (final b in blocks)
+              _Block(
+                block: b,
+                axis: axis,
+                todo: todoOf(b.todoId),
+                onTap: () => onTapBlock(b),
+              ),
+            // 截止标记
+            for (final g in ddls)
+              _DdlMark(
+                top: (g.minute - axis.startMin).toDouble(),
+                label: '⚑ ${g.todos.length} 项截止',
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Band extends StatelessWidget {
+  final double top;
+  final double height;
+  final Color color;
+  final String text;
+  final bool light;
+  const _Band({
+    required this.top,
+    required this.height,
+    required this.color,
+    required this.text,
+    this.light = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      top: top,
+      left: 2,
+      right: 2,
+      height: height,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(3, 2, 2, 2),
+        decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(6)),
+        child: Text(text,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+                fontSize: 9,
+                color: light ? inkSecondary : inkPrimary,
+                fontWeight: FontWeight.w600)),
+      ),
+    );
+  }
+}
+
+class _Block extends StatelessWidget {
+  final PlanBlock block;
+  final TimeAxis axis;
+  final Todo? todo;
+  final VoidCallback onTap;
+  const _Block({required this.block, required this.axis, required this.todo, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = todo == null ? const Color(0xFF4A5B75) : courseColor(todo!.courseId);
+    return Positioned(
+      top: (block.startMin - axis.startMin).toDouble(),
+      left: 3,
+      right: 3,
+      height: (block.endMin - block.startMin).toDouble(),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(4, 2, 3, 2),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.92),
+            borderRadius: BorderRadius.circular(7),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
+          ),
+          child: Text(
+            todo?.title ?? '计划块',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 10,
+              color: inkPrimary,
+              decoration: block.done ? TextDecoration.lineThrough : null,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DdlMark extends StatelessWidget {
+  final double top;
+  final String label;
+  const _DdlMark({required this.top, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      top: top,
+      left: 0,
+      right: 0,
+      child: IgnorePointer(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+          color: const Color(0xCC8A3D3D),
+          child: Text(label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 8, color: inkPrimary)),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------- 待安排托盘 ----------------
+
+class _Tray extends StatelessWidget {
+  final List<Todo> pool;
+  final int selectedId;
+  final ValueChanged<int> onSelect;
+  final VoidCallback? onFindSlot;
+
+  const _Tray({
+    required this.pool,
+    required this.selectedId,
+    required this.onSelect,
+    this.onFindSlot,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Glass(
+      margin: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text('待安排 ${pool.length}',
+                  style: const TextStyle(fontSize: 13, color: inkSecondary)),
+              const Spacer(),
+              if (onFindSlot != null)
+                TextButton.icon(
+                  key: const ValueKey('find-slot'),
+                  onPressed: onFindSlot,
+                  icon: const Icon(Icons.bolt, size: 16),
+                  label: const Text('找空档', style: TextStyle(fontSize: 12)),
+                  style: TextButton.styleFrom(foregroundColor: accentBlue),
+                ),
+            ],
+          ),
+          if (pool.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 6),
+              child: Text('都排完了', style: TextStyle(fontSize: 12, color: inkTertiary)),
+            )
+          else
+            SizedBox(
+              height: 34,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: pool.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                itemBuilder: (context, i) {
+                  final t = pool[i];
+                  final selected = t.id == selectedId;
+                  return InkWell(
+                    key: ValueKey('pool-${t.id}'),
+                    onTap: () => onSelect(t.id),
+                    borderRadius: BorderRadius.circular(17),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? accentBlue.withValues(alpha: 0.30)
+                            : Colors.white.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(17),
+                        border: Border.all(
+                            color: selected ? accentBlue : Colors.white.withValues(alpha: 0.10)),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 7,
+                            height: 7,
+                            decoration: BoxDecoration(
+                                color: courseColor(t.courseId), shape: BoxShape.circle),
+                          ),
+                          const SizedBox(width: 6),
+                          Text('${t.title} · ${t.estimateMin}分',
+                              style: const TextStyle(fontSize: 11, color: inkPrimary)),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}

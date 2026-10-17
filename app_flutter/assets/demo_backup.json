@@ -279,7 +279,7 @@
    "courseId": 2,
    "category": "self",
    "priority": 1,
-   "ddl": "",
+   "ddl": "2026-10-17 23:59",
    "endAt": "",
    "estimateMin": 30,
    "status": "active",
@@ -335,7 +335,35 @@
   }
  ],
  "lessons": [],
- "blocks": [],
+ "blocks": [
+  {
+   "id": 1,
+   "todoId": 3,
+   "lessonId": 0,
+   "date": "2026-10-16",
+   "startMin": 780,
+   "endMin": 870,
+   "done": 0
+  },
+  {
+   "id": 2,
+   "todoId": 4,
+   "lessonId": 0,
+   "date": "2026-10-17",
+   "startMin": 1120,
+   "endMin": 1150,
+   "done": 0
+  },
+  {
+   "id": 3,
+   "todoId": 2,
+   "lessonId": 0,
+   "date": "2026-10-22",
+   "startMin": 540,
+   "endMin": 660,
+   "done": 0
+  }
+ ],
  "restWindows": [
   {
    "id": 1,

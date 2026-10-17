@@ -185,6 +185,17 @@ Object? _call(String fn, List<dynamic> a) {
     case 'serializeCustomCategories':
       return serializeCustomCategories((a[0] as List).cast<String>());
 
+    case 'findFreeSlot':
+      return findFreeSlot(
+        TimeAxis(TimeWindow.fromJson(a[0] as Map<String, dynamic>)),
+        (a[1] as List).map((e) => (e as List).map(_n).toList()).toList(),
+        (a[2] as List).map((e) => (e as List).map(_n).toList()).toList(),
+        _n(a[3]),
+        _n(a[4]),
+      );
+    case 'sortBlocksByTime':
+      return sortBlocksByTime(_blocks(a[0])).map((b) => b.id).toList();
+
     default:
       throw StateError('fixture 里有本端还没实现的函数：$fn');
   }

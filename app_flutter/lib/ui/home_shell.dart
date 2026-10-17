@@ -8,6 +8,7 @@ import '../data/repo.dart';
 import 'app_frame.dart';
 import 'import_dialog.dart';
 import 'palette.dart';
+import 'plan_page.dart';
 import 'timetable_page.dart';
 import 'todo_page.dart';
 
@@ -113,7 +114,7 @@ class _HomeShellState extends State<HomeShell> {
         child: switch (_tab) {
           0 => TimetablePage(bundle: bundle, onImport: _import),
           1 => TodoPage(bundle: bundle, onChanged: _apply),
-          2 => const _ComingSoon('计划'),
+          2 => PlanPage(bundle: bundle, onChanged: _apply),
           _ => const _ComingSoon('设置'),
         },
       ),

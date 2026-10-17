@@ -281,3 +281,51 @@ List<DdlGroup> ddlGroupsOn(List<Todo> todos, String date, int axisStartMin,
   out.sort((a, b) => a.minute - b.minute);
   return out;
 }
+
+// ---------------- 找空档 / 块排序 ----------------
+
+/// 一键找空档：在 busy（课表 + 已排块）与 rest（不可排时段）之外，
+/// 找 fromMin 之后最早能放下 durationMin 的位置；找不到返回 -1。
+///
+/// 与鸿蒙端逐行一致：以 SNAP_MIN 步进、起点先 snap 再夹进窗口、跨到窗口外就停。
+int findFreeSlot(TimeAxis axis, List<List<int>> busy, List<List<int>> rest,
+    int durationMin, int fromMin) {
+  final dur = normalizeDuration(durationMin);
+  final blocked = <List<int>>[...busy, ...rest];
+  final earliest = _clamp(snap(fromMin), axis.startMin, axis.endMin);
+  final totalSlots = (axis.endMin - axis.startMin) ~/ snapMin;
+  for (var i = 0; i <= totalSlots; i++) {
+    final start = axis.startMin + i * snapMin;
+    if (start < earliest) continue;
+    if (start + dur > axis.endMin) break;
+    var ok = true;
+    for (final b in blocked) {
+      if (overlaps(start, start + dur, b[0], b[1])) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) return start;
+  }
+  return -1;
+}
+
+/// 块排序：先日期、再开始分钟、最后 id
+List<PlanBlock> sortBlocksByTime(List<PlanBlock> blocks) {
+  final out = List<PlanBlock>.from(blocks);
+  out.sort((a, b) {
+    if (a.date != b.date) return a.date.compareTo(b.date);
+    if (a.startMin != b.startMin) return a.startMin - b.startMin;
+    return a.id - b.id;
+  });
+  return out;
+}
+
+/// 默认不可排时段（午休 / 晚饭 / 睡觉）—— 与鸿蒙端 Types.DEFAULT_REST_WINDOWS 一致。
+/// 接设置页之后改成从库里读。
+List<(int, int)> defaultRestWindows() => [
+      (12 * 60, 13 * 60),
+      (17 * 60, 18 * 60 + 30),
+      (23 * 60 + 30, 24 * 60),
+      (0, 7 * 60),
+    ];

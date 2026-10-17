@@ -151,6 +151,40 @@ for (const d of [-30, -5, 0, 5, 30]) add('pinchDeltaLabel', [d], VD.pinchDeltaLa
   add('totalBlockMinutes', [b2, 9], VD.totalBlockMinutes(b2, 9), 'validate');
 }
 
+// ---- 找空档 / 块排序（PlanMath 的剩余部分）----
+{
+  const win = { startMin: 7 * 60, endMin: 24 * 60 };
+  const axis = new PM.TimeAxis(win);
+  const busySets = [
+    [[480, 540]],
+    [[480, 540], [600, 660]],
+    [[420, 1440]],
+    [],
+  ];
+  const restSets = [
+    [],
+    [[720, 780]],
+    [[720, 780], [1020, 1110]],
+  ];
+  for (const busy of busySets) {
+    for (const rest of restSets) {
+      for (const dur of [30, 60, 90]) {
+        add('findFreeSlot', [win, busy, rest, dur, 7 * 60],
+          PM.findFreeSlot(axis, busy, rest, dur, 7 * 60));
+        add('findFreeSlot', [win, busy, rest, dur, 17 * 60],
+          PM.findFreeSlot(axis, busy, rest, dur, 17 * 60));
+      }
+    }
+  }
+  const bl = [
+    { id: 3, todoId: 1, date: '2026-10-18', startMin: 600, endMin: 660, done: 0 },
+    { id: 1, todoId: 1, date: '2026-10-18', startMin: 480, endMin: 540, done: 0 },
+    { id: 2, todoId: 2, date: '2026-10-17', startMin: 900, endMin: 960, done: 0 },
+    { id: 4, todoId: 2, date: '2026-10-18', startMin: 480, endMin: 540, done: 0 },
+  ];
+  add('sortBlocksByTime', [bl], PM.sortBlocksByTime(bl).map((b) => b.id));
+}
+
 // ================= Timetable =================
 const TB = require(path.join(DIST, 'Timetable.js'));
 const WM = require(path.join(DIST, 'WeekMask.js'));
