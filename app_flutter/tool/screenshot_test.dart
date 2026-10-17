@@ -18,6 +18,8 @@ import 'package:classout/data/backup.dart';
 import 'package:classout/ui/app_frame.dart';
 import 'package:classout/ui/timetable_page.dart';
 import 'package:classout/data/settings.dart';
+import 'package:classout/ui/backup_picker.dart';
+import 'package:classout/ui/import_dialog.dart';
 import 'package:classout/ui/plan_page.dart';
 import 'package:classout/ui/settings_page.dart';
 import 'package:classout/ui/todo_page.dart';
@@ -70,6 +72,13 @@ Future<void> _shot(WidgetTester tester, Widget page, String name, String? family
       find.byType(AppFrame), matchesGoldenFile('goldens/$name.png'));
 }
 
+/// 假的选文件实现（截图只用来看界面，不会真弹文件框）
+class _NoopPicker implements BackupPicker {
+  const _NoopPicker();
+  @override
+  Future<String?> pickBackupText() async => null;
+}
+
 void main() {
   final demo = BackupBundle.decode(File('assets/demo_backup.json').readAsStringSync());
 
@@ -106,6 +115,27 @@ void main() {
       'settings',
       family,
     );
+  });
+
+  testWidgets('导入备份弹窗截图', (tester) async {
+    final family = await _loadFonts();
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    final nav = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(MaterialApp(
+      navigatorKey: nav,
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(brightness: Brightness.dark, useMaterial3: true, fontFamily: family),
+      home: Scaffold(body: AppFrame(tab: 0, onTab: (_) {}, child: const SizedBox.expand())),
+    ));
+    await tester.pumpAndSettle();
+    // 直接在这个 navigator 上弹导入框
+    final fut = showImportDialog(nav.currentContext!, picker: const _NoopPicker());
+    await tester.pumpAndSettle();
+    await expectLater(find.byType(Dialog), matchesGoldenFile('goldens/import_dialog.png'));
+    Navigator.of(nav.currentContext!).pop();
+    await fut;
   });
 
   testWidgets('计划页截图（三日视图，从周五开始）', (tester) async {

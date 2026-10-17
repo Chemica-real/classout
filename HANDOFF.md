@@ -12,7 +12,7 @@ ClassOUT 是一款**纯离线鸿蒙原生（ArkTS）「课表 + 待办 + 计划�
 
 **当前状态：v1.5.1（鸿蒙端，上架准备中，**尚未提交审核**）**；**iOS/Android 版（Dart+Flutter）
 正在开发中**，**iOS/Android 版目标 ①–⑤ 全部实现**（规则层 + 数据层 + 四标签页 + 原生接线 + 通知提醒，
-**593 条测试**），见 **§36–§43**；**iOS 已在 GitHub Actions 的模拟器上自动验证**
+**597 条测试**，含 web/iPad 的「从文件导入」**），见 **§36–§43、§49**；**iOS 已在 GitHub Actions 的模拟器上自动验证**
 （§47：#1–#9 里 7 次绿，含 `db opened` + `loaded:` 自检）；**Android APK 也已能打包**
 （§48，模拟器运行验证降级为手动）。
 ⚠️ 仍然缺的都是**只能靠真机/CI** 的东西：通知权限弹窗/锁屏/免打扰、iOS 上
@@ -4226,3 +4226,48 @@ dependencies { coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 platforms 34/36 + build-tools 34/36，`flutter config --android-sdk` 已指向它。
 ⚠️ 本地 `flutter build apk` 会下 **1 GB 的 NDK**（200 KB/s → 不划算），所以本地没跑完，
 用 CI 验的构建。
+
+
+## 49. 2026-10-17 iOS/Android 版：从「文件」导入备份（里程碑 ②）
+
+### 49.1 做了什么
+
+| 东西 | 说明 |
+|---|---|
+| `ui/backup_picker.dart` | `BackupPicker` 接口 + `FilePickerBackupPicker`（file_picker 13.x）。抽接口是为了**测试能注入假实现**——file_picker 是平台插件，测试环境没有它的通道 |
+| `ui/import_dialog.dart` | 对话框里加「选择文件…」：选到的内容**填进输入框**（不是直接提交），用户看清再点「导入」；读失败/JSON 不对都在窗内提示、不关窗 |
+| `ui/home_shell.dart` | 支持注入 `backupPicker`（默认真实实现） |
+| 测试 | **597 条**（+4：选到文件→填框→导入成功、取消选择不改数据、读文件失败显示原因、垃圾 JSON 报错且不关窗） |
+| golden | 新增 `tool/goldens/import_dialog.png`（含「选择文件…」按钮） |
+
+### 49.2 ★ file_picker 13 的 API 和网上示例不一样
+
+网上 90% 的教程还是 v8/v9 的写法：
+
+```dart
+final r = await FilePicker.platform.pickFiles(withData: true);   // ❌ v13 已经没有
+```
+
+**v13 的实际 API**（我读了 pub-cache 里的源码才确认）：
+
+```dart
+static Future<List<PlatformFile>> pickFiles({...});   // 静态方法，取消 → 空列表
+static Future<PlatformFile?> pickFile({...});         // 单个文件版
+// 没有 withData；字节要自己读：
+final bytes = await files.first.readAsBytes();        // 也有 readAsByteStream()
+```
+
+`PlatformFile` 有 `name` / `extension` / `uri` / `path`（仅 file:// 才有）/ `xFile` /
+`length()` / `readAsBytes()` / `readAsByteStream()`。
+
+### 49.3 又一次踩到同一个坑（记第二次）
+
+`expect(find.text('演示学期'), findsNothing)` 在**对话框盖着**时是错的 ——
+底层 page 还在 widget 树里，只是被遮住。上一轮（§39）已经踩过一次，这次又犯了。
+**正确做法**：要么先关掉对话框再断言，要么改断言"对话框里的内容"。
+
+### 49.4 验证
+
+- `flutter analyze` 干净；**597 条测试全绿**；`flutter build web --release` 通过
+  （file_picker 在 web 上走它的 web 实现，能编译）。
+- iOS/Android 的 CI 会在推送后自动跑（file_picker 加了插件，iOS 要过 CocoaPods/SPM）。

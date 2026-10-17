@@ -7,19 +7,28 @@
 import 'package:flutter/material.dart';
 
 import '../data/backup.dart';
+import 'backup_picker.dart';
 import 'palette.dart';
 
 /// 返回解析好的备份；用户取消返回 null。解析失败会在对话框里显示原因，不关窗。
-Future<BackupBundle?> showImportDialog(BuildContext context, {String? hint}) {
+///
+/// [picker] 可以注入（测试用假实现）；默认走 file_picker：
+/// iPad/iPhone 上从「文件」选中导出的 .json，浏览器上弹系统文件选择框。
+Future<BackupBundle?> showImportDialog(BuildContext context,
+    {String? hint, BackupPicker? picker}) {
   return showDialog<BackupBundle>(
     context: context,
-    builder: (ctx) => _ImportDialog(hint: hint),
+    builder: (ctx) => _ImportDialog(
+      hint: hint,
+      picker: picker ?? const FilePickerBackupPicker(),
+    ),
   );
 }
 
 class _ImportDialog extends StatefulWidget {
   final String? hint;
-  const _ImportDialog({this.hint});
+  final BackupPicker picker;
+  const _ImportDialog({this.hint, required this.picker});
 
   @override
   State<_ImportDialog> createState() => _ImportDialogState();
@@ -28,6 +37,34 @@ class _ImportDialog extends StatefulWidget {
 class _ImportDialogState extends State<_ImportDialog> {
   final _ctrl = TextEditingController();
   String? _error;
+  bool _picking = false;
+
+  /// 选文件 → 把内容填进输入框（让用户看清读到了什么，再点「导入」确认）
+  Future<void> _pickFile() async {
+    setState(() {
+      _picking = true;
+      _error = null;
+    });
+    try {
+      final text = await widget.picker.pickBackupText();
+      if (!mounted) return;
+      if (text == null) {
+        setState(() => _picking = false); // 用户取消
+        return;
+      }
+      _ctrl.text = text;
+      setState(() {
+        _picking = false;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _picking = false;
+        _error = '读取文件失败：$e';
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -72,6 +109,23 @@ class _ImportDialogState extends State<_ImportDialog> {
               style: const TextStyle(fontSize: 12, color: inkSecondary),
             ),
             const SizedBox(height: 10),
+            Row(
+              children: [
+                OutlinedButton.icon(
+                  key: const ValueKey('pick-file'),
+                  onPressed: _picking ? null : _pickFile,
+                  icon: const Icon(Icons.folder_open, size: 16),
+                  label: Text(_picking ? '读取中…' : '选择文件…',
+                      style: const TextStyle(fontSize: 12)),
+                ),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text('或者直接把 JSON 粘在下面',
+                      style: TextStyle(fontSize: 11, color: inkTertiary)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
             TextField(
               controller: _ctrl,
               maxLines: 6,

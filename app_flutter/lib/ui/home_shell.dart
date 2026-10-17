@@ -11,6 +11,7 @@ import '../notify/flutter_notifier.dart';
 import '../notify/notifier.dart';
 import '../notify/scheduler.dart';
 import 'app_frame.dart';
+import 'backup_picker.dart';
 import 'import_dialog.dart';
 import 'palette.dart';
 import 'plan_page.dart';
@@ -27,7 +28,16 @@ class HomeShell extends StatefulWidget {
   /// 通知实现（默认真实插件；测试可注入 FakeNotifier）
   final ReminderNotifier? notifier;
 
-  const HomeShell({super.key, required this.repo, this.fallback, this.notifier});
+  /// 「从文件选备份」的实现（默认真实 file_picker；测试可注入假实现）
+  final BackupPicker? backupPicker;
+
+  const HomeShell({
+    super.key,
+    required this.repo,
+    this.fallback,
+    this.notifier,
+    this.backupPicker,
+  });
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -114,7 +124,7 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   Future<void> _import() async {
-    final bundle = await showImportDialog(context);
+    final bundle = await showImportDialog(context, picker: widget.backupPicker);
     if (bundle == null) return;
     await widget.repo.replaceAll(bundle);
     await _reload();
