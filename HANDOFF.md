@@ -12,8 +12,8 @@ ClassOUT 是一款**纯离线**的「课表 + 待办 + 计划」三合一 App，
 |---|---|---|
 | 版本 | v1.5.1（上架准备中，未提审） | 0.2.0（Android 已装真机 OPPO A97） |
 | 页面 | 课表 / 待办 / 计划 / 设置 + 启动加载页 + 悬浮浮窗 | **同样四页 + 启动页 + 浮窗（§52–§68 逐页复刻）** |
-| 测试 | 离线断言 524 项（`tools/domain-check`） | **1261 条 `flutter test`**（含 775 条三端 fixture 逐条对拍） |
-| 差异基准 | 本目录 `docs/manual/01..09.jpg`（真机截图） | `app_flutter/tool/goldens/*.png` 对照上面九张 + `shared/fixtures/`（775 条规则用例） |
+| 测试 | 离线断言 524 项（`tools/domain-check`） | **1261 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
+| 差异基准 | 本目录 `docs/manual/01..09.jpg`（真机截图） | `app_flutter/tool/goldens/*.png` 对照上面九张 + `shared/fixtures/`（1115 条规则用例） |
 
 **安卓版与鸿蒙版的 1:1 复刻已经完成**：主题 token 抄自 ArkTS（§52）、六个页面重做、
 悬浮页头/导航/日期条/托盘（§60–61）、启动过场（§59）、单周调整（§55）、课程管理+模板+学期
