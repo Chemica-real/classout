@@ -1806,10 +1806,12 @@ class _DdlPanel extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        // 鸿蒙 DDL_PANEL_BG = rgba(12,16,26,0.90)，圆角 GLASS_RADIUS、1px 强描边
+        // 鸿蒙 DDL_PANEL_BG = rgba(12,16,26,0.90)，圆角 GLASS_RADIUS、1px 强描边；
+        // ArkUI 的 popup 自带系统阴影，这里补一层 glassSheet 的阴影才"浮"得起来
         color: const Color(0xE60C101A),
         borderRadius: BorderRadius.circular(glassRadius),
         border: Border.all(color: glassEdgeStrong),
+        boxShadow: glassShadowSheet,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,

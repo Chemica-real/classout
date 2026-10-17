@@ -6594,6 +6594,8 @@ cd app_flutter && flutter test       # 1268 条（含 1115 条三端 fixture 逐
    恢复后的表现已经和鸿蒙一致（留在本页 + 蓝框）。
 5. **版本号** —— 安卓 `0.2.0`、鸿蒙 `v1.5.1`，两端各自的版本号，不是抄错。
 6. **提醒诊断（长按「保存提醒设置」）** —— 安卓专属的排查入口（§86.2），鸿蒙没有。
+7. **列表项增删的过渡** —— 鸿蒙卡片有 `transition(OPACITY + translate y -10, DUR_ITEM)`；
+   安卓只有待确认卡的碎裂/收起有动画，其它增删是即时的（要做得上 `AnimatedList`，先记着）。
 
 ### 117.3 验证命令（每次改动后跑一遍）
 
@@ -6904,3 +6906,10 @@ golden 总数 19 → **23**；`flutter test` **1293 passed**。
 - 其余照旧：待确认卡 / 待办行 / 待安排托盘卡 / 设置卡片都有阴影（对应 `glassCard` / `glassPanelCard`）。
 
 - `flutter test` **1302 passed**；golden 重出（todos / course_manager 等）。
+
+补充：计划页「截止浮层」也补了 `glassShadowSheet` —— 鸿蒙挂在 `bindPopup` 上时浮层自带系统阴影，
+光有底色与描边看着是"贴"在网格上的。
+
+另外记一条**已知未做**的差异（§117.2 追加第 7 条）：鸿蒙列表项增删有
+`transition(OPACITY + translate y -10, 240ms)`，安卓是即时增删（只有待确认卡的碎裂/收起有动画）。
+Flutter 要做这个得上 `AnimatedList`/`SliverAnimatedList`，改动面比收益大，先记录。
