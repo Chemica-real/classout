@@ -1,6 +1,7 @@
 // ClassOUT（iOS / Android）—— 第二版：备份 JSON → 本地仓库 → 周课表。
 //
-// 数据流：assets/demo_backup.json（空库时兜底）→ ClassOutRepo → 各页面；
+// 数据流：首次启动灌一份"空学期"（我的学期 + 北大 12 节 + 默认不可排，见
+// domain/demo_sandbox.dart → buildFirstRunBundle）→ ClassOutRepo → 各页面；
 // 页头「导入」可以把一份备份 JSON 粘进来替换全部数据。
 // 仓库实现按平台自动选（data/repo_factory.dart）：
 //   web   → MemoryRepo（刷新即回到演示数据）
@@ -8,7 +9,7 @@
 
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
+import 'domain/demo_sandbox.dart';
 
 import 'data/backup.dart';
 import 'data/repo.dart';
@@ -55,9 +56,10 @@ class _BootState extends State<_Boot> {
         final repo = await openRepo();
         // --- 给 CI 看的自检日志（GitHub Actions 里 grep 这几行判断真跑起来了）---
         debugPrint('[ClassOUT] db opened');
-        final demo = BackupBundle.decode(
-            await rootBundle.loadString('assets/demo_backup.json'));
-        debugPrint('[ClassOUT] demo bundle ok: courses=${demo.courses.length}');
+        // 空库时灌的那份：鸿蒙 `Seeder` 的等价物（没有任何课程，也不内置任何课表）
+        final demo = buildFirstRunBundle();
+        debugPrint('[ClassOUT] bootstrap ok: semester=${demo.semester?.name} '
+            'courses=${demo.courses.length}');
         return (repo, demo);
       } catch (e) {
         debugPrint('[ClassOUT] boot error: $e');

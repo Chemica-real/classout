@@ -18,6 +18,48 @@ import 'dates.dart';
 import 'plan_math.dart';
 import 'timetable.dart';
 
+/// 首次启动（空库）时的那份数据 —— 鸿蒙 `Seeder.ensureSemester` / `ensureRestWindows`
+/// 的安卓版：学期「我的学期」（本周一开学、16 周）+ 北大 12 节作息 + 4 条默认不可排时段，
+/// **没有任何课程**（鸿蒙注释写得很明白："App 不内置任何课表"，新用户自己建或导入）。
+BackupBundle buildFirstRunBundle({DateTime? now}) {
+  final today = now ?? DateTime.now();
+  final day0 = DateTime(today.year, today.month, today.day);
+  final monday = addDays(day0, 1 - weekdayOf(day0)); // 本周一
+  final sem = Semester(
+    id: 1,
+    name: '我的学期',
+    startDate: formatDate(monday),
+    totalWeeks: 16,
+    firstDayOfWeek: 1,
+    showWeekend: true,
+  );
+  final rests = defaultRestWindows();
+  return BackupBundle(
+    app: 'ClassOUT',
+    version: 1,
+    exportedAt: formatDate(day0),
+    semesters: [sem],
+    sectionTimes: pkuSectionTimes(1),
+    courses: const <Course>[],
+    rules: const <SessionRule>[],
+    overrides: const <SessionOverride>[],
+    todos: const <Todo>[],
+    blocks: const <PlanBlock>[],
+    templates: const <TodoTemplate>[],
+    lessons: const <VirtualLesson>[],
+    restWindows: [
+      for (var i = 0; i < rests.length; i++)
+        RestWindow(
+          id: i,
+          weekday: 0,
+          startMin: rests[i].$1,
+          endMin: rests[i].$2,
+          label: const ['午休', '晚饭', '睡觉', '睡觉'][i],
+        ),
+    ],
+  );
+}
+
 /// 造一份"演练用"的沙箱数据。[now] 可注入（测试用固定日期）。
 BackupBundle buildDemoSandbox({DateTime? now}) {
   final today = now ?? DateTime.now();

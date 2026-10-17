@@ -12,7 +12,7 @@ ClassOUT 是一款**纯离线**的「课表 + 待办 + 计划」三合一 App，
 |---|---|---|
 | 版本 | v1.5.1（上架准备中，未提审） | 0.2.0（Android 已装真机 OPPO A97） |
 | 页面 | 课表 / 待办 / 计划 / 设置 + 启动加载页 + 悬浮浮窗 | **同样四页 + 启动页 + 浮窗（§52–§68 逐页复刻）** |
-| 测试 | 离线断言 524 项（`tools/domain-check`） | **1284 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
+| 测试 | 离线断言 524 项（`tools/domain-check`） | **1285 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
 | 差异基准 | 本目录 `docs/manual/01..09.jpg`（真机截图） | `app_flutter/tool/goldens/*.png` 对照上面九张 + `shared/fixtures/`（1115 条规则用例） |
 
 **安卓版与鸿蒙版的 1:1 复刻已经完成**：主题 token 抄自 ArkTS（§52）、六个页面重做、
@@ -6668,3 +6668,21 @@ cd app_flutter && flutter build apk --debug && adb -s 7D7PAQ9PORLR79Z9 install -
   6 条时段（含周三 10-11 的习题课）、每门一条 `%D作业` 模板、学期「演练学期」本周一开学 16 周、
   12 节 PKU 作息、4 段默认不可排、两个计划块（今天 14:00、明天 09:00）——全部与鸿蒙一致。
 - `flutter test`：**1284 passed**。
+
+### 116.18 首次启动不再灌演示课表（对齐鸿蒙 `Seeder`）
+
+鸿蒙 `Seeder.ets` 开头有一段明确的注释：**"App 不内置任何课表"** ——
+新装用户拿到的是「我的学期」（本周一开学、16 周）+ 北大 12 节作息 + 4 段默认不可排，
+课程靠自己建或从备份导入。安卓的 `main.dart` 却一直拿 `assets/demo_backup.json`（演示学期 +
+4 门演示课 + 6 条待办）当空库兜底，新用户一进来看到的是别人的演示数据。
+
+现在：
+
+- 新增 `domain/demo_sandbox.dart → buildFirstRunBundle()`：`我的学期` / 本周一 / 16 周 /
+  `pkuSectionTimes(1)` / 4 段默认不可排，**courses / todos / rules 全空**；
+- `main.dart` 的空库兜底换成它（`[ClassOUT] bootstrap ok: semester=我的学期 courses=0`）；
+  `assets/demo_backup.json` 仍留给测试与 golden（固定日期、结果可重复）；
+- 空课表时课表页显示 7 列空网格（没有课程块），「管理课程」里是鸿蒙同款的"还没有课程…"提示；
+- 测试 +1（新学期名/日期/12 节/4 段/无课程）。
+
+> ⚠️ 这条只影响**全新安装**：已经导入真实课表的手机（比如这台 OPPO）数据不动。

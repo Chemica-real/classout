@@ -41,6 +41,21 @@ void main() {
         ['homework', 'self', 'homework', 'none']);
   });
 
+  test('首次启动的空学期：我的学期 / 本周一 / 16 周 / 12 节 / 4 段不可排 / 没有课程', () {
+    final f = buildFirstRunBundle(now: DateTime(2026, 10, 16, 9, 30));
+    final sem = f.semester!;
+    expect(sem.name, '我的学期');
+    expect(sem.startDate, '2026-10-12');
+    expect(sem.totalWeeks, 16);
+    expect(f.sectionTimes.length, 12);
+    expect(f.restWindows.length, 4);
+    expect(f.restWindows.map((w) => w.label).toList(),
+        ['午休', '晚饭', '睡觉', '睡觉']);
+    expect(f.courses, isEmpty, reason: '鸿蒙不内置任何课表');
+    expect(f.todos, isEmpty);
+    expect(f.rules, isEmpty);
+  });
+
   test('两个已排块：今天 14:00、明天 09:00；节次 12 节、不可排 4 段', () {
     expect(b.blocks.length, 2);
     expect(b.blocks[0].date, formatDate(DateTime(2026, 10, 16)));
