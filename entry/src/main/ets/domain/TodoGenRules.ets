@@ -11,7 +11,7 @@
 
 import { Course, CourseSession, Semester, SessionOverride, SessionRule, SectionTime,
   TodoTemplate } from '../model/Types';
-import { sessionsOnDate } from './Timetable';
+import { sessionsOnDate, weekOfDate } from './Timetable';
 import { addDays, formatDate, monthDayText, parseDate, weekdayOf } from '../util/DateUtil';
 
 /** next_session 向前找多少天 */
@@ -105,3 +105,73 @@ export function computeDdl(sem: Semester, courses: Course[], rules: SessionRule[
   return '';
 }
 
+
+/**
+ * 虚拟课程某一讲的"合成课时"：虚拟课程本来就没有节次规则，
+ * 用计划块的日期与起止分钟伪造一个 `CourseSession`，后面的规则就能和真课完全一样。
+ */
+export function lessonSessionFor(course: Course, date: string, startMin: number,
+  endMin: number, location: string): CourseSession {
+  const rule: SessionRule = {
+    id: 0, courseId: course.id, weekday: 0, startSection: 0, endSection: 0,
+    weeksMask: '', location: location, isQuiz: false
+  };
+  const session: CourseSession = {
+    course: course, rule: rule, date: date, originDate: date,
+    weekday: weekdayOf(parseDate(date)), startSection: 0, endSection: 0,
+    startMin: startMin, endMin: endMin,
+    location: location.length > 0 ? location : course.location,
+    isQuiz: false, fromOverride: false, isExtra: false
+  };
+  return session;
+}
+
+/** 一条"该生成什么"的计划（不落库，纯数据） */
+export interface PlannedGen {
+  /** 去重键 `courseId|date|templateId` */
+  key: string;
+  title: string;
+  ddl: string;
+  estimateMin: number;
+  category: string;
+  submitChannel: string;
+}
+
+/**
+ * 给定一节课与这门课的模板，算出**该新建哪些待办**（不发通知、不写库）。
+ *
+ * 与 `TodoGenerator.generateForSession` 的判定逐条一致：
+ *   · 课程 `autoTodoEnabled=false` → 空
+ *   · 模板 `enabled=false` / 不属于这门课 → 跳过
+ *   · 已存在同 key → 跳过
+ *   · `%N` = 这门课已有待办数 + 1（`existingForCourse`）
+ */
+export function planSessionTodos(sem: Semester, courses: Course[], rules: SessionRule[],
+  times: SectionTime[], templates: TodoTemplate[], s: CourseSession,
+  existingKeys: string[], existingForCourse: number): PlannedGen[] {
+  const out: PlannedGen[] = [];
+  if (!s.course.autoTodoEnabled) {
+    return out;
+  }
+  const week: number = weekOfDate(sem, parseDate(s.date));
+  let n: number = existingForCourse;
+  for (const t of templates) {
+    if (t.courseId !== s.course.id || !t.enabled) {
+      continue;
+    }
+    const key: string = `${s.course.id}|${s.date}|${t.id}`;
+    if (existingKeys.indexOf(key) >= 0) {
+      continue;
+    }
+    n += 1;
+    out.push({
+      key: key,
+      title: renderTitle(t.titleTemplate, s, week, n),
+      ddl: computeDdl(sem, courses, rules, [], times, s, t.ddlRule, t.ddlParam),
+      estimateMin: t.estimateMin,
+      category: t.category,
+      submitChannel: t.submitChannel
+    });
+  }
+  return out;
+}

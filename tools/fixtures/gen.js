@@ -428,6 +428,58 @@ for (const s of GD.guideSteps()) {
   add('guideStepTab', [s.title], s.tab, 'guide');
 }
 
+// ---------------- 虚拟课时：合成 session + 该生成哪些待办（TodoGenRules） ----------------
+{
+  const sem = { id: 1, name: '演示学期', startDate: '2026-09-07', totalWeeks: 16,
+    firstDayOfWeek: 1, showWeekend: true };
+  const courses = [
+    { id: 1, semesterId: 1, name: '高等数学', shortName: '高数', teacher: '王老师',
+      location: '明理101', colorIndex: 2, autoTodoEnabled: true, isVirtual: true, note: '' },
+    { id: 2, semesterId: 1, name: '大学英语', shortName: '英语', teacher: '李老师',
+      location: '外语楼203', colorIndex: 1, autoTodoEnabled: false, isVirtual: true,
+      note: '' }
+  ];
+  const rules = [];
+  const times = [];
+  for (let i = 1; i <= 12; i++) {
+    const start = 8 * 60 + (i - 1) * 60;
+    times.push({ semesterId: 1, section: i, startMin: start, endMin: start + 50, flexible: false });
+  }
+  const templates = [
+    { id: 11, courseId: 1, sortOrder: 0, enabled: true, titleTemplate: '%c 第 %N 讲作业',
+      ddlRule: 'same_day', ddlParam: '', estimateMin: 90, category: 'homework',
+      submitChannel: '', note: '' },
+    { id: 12, courseId: 1, sortOrder: 1, enabled: true, titleTemplate: '%D 阅读',
+      ddlRule: 'next_session', ddlParam: '', estimateMin: 30, category: 'self',
+      submitChannel: '', note: '' },
+    { id: 13, courseId: 1, sortOrder: 2, enabled: false, titleTemplate: '停用的',
+      ddlRule: 'same_day', ddlParam: '', estimateMin: 60, category: 'homework',
+      submitChannel: '', note: '' },
+    { id: 14, courseId: 2, sortOrder: 0, enabled: true, titleTemplate: '英语作业',
+      ddlRule: 'same_day', ddlParam: '', estimateMin: 60, category: 'homework',
+      submitChannel: '', note: '' }
+  ];
+  for (const spec of [
+    { courseId: 1, date: '2026-10-16', startMin: 19 * 60, endMin: 20 * 60 + 30 },
+    { courseId: 1, date: '2026-10-20', startMin: 9 * 60, endMin: 10 * 60 },
+    { courseId: 2, date: '2026-10-21', startMin: 14 * 60, endMin: 15 * 60 }
+  ]) {
+    const course = courses.filter((c) => c.id === spec.courseId)[0];
+    const s = TG.lessonSessionFor(course, spec.date, spec.startMin, spec.endMin, '');
+    add('lessonSession', [course, spec.date, spec.startMin, spec.endMin, ''],
+      { date: s.date, weekday: s.weekday, startMin: s.startMin, endMin: s.endMin,
+        location: s.location, courseId: s.course.id }, 'todo_gen');
+    for (const existing of [[], ['1|2026-10-16|11']]) {
+      const plan = TG.planSessionTodos(sem, courses, rules, times, templates, s, existing, 0);
+      add('planSessionTodos', [sem, courses, rules, times, templates, existing, 0,
+        spec.courseId, spec.date, spec.startMin, spec.endMin],
+        plan.map((p) => ({ key: p.key, title: p.title, ddl: p.ddl,
+          estimateMin: p.estimateMin, category: p.category, submitChannel: p.submitChannel })),
+        'todo_gen');
+    }
+  }
+}
+
 const SOURCE = {
   plan_math: 'entry/src/main/ets/domain/PlanMath.ets',
   sync_cadence: 'entry/src/main/ets/domain/SyncCadence.ets',

@@ -229,67 +229,125 @@ GenerationOutcome generateForLesson({
   for (final c in courses) {
     if (c.id == lesson.courseId) course = c;
   }
-  if (course == null || !course.autoTodoEnabled) {
-    return GenerationOutcome(const [], 0, '');
-  }
-  final c0 = course;
-  final syntheticRule = SessionRule(
-    id: 0,
-    courseId: course.id,
-    weekday: 0,
-    startSection: 0,
-    endSection: 0,
-    weeksMask: '',
-    location: course.location,
-    isQuiz: false,
+  if (course == null) return GenerationOutcome(const [], 0, '');
+  final s = lessonSessionFor(course, date, startMin, endMin);
+  final planned = planSessionTodos(
+    sem: sem,
+    courses: courses,
+    rules: rules,
+    times: times,
+    templates: templates,
+    s: s,
+    existingKeys: [for (final t in todos) t.generationKey],
+    existingForCourse: todos.where((x) => x.courseId == course!.id).length,
   );
-  final s = CourseSession(
-    course: course,
-    rule: syntheticRule,
-    date: date,
-    originDate: date,
-    weekday: weekdayOf(parseDate(date)),
-    startSection: 0,
-    endSection: 0,
-    startMin: startMin,
-    endMin: endMin,
-    location: course.location,
-    isQuiz: false,
-    fromOverride: false,
-    isExtra: false,
-  );
-  final keys = {for (final t in todos) t.generationKey};
   final out = <Todo>[];
   var id = nextId;
-  final week = weekOfDate(sem, parseDate(date));
-  for (final t in templates) {
-    if (t.courseId != c0.id || !t.enabled) continue;
-    final key = templateKey(c0.id, date, t.id);
-    if (keys.contains(key)) continue;
-    final n = todos.where((x) => x.courseId == c0.id).length + 1;
+  for (final p in planned) {
     id++;
     out.add(Todo(
       id: id,
-      title: renderTitle(t.titleTemplate, s, week, n),
-      courseId: c0.id,
-      category: t.category,
+      title: p.title,
+      courseId: course.id,
+      category: p.category,
       priority: 1,
-      ddl: computeDdl(sem, courses, rules, const [], times, s, t.ddlRule,
-          t.ddlParam),
+      ddl: p.ddl,
       endAt: '',
-      estimateMin: t.estimateMin,
+      estimateMin: p.estimateMin,
       status: TodoStatus.pending,
       source: 'template',
-      generationKey: key,
+      generationKey: p.key,
       note: '',
-      submitChannel: t.submitChannel,
+      submitChannel: p.submitChannel,
       repeatRule: '',
       photos: '',
       createdAt: DateTime.now().millisecondsSinceEpoch,
       confirmedAt: 0,
       doneAt: 0,
     ));
-    keys.add(key);
   }
   return GenerationOutcome(out, 1, date);
+}
+
+/// 虚拟课程的"合成课时"（对应 ArkTS `lessonSessionFor`）：用计划块的日期与起止分钟
+/// 伪造一个 `CourseSession`，后面的规则就能和真课完全一样。
+CourseSession lessonSessionFor(Course course, String date, int startMin, int endMin,
+        {String location = ''}) =>
+    CourseSession(
+      course: course,
+      rule: SessionRule(
+        id: 0,
+        courseId: course.id,
+        weekday: 0,
+        startSection: 0,
+        endSection: 0,
+        weeksMask: '',
+        location: location,
+        isQuiz: false,
+      ),
+      date: date,
+      originDate: date,
+      weekday: weekdayOf(parseDate(date)),
+      startSection: 0,
+      endSection: 0,
+      startMin: startMin,
+      endMin: endMin,
+      location: location.isNotEmpty ? location : course.location,
+      isQuiz: false,
+      fromOverride: false,
+      isExtra: false,
+    );
+
+/// 一条"该生成什么"的计划（对应 ArkTS `PlannedGen`）
+class PlannedGen {
+  final String key;
+  final String title;
+  final String ddl;
+  final int estimateMin;
+  final String category;
+  final String submitChannel;
+  const PlannedGen(this.key, this.title, this.ddl, this.estimateMin,
+      this.category, this.submitChannel);
+
+  Map<String, dynamic> toJson() => {
+        'key': key,
+        'title': title,
+        'ddl': ddl,
+        'estimateMin': estimateMin,
+        'category': category,
+        'submitChannel': submitChannel,
+      };
+}
+
+/// 给定一节课与这门课的模板，算出该新建哪些待办（不发通知、不写库）。
+/// 与 ArkTS `planSessionTodos` 逐条一致（fixtures/todo_gen 对拍）。
+List<PlannedGen> planSessionTodos({
+  required Semester sem,
+  required List<Course> courses,
+  required List<SessionRule> rules,
+  required List<SectionTime> times,
+  required List<TodoTemplate> templates,
+  required CourseSession s,
+  required List<String> existingKeys,
+  required int existingForCourse,
+}) {
+  final out = <PlannedGen>[];
+  if (!s.course.autoTodoEnabled) return out;
+  final week = weekOfDate(sem, parseDate(s.date));
+  var n = existingForCourse;
+  for (final t in templates) {
+    if (t.courseId != s.course.id || !t.enabled) continue;
+    final key = templateKey(s.course.id, s.date, t.id);
+    if (existingKeys.contains(key)) continue;
+    n++;
+    out.add(PlannedGen(
+      key,
+      renderTitle(t.titleTemplate, s, week, n),
+      computeDdl(sem, courses, rules, const [], times, s, t.ddlRule, t.ddlParam),
+      t.estimateMin,
+      t.category,
+      t.submitChannel,
+    ));
+  }
+  return out;
 }

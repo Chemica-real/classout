@@ -5373,3 +5373,36 @@ fixtures 与单测里跑，**界面层根本没接线** —— 也就是鸿蒙�
 - 还没做：`TodoGenerator.ets` 的 `generateForLesson` 仍在 ArkTS 侧依赖 Context，
   所以这个函数**没进 fixtures**（Dart 侧测试覆盖；要三端对拍得先把 ArkTS 的纯部分也抽出来，
   和 §73 一样处理）
+
+## 82. 2026-10-18 双机时代：把用户**真实课表**灌进安卓版 + 新的对比工作流
+
+用户把**鸿蒙手机也接上了**，并要求："以 UI 与逻辑的像为优先；可以先把我的课表导进 android 手机里"。
+目标已用 `update_goal` 改成这个新重心（双机同屏对比 + 真实数据）。
+
+### 82.1 真实数据已进安卓（已验证）
+
+1. 备份在仓库里早就有一份（`.logs/backup.json`，gitignored，含真实课表）：
+   `1 个学期（大一上 / 2026-09-07 / 16 周）、13 门课、16 条时段、26 条待办、
+   10 个模板、38 个课时、15 个计划块、3 条不可排时段`
+2. 新增工具 **`tools/backup-to-db.py`**：把备份 JSON 按 `assets/schema.sql` 建成 SQLite 库
+   （纯离线、不经过文件选择器）：
+   ```
+   python3 tools/backup-to-db.py <backup.json> -o /tmp/classout.db
+   adb shell am force-stop com.chemica.classout
+   adb shell "run-as com.chemica.classout sh -c 'cat > files/classout.db'" < /tmp/classout.db
+   ```
+3. 真机（OPPO A97）实测：重启后日志 `loaded: courses=13 todos=26 rules=16`，
+   课表页直接显示「大一上 / 第 6 周 / 13 门课」的真实安排（截图留存）。
+   ⚠️ 第一次启动会弹「先走一遍演练？」，点「先自己用用」即可（弹窗不碰数据）。
+
+### 82.2 双机对比的第一道坎
+
+`hdc list targets` 仍然是 `[Empty]`，但 `lsusb` 能看到 `12d1:5000 Huawei "HDC Device"` ——
+说明线通了、**手机那侧的 USB 调试授权/端口没开**。需要用户在鸿蒙机上确认：
+`设置 → 系统和更新 → 开发人员选项 → USB 调试` 打开，并在弹窗里点「允许」（“始终允许”更好）。
+打开后 `./hdc.sh list targets` 应出现序列号，就可以 `hdc shell snapshot_display` 截图做同屏对比。
+
+### 82.3 下一步的固定流程
+
+① 两台机同一页各截一张 → ② 列差异（间距/字号/颜色/层级/文案/交互）→
+③ 改 Flutter → ④ 装安卓再截 → ⑤ 差异清零 → 写 HANDOFF + 推 origin/github。

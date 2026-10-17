@@ -14918,6 +14918,1281 @@
     "2026-09-23"
    ],
    "expect": "2026-09-28"
+  },
+  {
+   "fn": "lessonSession",
+   "args": [
+    {
+     "id": 1,
+     "semesterId": 1,
+     "name": "高等数学",
+     "shortName": "高数",
+     "teacher": "王老师",
+     "location": "明理101",
+     "colorIndex": 2,
+     "autoTodoEnabled": true,
+     "isVirtual": true,
+     "note": ""
+    },
+    "2026-10-16",
+    1140,
+    1230,
+    ""
+   ],
+   "expect": {
+    "date": "2026-10-16",
+    "weekday": 5,
+    "startMin": 1140,
+    "endMin": 1230,
+    "location": "明理101",
+    "courseId": 1
+   }
+  },
+  {
+   "fn": "planSessionTodos",
+   "args": [
+    {
+     "id": 1,
+     "name": "演示学期",
+     "startDate": "2026-09-07",
+     "totalWeeks": 16,
+     "firstDayOfWeek": 1,
+     "showWeekend": true
+    },
+    [
+     {
+      "id": 1,
+      "semesterId": 1,
+      "name": "高等数学",
+      "shortName": "高数",
+      "teacher": "王老师",
+      "location": "明理101",
+      "colorIndex": 2,
+      "autoTodoEnabled": true,
+      "isVirtual": true,
+      "note": ""
+     },
+     {
+      "id": 2,
+      "semesterId": 1,
+      "name": "大学英语",
+      "shortName": "英语",
+      "teacher": "李老师",
+      "location": "外语楼203",
+      "colorIndex": 1,
+      "autoTodoEnabled": false,
+      "isVirtual": true,
+      "note": ""
+     }
+    ],
+    [],
+    [
+     {
+      "semesterId": 1,
+      "section": 1,
+      "startMin": 480,
+      "endMin": 530,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 2,
+      "startMin": 540,
+      "endMin": 590,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 3,
+      "startMin": 600,
+      "endMin": 650,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 4,
+      "startMin": 660,
+      "endMin": 710,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 5,
+      "startMin": 720,
+      "endMin": 770,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 6,
+      "startMin": 780,
+      "endMin": 830,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 7,
+      "startMin": 840,
+      "endMin": 890,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 8,
+      "startMin": 900,
+      "endMin": 950,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 9,
+      "startMin": 960,
+      "endMin": 1010,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 10,
+      "startMin": 1020,
+      "endMin": 1070,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 11,
+      "startMin": 1080,
+      "endMin": 1130,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 12,
+      "startMin": 1140,
+      "endMin": 1190,
+      "flexible": false
+     }
+    ],
+    [
+     {
+      "id": 11,
+      "courseId": 1,
+      "sortOrder": 0,
+      "enabled": true,
+      "titleTemplate": "%c 第 %N 讲作业",
+      "ddlRule": "same_day",
+      "ddlParam": "",
+      "estimateMin": 90,
+      "category": "homework",
+      "submitChannel": "",
+      "note": ""
+     },
+     {
+      "id": 12,
+      "courseId": 1,
+      "sortOrder": 1,
+      "enabled": true,
+      "titleTemplate": "%D 阅读",
+      "ddlRule": "next_session",
+      "ddlParam": "",
+      "estimateMin": 30,
+      "category": "self",
+      "submitChannel": "",
+      "note": ""
+     },
+     {
+      "id": 13,
+      "courseId": 1,
+      "sortOrder": 2,
+      "enabled": false,
+      "titleTemplate": "停用的",
+      "ddlRule": "same_day",
+      "ddlParam": "",
+      "estimateMin": 60,
+      "category": "homework",
+      "submitChannel": "",
+      "note": ""
+     },
+     {
+      "id": 14,
+      "courseId": 2,
+      "sortOrder": 0,
+      "enabled": true,
+      "titleTemplate": "英语作业",
+      "ddlRule": "same_day",
+      "ddlParam": "",
+      "estimateMin": 60,
+      "category": "homework",
+      "submitChannel": "",
+      "note": ""
+     }
+    ],
+    [],
+    0,
+    1,
+    "2026-10-16",
+    1140,
+    1230
+   ],
+   "expect": [
+    {
+     "key": "1|2026-10-16|11",
+     "title": "高数 第 1 讲作业",
+     "ddl": "2026-10-16 23:59",
+     "estimateMin": 90,
+     "category": "homework",
+     "submitChannel": ""
+    },
+    {
+     "key": "1|2026-10-16|12",
+     "title": "10.16 阅读",
+     "ddl": "2026-10-23 23:59",
+     "estimateMin": 30,
+     "category": "self",
+     "submitChannel": ""
+    }
+   ]
+  },
+  {
+   "fn": "planSessionTodos",
+   "args": [
+    {
+     "id": 1,
+     "name": "演示学期",
+     "startDate": "2026-09-07",
+     "totalWeeks": 16,
+     "firstDayOfWeek": 1,
+     "showWeekend": true
+    },
+    [
+     {
+      "id": 1,
+      "semesterId": 1,
+      "name": "高等数学",
+      "shortName": "高数",
+      "teacher": "王老师",
+      "location": "明理101",
+      "colorIndex": 2,
+      "autoTodoEnabled": true,
+      "isVirtual": true,
+      "note": ""
+     },
+     {
+      "id": 2,
+      "semesterId": 1,
+      "name": "大学英语",
+      "shortName": "英语",
+      "teacher": "李老师",
+      "location": "外语楼203",
+      "colorIndex": 1,
+      "autoTodoEnabled": false,
+      "isVirtual": true,
+      "note": ""
+     }
+    ],
+    [],
+    [
+     {
+      "semesterId": 1,
+      "section": 1,
+      "startMin": 480,
+      "endMin": 530,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 2,
+      "startMin": 540,
+      "endMin": 590,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 3,
+      "startMin": 600,
+      "endMin": 650,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 4,
+      "startMin": 660,
+      "endMin": 710,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 5,
+      "startMin": 720,
+      "endMin": 770,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 6,
+      "startMin": 780,
+      "endMin": 830,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 7,
+      "startMin": 840,
+      "endMin": 890,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 8,
+      "startMin": 900,
+      "endMin": 950,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 9,
+      "startMin": 960,
+      "endMin": 1010,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 10,
+      "startMin": 1020,
+      "endMin": 1070,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 11,
+      "startMin": 1080,
+      "endMin": 1130,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 12,
+      "startMin": 1140,
+      "endMin": 1190,
+      "flexible": false
+     }
+    ],
+    [
+     {
+      "id": 11,
+      "courseId": 1,
+      "sortOrder": 0,
+      "enabled": true,
+      "titleTemplate": "%c 第 %N 讲作业",
+      "ddlRule": "same_day",
+      "ddlParam": "",
+      "estimateMin": 90,
+      "category": "homework",
+      "submitChannel": "",
+      "note": ""
+     },
+     {
+      "id": 12,
+      "courseId": 1,
+      "sortOrder": 1,
+      "enabled": true,
+      "titleTemplate": "%D 阅读",
+      "ddlRule": "next_session",
+      "ddlParam": "",
+      "estimateMin": 30,
+      "category": "self",
+      "submitChannel": "",
+      "note": ""
+     },
+     {
+      "id": 13,
+      "courseId": 1,
+      "sortOrder": 2,
+      "enabled": false,
+      "titleTemplate": "停用的",
+      "ddlRule": "same_day",
+      "ddlParam": "",
+      "estimateMin": 60,
+      "category": "homework",
+      "submitChannel": "",
+      "note": ""
+     },
+     {
+      "id": 14,
+      "courseId": 2,
+      "sortOrder": 0,
+      "enabled": true,
+      "titleTemplate": "英语作业",
+      "ddlRule": "same_day",
+      "ddlParam": "",
+      "estimateMin": 60,
+      "category": "homework",
+      "submitChannel": "",
+      "note": ""
+     }
+    ],
+    [
+     "1|2026-10-16|11"
+    ],
+    0,
+    1,
+    "2026-10-16",
+    1140,
+    1230
+   ],
+   "expect": [
+    {
+     "key": "1|2026-10-16|12",
+     "title": "10.16 阅读",
+     "ddl": "2026-10-23 23:59",
+     "estimateMin": 30,
+     "category": "self",
+     "submitChannel": ""
+    }
+   ]
+  },
+  {
+   "fn": "lessonSession",
+   "args": [
+    {
+     "id": 1,
+     "semesterId": 1,
+     "name": "高等数学",
+     "shortName": "高数",
+     "teacher": "王老师",
+     "location": "明理101",
+     "colorIndex": 2,
+     "autoTodoEnabled": true,
+     "isVirtual": true,
+     "note": ""
+    },
+    "2026-10-20",
+    540,
+    600,
+    ""
+   ],
+   "expect": {
+    "date": "2026-10-20",
+    "weekday": 2,
+    "startMin": 540,
+    "endMin": 600,
+    "location": "明理101",
+    "courseId": 1
+   }
+  },
+  {
+   "fn": "planSessionTodos",
+   "args": [
+    {
+     "id": 1,
+     "name": "演示学期",
+     "startDate": "2026-09-07",
+     "totalWeeks": 16,
+     "firstDayOfWeek": 1,
+     "showWeekend": true
+    },
+    [
+     {
+      "id": 1,
+      "semesterId": 1,
+      "name": "高等数学",
+      "shortName": "高数",
+      "teacher": "王老师",
+      "location": "明理101",
+      "colorIndex": 2,
+      "autoTodoEnabled": true,
+      "isVirtual": true,
+      "note": ""
+     },
+     {
+      "id": 2,
+      "semesterId": 1,
+      "name": "大学英语",
+      "shortName": "英语",
+      "teacher": "李老师",
+      "location": "外语楼203",
+      "colorIndex": 1,
+      "autoTodoEnabled": false,
+      "isVirtual": true,
+      "note": ""
+     }
+    ],
+    [],
+    [
+     {
+      "semesterId": 1,
+      "section": 1,
+      "startMin": 480,
+      "endMin": 530,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 2,
+      "startMin": 540,
+      "endMin": 590,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 3,
+      "startMin": 600,
+      "endMin": 650,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 4,
+      "startMin": 660,
+      "endMin": 710,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 5,
+      "startMin": 720,
+      "endMin": 770,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 6,
+      "startMin": 780,
+      "endMin": 830,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 7,
+      "startMin": 840,
+      "endMin": 890,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 8,
+      "startMin": 900,
+      "endMin": 950,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 9,
+      "startMin": 960,
+      "endMin": 1010,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 10,
+      "startMin": 1020,
+      "endMin": 1070,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 11,
+      "startMin": 1080,
+      "endMin": 1130,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 12,
+      "startMin": 1140,
+      "endMin": 1190,
+      "flexible": false
+     }
+    ],
+    [
+     {
+      "id": 11,
+      "courseId": 1,
+      "sortOrder": 0,
+      "enabled": true,
+      "titleTemplate": "%c 第 %N 讲作业",
+      "ddlRule": "same_day",
+      "ddlParam": "",
+      "estimateMin": 90,
+      "category": "homework",
+      "submitChannel": "",
+      "note": ""
+     },
+     {
+      "id": 12,
+      "courseId": 1,
+      "sortOrder": 1,
+      "enabled": true,
+      "titleTemplate": "%D 阅读",
+      "ddlRule": "next_session",
+      "ddlParam": "",
+      "estimateMin": 30,
+      "category": "self",
+      "submitChannel": "",
+      "note": ""
+     },
+     {
+      "id": 13,
+      "courseId": 1,
+      "sortOrder": 2,
+      "enabled": false,
+      "titleTemplate": "停用的",
+      "ddlRule": "same_day",
+      "ddlParam": "",
+      "estimateMin": 60,
+      "category": "homework",
+      "submitChannel": "",
+      "note": ""
+     },
+     {
+      "id": 14,
+      "courseId": 2,
+      "sortOrder": 0,
+      "enabled": true,
+      "titleTemplate": "英语作业",
+      "ddlRule": "same_day",
+      "ddlParam": "",
+      "estimateMin": 60,
+      "category": "homework",
+      "submitChannel": "",
+      "note": ""
+     }
+    ],
+    [],
+    0,
+    1,
+    "2026-10-20",
+    540,
+    600
+   ],
+   "expect": [
+    {
+     "key": "1|2026-10-20|11",
+     "title": "高数 第 1 讲作业",
+     "ddl": "2026-10-20 23:59",
+     "estimateMin": 90,
+     "category": "homework",
+     "submitChannel": ""
+    },
+    {
+     "key": "1|2026-10-20|12",
+     "title": "10.20 阅读",
+     "ddl": "2026-10-27 23:59",
+     "estimateMin": 30,
+     "category": "self",
+     "submitChannel": ""
+    }
+   ]
+  },
+  {
+   "fn": "planSessionTodos",
+   "args": [
+    {
+     "id": 1,
+     "name": "演示学期",
+     "startDate": "2026-09-07",
+     "totalWeeks": 16,
+     "firstDayOfWeek": 1,
+     "showWeekend": true
+    },
+    [
+     {
+      "id": 1,
+      "semesterId": 1,
+      "name": "高等数学",
+      "shortName": "高数",
+      "teacher": "王老师",
+      "location": "明理101",
+      "colorIndex": 2,
+      "autoTodoEnabled": true,
+      "isVirtual": true,
+      "note": ""
+     },
+     {
+      "id": 2,
+      "semesterId": 1,
+      "name": "大学英语",
+      "shortName": "英语",
+      "teacher": "李老师",
+      "location": "外语楼203",
+      "colorIndex": 1,
+      "autoTodoEnabled": false,
+      "isVirtual": true,
+      "note": ""
+     }
+    ],
+    [],
+    [
+     {
+      "semesterId": 1,
+      "section": 1,
+      "startMin": 480,
+      "endMin": 530,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 2,
+      "startMin": 540,
+      "endMin": 590,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 3,
+      "startMin": 600,
+      "endMin": 650,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 4,
+      "startMin": 660,
+      "endMin": 710,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 5,
+      "startMin": 720,
+      "endMin": 770,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 6,
+      "startMin": 780,
+      "endMin": 830,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 7,
+      "startMin": 840,
+      "endMin": 890,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 8,
+      "startMin": 900,
+      "endMin": 950,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 9,
+      "startMin": 960,
+      "endMin": 1010,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 10,
+      "startMin": 1020,
+      "endMin": 1070,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 11,
+      "startMin": 1080,
+      "endMin": 1130,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 12,
+      "startMin": 1140,
+      "endMin": 1190,
+      "flexible": false
+     }
+    ],
+    [
+     {
+      "id": 11,
+      "courseId": 1,
+      "sortOrder": 0,
+      "enabled": true,
+      "titleTemplate": "%c 第 %N 讲作业",
+      "ddlRule": "same_day",
+      "ddlParam": "",
+      "estimateMin": 90,
+      "category": "homework",
+      "submitChannel": "",
+      "note": ""
+     },
+     {
+      "id": 12,
+      "courseId": 1,
+      "sortOrder": 1,
+      "enabled": true,
+      "titleTemplate": "%D 阅读",
+      "ddlRule": "next_session",
+      "ddlParam": "",
+      "estimateMin": 30,
+      "category": "self",
+      "submitChannel": "",
+      "note": ""
+     },
+     {
+      "id": 13,
+      "courseId": 1,
+      "sortOrder": 2,
+      "enabled": false,
+      "titleTemplate": "停用的",
+      "ddlRule": "same_day",
+      "ddlParam": "",
+      "estimateMin": 60,
+      "category": "homework",
+      "submitChannel": "",
+      "note": ""
+     },
+     {
+      "id": 14,
+      "courseId": 2,
+      "sortOrder": 0,
+      "enabled": true,
+      "titleTemplate": "英语作业",
+      "ddlRule": "same_day",
+      "ddlParam": "",
+      "estimateMin": 60,
+      "category": "homework",
+      "submitChannel": "",
+      "note": ""
+     }
+    ],
+    [
+     "1|2026-10-16|11"
+    ],
+    0,
+    1,
+    "2026-10-20",
+    540,
+    600
+   ],
+   "expect": [
+    {
+     "key": "1|2026-10-20|11",
+     "title": "高数 第 1 讲作业",
+     "ddl": "2026-10-20 23:59",
+     "estimateMin": 90,
+     "category": "homework",
+     "submitChannel": ""
+    },
+    {
+     "key": "1|2026-10-20|12",
+     "title": "10.20 阅读",
+     "ddl": "2026-10-27 23:59",
+     "estimateMin": 30,
+     "category": "self",
+     "submitChannel": ""
+    }
+   ]
+  },
+  {
+   "fn": "lessonSession",
+   "args": [
+    {
+     "id": 2,
+     "semesterId": 1,
+     "name": "大学英语",
+     "shortName": "英语",
+     "teacher": "李老师",
+     "location": "外语楼203",
+     "colorIndex": 1,
+     "autoTodoEnabled": false,
+     "isVirtual": true,
+     "note": ""
+    },
+    "2026-10-21",
+    840,
+    900,
+    ""
+   ],
+   "expect": {
+    "date": "2026-10-21",
+    "weekday": 3,
+    "startMin": 840,
+    "endMin": 900,
+    "location": "外语楼203",
+    "courseId": 2
+   }
+  },
+  {
+   "fn": "planSessionTodos",
+   "args": [
+    {
+     "id": 1,
+     "name": "演示学期",
+     "startDate": "2026-09-07",
+     "totalWeeks": 16,
+     "firstDayOfWeek": 1,
+     "showWeekend": true
+    },
+    [
+     {
+      "id": 1,
+      "semesterId": 1,
+      "name": "高等数学",
+      "shortName": "高数",
+      "teacher": "王老师",
+      "location": "明理101",
+      "colorIndex": 2,
+      "autoTodoEnabled": true,
+      "isVirtual": true,
+      "note": ""
+     },
+     {
+      "id": 2,
+      "semesterId": 1,
+      "name": "大学英语",
+      "shortName": "英语",
+      "teacher": "李老师",
+      "location": "外语楼203",
+      "colorIndex": 1,
+      "autoTodoEnabled": false,
+      "isVirtual": true,
+      "note": ""
+     }
+    ],
+    [],
+    [
+     {
+      "semesterId": 1,
+      "section": 1,
+      "startMin": 480,
+      "endMin": 530,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 2,
+      "startMin": 540,
+      "endMin": 590,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 3,
+      "startMin": 600,
+      "endMin": 650,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 4,
+      "startMin": 660,
+      "endMin": 710,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 5,
+      "startMin": 720,
+      "endMin": 770,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 6,
+      "startMin": 780,
+      "endMin": 830,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 7,
+      "startMin": 840,
+      "endMin": 890,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 8,
+      "startMin": 900,
+      "endMin": 950,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 9,
+      "startMin": 960,
+      "endMin": 1010,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 10,
+      "startMin": 1020,
+      "endMin": 1070,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 11,
+      "startMin": 1080,
+      "endMin": 1130,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 12,
+      "startMin": 1140,
+      "endMin": 1190,
+      "flexible": false
+     }
+    ],
+    [
+     {
+      "id": 11,
+      "courseId": 1,
+      "sortOrder": 0,
+      "enabled": true,
+      "titleTemplate": "%c 第 %N 讲作业",
+      "ddlRule": "same_day",
+      "ddlParam": "",
+      "estimateMin": 90,
+      "category": "homework",
+      "submitChannel": "",
+      "note": ""
+     },
+     {
+      "id": 12,
+      "courseId": 1,
+      "sortOrder": 1,
+      "enabled": true,
+      "titleTemplate": "%D 阅读",
+      "ddlRule": "next_session",
+      "ddlParam": "",
+      "estimateMin": 30,
+      "category": "self",
+      "submitChannel": "",
+      "note": ""
+     },
+     {
+      "id": 13,
+      "courseId": 1,
+      "sortOrder": 2,
+      "enabled": false,
+      "titleTemplate": "停用的",
+      "ddlRule": "same_day",
+      "ddlParam": "",
+      "estimateMin": 60,
+      "category": "homework",
+      "submitChannel": "",
+      "note": ""
+     },
+     {
+      "id": 14,
+      "courseId": 2,
+      "sortOrder": 0,
+      "enabled": true,
+      "titleTemplate": "英语作业",
+      "ddlRule": "same_day",
+      "ddlParam": "",
+      "estimateMin": 60,
+      "category": "homework",
+      "submitChannel": "",
+      "note": ""
+     }
+    ],
+    [],
+    0,
+    2,
+    "2026-10-21",
+    840,
+    900
+   ],
+   "expect": []
+  },
+  {
+   "fn": "planSessionTodos",
+   "args": [
+    {
+     "id": 1,
+     "name": "演示学期",
+     "startDate": "2026-09-07",
+     "totalWeeks": 16,
+     "firstDayOfWeek": 1,
+     "showWeekend": true
+    },
+    [
+     {
+      "id": 1,
+      "semesterId": 1,
+      "name": "高等数学",
+      "shortName": "高数",
+      "teacher": "王老师",
+      "location": "明理101",
+      "colorIndex": 2,
+      "autoTodoEnabled": true,
+      "isVirtual": true,
+      "note": ""
+     },
+     {
+      "id": 2,
+      "semesterId": 1,
+      "name": "大学英语",
+      "shortName": "英语",
+      "teacher": "李老师",
+      "location": "外语楼203",
+      "colorIndex": 1,
+      "autoTodoEnabled": false,
+      "isVirtual": true,
+      "note": ""
+     }
+    ],
+    [],
+    [
+     {
+      "semesterId": 1,
+      "section": 1,
+      "startMin": 480,
+      "endMin": 530,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 2,
+      "startMin": 540,
+      "endMin": 590,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 3,
+      "startMin": 600,
+      "endMin": 650,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 4,
+      "startMin": 660,
+      "endMin": 710,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 5,
+      "startMin": 720,
+      "endMin": 770,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 6,
+      "startMin": 780,
+      "endMin": 830,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 7,
+      "startMin": 840,
+      "endMin": 890,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 8,
+      "startMin": 900,
+      "endMin": 950,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 9,
+      "startMin": 960,
+      "endMin": 1010,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 10,
+      "startMin": 1020,
+      "endMin": 1070,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 11,
+      "startMin": 1080,
+      "endMin": 1130,
+      "flexible": false
+     },
+     {
+      "semesterId": 1,
+      "section": 12,
+      "startMin": 1140,
+      "endMin": 1190,
+      "flexible": false
+     }
+    ],
+    [
+     {
+      "id": 11,
+      "courseId": 1,
+      "sortOrder": 0,
+      "enabled": true,
+      "titleTemplate": "%c 第 %N 讲作业",
+      "ddlRule": "same_day",
+      "ddlParam": "",
+      "estimateMin": 90,
+      "category": "homework",
+      "submitChannel": "",
+      "note": ""
+     },
+     {
+      "id": 12,
+      "courseId": 1,
+      "sortOrder": 1,
+      "enabled": true,
+      "titleTemplate": "%D 阅读",
+      "ddlRule": "next_session",
+      "ddlParam": "",
+      "estimateMin": 30,
+      "category": "self",
+      "submitChannel": "",
+      "note": ""
+     },
+     {
+      "id": 13,
+      "courseId": 1,
+      "sortOrder": 2,
+      "enabled": false,
+      "titleTemplate": "停用的",
+      "ddlRule": "same_day",
+      "ddlParam": "",
+      "estimateMin": 60,
+      "category": "homework",
+      "submitChannel": "",
+      "note": ""
+     },
+     {
+      "id": 14,
+      "courseId": 2,
+      "sortOrder": 0,
+      "enabled": true,
+      "titleTemplate": "英语作业",
+      "ddlRule": "same_day",
+      "ddlParam": "",
+      "estimateMin": 60,
+      "category": "homework",
+      "submitChannel": "",
+      "note": ""
+     }
+    ],
+    [
+     "1|2026-10-16|11"
+    ],
+    0,
+    2,
+    "2026-10-21",
+    840,
+    900
+   ],
+   "expect": []
   }
  ]
 }

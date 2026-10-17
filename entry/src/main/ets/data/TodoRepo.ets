@@ -301,6 +301,19 @@ export class TodoRepo {
     return n;
   }
 
+  /** 所有已生成待办的去重键（生成器一次性取出来判重，比逐条查库快） */
+  static async listGenerationKeys(context: common.Context): Promise<string[]> {
+    const store: relationalStore.RdbStore = await Db.get(context);
+    const rs = await store.querySql(
+      "SELECT generation_key FROM todo WHERE generation_key <> ''");
+    const out: string[] = [];
+    while (rs.goToNextRow()) {
+      out.push(rs.getString(rs.getColumnIndex('generation_key')));
+    }
+    rs.close();
+    return out;
+  }
+
   /** 已存在同 generationKey 的待办？去重用 */
   static async hasGenerationKey(context: common.Context, key: string): Promise<boolean> {
     const store: relationalStore.RdbStore = await Db.get(context);

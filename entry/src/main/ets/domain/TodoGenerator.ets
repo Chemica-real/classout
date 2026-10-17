@@ -7,7 +7,8 @@ import { TodoRepo } from '../data/TodoRepo';
 import { Db } from '../data/Db';
 import { computeWeekSessions, sessionsOnDate, weekOfDate } from './Timetable';
 import { addDays, formatDate, parseDate, today, weekdayOf } from '../util/DateUtil';
-import { computeDdl, nextSessionOfCourse, renderTitle } from './TodoGenRules';
+import { computeDdl, lessonSessionFor, nextSessionOfCourse, planSessionTodos, renderTitle }
+  from './TodoGenRules';
 
 // 旧的调用方（页面/管理器）曾经直接从 TodoGenerator 里 import 这几个纯函数；
 // 现在规则搬到 TodoGenRules 了，这里保留一层 re-export 免得外部调用点全要改。
@@ -35,39 +36,30 @@ export async function generateForSession(context: common.Context, sem: Semester,
   if (!s.course.autoTodoEnabled) {
     return 0;
   }
-  let created: number = 0;
   const templates: TodoTemplate[] = await TodoRepo.listTemplatesByCourse(context, s.course.id);
-  for (const t of templates) {
-    if (!t.enabled) {
+  const allKeys: string[] = await TodoRepo.listGenerationKeys(context);
+  const count: number = await TodoRepo.countTemplateTodos(context, s.course.id);
+  const planned = planSessionTodos(sem, courses, rules, times, templates, s, allKeys, count);
+  let created: number = 0;
+  for (const p of planned) {
+    if (await TodoRepo.isBlacklisted(context, p.key)) {
       continue;
     }
-    const key: string = `${s.course.id}|${s.date}|${t.id}`;
-    if (await TodoRepo.hasGenerationKey(context, key)) {
-      continue;
-    }
-    if (await TodoRepo.isBlacklisted(context, key)) {
-      continue;
-    }
-    const n: number = await TodoRepo.countTemplateTodos(context, s.course.id) + 1;
-    const week: number = weekOfDate(sem, parseDate(s.date));
-    const title: string = renderTitle(t.titleTemplate, s, week, n);
-    const ddl: string = computeDdl(sem, courses, rules, overrides, times, s, t.ddlRule, t.ddlParam);
     const todo: Todo = {
       id: 0,
-      title: title,
+      title: p.title,
       courseId: s.course.id,
-      category: t.category,
+      category: p.category,
       priority: 1,
-      ddl: ddl,
+      ddl: p.ddl,
       endAt: '',
-      estimateMin: t.estimateMin,
+      estimateMin: p.estimateMin,
       status: TodoStatus.Pending,
       source: TodoSource.Template,
-      generationKey: key,
-      // 用户要求：「自动生成的时候不可以自动生成备注，备注直接默认为空」。
-      // 模板里那个 `note` 字段不再带进待办 —— 备注是用户自己写的东西，不该被生成器代填。
+      generationKey: p.key,
+      // 用户要求：「自动生成的时候不可以自动生成备注」
       note: '',
-      submitChannel: t.submitChannel,
+      submitChannel: p.submitChannel,
       repeatRule: '',
       photos: '',
       createdAt: Date.now(),
@@ -76,7 +68,7 @@ export async function generateForSession(context: common.Context, sem: Semester,
     };
     await TodoRepo.insertTodo(context, todo);
     created++;
-    hilog.info(DOMAIN, TAG, 'generated todo: %{public}s @ %{public}s', title, s.date);
+    hilog.info(DOMAIN, TAG, 'generated todo: %{public}s @ %{public}s', p.title, s.date);
   }
   return created;
 }
@@ -99,31 +91,7 @@ export async function generateForLesson(context: common.Context, sem: Semester,
   }
   const rules: SessionRule[] = await TimetableRepo.listRules(context, sem.id);
   const times: SectionTime[] = await TimetableRepo.listSectionTimes(context, sem.id);
-  const synthetic: SessionRule = {
-    id: 0,
-    courseId: course.id,
-    weekday: 0,
-    startSection: 0,
-    endSection: 0,
-    weeksMask: '',
-    location: course.location,
-    isQuiz: false
-  };
-  const s: CourseSession = {
-    course: course,
-    rule: synthetic,
-    date: date,
-    originDate: date,
-    weekday: weekdayOf(parseDate(date)),
-    startSection: 0,
-    endSection: 0,
-    startMin: startMin,
-    endMin: endMin,
-    location: course.location,
-    isQuiz: false,
-    fromOverride: false,
-    isExtra: false
-  };
+  const s: CourseSession = lessonSessionFor(course, date, startMin, endMin, course.location);
   return await generateForSession(context, sem, courses, rules, times, [], s);
 }
 

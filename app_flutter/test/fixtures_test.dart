@@ -92,6 +92,42 @@ List<SectionTime> _times(List<dynamic> raw) =>
 /// 按 fn 名派发到本端实现，返回值统一成 JSON 可比的形状
 Object? _call(String fn, List<dynamic> a) {
   switch (fn) {
+    // ---- 虚拟课时：合成 session / 该生成哪些待办 ----
+    case 'lessonSession':
+      final c = Course.fromJson(a[0] as Map<String, dynamic>);
+      final s = lessonSessionFor(
+          c, a[1] as String, _n(a[2]), _n(a[3]), location: a[4] as String);
+      return {
+        'date': s.date,
+        'weekday': s.weekday,
+        'startMin': s.startMin,
+        'endMin': s.endMin,
+        'location': s.location,
+        'courseId': s.course.id,
+      };
+    case 'planSessionTodos':
+      final sem = _sem(a[0] as Map<String, dynamic>);
+      final courses = _courses(a[1] as List);
+      final rules = _rules(a[2] as List);
+      final times = _times(a[3] as List);
+      final templates = (a[4] as List)
+          .map((e) => TodoTemplate.fromJson(e as Map<String, dynamic>))
+          .toList();
+      final existing = (a[5] as List).cast<String>();
+      final c = courses.firstWhere((x) => x.id == _n(a[7]));
+      final s = lessonSessionFor(
+          c, a[8] as String, _n(a[9]), _n(a[10]));
+      final plan = planSessionTodos(
+        sem: sem,
+        courses: courses,
+        rules: rules,
+        times: times,
+        templates: templates,
+        s: s,
+        existingKeys: existing,
+        existingForCourse: _n(a[6]),
+      );
+      return plan.map((p) => p.toJson()).toList();
     // ---- WeekMask 文本互转（课程管理的「周次」输入框）----
     case 'maskFromText':
       return maskFromText(a[0] as String, _n(a[1]));
