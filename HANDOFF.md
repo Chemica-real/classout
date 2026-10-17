@@ -6884,3 +6884,11 @@ golden 总数 19 → **23**；`flutter test` **1293 passed**。
   `alpha: 0.18 + 0.82 * 相位`（8×8 点、间距 9、660ms 与鸿蒙一致）。
 
 - `flutter test` **1302 passed**；golden 重出。
+
+### 116.31 演练询问卡的两颗按钮字号改回鸿蒙默认 16
+
+鸿蒙 `GuidePromptCard` 里「开始演练 / 先自己用用」都是**默认 `Button`**（没写 `fontSize` → 16），
+安卓的 `_GuidePromptButton` 写成了 14。已改 16（其余：18 标题 / 12 正文 / 11 提示 /
+整屏 `rgba(12,18,28,0.55)` 薄纱、`padding 24`、卡片 `padding 18`、按钮间距 14/10，都与鸿蒙一致）。
+
+- `flutter test` **1302 passed**。

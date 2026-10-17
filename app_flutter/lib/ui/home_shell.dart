@@ -905,8 +905,9 @@ class _GuidePromptButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(text,
+            // 鸿蒙这两颗是**默认 Button**（没写 fontSize = 16）
             style: TextStyle(
-                fontSize: 14,
+                fontSize: 16,
                 fontWeight: FontWeight.w500,
                 color: foreground)),
       ),
