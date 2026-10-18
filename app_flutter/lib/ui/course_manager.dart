@@ -378,7 +378,9 @@ class _ManagerState extends State<_Manager> {
                   '也可以用「备份与恢复」导入之前导出的备份。',
                   style: TextStyle(fontSize: 12, color: Color(0xFF8B97AC))),
             ),
-          for (final c in _b.courses) _courseCard(c),
+          // 鸿蒙 `listCourses ... ORDER BY id`
+          for (final c in ([..._b.courses]..sort((a, b) => a.id - b.id)))
+            _courseCard(c),
           // 清空本学期课程放在列表末尾（鸿蒙同位置），两次确认
           if (_b.courses.isNotEmpty) ...[
             const SizedBox(height: 4),
