@@ -15,6 +15,7 @@ import '../domain/plan_math.dart';
 import '../domain/timetable.dart';
 import '../domain/todo_generator.dart';
 import '../domain/todo_list.dart';
+import '../domain/validate.dart';
 import '../model/types.dart';
 import 'app_frame.dart';
 import 'theme.dart';
@@ -284,36 +285,76 @@ class _BodyState extends State<_Body> {
     _write(block: _copy(date: formatDate(d)));
   }
 
-  /// 开始时间整体平移（时长不变）
+  /// 开始时间整体平移（时长不变）—— 鸿蒙 `adjustEditorStart`：出窗就报错，不偷偷夹
   void _shiftStart(int delta) {
-    final start = (_b.startMin + delta)
-        .clamp(widget.window.startMin, widget.window.endMin - 15);
+    final start = _b.startMin + delta;
     final dur = _b.endMin - _b.startMin;
-    final end = (start + dur).clamp(start + 15, widget.window.endMin);
-    _write(block: _copy(startMin: start, endMin: end));
+    if (start < widget.window.startMin ||
+        start + dur > widget.window.endMin) {
+      setState(() => _error = '再挪就出时间窗了');
+      return;
+    }
+    setState(() => _error = null);
+    _write(block: _copy(startMin: start, endMin: start + dur));
     _startCtrl.text = minToHHmm(start);
   }
 
+  /// 手动输入开始时间（HH:MM，5 分钟刻度）—— 鸿蒙 `commitEditorStart`
   void _setStart(String hhmm) {
-    final parts = hhmm.split(':');
-    if (parts.length != 2) {
-      setState(() => _error = '时间格式应为 HH:MM');
+    final min = hhmmToMin(hhmm.trim());
+    if (min == null) {
+      setState(() => _error = '开始时间要写成 HH:MM，比如 14:30');
       return;
     }
-    final h = int.tryParse(parts[0]);
-    final m = int.tryParse(parts[1]);
-    if (h == null || m == null || h > 23 || m > 59) {
-      setState(() => _error = '时间格式应为 HH:MM');
+    if (min % durationStepMin != 0) {
+      setState(() => _error = '开始时间要落在 $durationStepMin 分钟刻度上，比如 14:30');
       return;
     }
-    _error = null;
-    _shiftStart(h * 60 + m - _b.startMin);
+    if (min < widget.window.startMin || min > widget.window.endMin) {
+      setState(() => _error =
+          '开始时间要在 ${minToHHmm(widget.window.startMin)}–${minToHHmm(widget.window.endMin)} 之间');
+      return;
+    }
+    final dur = _b.endMin - _b.startMin;
+    if (min + dur > widget.window.endMin) {
+      setState(() => _error = '这个开始时间放不下当前时长（会超出 24:00）');
+      return;
+    }
+    setState(() => _error = null);
+    _write(block: _copy(startMin: min, endMin: min + dur));
+    _startCtrl.text = minToHHmm(min);
   }
 
-  void _setDuration(int minutes) {
-    final dur = minutes.clamp(15, widget.window.endMin - _b.startMin);
-    _write(block: _copy(endMin: _b.startMin + dur));
-    _durCtrl.text = '$dur';
+  /// 手动输入时长 —— 鸿蒙 `commitEditorDuration`
+  void _setDuration(int n) {
+    if (n < blockMinMin) {
+      setState(() => _error = '一块至少 $blockMinMin 分钟');
+      return;
+    }
+    if (n % durationStepMin != 0) {
+      setState(() => _error = '时长要是 $durationStepMin 分钟的整数倍');
+      return;
+    }
+    if (_b.startMin + n > widget.window.endMin) {
+      setState(() => _error = '这么长会超过 24:00，先把开始时间挪早一点');
+      return;
+    }
+    setState(() => _error = null);
+    _write(block: _copy(endMin: _b.startMin + n));
+    _durCtrl.text = '$n';
+  }
+
+  /// 「±15/±30」按钮 —— 鸿蒙 `adjustEditorDuration`：夹到合法区间后没变就报错
+  void _adjustDuration(int delta) {
+    final end = resizeEndTo(
+        _b.startMin, _b.endMin + delta, widget.window.endMin);
+    if (end == _b.endMin) {
+      setState(() => _error = '改不动了（最短 $blockMinMin 分钟，且不能超过 24:00）');
+      return;
+    }
+    setState(() => _error = null);
+    _write(block: _copy(endMin: end));
+    _durCtrl.text = '${end - _b.startMin}';
   }
 
   void _setDdl(String ddl) {
@@ -489,6 +530,7 @@ class _BodyState extends State<_Body> {
                   ],
                 ),
                 _DarkField(
+                  key: const ValueKey('block-start-input'),
                   controller: _startCtrl,
                   hint: '14:30',
                   onSubmit: _setStart,
@@ -503,11 +545,12 @@ class _BodyState extends State<_Body> {
                       _Chip(
                         text: '${d > 0 ? '+' : ''}$d 分',
                         selected: false,
-                        onTap: () => _setDuration(dur + d),
+                        onTap: () => _adjustDuration(d),
                       ),
                   ],
                 ),
                 _DarkField(
+                  key: const ValueKey('block-dur-input'),
                   controller: _durCtrl,
                   hint: '60',
                   number: true,
@@ -810,6 +853,7 @@ class _DarkField extends StatefulWidget {
   final bool number;
   final void Function(String value) onSubmit;
   const _DarkField({
+    super.key,
     required this.controller,
     required this.hint,
     required this.onSubmit,

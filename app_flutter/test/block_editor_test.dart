@@ -70,6 +70,59 @@ void main() {
     expect(find.text('时长（分钟）'), findsOneWidget);
   });
 
+  testWidgets('开始时间 / 时长输入：错误按鸿蒙原文报，且不改数据', (tester) async {
+    final seen = await _pump(tester);
+    await _openBlock(tester);
+    final before = _demo().blocks.firstWhere((b) => b.id == 1);
+
+    // 时长 10 分钟 → 「一块至少 15 分钟」
+    await tester.enterText(
+        find.byKey(const ValueKey('block-dur-input')), '10');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(find.text('一块至少 15 分钟'), findsOneWidget);
+    expect(seen, isEmpty, reason: '非法输入不落库');
+
+    // 时长 22 分钟 → 不是 5 的倍数
+    await tester.enterText(
+        find.byKey(const ValueKey('block-dur-input')), '22');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(find.text('时长要是 5 分钟的整数倍'), findsOneWidget);
+
+    // 开始时间写成 25:00 → 格式错
+    await tester.enterText(
+        find.byKey(const ValueKey('block-start-input')), '25:00');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(find.text('开始时间要写成 HH:MM，比如 14:30'), findsOneWidget);
+
+    // 开始时间 13:07 → 不在 5 分钟刻度上
+    await tester.enterText(
+        find.byKey(const ValueKey('block-start-input')), '13:07');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(find.text('开始时间要落在 5 分钟刻度上，比如 14:30'), findsOneWidget);
+
+    // 开始时间 23:00、时长 90 → 放不下
+    await tester.enterText(
+        find.byKey(const ValueKey('block-start-input')), '23:00');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(find.text('这个开始时间放不下当前时长（会超出 24:00）'), findsOneWidget);
+
+    // 合法输入：13:30 → 时长不变、写回
+    await tester.enterText(
+        find.byKey(const ValueKey('block-start-input')), '13:30');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(seen, isNotEmpty);
+    final after = seen.last!.blocks.firstWhere((b) => b.id == 1);
+    expect(after.startMin, 13 * 60 + 30);
+    expect(after.endMin - after.startMin,
+        before.endMin - before.startMin);
+  });
+
   testWidgets('标记完成 → done 变 true', (tester) async {
     final seen = await _pump(tester);
     await _openBlock(tester);

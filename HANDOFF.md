@@ -12,7 +12,7 @@ ClassOUT 是一款**纯离线**的「课表 + 待办 + 计划」三合一 App，
 |---|---|---|
 | 版本 | v1.5.1（上架准备中，未提审） | 0.2.0（Android 已装真机 OPPO A97） |
 | 页面 | 课表 / 待办 / 计划 / 设置 + 启动加载页 + 悬浮浮窗 | **同样四页 + 启动页 + 浮窗（§52–§68 逐页复刻）** |
-| 测试 | 离线断言 524 项（`tools/domain-check`） | **1340 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
+| 测试 | 离线断言 524 项（`tools/domain-check`） | **1341 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
 | 差异基准 | 本目录 `docs/manual/01..09.jpg`（真机截图） | `app_flutter/tool/goldens/*.png` 对照上面九张 + `shared/fixtures/`（1115 条规则用例） |
 
 **安卓版与鸿蒙版的 1:1 复刻已经完成**：主题 token 抄自 ArkTS（§52）、六个页面重做、
@@ -6320,7 +6320,7 @@ Material 关闭图标。连同下面几处一起对齐：
 ```bash
 ./tools/domain-check/run.sh          # 鸿蒙端离线断言：524 项
 cd app_flutter && flutter analyze    # 0 issue
-cd app_flutter && flutter test       # 1340 条（含 1115 条三端 fixture 逐条对拍）
+cd app_flutter && flutter test       # 1341 条（含 1115 条三端 fixture 逐条对拍）
 ```
 
 ---
@@ -6602,7 +6602,7 @@ cd app_flutter && flutter test       # 1340 条（含 1115 条三端 fixture 逐
 ```bash
 ./tools/domain-check/run.sh          # 鸿蒙端离线断言：524 项
 cd app_flutter && flutter analyze    # 0 issue
-cd app_flutter && flutter test       # 1340 条（含 1115 条三端 fixture 逐条对拍）
+cd app_flutter && flutter test       # 1341 条（含 1115 条三端 fixture 逐条对拍）
 cd app_flutter && flutter test --update-goldens tool/screenshot_test.dart   # 24 张 golden（1080×2400）
 ```
 
@@ -7354,3 +7354,28 @@ Flutter 要做这个得上 `AnimatedList`/`SliverAnimatedList`，改动面比收
 `复制到当前学期` 的测试改成"创建后直接点复制按钮"（不再靠点行切换）。
 
 - `flutter test` **1340 passed**；golden 重出。
+
+## 126. 计划块面板的开始时间 / 时长输入：改成鸿蒙的"报错不夹值"
+
+安卓原来 `_shiftStart` / `_setDuration` 都是**静默 clamp**（填 10 分钟变 15、填 23:00 自动挪早），
+鸿蒙 `commitEditorStart` / `commitEditorDuration` / `adjustEditorStart` / `adjustEditorDuration`
+是一套明确的报错（`editorError`，展示在抽屉里）：
+
+| 输入 | 鸿蒙文案 |
+|---|---|
+| 开始时间不是 HH:MM | 开始时间要写成 HH:MM，比如 14:30 |
+| 不是 5 分钟的倍数 | 开始时间要落在 5 分钟刻度上，比如 14:30 |
+| 不在时间窗 | 开始时间要在 07:00–24:00 之间 |
+| 开始 + 时长越过窗口末 | 这个开始时间放不下当前时长（会超出 24:00） |
+| ±15/±30 推到窗外 | 再挪就出时间窗了 |
+| 时长 < 15 | 一块至少 15 分钟 |
+| 时长不是 5 的倍数 | 时长要是 5 分钟的整数倍 |
+| 时长越过窗口末 | 这么长会超过 24:00，先把开始时间挪早一点 |
+| ±15/±30 到头了 | 改不动了（最短 15 分钟，且不能超过 24:00） |
+
+实现：`_setStart` / `_setDuration` 走完整校验并 `setState` 显示 `_error`；
+`_shiftStart` / `_adjustDuration`（两个 ± 胶囊）出界报错、不落库。输入框加了 key
+（`block-start-input` / `block-dur-input`）供测试用。
+
+- 新测试：`block_editor_test` 一条串起 5 种错误 + 合法输入写回且时长不变。
+- `flutter test` **1341 passed**；golden 重出。
