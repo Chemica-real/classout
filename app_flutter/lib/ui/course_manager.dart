@@ -485,7 +485,11 @@ class _ManagerState extends State<_Manager> {
       ..sort((a, b) => a.weekday == b.weekday
           ? a.startSection - b.startSection
           : a.weekday - b.weekday);
-    final templates = _b.templates.where((t) => t.courseId == c.id).toList();
+    // 鸿蒙 `listTemplatesByCourse`：ORDER BY sort_order, id
+    final templates = _b.templates.where((t) => t.courseId == c.id).toList()
+      ..sort((a, b) => a.sortOrder == b.sortOrder
+          ? a.id - b.id
+          : a.sortOrder - b.sortOrder);
     final lessons = _b.lessons.where((l) => l.courseId == c.id).toList();
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -732,7 +736,10 @@ class _CourseEditorState extends State<_CourseEditor> {
             : a.weekday - b.weekday);
 
   List<TodoTemplate> get _templates =>
-      _b.templates.where((t) => t.courseId == _id).toList();
+      _b.templates.where((t) => t.courseId == _id).toList()
+        ..sort((a, b) => a.sortOrder == b.sortOrder
+            ? a.id - b.id
+            : a.sortOrder - b.sortOrder);
   /// 给虚拟课程加一讲（第 N 讲，N = 现有最大讲次 + 1）
 
   void _save() {
@@ -1877,12 +1884,7 @@ class _SemesterSheetState extends State<_SemesterSheet>
   }
 
 
-  void _setCurrent(int index) {
-    if (index <= 0 || index >= _b.semesters.length) return;
-    final list = List.of(_b.semesters);
-    final picked = list.removeAt(index);
-    _apply(_with(_b, semesters: [picked, ...list]));
-  }
+
 
   /// 「复制到当前学期」（鸿蒙 `Seeder.cloneCourses`）：只复制课程 / 时段 / 模板，
   /// 同名的跳过；课时（virtual_lesson）不复制（和鸿蒙一致）。
@@ -2022,12 +2024,12 @@ class _SemesterSheetState extends State<_SemesterSheet>
                         ],
                       ),
                       const SizedBox(height: 8),
-                      // 所有学期：一行一张小卡（当前 = 第一个）
+                      // 所有学期：一行一张小卡（当前 = 第一个）。
+                      // ⚠️ 鸿蒙这张卡**不能点**：切换当前学期只发生在"新建并切换"时；
+                      //    非当前学期的动作是「复制到当前学期」。安卓原来整卡可点=静默换学期，
+                      //    用户点一下想看详情，结果整个列表（和课表）都换了。
                       for (var i = 0; i < _b.semesters.length; i++)
-                        GestureDetector(
-                          onTap: i == 0 ? null : () => _setCurrent(i),
-                          behavior: HitTestBehavior.opaque,
-                          child: Container(
+                        Container(
                             width: double.infinity,
                             padding: const EdgeInsets.all(10),
                             margin: const EdgeInsets.only(bottom: 6),
@@ -2086,7 +2088,6 @@ class _SemesterSheetState extends State<_SemesterSheet>
                                   ),
                               ],
                             ),
-                          ),
                         ),
                       // 新建学期（鸿蒙：同页底部的内联表单）
                       const Padding(

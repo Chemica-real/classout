@@ -302,16 +302,19 @@ void main() {
         saved.sectionTimes.where((t) => t.semesterId == oldSem.id).length);
   });
 
-  testWidgets('把第二个学期设为当前 → 顺序换了、课表切过去', (tester) async {
+  testWidgets('点学期行不会切换（鸿蒙那张卡不可点，只有「新建并切换」会换）',
+      (tester) async {
     final repo = await _pump(tester);
     await _tapVisible(tester, find.byKey(const ValueKey('entry-semester')));
     await _tapVisible(tester, find.text('新建并切换到这个学期'));
-    // 新建后新学期是当前；点另一行（演示学期）= 切回它
-    await _tapVisible(tester, find.textContaining('起 ·').last);
+    var saved = (await repo.load())!;
+    final fresh = saved.semesters.first;
+    expect(fresh.name, isNot('演示学期'));
 
-    final saved = (await repo.load())!;
-    expect(saved.semesters.first.name, '演示学期');
-    expect(saved.semester!.name, saved.semesters.first.name);
+    // 点旧学期那一行：什么都不该发生（以前会静默把当前学期换过去）
+    await _tapVisible(tester, find.textContaining('起 ·').last);
+    saved = (await repo.load())!;
+    expect(saved.semesters.first.name, fresh.name, reason: '当前学期不能因为点一下就换');
   });
 
   testWidgets('复制到当前学期：课程 / 时段 / 模板都复制一份（换新 id、同名跳过）',
@@ -321,8 +324,7 @@ void main() {
     // 鸿蒙是子页底部内联表单：关掉「顺便复制」再点「新建并切换到这个学期」
     await _tapVisible(tester, find.byType(Switch).last);
     await _tapVisible(tester, find.text('新建并切换到这个学期'));
-    // 切到新学期（点行），再点另一行的「复制到当前学期」
-    await _tapVisible(tester, find.textContaining('起 ·').last);
+    // 新建后新学期就是当前；直接点旧学期那行的「复制到当前学期」
     await _tapVisible(tester, find.text('复制到当前学期'));
 
     final saved = (await repo.load())!;

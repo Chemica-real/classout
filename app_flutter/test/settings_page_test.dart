@@ -9,6 +9,7 @@ import 'package:classout/data/backup.dart';
 import 'package:classout/data/repo.dart';
 import 'package:classout/data/settings.dart';
 import 'package:classout/domain/plan_math.dart';
+import 'package:classout/model/types.dart';
 import 'package:classout/ui/home_shell.dart';
 import 'package:classout/ui/settings_page.dart' show appVersion;
 
@@ -103,6 +104,26 @@ void main() {
     await _tapUnderBar(tester, find.text('删除').first);
     final after = (await repo.load())?.restWindows.length ?? 0;
     expect(after, before > 0 ? before - 1 : 0);
+  });
+
+  testWidgets('不可排时段按「星期 + 开始时间」排序（鸿蒙 listRestWindows 的 ORDER BY）',
+      (tester) async {
+    final bundle = _demo().copyWith(restWindows: [
+      RestWindow(weekday: 0, startMin: 12 * 60, endMin: 13 * 60, label: '午休'),
+      RestWindow(weekday: 0, startMin: 0, endMin: 7 * 60, label: '睡觉'),
+      RestWindow(weekday: 0, startMin: 17 * 60, endMin: 18 * 60, label: '晚饭'),
+    ]);
+    final repo = MemoryRepo(bundle);
+    await _pump(tester, repo);
+    // 「午休」既是行标签、又是下面新增表单的 hint → 取第一个（行标签在前）
+    final sleep = find.text('睡觉').first;
+    await tester.ensureVisible(sleep);
+    await tester.pumpAndSettle();
+    final ySleep = tester.getTopLeft(sleep).dy;
+    final yLunch = tester.getTopLeft(find.text('午休').first).dy;
+    final yDinner = tester.getTopLeft(find.text('晚饭').first).dy;
+    expect(ySleep < yLunch, isTrue, reason: '00:00 的「睡觉」要排最前');
+    expect(yLunch < yDinner, isTrue);
   });
 
   test('AppSettings 默认值与规范化', () async {

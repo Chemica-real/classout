@@ -85,9 +85,20 @@ class _SettingsPageState extends State<SettingsPage>
   String _catPending = '';
   int _catPendingCount = 0;
 
+  /// 排序与鸿蒙 `listRestWindows` 一致：`ORDER BY weekday, start_min`
+  /// （安卓的库是按插入顺序 SELECT *，默认的 4 条会排在「午休 / 晚饭 / 睡觉(0 点)」这种乱序上）
+  List<RestWindow> _sortedRest(Iterable<RestWindow> list) {
+    final out = List.of(list);
+    out.sort((a, b) {
+      final w = a.weekday.compareTo(b.weekday);
+      return w != 0 ? w : a.startMin.compareTo(b.startMin);
+    });
+    return out;
+  }
+
   List<RestWindow> _effectiveRest() {
     if (widget.bundle.restWindows.isNotEmpty) {
-      return List.of(widget.bundle.restWindows);
+      return _sortedRest(widget.bundle.restWindows);
     }
     return [
       for (final w in defaultRestWindows())
@@ -866,7 +877,7 @@ class _SettingsPageState extends State<SettingsPage>
       return;
     }
     setState(() {
-      _rest = [..._rest, draft];
+      _rest = _sortedRest([..._rest, draft]);
       _restLabel = '';
       _restError = '';
     });

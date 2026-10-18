@@ -12,7 +12,7 @@ ClassOUT 是一款**纯离线**的「课表 + 待办 + 计划」三合一 App，
 |---|---|---|
 | 版本 | v1.5.1（上架准备中，未提审） | 0.2.0（Android 已装真机 OPPO A97） |
 | 页面 | 课表 / 待办 / 计划 / 设置 + 启动加载页 + 悬浮浮窗 | **同样四页 + 启动页 + 浮窗（§52–§68 逐页复刻）** |
-| 测试 | 离线断言 524 项（`tools/domain-check`） | **1339 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
+| 测试 | 离线断言 524 项（`tools/domain-check`） | **1340 条 `flutter test`**（含 1115 条三端 fixture 逐条对拍） |
 | 差异基准 | 本目录 `docs/manual/01..09.jpg`（真机截图） | `app_flutter/tool/goldens/*.png` 对照上面九张 + `shared/fixtures/`（1115 条规则用例） |
 
 **安卓版与鸿蒙版的 1:1 复刻已经完成**：主题 token 抄自 ArkTS（§52）、六个页面重做、
@@ -6320,7 +6320,7 @@ Material 关闭图标。连同下面几处一起对齐：
 ```bash
 ./tools/domain-check/run.sh          # 鸿蒙端离线断言：524 项
 cd app_flutter && flutter analyze    # 0 issue
-cd app_flutter && flutter test       # 1339 条（含 1115 条三端 fixture 逐条对拍）
+cd app_flutter && flutter test       # 1340 条（含 1115 条三端 fixture 逐条对拍）
 ```
 
 ---
@@ -6602,7 +6602,7 @@ cd app_flutter && flutter test       # 1339 条（含 1115 条三端 fixture 逐
 ```bash
 ./tools/domain-check/run.sh          # 鸿蒙端离线断言：524 项
 cd app_flutter && flutter analyze    # 0 issue
-cd app_flutter && flutter test       # 1339 条（含 1115 条三端 fixture 逐条对拍）
+cd app_flutter && flutter test       # 1340 条（含 1115 条三端 fixture 逐条对拍）
 cd app_flutter && flutter test --update-goldens tool/screenshot_test.dart   # 24 张 golden（1080×2400）
 ```
 
@@ -7340,3 +7340,17 @@ Flutter 要做这个得上 `AnimatedList`/`SliverAnimatedList`，改动面比收
 同时把 `validate.dart` 的端口补了单测（`validate_extra_test.dart` 10 条）+ 3 条 UI 拦截用例。
 
 - `flutter test` **1339 passed**；golden 重出。
+
+## 125. 列表顺序 / 可点区域：对着 HOS 的 ORDER BY 与"哪块能点"再核一遍
+
+| 项 | 鸿蒙 | 安卓（改前 → 改后） |
+|---|---|---|
+| 不可排时段顺序 | `listRestWindows ... ORDER BY weekday, start_min`（真机上是「睡觉 00:00 / 午休 / 晚饭 / 睡觉 23:30」） | 按库里插入顺序 → 显示「午休 / 晚饭 / 睡觉」乱序 → **读取与新增都排序** |
+| 课程模板顺序 | `listTemplatesByCourse ... ORDER BY sort_order, id` | 保持 bundle 顺序 → 按 `sortOrder, id` 排（列表卡 + 编辑页两处） |
+| 节次时间编辑页 | `listSectionTimes ... ORDER BY section` | 保持 bundle 顺序 → 初始按 `section` 排 |
+| 学期卡片 | **整卡不可点**：切换只发生在「新建并切换」；别的学期只有「复制到当前学期」 | 整卡可点 = 静默换当前学期（点一下想看详情，整个课表和列表都换了）→ **去掉整卡点击** |
+
+新测试：不可排时段排序（00:00 的「睡觉」必须最前）、点学期行不切换（创建后当前学期不变）。
+`复制到当前学期` 的测试改成"创建后直接点复制按钮"（不再靠点行切换）。
+
+- `flutter test` **1340 passed**；golden 重出。

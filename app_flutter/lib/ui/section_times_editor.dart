@@ -99,7 +99,8 @@ class SectionsEditorBody extends StatefulWidget {
 }
 
 class _SectionsEditorBodyState extends State<SectionsEditorBody> {
-  late List<SectionTime> _rows = [
+  // 鸿蒙 `listSectionTimes` 是 `ORDER BY section` —— 表里顺序乱了，编辑页也要按节次排
+  late List<SectionTime> _rows = ([
     for (final s in widget.sections)
       SectionTime(
           semesterId: s.semesterId,
@@ -107,7 +108,7 @@ class _SectionsEditorBodyState extends State<SectionsEditorBody> {
           startMin: s.startMin,
           endMin: s.endMin,
           flexible: s.flexible),
-  ];
+  ]..sort((a, b) => a.section - b.section));
 
   /// 保存时校验失败的说明（鸿蒙 `doSaveSections` 用 toast 显示同一句话）
   String _error = '';
