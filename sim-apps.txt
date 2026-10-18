@@ -1,0 +1,301 @@
+{
+    "com.apple.Bridge" =     {
+        ApplicationType = System;
+        Bundle = "file:///Library/Developer/CoreSimulator/Volumes/iOS_21A342/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS%2017.0.simruntime/Contents/Resources/RuntimeRoot/Applications/Bridge.app/";
+        CFBundleDisplayName = Watch;
+        CFBundleExecutable = Bridge;
+        CFBundleIdentifier = "com.apple.Bridge";
+        CFBundleName = Watch;
+        CFBundleVersion = "1.0";
+        DataContainer = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Data/Application/1F08F2A5-BB74-4544-B151-0FA64E2DD83A/";
+        GroupContainers =         {
+            "243LU875E5.groups.com.apple.podcasts" = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Shared/AppGroup/52594C9F-F41E-44AB-BFCB-258A2B3C58CD/";
+            "group.com.apple.iBooks" = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Shared/AppGroup/D13F98D6-7D8E-4926-B240-B0F1AF86C248/";
+            "group.com.apple.mail" = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Shared/AppGroup/F166F1A4-9B1F-44F2-90A0-A8485CDC48A2/";
+            "group.com.apple.stocks" = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Shared/AppGroup/343A8292-5B45-4614-A41F-33BB9CA9AB29/";
+            "group.com.apple.weather" = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Shared/AppGroup/5B1EFE3E-23EF-4C67-8E2A-5D74B9E5AD08/";
+        };
+        Path = "/Library/Developer/CoreSimulator/Volumes/iOS_21A342/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 17.0.simruntime/Contents/Resources/RuntimeRoot/Applications/Bridge.app";
+        SBAppTags =         (
+            "watch-companion"
+        );
+    };
+    "com.apple.DocumentsApp" =     {
+        ApplicationType = System;
+        Bundle = "file:///Library/Developer/CoreSimulator/Volumes/iOS_21A342/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS%2017.0.simruntime/Contents/Resources/RuntimeRoot/Applications/Files.app/";
+        CFBundleDisplayName = Files;
+        CFBundleExecutable = Files;
+        CFBundleIdentifier = "com.apple.DocumentsApp";
+        CFBundleName = Files;
+        CFBundleVersion = "305.1.1";
+        DataContainer = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Data/Application/C5A1496C-C6B1-41EF-BBDA-C64FCFC32764/";
+        GroupContainers =         {
+            "group.com.apple.DocumentManager" = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Shared/AppGroup/4AFA8CF8-7F9F-41F5-801A-B5C6E240700D/";
+            "group.com.apple.FileProvider.LocalStorage" = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Shared/AppGroup/F1026DCE-D44C-40BC-A415-26734EEADE5F/";
+            "group.com.apple.tipsnext" = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Shared/AppGroup/86430D83-05F0-4E24-AFCC-FEE831BA7A1A/";
+        };
+        Path = "/Library/Developer/CoreSimulator/Volumes/iOS_21A342/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 17.0.simruntime/Contents/Resources/RuntimeRoot/Applications/Files.app";
+        SBAppTags =         (
+        );
+    };
+    "com.apple.Health" =     {
+        ApplicationType = System;
+        Bundle = "file:///Library/Developer/CoreSimulator/Volumes/iOS_21A342/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS%2017.0.simruntime/Contents/Resources/RuntimeRoot/Applications/Health.app/";
+        CFBundleDisplayName = Health;
+        CFBundleExecutable = Health;
+        CFBundleIdentifier = "com.apple.Health";
+        CFBundleName = Health;
+        CFBundleVersion = "4146.0.1.7";
+        DataContainer = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Data/Application/A381B6D0-EE6C-401E-8B6E-12951639E57A/";
+        GroupContainers =         {
+            "group.com.apple.Health" = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Shared/AppGroup/355469DB-F07F-4F8D-8D65-8C78F6777F51/";
+            "group.com.apple.ip.redirects" = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Shared/AppGroup/7807AA6D-38A4-4590-B898-0919C9063462/";
+        };
+        Path = "/Library/Developer/CoreSimulator/Volumes/iOS_21A342/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 17.0.simruntime/Contents/Resources/RuntimeRoot/Applications/Health.app";
+        SBAppTags =         (
+        );
+    };
+    "com.apple.Maps" =     {
+        ApplicationType = System;
+        Bundle = "file:///Library/Developer/CoreSimulator/Volumes/iOS_21A342/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS%2017.0.simruntime/Contents/Resources/RuntimeRoot/Applications/Maps.app/";
+        CFBundleDisplayName = Maps;
+        CFBundleExecutable = Maps;
+        CFBundleIdentifier = "com.apple.Maps";
+        CFBundleName = Maps;
+        CFBundleVersion = "2811.30.7.31.8";
+        DataContainer = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Data/Application/28EB9CC0-6D28-4E18-BBBB-8C55E6C274ED/";
+        GroupContainers =         {
+            "group.com.apple.Maps" = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Shared/AppGroup/FCC1FD40-CEF6-4D7B-AFB8-62D2FBF75C7E/";
+            "group.com.apple.weather.internal" = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Shared/AppGroup/4A2EA7D1-FA54-46E8-BEB2-EFA2C6D56BDE/";
+        };
+        Path = "/Library/Developer/CoreSimulator/Volumes/iOS_21A342/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 17.0.simruntime/Contents/Resources/RuntimeRoot/Applications/Maps.app";
+        SBAppTags =         (
+        );
+    };
+    "com.apple.MobileAddressBook" =     {
+        ApplicationType = System;
+        Bundle = "file:///Library/Developer/CoreSimulator/Volumes/iOS_21A342/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS%2017.0.simruntime/Contents/Resources/RuntimeRoot/Applications/Contacts.app/";
+        CFBundleDisplayName = Contacts;
+        CFBundleExecutable = Contacts;
+        CFBundleIdentifier = "com.apple.MobileAddressBook";
+        CFBundleName = Contacts;
+        CFBundleVersion = "1.0";
+        DataContainer = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Data/Application/C74C1D8F-2FFB-42C6-A279-C244759CF373/";
+        GroupContainers =         {
+        };
+        Path = "/Library/Developer/CoreSimulator/Volumes/iOS_21A342/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 17.0.simruntime/Contents/Resources/RuntimeRoot/Applications/Contacts.app";
+        SBAppTags =         (
+            "stand-alone-contacts"
+        );
+    };
+    "com.apple.MobileSMS" =     {
+        ApplicationType = System;
+        Bundle = "file:///Library/Developer/CoreSimulator/Volumes/iOS_21A342/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS%2017.0.simruntime/Contents/Resources/RuntimeRoot/Applications/MobileSMS.app/";
+        CFBundleDisplayName = Messages;
+        CFBundleExecutable = MobileSMS;
+        CFBundleIdentifier = "com.apple.MobileSMS";
+        CFBundleName = MobileSMS;
+        CFBundleVersion = 6000;
+        DataContainer = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Data/Application/79C0A5BD-6D02-4D04-AA47-585F6CE67196/";
+        GroupContainers =         {
+            "group.com.apple.PegasusConfiguration" = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Shared/AppGroup/2E8562C2-44EB-414C-9448-914F4677865F/";
+            "group.com.apple.hashtagImages" = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Shared/AppGroup/302632B7-6C85-4BCA-9661-34833711B67D/";
+            "group.com.apple.mobileslideshow.PhotosFileProvider" = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Shared/AppGroup/FAF8CED1-39ED-4B05-BAA1-9E5D1EFF97A6/";
+            "group.com.apple.safari" = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Shared/AppGroup/61B88CDC-3634-440B-84E0-3E520DCAE6B0/";
+            "group.com.apple.tipsnext" = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Shared/AppGroup/86430D83-05F0-4E24-AFCC-FEE831BA7A1A/";
+        };
+        Path = "/Library/Developer/CoreSimulator/Volumes/iOS_21A342/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 17.0.simruntime/Contents/Resources/RuntimeRoot/Applications/MobileSMS.app";
+        SBAppTags =         (
+        );
+    };
+    "com.apple.Passbook" =     {
+        ApplicationType = System;
+        Bundle = "file:///Library/Developer/CoreSimulator/Volumes/iOS_21A342/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS%2017.0.simruntime/Contents/Resources/RuntimeRoot/Applications/Passbook.app/";
+        CFBundleDisplayName = Wallet;
+        CFBundleExecutable = Passbook;
+        CFBundleIdentifier = "com.apple.Passbook";
+        CFBundleName = Wallet;
+        CFBundleVersion = "1543.7.1";
+        DataContainer = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Data/Application/6B64D872-ECD7-4E77-8290-22043214761B/";
+        GroupContainers =         {
+        };
+        Path = "/Library/Developer/CoreSimulator/Volumes/iOS_21A342/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 17.0.simruntime/Contents/Resources/RuntimeRoot/Applications/Passbook.app";
+        SBAppTags =         (
+        );
+    };
+    "com.apple.Preferences" =     {
+        ApplicationType = System;
+        Bundle = "file:///Library/Developer/CoreSimulator/Volumes/iOS_21A342/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS%2017.0.simruntime/Contents/Resources/RuntimeRoot/Applications/Preferences.app/";
+        CFBundleDisplayName = Settings;
+        CFBundleExecutable = Preferences;
+        CFBundleIdentifier = "com.apple.Preferences";
+        CFBundleName = Settings;
+        CFBundleVersion = "1246.2";
+        GroupContainers =         {
+        };
+        Path = "/Library/Developer/CoreSimulator/Volumes/iOS_21A342/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 17.0.simruntime/Contents/Resources/RuntimeRoot/Applications/Preferences.app";
+        SBAppTags =         (
+        );
+    };
+    "com.apple.PreviewShell" =     {
+        ApplicationType = System;
+        Bundle = "file:///Library/Developer/CoreSimulator/Volumes/iOS_21A342/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS%2017.0.simruntime/Contents/Resources/RuntimeRoot/Applications/PreviewShell.app/";
+        CFBundleDisplayName = "Xcode Previews";
+        CFBundleExecutable = PreviewShell;
+        CFBundleIdentifier = "com.apple.PreviewShell";
+        CFBundleName = "Xcode Previews";
+        CFBundleVersion = "21.0.58";
+        DataContainer = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Data/Application/EA1BF107-FE56-4D11-A50B-843119FAC5B1/";
+        GroupContainers =         {
+        };
+        Path = "/Library/Developer/CoreSimulator/Volumes/iOS_21A342/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 17.0.simruntime/Contents/Resources/RuntimeRoot/Applications/PreviewShell.app";
+        SBAppTags =         (
+        );
+    };
+    "com.apple.freeform" =     {
+        ApplicationType = System;
+        Bundle = "file:///Library/Developer/CoreSimulator/Volumes/iOS_21A342/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS%2017.0.simruntime/Contents/Resources/RuntimeRoot/Applications/Freeform.app/";
+        CFBundleDisplayName = Freeform;
+        CFBundleExecutable = Freeform;
+        CFBundleIdentifier = "com.apple.freeform";
+        CFBundleName = Freeform;
+        CFBundleVersion = "329.3";
+        DataContainer = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Data/Application/BE9AA0BA-10E1-4E93-839A-B550C5A35816/";
+        GroupContainers =         {
+            "group.com.apple.freeform" = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Shared/AppGroup/272C6EB8-E6FE-425C-9E15-D0FE8BADAECC/";
+        };
+        Path = "/Library/Developer/CoreSimulator/Volumes/iOS_21A342/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 17.0.simruntime/Contents/Resources/RuntimeRoot/Applications/Freeform.app";
+        SBAppTags =         (
+        );
+    };
+    "com.apple.mobilecal" =     {
+        ApplicationType = System;
+        Bundle = "file:///Library/Developer/CoreSimulator/Volumes/iOS_21A342/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS%2017.0.simruntime/Contents/Resources/RuntimeRoot/Applications/MobileCal.app/";
+        CFBundleDisplayName = Calendar;
+        CFBundleExecutable = MobileCal;
+        CFBundleIdentifier = "com.apple.mobilecal";
+        CFBundleName = MobileCal;
+        CFBundleVersion = 1;
+        DataContainer = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Data/Application/EDA8C9C1-ADF5-4F20-AC9C-B718BB59339F/";
+        GroupContainers =         {
+            "group.com.apple.tipsnext" = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Shared/AppGroup/86430D83-05F0-4E24-AFCC-FEE831BA7A1A/";
+        };
+        Path = "/Library/Developer/CoreSimulator/Volumes/iOS_21A342/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 17.0.simruntime/Contents/Resources/RuntimeRoot/Applications/MobileCal.app";
+        SBAppTags =         (
+        );
+    };
+    "com.apple.mobilesafari" =     {
+        ApplicationType = System;
+        Bundle = "file:///Library/Developer/CoreSimulator/Volumes/iOS_21A342/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS%2017.0.simruntime/Contents/Resources/RuntimeRoot/Applications/MobileSafari.app/";
+        CFBundleDisplayName = Safari;
+        CFBundleExecutable = MobileSafari;
+        CFBundleIdentifier = "com.apple.mobilesafari";
+        CFBundleName = MobileSafari;
+        CFBundleVersion = "8616.1.27.10.15";
+        DataContainer = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Data/Application/75A41ED3-2D3B-4CE6-BFA5-41725271BA99/";
+        GroupContainers =         {
+            "group.com.apple.tipsnext" = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Shared/AppGroup/86430D83-05F0-4E24-AFCC-FEE831BA7A1A/";
+        };
+        Path = "/Library/Developer/CoreSimulator/Volumes/iOS_21A342/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 17.0.simruntime/Contents/Resources/RuntimeRoot/Applications/MobileSafari.app";
+        SBAppTags =         (
+        );
+    };
+    "com.apple.mobileslideshow" =     {
+        ApplicationType = System;
+        Bundle = "file:///Library/Developer/CoreSimulator/Volumes/iOS_21A342/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS%2017.0.simruntime/Contents/Resources/RuntimeRoot/Applications/MobileSlideShow.app/";
+        CFBundleDisplayName = Photos;
+        CFBundleExecutable = MobileSlideShow;
+        CFBundleIdentifier = "com.apple.mobileslideshow";
+        CFBundleName = MobileSlideShow;
+        CFBundleVersion = "608.1.119";
+        GroupContainers =         {
+        };
+        Path = "/Library/Developer/CoreSimulator/Volumes/iOS_21A342/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 17.0.simruntime/Contents/Resources/RuntimeRoot/Applications/MobileSlideShow.app";
+        SBAppTags =         (
+        );
+    };
+    "com.apple.news" =     {
+        ApplicationType = System;
+        Bundle = "file:///Library/Developer/CoreSimulator/Volumes/iOS_21A342/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS%2017.0.simruntime/Contents/Resources/RuntimeRoot/Applications/News.app/";
+        CFBundleDisplayName = News;
+        CFBundleExecutable = News;
+        CFBundleIdentifier = "com.apple.news";
+        CFBundleName = News;
+        CFBundleVersion = "3422.4";
+        DataContainer = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Data/Application/92378E10-07B1-40C4-90AE-CF919C11D9EE/";
+        GroupContainers =         {
+            "group.com.apple.news" = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Shared/AppGroup/18385AAF-227F-4119-A0AB-D63FB5F6B726/";
+            "group.com.apple.newsd" = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Shared/AppGroup/3F667E47-364C-4C21-A13C-991EA0E9230C/";
+            "group.com.apple.stocks-news" = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Shared/AppGroup/311371D1-BDFA-43F8-8B67-DB17244345B3/";
+            "group.com.apple.weather" = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Shared/AppGroup/5B1EFE3E-23EF-4C67-8E2A-5D74B9E5AD08/";
+        };
+        Path = "/Library/Developer/CoreSimulator/Volumes/iOS_21A342/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 17.0.simruntime/Contents/Resources/RuntimeRoot/Applications/News.app";
+        SBAppTags =         (
+        );
+    };
+    "com.apple.reminders" =     {
+        ApplicationType = System;
+        Bundle = "file:///Library/Developer/CoreSimulator/Volumes/iOS_21A342/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS%2017.0.simruntime/Contents/Resources/RuntimeRoot/Applications/Reminders.app/";
+        CFBundleDisplayName = Reminders;
+        CFBundleExecutable = Reminders;
+        CFBundleIdentifier = "com.apple.reminders";
+        CFBundleName = Reminders;
+        CFBundleVersion = 2848;
+        DataContainer = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Data/Application/CC8A7E73-E15A-4624-B806-E7D45787BB74/";
+        GroupContainers =         {
+            "group.com.apple.reminders" = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Shared/AppGroup/143207A6-4669-412B-A83C-A24E639753F9/";
+        };
+        Path = "/Library/Developer/CoreSimulator/Volumes/iOS_21A342/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 17.0.simruntime/Contents/Resources/RuntimeRoot/Applications/Reminders.app";
+        SBAppTags =         (
+        );
+    };
+    "com.apple.shortcuts" =     {
+        ApplicationType = System;
+        Bundle = "file:///Library/Developer/CoreSimulator/Volumes/iOS_21A342/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS%2017.0.simruntime/Contents/Resources/RuntimeRoot/Applications/Shortcuts.app/";
+        CFBundleDisplayName = Shortcuts;
+        CFBundleExecutable = Shortcuts;
+        CFBundleIdentifier = "com.apple.shortcuts";
+        CFBundleName = Shortcuts;
+        CFBundleVersion = "2038.0.1.10";
+        DataContainer = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Data/Application/4EF13DE2-1ECB-42B5-A874-862400864BCE/";
+        GroupContainers =         {
+            "group.com.apple.tipsnext" = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Shared/AppGroup/86430D83-05F0-4E24-AFCC-FEE831BA7A1A/";
+            "group.is.workflow.my.app" = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Shared/AppGroup/73463343-E789-463B-8F2A-1D3C005CBA33/";
+            "group.is.workflow.shortcuts" = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Shared/AppGroup/6162C90D-755C-4742-B263-C65F6D3DA451/";
+        };
+        Path = "/Library/Developer/CoreSimulator/Volumes/iOS_21A342/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 17.0.simruntime/Contents/Resources/RuntimeRoot/Applications/Shortcuts.app";
+        SBAppTags =         (
+        );
+    };
+    "com.apple.webapp" =     {
+        ApplicationType = System;
+        Bundle = "file:///Library/Developer/CoreSimulator/Volumes/iOS_21A342/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS%2017.0.simruntime/Contents/Resources/RuntimeRoot/Applications/Web.app/";
+        CFBundleDisplayName = Web;
+        CFBundleExecutable = Web;
+        CFBundleIdentifier = "com.apple.webapp";
+        CFBundleName = Web;
+        CFBundleVersion = "8616.1.27.10.15";
+        DataContainer = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Data/Application/CB97D81A-6E0E-42D9-8314-3C1C42FB6EEB/";
+        GroupContainers =         {
+        };
+        Path = "/Library/Developer/CoreSimulator/Volumes/iOS_21A342/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 17.0.simruntime/Contents/Resources/RuntimeRoot/Applications/Web.app";
+        SBAppTags =         (
+        );
+    };
+    "com.chemica.classout" =     {
+        ApplicationType = User;
+        Bundle = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Bundle/Application/D36CFEA6-46D1-48C0-A379-E179DB1A1474/Runner.app/";
+        BundleContainer = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Bundle/Application/D36CFEA6-46D1-48C0-A379-E179DB1A1474/";
+        CFBundleDisplayName = Classout;
+        CFBundleExecutable = Runner;
+        CFBundleIdentifier = "com.chemica.classout";
+        CFBundleName = classout;
+        CFBundleVersion = 2;
+        DataContainer = "file:///Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Data/Application/DCE7BB20-C90F-4519-8C22-7DF70E1FA869/";
+        GroupContainers =         {
+        };
+        Path = "/Users/runner/Library/Developer/CoreSimulator/Devices/E3BBCD6B-A52D-45EF-B6E0-96D3151F472D/data/Containers/Bundle/Application/D36CFEA6-46D1-48C0-A379-E179DB1A1474/Runner.app";
+        SBAppTags =         (
+        );
+    };
+}
