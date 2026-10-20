@@ -25,7 +25,7 @@
 | `pages/Index.ets` → `LoadingScreen()` + `playBootExit()` | `lib/ui/boot_screen.dart` | 启动加载页：网格底纹 / 双圆环 + 雷达 / ClassOUT 字标 + 标语 / 5 步清单 + 打字机 + 五点 / 浓缩成球 + 喷射 + 白球扩张 |
 | `view/TodoInbox.ets` | `lib/ui/todo_page.dart` | 四段列表、卡片；默认值对齐 `openNew/openNewExam`（今天 23:59 / 无 / 考试下周 09:00–11:00）；考试保存自动 `syncExamBlock`、删待办连带删计划块；底部双按钮托盘是**浮层**（`Stack` + `Positioned` + `MeasureSize`，列表从它下面滑过）；待确认卡片的删除走**碎裂掉出**（`SHARD_DX/DY/ROT` 四块 16×16，`DUR_SHARD=320`，播完再收起高度）；列表项进出场 `OPACITY + translate y -10`（`DUR_ITEM`）+ `ValueKey(id)` |
 | `view/TodoInbox.ets` → `EditorPanel()` | `lib/ui/todo_editor.dart` | 右侧 84% 抽屉（标题 + ✕ + 可滚表单） |
-| `view/PlanDayView.ets`（`DayBarFloat` / `ColHeadRow` / `HourLines` / `RestBands` / `ClassBlock` / `PlanBlockView` / `DdlMarkers` / `TodoPool`） | `lib/ui/plan_page.dart` | 日/三日（**三日 = [前一天, 当天, 后一天]，当天在中间**；‹› 永远只挪 1 天）、时间轴（刻度右边缘 40，网格满宽）、课表灰带、斜纹不可排带、计划块、截止标记（**挂在标记下方的无遮罩浮层**，等价 `bindPopup`）、待安排托盘（高度实测 + 展开状态记 kv）；日期条与托盘都是悬浮浮层（`topInset` / `tabBarInset`），内容 padding 含 `DDL_MARK_ALLOW=36` |
+| `view/PlanDayView.ets`（`DayBarFloat` / `ColHeadRow` / `HourLines` / `RestBands` / `ClassBlock` / `PlanBlockView` / `DdlMarkers` / `TodoPool`） | `lib/ui/plan_page.dart` | 日/三日（**三日 = [前一天, 当天, 后一天]，当天在中间**；‹› 永远只挪 1 天）、时间轴（刻度右边缘 40，网格满宽）、课表灰带、斜纹不可排带、计划块、截止标记（**挂在标记下方的无遮罩浮层**，等价 `bindPopup`）、待安排托盘（高度实测 + 展开状态记 kv）；日期条与托盘都是悬浮浮层（`topInset` / `tabBarInset`），内容 padding 含 `DDL_MARK_ALLOW=36`。**鸿蒙 2026-10-18 起：计数只算待办、待办有标签下拉筛选、虚拟课时独立成第二页（待办 / 虚拟课程两个页签）+ 按课程分层 + 课程下拉（安卓未跟，见 §四.7）** |
 | `view/SettingsPage.ets`（`WallpaperCard`/`MottoCard`/`MotionCard`/`ReminderCard`/…） | `lib/ui/settings_page.dart` | 10 张玻璃卡；内容 padding 与鸿蒙同式（`12 + 标题条 + FLOAT_GAP` / `30 + bottomInset`） |
 | `view/PlanDayView.ets` → `BlockEditor()` | `lib/ui/block_editor.dart` | 计划块属性面板：右侧抽屉（日期 ‹›/开始时间 ±/时长 ±/截止/备注/其他块/对半分/标记完成/移除） |
 | `domain/Guide.ets` + `view/GuideBar.ets` + `data/GuideRepo.ets` | `lib/domain/guide.dart` + `lib/ui/guide_bar.dart` | 新手演练：步骤脚本（7 步，各自标签页）+ 引导条 + 沙箱（真实数据存 kv `sandbox_backup`，**整张 kv 快照存 `sandbox_prefs`** → 换演练数据 → 退出/冷启动整份还原）；首次启动询问 `guide_prompted`；退出回课表页且不弹提示条 |
@@ -68,3 +68,7 @@
 4. 双指缩放：逻辑有单测 + fixtures，真机多指手测待做（`adb input` 只能单指）。
 5. 玻璃浮窗滚动时偶发重影（Impeller + BackdropFilter 瞬态，HANDOFF §111）。
 6. 版本号、提醒诊断/日历、长按导入：都是**平台性差异**（HANDOFF §117.2 / §118.3 / §122.6）。
+7. **计划页「待安排」托盘（2026-10-18 起鸿蒙单边改了，HANDOFF §127）**：
+   鸿蒙的计数**只算待办**、加了**标签下拉栏**、虚拟课时改成**独立的第二页**
+   （`待办` / `虚拟课程` 两个页签）并按课程分层 + 课程下拉栏；
+   安卓仍是"待办 + 课时"计数、待办无标签筛选、课时一行平铺。要对齐得改 `plan_page.dart`。

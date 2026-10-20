@@ -7,7 +7,7 @@
  * 约定：1 分钟 = 1 vp，所以 y 坐标和分钟数只差一个时间窗起点的偏移。
  */
 
-import { PlanBlock, Todo, TodoCategory, TodoStatus } from '../model/Types';
+import { PlanBlock, Todo, TodoCategory, TodoStatus, VirtualLesson } from '../model/Types';
 
 function clamp(v: number, lo: number, hi: number): number {
   if (v < lo) {
@@ -522,6 +522,81 @@ export function selectPoolTodos(todos: Todo[], blocks: PlanBlock[]): Todo[] {
   for (const t of todos) {
     if (t.status === TodoStatus.Active && !scheduled.has(t.id)) {
       out.push(t);
+    }
+  }
+  return out;
+}
+
+/** 「待安排」的标签筛选：`''` = 全部（下拉栏的第一项） */
+export const POOL_FILTER_ALL: string = '';
+
+/**
+ * 「待安排」按**标签**（待办类型）筛选。
+ *
+ * 用户 2026-10-18：「待办应当可以按照标签（作业、考试、……）筛选
+ * （默认显示全部，若在下拉栏中选择某标签，只显示对应标签）」。
+ * 传 `POOL_FILTER_ALL`（`''`）= 原样返回（拷贝一份，调用方改返回值不会动到入参）。
+ *
+ * 它和 `selectPoolTodos` 是**两步**：先算"该进托盘的"，再按标签挑。
+ * 拆开的好处是下拉栏换标签时不用重算"排过没有"的判断。
+ */
+export function filterTodosByCategory(todos: Todo[], category: string): Todo[] {
+  const out: Todo[] = [];
+  for (const t of todos) {
+    if (category.length === 0 || t.category === category) {
+      out.push(t);
+    }
+  }
+  return out;
+}
+
+/** 虚拟课时按课程筛选：`<= 0` = 全部课程 */
+export const POOL_ALL_COURSES: number = 0;
+
+/**
+ * 虚拟课程的课时按**课程**筛选 —— 和待办的标签筛选同一个套路。
+ *
+ * 用户 2026-10-18：「虚拟课程应当采用类似的分层/筛选构造，避免全部平铺在上面」。
+ */
+export function filterLessonsByCourse(lessons: VirtualLesson[], courseId: number): VirtualLesson[] {
+  const out: VirtualLesson[] = [];
+  for (const l of lessons) {
+    if (courseId <= 0 || l.courseId === courseId) {
+      out.push(l);
+    }
+  }
+  return out;
+}
+
+/** 「第几层」：一门虚拟课程 + 它待安排的课时 */
+export interface LessonGroup {
+  courseId: number;
+  lessons: VirtualLesson[];
+}
+
+/**
+ * 把待安排的课时**按课程分层**：一门课一层，层内的顺序与入参一致
+ * （Repo 已经按 `course_id, seq` 排好，这里只分组不重排）。
+ *
+ * 层与层之间的顺序 = 该课程**第一次出现**的顺序（同样沿用入参）。
+ * 空入参 → 空数组（不会凭空造出"空课程层"）。
+ */
+export function groupLessonsByCourse(lessons: VirtualLesson[]): LessonGroup[] {
+  const out: LessonGroup[] = [];
+  for (const l of lessons) {
+    let hit: LessonGroup | undefined = undefined;
+    for (const g of out) {
+      if (g.courseId === l.courseId) {
+        hit = g;
+        break;
+      }
+    }
+    if (hit === undefined) {
+      const created: LessonGroup = { courseId: l.courseId, lessons: [] };
+      created.lessons.push(l);
+      out.push(created);
+    } else {
+      hit.lessons.push(l);
     }
   }
   return out;

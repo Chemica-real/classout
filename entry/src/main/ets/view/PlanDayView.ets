@@ -9,7 +9,9 @@ import { sessionsOnDate } from '../domain/Timetable';
 import { generateForLesson } from '../domain/TodoGenerator';
 import { TimeAxis, DEFAULT_WINDOW, allBlocksDone,
   dragOffsetWithScroll, dropRange, edgeScrollDepth, edgeScrollDirection, edgeScrollStep,
-  DdlGroup, ddlGroupsOn, durationToH, findFreeSlot, halveMinutes, hasBlockOnDate, moveRange, normalizeDuration,
+  DdlGroup, ddlGroupsOn, durationToH, filterLessonsByCourse, filterTodosByCategory,
+  findFreeSlot, groupLessonsByCourse, halveMinutes, hasBlockOnDate, moveRange, normalizeDuration,
+  LessonGroup, POOL_ALL_COURSES, POOL_FILTER_ALL,
   resizeRange, sortBlocksByTime,
   selectPoolTodos } from '../domain/PlanMath';
 import { BLOCK_MIN_MIN, DURATION_STEP_MIN, pinchDeltaLabel, pinchEnd, resizeEndTo,
@@ -21,6 +23,7 @@ import { AXIS_W, canBeginDrag, centerIndex, COLS_DAY, COLS_THREE, columnAtX, col
   MIN_VISIBLE_H, tapAction, TAP_OPEN } from '../domain/PlanLayout';
 import { addDays, formatDate, hhmmToMin, minToHHmm, parseDate, relativeDayText, today, WEEKDAY_CN,
   weekdayOf } from '../util/DateUtil';
+import { CategoryOption, allCategoryOptions, categoryLabel, parseCustomCategories } from '../domain/Categories';
 import { ChipButton } from './ChipButton';
 import { pickDateTime } from '../util/DateTimePicker';
 import { hapticLongPress } from '../util/Haptics';
@@ -87,6 +90,30 @@ const TAG: string = 'ClassOUT';
 
 /** 虚拟课时排进计划时的默认时长 */
 const LESSON_MIN: number = 90;
+
+/** 待安排货架的两页：0 = 待办，1 = 虚拟课程（用户 2026-10-18：「放到两页，不必上下放」） */
+const POOL_PAGE_TODO: number = 0;
+const POOL_PAGE_LESSON: number = 1;
+
+/**
+ * 虚拟课程「课时层」区的最大高度（vp）。
+ *
+ * 用户 2026-10-18：「虚拟课程应当采用类似的分层/筛选构造，避免全部平铺在上面」。
+ * 分层之后一门课一层，课时多的用户层数会上去 —— 超过这个高度就在区里**纵向滚**
+ * （现在这一页只有课时，货架高度 = 标题 + 两页签 + 这一区）。
+ */
+const POOL_LESSON_MAX_H: number = 204;
+
+/**
+ * 一层（课程名 + 一行课时卡）的名义高度（vp）。真机 `dumpLayout` 实测约 100vp。
+ *
+ * ⚠️ 分层区的高度**按层数算出来**，不用 `.constraintSize({ maxHeight })`：
+ * 货架本身是"按内容长高"的（Stack 底对齐），Scroll 在这种约束下拿到的
+ * 可用高度不确定，可能一张卡都不显示。算出来是确定的：
+ *   `min(层数 × 每层高, 上限)`，超出的部分在区内纵向滚。
+ * ⚠️ 取小了会把最后一层的卡片底边裁掉（Scroll 自己会裁），所以留 2vp 余量。
+ */
+const POOL_LESSON_GROUP_H: number = 102;
 
 /**
  * 网格用的时间轴 —— **不再是模块级常量**。
@@ -224,6 +251,31 @@ export struct PlanDayView {
   @State restWindows: RestWindow[] = [];
   /** 虚拟课程的课时（待分配的「讲」） */
   @State lessons: VirtualLesson[] = [];
+  /**
+   * 自定义待办类型（`'\n'` 分隔）—— 与待办页/设置页共用同一个 kv 键。
+   *
+   * ⚠️ `@StorageLink` 的键名**必须写字面量**（用常量会静默不生效，HANDOFF §20.8 踩过）。
+   * 托盘里的「标签」下拉栏要用它把自定义类型也列出来；在设置页/待办页新建类型后，
+   * 这里会跟着刷新（同一个 AppStorage 键）。
+   */
+  @StorageLink('todoCategories') catRaw: string = '';
+  /**
+   * 「待安排」的**标签筛选**（用户 2026-10-18）：`POOL_FILTER_ALL`（空串）= 全部。
+   *
+   * 刻意**不持久化**：每次进计划页都回到「全部」，避免"上次筛了作业、这次打开
+   * 待安排里只有一个标签、以为待办丢了"。收起货架时状态保留（同一页面内不重置）。
+   */
+  @State poolTag: string = POOL_FILTER_ALL;
+  /**
+   * 虚拟课程课时的**课程筛选**（用户 2026-10-18 要求"分层/筛选"）：0 = 全部课程。
+   * 和标签筛选一样不进 kv。
+   */
+  @State poolCourseId: number = POOL_ALL_COURSES;
+  /**
+   * 「待安排」当前显示哪一页：`POOL_PAGE_TODO`（待办）/ `POOL_PAGE_LESSON`（虚拟课程）。
+   * 用户 2026-10-18：「虚拟课程和待办可以放到两页，不必上下放」。默认待办页。
+   */
+  @State poolPage: number = POOL_PAGE_TODO;
   @State loading: boolean = true;
   @State selectedTodoId: number = 0;
   /**
@@ -677,6 +729,220 @@ export struct PlanDayView {
     return out;
   }
 
+  // ---- 「待安排」的标签筛选（待办）与课程分层（虚拟课时）----
+
+  private customCategories(): string[] {
+    return parseCustomCategories(this.catRaw);
+  }
+
+  /**
+   * 标签下拉栏的选项：**全部标签** + 内置（「无」在这里显示成「无标签」，比单字「无」好认）
+   * + 自定义类型。
+   *
+   * 顺序 = 待办编辑窗里那排胶囊的顺序，用户不用记两套。
+   * 选项主体按**类型定义**列（不是按"当前有哪些待办"列）：这样拖走最后一条作业时，
+   * 下拉栏不会突然少一项、把已选中的项顶掉。定义里没有、数据里却有的标签
+   * （备份恢复后少了定义 / 极老 `'other'`）再兜在最后，保证它们也筛得到。
+   */
+  private poolTagOptions(): CategoryOption[] {
+    const out: CategoryOption[] = [];
+    out.push({ key: POOL_FILTER_ALL, label: '全部标签', builtin: true });
+    for (const o of allCategoryOptions(this.customCategories())) {
+      out.push({
+        key: o.key,
+        label: o.key === TodoCategory.None ? '无标签' : o.label,
+        builtin: o.builtin
+      });
+    }
+    // 兜底：数据里有、类型定义里却没有的标签（备份恢复后少了定义、或极老的 `'other'`）。
+    // 不兜的话它们只能在「全部」里看到，等于筛不了 —— 和待办编辑窗兜"认不出的当前值"同一个道理。
+    for (const t of this.todos) {
+      if (t.category.length === 0 || t.category === TodoCategory.None) {
+        continue;
+      }
+      let known: boolean = false;
+      for (const o of out) {
+        if (o.key === t.category) {
+          known = true;
+          break;
+        }
+      }
+      if (!known) {
+        out.push({
+          key: t.category,
+          label: categoryLabel(t.category, this.customCategories()),
+          builtin: false
+        });
+      }
+    }
+    return out;
+  }
+
+  /** 当前标签在选项里的下标；选中的类型被删掉了 → 退回 0（全部） */
+  private poolTagIndex(): number {
+    const opts: CategoryOption[] = this.poolTagOptions();
+    for (let i = 0; i < opts.length; i++) {
+      if (opts[i].key === this.poolTag) {
+        return i;
+      }
+    }
+    return 0;
+  }
+
+  private poolTagText(): string {
+    return this.poolTagOptions()[this.poolTagIndex()].label;
+  }
+
+  /**
+   * 生效的标签筛选：选中的类型被删掉时**退回全部**。
+   * 读的地方（`poolTodos` / 空态文案）都走它，避免"下拉栏显示全部、列表却还是空的"。
+   */
+  private effectivePoolTag(): string {
+    return this.poolTagOptions()[this.poolTagIndex()].key;
+  }
+
+  private poolTagSelectOptions(): SelectOption[] {
+    const out: SelectOption[] = [];
+    for (const o of this.poolTagOptions()) {
+      out.push({ value: o.label });
+    }
+    return out;
+  }
+
+  /**
+   * 有待安排课时的**虚拟课程**（课程下拉栏的选项）。
+   * 只列"确实还有课时要排"的课：没有待安排课时的课在托盘里没有意义。
+   */
+  private poolLessonCourses(): Course[] {
+    const ids: Set<number> = new Set<number>();
+    for (const l of this.poolLessons()) {
+      ids.add(l.courseId);
+    }
+    const out: Course[] = [];
+    for (const c of this.courses) {
+      if (c.isVirtual && ids.has(c.id)) {
+        out.push(c);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * 生效的课程筛选：选中的课已经把课时排完了 → 自动回落到「全部课程」。
+   * 不然下拉栏会显着一个"这门课一条都没有"的空层。
+   */
+  private effectivePoolCourseId(): number {
+    if (this.poolCourseId <= 0) {
+      return POOL_ALL_COURSES;
+    }
+    for (const c of this.poolLessonCourses()) {
+      if (c.id === this.poolCourseId) {
+        return this.poolCourseId;
+      }
+    }
+    return POOL_ALL_COURSES;
+  }
+
+  /** 课程下拉栏的下标：0 = 全部课程，i+1 = 第 i 门课 */
+  private poolCourseIndex(): number {
+    const list: Course[] = this.poolLessonCourses();
+    const id: number = this.effectivePoolCourseId();
+    if (id <= 0) {
+      return 0;
+    }
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].id === id) {
+        return i + 1;
+      }
+    }
+    return 0;
+  }
+
+  private poolCourseText(): string {
+    const idx: number = this.poolCourseIndex();
+    if (idx === 0) {
+      return '全部课程';
+    }
+    const list: Course[] = this.poolLessonCourses();
+    return this.courseShort(list[idx - 1].id);
+  }
+
+  private poolCourseSelectOptions(): SelectOption[] {
+    const out: SelectOption[] = [];
+    out.push({ value: '全部课程' });
+    for (const c of this.poolLessonCourses()) {
+      out.push({ value: this.courseShort(c.id) });
+    }
+    return out;
+  }
+
+  /** 分层之后课程名已经在层头上，卡片只说「第 N 讲 · 标题」 */
+  private lessonCardTitle(l: VirtualLesson): string {
+    const seq: string = `第 ${l.seq} 讲`;
+    return l.title.length > 0 ? `${seq} · ${l.title}` : seq;
+  }
+
+  /** 待安排的课时按课程分层（筛选之后）—— 一门课一层，层内是这一讲的卡片 */
+  private lessonGroups(): LessonGroup[] {
+    return groupLessonsByCourse(
+      filterLessonsByCourse(this.poolLessons(), this.effectivePoolCourseId()));
+  }
+
+  /**
+   * 层头的 ForEach key：**必须带上这一层有哪些课时**。
+   *
+   * ForEach 的 key 不变就不会重画子节点，而「剩 N 讲」读的是层对象里的数组长度 ——
+   * 只用 `courseId` 当 key 的话，排走一讲之后层头还显示旧数字（托盘待办卡的 key
+   * 也出于同样理由把 title/estimate 拼了进去）。
+   */
+  private lessonGroupKey(g: LessonGroup): string {
+    const ids: string[] = [];
+    for (const l of g.lessons) {
+      ids.push(`${l.id}`);
+    }
+    return `lg-${g.courseId}-${ids.join('.')}`;
+  }
+
+  /**
+   * 分层区的实际高度（vp）= min(层数 × 每层名义高度, 上限)。
+   * 只有一层时就是一层（不留空白），层多到超过上限时区内纵向滚。
+   */
+  private poolLessonAreaH(): number {
+    const h: number = this.lessonGroups().length * POOL_LESSON_GROUP_H;
+    return h < POOL_LESSON_MAX_H ? h : POOL_LESSON_MAX_H;
+  }
+
+  /** 当前筛选下的课时数（选「全部课程」时 = 全部待安排课时） */
+  private poolLessonCount(): number {
+    let n: number = 0;
+    for (const g of this.lessonGroups()) {
+      n += g.lessons.length;
+    }
+    return n;
+  }
+
+  /**
+   * 实际显示的那一页。
+   *
+   * 虚拟课程页在**没有任何待安排课时**时自动退回待办页（课时被排完/做完时
+   * 「虚拟课程」那个页签本来也会消失，不能停在一张空页上）。
+   */
+  private effectivePoolPage(): number {
+    if (this.poolPage === POOL_PAGE_LESSON && this.poolLessons().length > 0) {
+      return POOL_PAGE_LESSON;
+    }
+    return POOL_PAGE_TODO;
+  }
+
+  /** 切页：顺手清掉"已选中 / 正在拖"的状态（它们只属于原来那一页） */
+  private setPoolPage(page: number): void {
+    this.poolPage = page;
+    this.selectedTodoId = 0;
+    this.dragTodoId = 0;
+    this.dragLessonId = 0;
+    this.showHint('');
+  }
+
   private blockTitle(b: PlanBlock): string {
     if (b.lessonId > 0) {
       const l: VirtualLesson | undefined = this.lessonOf(b.lessonId);
@@ -761,9 +1027,14 @@ export struct PlanDayView {
    *
    * ⚠️ 这条规则同时意味着**不能再从托盘拖第二块**：一天多块/多天分散改走
    * 「块属性 → 对半分」再把其中一块拖到别的天（用户拍定的链路）。
+   *
+   * ★ 2026-10-18：在这条规则之上再按**标签**筛一层（用户要求"默认全部、
+   * 下拉栏选某标签就只显示对应标签"）。两步都是纯函数（有离线断言）：
+   * 先算"该进托盘的"，再按标签挑 —— 换个标签不用重算"排过没有"。
    */
   private poolTodos(): Todo[] {
-    return selectPoolTodos(this.todos, this.allBlocks);
+    return filterTodosByCategory(selectPoolTodos(this.todos, this.allBlocks),
+      this.effectivePoolTag());
   }
 
   private selectedTodo(): Todo | undefined {
@@ -2197,151 +2468,279 @@ export struct PlanDayView {
   @Builder
   TodoPool() {
     Column() {
+      // ---- 行 1：标题 + 说明 + 收起 ----
+      // ⚠️ 这一行**不能挂 onClick**（原来"点标题行任意处收起"）：行里放着下拉栏，
+      //    父级点击会连带触发，一点下拉栏就把货架收起来。收起只绑在「收起 ▾」上。
       Row() {
         Text('待安排')
           .fontSize(LAYOUT.tray)
           .fontWeight(FontWeight.Medium)
           .fontColor('#F2F5FA')
         Blank()
-        if (this.selectedTodoId > 0) {
-          Text('已选中，点网格空白处放下')
+        if (this.effectivePoolPage() === POOL_PAGE_LESSON) {
+          // 虚拟课程页的说明（省掉原来单独那一行，页高就下来了）
+          Text('拖进计划；打勾完成生成待办')
+            .fontSize(LAYOUT.sub)
+            .fontColor('rgba(216,196,138,0.80)')
+        } else if (this.selectedTodoId > 0) {
+          Text('已选中，点空白放下')
             .fontSize(LAYOUT.cardSub)
             .fontColor('#7FA8FF')
         } else {
-          Text('拖动 / 点选 / ⚡ 一键找空档')
-            .fontSize(LAYOUT.tray)
+          Text('拖动 / 点选')
+            .fontSize(LAYOUT.cardSub)
             .fontColor('#8B97AC')
         }
-        // 收起：点标题行任意处（用户要"常态隐藏"，所以必须好收）
         Text('收起 ▾')
           .fontSize(LAYOUT.cardSub)
           .fontColor('#A9B5C9')
           .margin({ left: 10 })
+          .onClick((): void => this.setTrayOpen(false))
       }
       .width('100%')
-      .margin({ bottom: 8 })
-      .onClick((): void => this.setTrayOpen(false))
+      .margin({ bottom: 6 })
 
-      if (this.poolTodos().length === 0) {
-        Text('没有待安排的事项。先去『待办』里确认几条。')
-          .fontSize(LAYOUT.tray)
-          .fontColor('#8B97AC')
-          .margin({ bottom: 6 })
-      } else {
-        Scroll() {
+      // ---- 行 2：两页切换（待办 / 虚拟课程）+ 本页的筛选下拉栏 ----
+      // 用户 2026-10-18：「待安排里的虚拟课程和待办可以放到两页，不必上下放」。
+      Row() {
+        ChipButton({
+          text: `待办 ${this.poolTodos().length}`,
+          selected: this.effectivePoolPage() === POOL_PAGE_TODO,
+          fontSize: LAYOUT.cardSub,
+          onTap: (): void => this.setPoolPage(POOL_PAGE_TODO)
+        })
+        if (this.poolLessons().length > 0) {
+          ChipButton({
+            text: `虚拟课程 ${this.poolLessonCount()}`,
+            selected: this.effectivePoolPage() === POOL_PAGE_LESSON,
+            fontSize: LAYOUT.cardSub,
+            onTap: (): void => this.setPoolPage(POOL_PAGE_LESSON)
+          })
+        }
+        Blank()
+        if (this.effectivePoolPage() === POOL_PAGE_TODO) {
+          // 标签筛选：默认「全部标签」，选某一项就只看那个标签
+          Select(this.poolTagSelectOptions())
+            .selected(this.poolTagIndex())
+            .value(this.poolTagText())
+            .font({ size: LAYOUT.cardSub })
+            .fontColor('#E5EAF3')
+            .controlSize(ControlSize.SMALL)
+            .optionWidth(160)
+            .selectedOptionBgColor('rgba(46,107,230,0.45)')
+            .selectedOptionFont({ size: LAYOUT.tray })
+            .selectedOptionFontColor('#FFFFFF')
+            .optionBgColor('rgba(16,22,34,0.98)')
+            .optionFont({ size: LAYOUT.tray })
+            .optionFontColor('#E5EAF3')
+            .menuBackgroundColor('rgba(16,22,34,0.98)')
+            .onSelect((index: number, value: string): void => {
+              const opts: CategoryOption[] = this.poolTagOptions();
+              if (index >= 0 && index < opts.length) {
+                this.poolTag = opts[index].key;
+              }
+              // 换标签时清掉"已选中"的那条：它可能已经不在列表里了
+              this.selectedTodoId = 0;
+            })
+        } else {
+          // 课程筛选：默认「全部课程」；选了某门课就只剩那一层
+          Select(this.poolCourseSelectOptions())
+            .selected(this.poolCourseIndex())
+            .value(this.poolCourseText())
+            .font({ size: LAYOUT.cardSub })
+            .fontColor('#F0DFC0')
+            .controlSize(ControlSize.SMALL)
+            .optionWidth(160)
+            .selectedOptionBgColor('rgba(240,190,90,0.30)')
+            .selectedOptionFont({ size: LAYOUT.tray })
+            .selectedOptionFontColor('#FFF6E2')
+            .optionBgColor('rgba(24,20,12,0.98)')
+            .optionFont({ size: LAYOUT.tray })
+            .optionFontColor('#F0DFC0')
+            .menuBackgroundColor('rgba(24,20,12,0.98)')
+            .onSelect((index: number, value: string): void => {
+              const list: Course[] = this.poolLessonCourses();
+              if (index === 0) {
+                this.poolCourseId = POOL_ALL_COURSES;
+              } else if (index - 1 < list.length) {
+                this.poolCourseId = list[index - 1].id;
+              }
+              // 换课程时丢掉"正在拖的那一讲"：它可能已经被筛掉了
+              this.dragLessonId = 0;
+            })
+        }
+      }
+      .width('100%')
+      .margin({ bottom: 4 })
+
+      // ---- 本页内容：只显示一页 ----
+      if (this.effectivePoolPage() === POOL_PAGE_TODO) {
+        if (this.poolTodos().length === 0) {
           Row() {
-            ForEach(this.poolTodos(), (t: Todo) => {
-              Column() {
-                // 上面这块负责拖拽与选中（点 ⚡ 不会连带选中）
+            Text(this.effectivePoolTag().length === 0
+              ? '没有待安排的事项。先去『待办』里确认几条。'
+              : `没有「${this.poolTagText()}」的待安排事项。`)
+              .fontSize(LAYOUT.tray)
+              .fontColor('#8B97AC')
+              .layoutWeight(1)
+            if (this.effectivePoolTag().length > 0) {
+              Text('看全部')
+                .fontSize(LAYOUT.cardSub)
+                .fontColor('#7FA8FF')
+                .margin({ left: 8 })
+                .onClick((): void => {
+                  this.poolTag = POOL_FILTER_ALL;
+                  this.showHint('');
+                })
+            }
+          }
+          .width('100%')
+          .margin({ bottom: 6 })
+        } else {
+          Scroll() {
+            Row() {
+              ForEach(this.poolTodos(), (t: Todo) => {
                 Column() {
-                  Text(t.title)
-                    .fontSize(LAYOUT.tray)
-                    .fontColor('#F2F5FA')
-                    .maxLines(1)
-                    .textOverflow({ overflow: TextOverflow.Ellipsis })
-                  // 课程属性：用户要求「待安排框里也要显示」
-                  if (t.courseId > 0) {
-                    Text(this.courseShort(t.courseId))
-                      .fontSize(LAYOUT.cardSub)
-                      .fontColor('#CBD6E8')
-                      .backgroundColor(this.colorOf(t.courseId))
-                      .borderRadius(4)
-                      .padding({ left: 4, right: 4, top: 1, bottom: 1 })
-                      .margin({ top: 2 })
+                  // 上面这块负责拖拽与选中（点 ⚡ 不会连带选中）
+                  Column() {
+                    Text(t.title)
+                      .fontSize(LAYOUT.tray)
+                      .fontColor('#F2F5FA')
                       .maxLines(1)
                       .textOverflow({ overflow: TextOverflow.Ellipsis })
+                    // 课程属性：用户要求「待安排框里也要显示」
+                    if (t.courseId > 0) {
+                      Text(this.courseShort(t.courseId))
+                        .fontSize(LAYOUT.cardSub)
+                        .fontColor('#CBD6E8')
+                        .backgroundColor(this.colorOf(t.courseId))
+                        .borderRadius(4)
+                        .padding({ left: 4, right: 4, top: 1, bottom: 1 })
+                        .margin({ top: 2 })
+                        .maxLines(1)
+                        .textOverflow({ overflow: TextOverflow.Ellipsis })
+                    }
+                    Text(`预计 ${t.estimateMin} 分钟`)
+                      .fontSize(LAYOUT.cardSub)
+                      .fontColor('#9BA7BD')
+                      .margin({ top: 2 })
                   }
-                  Text(`预计 ${t.estimateMin} 分钟`)
+                  .width('100%')
+                  .alignItems(HorizontalAlign.Start)
+                  .draggable(true)
+                  .onDragStart((event: DragEvent, extraParams: string): void => {
+                    this.dragTodoId = t.id;
+                    this.showHint('拖到网格上松手放下');
+                  })
+                  .onClick((): void => {
+                    this.selectedTodoId = this.selectedTodoId === t.id ? 0 : t.id;
+                    this.showHint(this.selectedTodoId > 0 ? '现在点网格空白处放下它' : '');
+                  })
+
+                  Text('⚡ 找空档')
                     .fontSize(LAYOUT.cardSub)
-                    .fontColor('#9BA7BD')
-                    .margin({ top: 2 })
+                    .fontColor('#7FA8FF')
+                    .margin({ top: 6 })
+                    .onClick((): void => this.autoPlace(t))
                 }
-                .width('100%')
-                .alignItems(HorizontalAlign.Start)
-                .draggable(true)
-                .onDragStart((event: DragEvent, extraParams: string): void => {
-                  this.dragTodoId = t.id;
-                  this.showHint('拖到网格上松手放下');
+                .width(140)
+                .padding(10)
+                // 托盘卡是"小卡" → `.glassCard()` **不含模糊**（用户定的性能取舍）
+                .glassCard()
+                // 选中态用半透明蓝 + 亮蓝描边
+                // （深色底上 #2E6BE6 当描边太暗，要用提亮的那支才看得出"选中"）
+                .backgroundColor(this.selectedTodoId === t.id
+                  ? 'rgba(46,107,230,0.30)' : GLASS_TINT_ROW)
+                .border({
+                  width: this.selectedTodoId === t.id ? 1.5 : 1,
+                  color: this.selectedTodoId === t.id ? '#7FA8FF' : GLASS_EDGE_SOFT
                 })
-                .onClick((): void => {
-                  this.selectedTodoId = this.selectedTodoId === t.id ? 0 : t.id;
-                  this.showHint(this.selectedTodoId > 0 ? '现在点网格空白处放下它' : '');
-                })
-
-                Text('⚡ 找空档')
-                  .fontSize(LAYOUT.cardSub)
-                  .fontColor('#7FA8FF')
-                  .margin({ top: 6 })
-                  .onClick((): void => this.autoPlace(t))
-              }
-              .width(140)
-              .padding(10)
-              // 托盘卡是"小卡" → `.glassCard()` **不含模糊**（用户定的性能取舍）
-              .glassCard()
-              // 选中态用半透明蓝 + 亮蓝描边
-              // （深色底上 #2E6BE6 当描边太暗，要用提亮的那支才看得出"选中"）
-              .backgroundColor(this.selectedTodoId === t.id
-                ? 'rgba(46,107,230,0.30)' : GLASS_TINT_ROW)
-              .border({
-                width: this.selectedTodoId === t.id ? 1.5 : 1,
-                color: this.selectedTodoId === t.id ? '#7FA8FF' : GLASS_EDGE_SOFT
-              })
-              .margin({ right: 8 })
-            }, (t: Todo) =>
-              // 托盘卡的「选中」样式要靠 key 变化才会重画
-              `pool-${t.id}-${t.title}-${t.courseId}-${t.estimateMin}-${this.selectedTodoId === t.id}`)
+                .margin({ right: 8 })
+              }, (t: Todo) =>
+                // 托盘卡的「选中」样式要靠 key 变化才会重画
+                `pool-${t.id}-${t.title}-${t.courseId}-${t.estimateMin}-${this.selectedTodoId === t.id}`)
+            }
           }
+          .scrollable(ScrollDirection.Horizontal)
+          .scrollBar(BarState.Off)
+          .width('100%')
         }
-        .scrollable(ScrollDirection.Horizontal)
-        .scrollBar(BarState.Off)
-        .width('100%')
-      }
-
-      if (this.poolLessons().length > 0) {
-        Text('虚拟课程课时（拖进计划，打勾完成会触发生成待办）')
-          .fontSize(LAYOUT.cardSub)
-          .fontColor('#E0A94E')
-          .margin({ top: 12, bottom: 6 })
+      } else {
+        // 虚拟课程页：**分层**（一门课一层），层数多时这一区自己纵向滚
         Scroll() {
-          Row() {
-            ForEach(this.poolLessons(), (l: VirtualLesson) => {
+          Column() {
+            ForEach(this.lessonGroups(), (g: LessonGroup) => {
               Column() {
-                Column() {
-                  Text(this.lessonTitle(l))
-                    .fontSize(LAYOUT.tray)
-                    .fontColor('#F2F5FA')
-                    .maxLines(1)
-                    .textOverflow({ overflow: TextOverflow.Ellipsis })
-                  Text(`${LESSON_MIN} 分钟`)
+                // 层头：课程色胶囊 + 这一层还剩几讲
+                Row() {
+                  Text(this.courseShort(g.courseId))
                     .fontSize(LAYOUT.cardSub)
-                    .fontColor('#D8C48A')
-                    .margin({ top: 2 })
+                    .fontColor('#CBD6E8')
+                    .backgroundColor(this.colorOf(g.courseId))
+                    .borderRadius(4)
+                    .padding({ left: 5, right: 5, top: 1, bottom: 1 })
+                  Text(`剩 ${g.lessons.length} 讲`)
+                    .fontSize(LAYOUT.sub)
+                    .fontColor('rgba(216,196,138,0.85)')
+                    .margin({ left: 6 })
+                  Blank()
                 }
                 .width('100%')
-                .alignItems(HorizontalAlign.Start)
-                .draggable(true)
-                .onDragStart((event: DragEvent, extraParams: string): void => {
-                  this.dragLessonId = l.id;
-                  this.showHint('拖到网格上松手放下这一讲');
-                })
+                .margin({ bottom: 4 })
 
-                Text('⚡ 找空档')
-                  .fontSize(LAYOUT.cardSub)
-                  .fontColor('#E8B25C')
-                  .margin({ top: 6 })
-                  .onClick((): void => this.autoPlaceLesson(l))
+                Scroll() {
+                  Row() {
+                    ForEach(g.lessons, (l: VirtualLesson) => {
+                      Column() {
+                        Column() {
+                          Text(this.lessonCardTitle(l))
+                            .fontSize(LAYOUT.tray)
+                            .fontColor('#F2F5FA')
+                            .maxLines(1)
+                            .textOverflow({ overflow: TextOverflow.Ellipsis })
+                          Text(`${LESSON_MIN} 分钟`)
+                            .fontSize(LAYOUT.cardSub)
+                            .fontColor('#D8C48A')
+                            .margin({ top: 2 })
+                        }
+                        .width('100%')
+                        .alignItems(HorizontalAlign.Start)
+                        .draggable(true)
+                        .onDragStart((event: DragEvent, extraParams: string): void => {
+                          this.dragLessonId = l.id;
+                          this.showHint('拖到网格上松手放下这一讲');
+                        })
+
+                        Text('⚡ 找空档')
+                          .fontSize(LAYOUT.cardSub)
+                          .fontColor('#E8B25C')
+                          .margin({ top: 6 })
+                          .onClick((): void => this.autoPlaceLesson(l))
+                      }
+                      .width(140)
+                      .padding(10)
+                      // 虚拟课时托盘卡同样是"小卡"：不模糊，用暖色薄纱与真待办卡区分开
+                      .glassCard()
+                      .backgroundColor('rgba(240,190,90,0.16)')
+                      .border({ width: 1, color: 'rgba(240,190,90,0.28)' })
+                      .margin({ right: 8 })
+                    }, (l: VirtualLesson) => `pl-${l.id}`)
+                  }
+                }
+                .scrollable(ScrollDirection.Horizontal)
+                .scrollBar(BarState.Off)
+                .width('100%')
               }
-              .width(140)
-              .padding(10)
-              // 虚拟课时托盘卡同样是"小卡"：不模糊，用暖色薄纱与真待办卡区分开
-              .glassCard()
-              .backgroundColor('rgba(240,190,90,0.16)')
-              .border({ width: 1, color: 'rgba(240,190,90,0.28)' })
-              .margin({ right: 8 })
-            }, (l: VirtualLesson) => `pl-${l.id}`)
+              .width('100%')
+              .alignItems(HorizontalAlign.Start)
+              .margin({ bottom: 6 })
+            }, (g: LessonGroup) => this.lessonGroupKey(g))
           }
+          .width('100%')
+          .alignItems(HorizontalAlign.Start)
         }
-        .scrollable(ScrollDirection.Horizontal)
+        .height(this.poolLessonAreaH())
+        .scrollable(ScrollDirection.Vertical)
         .scrollBar(BarState.Off)
         .width('100%')
       }
@@ -2367,8 +2766,13 @@ export struct PlanDayView {
    * 收起的"召唤 bar"（用户要求：「待安排可以常态隐藏，点击小召唤 bar 唤出」）。
    *
    * 它和展开后的货架是**互斥的两块**：一点就换成货架（上滑进来），
-   * 货架的标题行一点又收回来。两者高度都由 `bottomPaneH` 量着，
-   * 网格的底部 padding 跟着它走 —— 所以收起时列表能多露一屏。
+   * 货架右上角的「收起 ▾」一点又收回来（2026-10-18 起标题行里放了标签下拉栏，
+   * 不能再整行可点，否则点下拉栏会把货架一起收掉）。
+   * 两者高度都由 `bottomPaneH` 量着，网格的底部 padding 跟着它走 ——
+   * 所以收起时列表能多露一屏。
+   *
+   * ★ 计数**只算待办**（不含虚拟课程课时）：用户 2026-10-18
+   * 「待安排栏显示的待安排数应该只包括待办而不包括虚拟课程」。
    */
   @Builder
   TraySummonBar() {
@@ -2377,7 +2781,9 @@ export struct PlanDayView {
         .fontSize(LAYOUT.tray)
         .fontWeight(FontWeight.Medium)
         .fontColor('#F2F5FA')
-      Text(`${this.poolTodos().length + this.poolLessons().length}`)
+      // ★ 只算**待办**：虚拟课程课时不计入「待安排」的数（用户 2026-10-18）。
+      //   它们仍在展开后的货架里分层显示，只是不算"还有几件事没安排"。
+      Text(`${this.poolTodos().length}`)
         .fontSize(LAYOUT.cardSub)
         .fontColor('#7FA8FF')
         .margin({ left: 6 })

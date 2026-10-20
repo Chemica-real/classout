@@ -8,7 +8,8 @@
 
 import { SEED_COURSES, SEED_START_DATE, SEED_TOTAL_WEEKS, SeedCourse, SeedTemplate } from './SeedData';
 import { Course, CourseSession, DEFAULT_REST_WINDOWS, OverrideKind, PlanBlock, RestWindow,
-  Semester, SectionTime, SessionOverride, SessionRule, Todo, TodoCategory, PKU_SECTION_TIMES } from './Types';
+  Semester, SectionTime, SessionOverride, SessionRule, Todo, TodoCategory, PKU_SECTION_TIMES,
+  VirtualLesson } from './Types';
 import { computeWeekSessions, mergeRoomOverrides, weekOfDate, weekdayOfDate } from './Timetable';
 import { WALLPAPER_MAX_ZOOM, WallpaperGeometry, clampFocus, formatWallpaperFocus,
   parseWallpaperFocus, wallpaperGeometry } from './Wallpaper';
@@ -30,6 +31,8 @@ import { TimeAxis, DEFAULT_WINDOW, WINDOW_MAX_END, WINDOW_MIN_SPAN, WINDOW_SNAP_
   overlaps, resizeRange,
   hasBlockOnDate, halveMinutes, scheduledDays,
   DdlGroup, ddlGroupsOn, ddlMinuteOf, selectPoolTodos, snap, sortBlocksByTime, sortPoolTodos,
+  filterTodosByCategory, filterLessonsByCourse, groupLessonsByCourse, LessonGroup,
+  POOL_FILTER_ALL, POOL_ALL_COURSES,
   windowForContent } from './PlanMath';
 
 /**
@@ -527,13 +530,13 @@ check('只统计目标待办的块',
 // ---------- 待安排托盘：当天已排的待办必须从托盘消失 ----------
 // 回归自用户实测：拖进网格后托盘里还在，能反复拖出重复块。
 
-function td(id: number, title: string, status: string): Todo {
+function td(id: number, title: string, status: string, category: string = ''): Todo {
   return {
     id: id,
     title: title,
     courseId: 0,
     endAt: '',
-    category: '',
+    category: category,
     priority: 0,
     ddl: '',
     estimateMin: 90,
@@ -605,7 +608,94 @@ check('块排在那天（传全部块）→ 同理',
 check('传空块集 → 仍在托盘（过滤只看传入的块）',
   titles(selectPoolTodos([td(5, '已排的', 'active')], [])), '已排的');
 
-// ---------- 对半分（块属性窗的「对半分」）----------
+// ---------- 待安排托盘的「标签筛选」（用户 2026-10-18）----------
+console.log('【待安排：按标签筛选（默认全部）】');
+
+const byTag: Todo[] = [
+  td(1, '作业A', 'active', TodoCategory.Homework),
+  td(2, '考试B', 'active', TodoCategory.Exam),
+  td(3, '作业C', 'active', TodoCategory.Homework),
+  td(4, '没标签D', 'active', TodoCategory.None),
+  td(5, '自学E', 'active', TodoCategory.Self)
+];
+
+check('POOL_FILTER_ALL 是空串（下拉栏第一项 = 全部）', String(POOL_FILTER_ALL.length), '0');
+check('默认（全部）→ 一条不少，顺序不变',
+  titles(filterTodosByCategory(byTag, POOL_FILTER_ALL)), '作业A,考试B,作业C,没标签D,自学E');
+check('选「作业」→ 只剩作业',
+  titles(filterTodosByCategory(byTag, TodoCategory.Homework)), '作业A,作业C');
+check('选「考试」→ 只剩考试',
+  titles(filterTodosByCategory(byTag, TodoCategory.Exam)), '考试B');
+check('选「无」→ 只剩没标签的',
+  titles(filterTodosByCategory(byTag, TodoCategory.None)), '没标签D');
+check('选一个没有待办的标签 → 空',
+  String(filterTodosByCategory(byTag, '自定义类型').length), '0');
+check('空输入 → 空', String(filterTodosByCategory([], TodoCategory.Homework).length), '0');
+// 传进去的数组不能被改动（托盘每次渲染都会重算，改了会污染 this.todos）
+const tagInput: Todo[] = [td(9, 'X', 'active', TodoCategory.Exam)];
+filterTodosByCategory(tagInput, TodoCategory.Homework).push(td(10, 'Y', 'active', ''));
+check('筛选不改入参', String(tagInput.length), '1');
+filterTodosByCategory(tagInput, POOL_FILTER_ALL).push(td(11, 'Z', 'active', ''));
+check('「全部」也返回拷贝，不改入参', String(tagInput.length), '1');
+
+// 两步串联：先算"该进托盘的"，再按标签挑 —— 已排过的不能被标签筛选"捞回来"
+const tagPoolBase: Todo[] = [
+  td(1, '作业已排', 'active', TodoCategory.Homework),
+  td(2, '作业没排', 'active', TodoCategory.Homework),
+  td(3, '考试没排', 'active', TodoCategory.Exam)
+];
+check('先过滤托盘再筛标签：已排的仍在外面',
+  titles(filterTodosByCategory(
+    selectPoolTodos(tagPoolBase, [blk(1, 1, '2026-10-18', false)]), TodoCategory.Homework)),
+  '作业没排');
+check('先过滤托盘再筛标签：别的标签不串进来',
+  titles(filterTodosByCategory(
+    selectPoolTodos(tagPoolBase, [blk(1, 1, '2026-10-18', false)]), TodoCategory.Exam)),
+  '考试没排');
+
+// ---------- 虚拟课程课时：按课程分层 / 筛选（用户 2026-10-18）----------
+console.log('【虚拟课时：按课程分层，不全部平铺】');
+
+function les(id: number, courseId: number, seq: number): VirtualLesson {
+  return { id: id, courseId: courseId, seq: seq, title: '', done: false, doneAt: 0 };
+}
+
+const lessonsFlat: VirtualLesson[] = [
+  les(1, 10, 1), les(2, 10, 2),
+  les(3, 20, 1), les(4, 20, 2), les(5, 20, 3),
+  les(6, 30, 1)
+];
+
+check('POOL_ALL_COURSES 是 0（全部课程）', String(POOL_ALL_COURSES), '0');
+check('全部课程 → 一条不少', String(filterLessonsByCourse(lessonsFlat, POOL_ALL_COURSES).length), '6');
+check('选某门课 → 只剩它',
+  filterLessonsByCourse(lessonsFlat, 20).map((l: VirtualLesson): number => l.seq).join(','), '1,2,3');
+check('选一门没有待安排课时的课 → 空',
+  String(filterLessonsByCourse(lessonsFlat, 99).length), '0');
+check('空课时 → 空', String(filterLessonsByCourse([], 10).length), '0');
+check('课时筛选不改入参', String(lessonsFlat.length), '6');
+
+const g: LessonGroup[] = groupLessonsByCourse(lessonsFlat);
+check('分层：三门课 = 三层', String(g.length), '3');
+check('层顺序 = 课程首次出现的顺序',
+  g.map((x: LessonGroup): number => x.courseId).join(','), '10,20,30');
+check('每层的课时数',
+  g.map((x: LessonGroup): number => x.lessons.length).join(','), '2,3,1');
+check('层内顺序保持（第 1..n 讲）',
+  g[1].lessons.map((l: VirtualLesson): number => l.seq).join(','), '1,2,3');
+check('空课时 → 不分层（不会造出空层）', String(groupLessonsByCourse([]).length), '0');
+// 交错输入也要合并成同一层，而不是按相邻段切（含 A,B,A 时应当是两层不是三层）
+const interleaved: LessonGroup[] = groupLessonsByCourse([les(1, 10, 1), les(2, 20, 1), les(3, 10, 2)]);
+check('交错输入：同一门课合并到同一层', String(interleaved.length), '2');
+check('交错输入：合并后层内仍有序',
+  interleaved[0].lessons.map((l: VirtualLesson): number => l.id).join(','), '1,3');
+// 筛选 + 分层串联（下拉栏只显示一门课时，层也就只有一层）
+check('筛选后只剩一层',
+  String(groupLessonsByCourse(filterLessonsByCourse(lessonsFlat, 10)).length), '1');
+check('筛选后那一层的讲数',
+  String(groupLessonsByCourse(filterLessonsByCourse(lessonsFlat, 20))[0].lessons.length), '3');
+
+
 console.log('【对半分：两块都是 5 的倍数、和严格等于原时长】');
 check('90 → 45+45', halveMinutes(90).join('+'), '45+45');
 check('95 → 45+50（相近的两个 5 的倍数）', halveMinutes(95).join('+'), '45+50');
