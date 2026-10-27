@@ -49,6 +49,13 @@ from reportlab.platypus import (BaseDocTemplate, Frame, Image, KeepTogether,  # 
 FONT_PATH = '/usr/share/fonts/truetype/arphic/uming.ttc'
 FONT_NAME = 'UMing'
 
+# 说明书里**不收录**的 README 章节（按标题里出现的关键词匹配）：
+#   · 「装到手机上」是"数据线 + hdc + 调试签名"的开发者步骤，上架后用户从应用市场装；
+#   · 「给开发者」是编译/上架流程；
+#   · 「目录」是 README 的锚点链接，渲染出来没用（手册自己按章节分页）。
+# 说明书的"安装与运行"用封面下方那两行说明代替。
+SKIP_HEADINGS = ('装到手机上', '给开发者', '目录')
+
 EMOJI = re.compile(
     '[\U0001F300-\U0001FAFF\U00002600-\U000027BF\U0001F000-\U0001F02F'
     '\U0001F0A0-\U0001F0FF\U00002190-\U000021FF\U00002B00-\U00002BFF\uFE0F]')
@@ -203,15 +210,29 @@ def build_manual_pdf(path: str, name: str, version: str, date: str):
                            ParagraphStyle('cover4', parent=base, fontSize=10, leading=16,
                                           alignment=TA_CENTER,
                                           textColor=colors.HexColor('#555555'))))
+    story.append(Spacer(1, 8))
+    story.append(Paragraph('运行环境：HarmonyOS 5.1 及以上 · 安装方式：华为应用市场搜索「ClassOUT」',
+                           ParagraphStyle('cover5', parent=base, fontSize=9.5, leading=15,
+                                          alignment=TA_CENTER,
+                                          textColor=colors.HexColor('#777777'))))
     story.append(PageBreak())
 
     with open(os.path.join(ROOT, 'README.md'), encoding='utf-8') as fh:
         lines = fh.read().split('\n')
 
     i, first_section = 0, True
+    skipping = False
     while i < len(lines):
         raw = lines[i]
         s = raw.strip()
+
+        # 章节级跳过：命中 SKIP_HEADINGS 就一路跳到下一个 "## " 为止
+        if s.startswith('## '):
+            title_probe = clean_text(s[3:]).strip()
+            skipping = any(k in title_probe for k in SKIP_HEADINGS)
+        if skipping:
+            i += 1
+            continue
 
         if s.startswith('```'):
             i += 1

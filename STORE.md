@@ -195,7 +195,7 @@ python3 tools/make-copyright.py     # 依赖 tools/pylibs/reportlab（pip --targ
 | 文件 | 规格 |
 |---|---|
 | `ClassOUT-源程序.pdf` | **60 页**（19,255 行源码里取前 30 + 后 30 页），每页 50 行，页眉带「软件全称 + 版本 + 页码」 |
-| `ClassOUT-用户手册.pdf` | **22 页**（README 渲染 + 10 张真机截图，A4） |
+| `ClassOUT-用户手册.pdf` | **20 页**（README 渲染 + 10 张真机截图，A4；**不含**「装到手机上」「给开发者」这类开发者章节，安装方式写成"华为应用市场搜索 ClassOUT"） |
 | `申请表信息.txt` | 登记表字段（开发完成日期、著作权人两处 **【待填】**） |
 | `提交说明.md` | 交到哪、怎么交 |
 
@@ -212,3 +212,4 @@ python3 tools/make-copyright.py     # 依赖 tools/pylibs/reportlab（pip --targ
 5. ~~决定平板要不要报~~ → 已定：**只报手机**（`deviceTypes` 已改）。
 6. ~~`07-guide.jpg` 重拍~~ → 已完成（8 步版，默认渐变背景）。
 7. 提审前把 `versionCode` 记下来：以后每次上传必须比上一次大（当前 `1005001`）。
+8. 上架通过后把 README §1「装到手机上」从"数据线 + hdc + 调试签名"改成"应用市场搜索安装"（现在还没上架，先留着）。
