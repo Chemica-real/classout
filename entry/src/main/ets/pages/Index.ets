@@ -2373,7 +2373,10 @@ struct Index {
       direction: GradientDirection.Bottom,
       colors: [[PAGE_GRADIENT_A, 0.0], [PAGE_GRADIENT_B, 0.5], [PAGE_GRADIENT_C, 1.0]]
     })
-    .hitTestBehavior(HitTestMode.Block)
+    // ⚠️ **不能用 `HitTestMode.Block`**：它会把**子节点**（两个按钮、查看全文）也一起屏蔽，
+    //    弹窗里点什么都没反应（真机踩过）。这里用默认命中测试 + 外层 onClick 吞掉
+    //    "点在卡片外面"的那一下，按钮自己的 onClick 照常生效。
+    .onClick((): void => {})
   }
 
   /**
@@ -2444,7 +2447,8 @@ struct Index {
     .height('100%')
     .padding({ left: 20, right: 20, top: 28, bottom: 20 })
     .backgroundColor('#0F0C29')
-    .hitTestBehavior(HitTestMode.Block)
+    // 同 PrivacyGateCard：Block 会屏蔽子节点，用"默认 + 吞点击"代替
+    .onClick((): void => {})
   }
 
   build() {
