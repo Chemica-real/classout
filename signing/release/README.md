@@ -73,8 +73,11 @@ JAR="$CLI/sdk/default/openharmony/toolchains/lib/hap-sign-tool.jar"
 
 | 项 | 状态 |
 |---|---|
-| **图标** | ❌ 现在是游戏角色素材（《明日方舟》），**上架会被驳回**，必须换成自绘 |
+| **图标** | ✅ 已换成完全自绘（`tools/make-icon.py`；AGC 用 `docs/store/app-icon-1024.png` / `-216.png`） |
 | **软著 / 电子版权认证** | ❌ 没有，个人开发者上架要交；办理有周期，越早越好 |
 | **APP 备案号** | ❌ 没有，境内分发要求先备案 |
-| **隐私政策** | ❌ 需要一个链接（可放仓库/Gitee Pages，或应用内页面） |
-| 签名材料 | ✅ 口令与私钥都已被 `.gitignore` 挡住 |
+| **隐私政策** | ✅ 公网可开：<https://gitee.com/the-person-on-the-tree/classout/blob/master/PRIVACY.md>；用户权利页：<https://gitee.com/the-person-on-the-tree/classout/blob/master/PRIVACY_RIGHTS.md> |
+| **发布证书 / 发布 Profile** | ❌ `signing/release/` 里还没有（只有本说明）；去 AGC 申请后放进来 |
+| 签名材料口令 | ✅ 口令与私钥都已被 `.gitignore` 挡住 |
+
+> 完整的上架逐条清单、AGC 填报文案、权限/隐私标签对照、截图建议见仓库根目录 **`STORE.md`**。

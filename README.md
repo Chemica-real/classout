@@ -242,7 +242,9 @@
 ## 8. 数据、隐私与备份
 
 - **完全离线**：没有任何联网代码，没有账号，没有统计上报。
-  **完整隐私政策见 [PRIVACY.md](PRIVACY.md)**（应用内也在「设置 → 关于 → 隐私政策」）。
+  **完整隐私政策见 [PRIVACY.md](PRIVACY.md)**（应用内也在「设置 → 关于 → 隐私政策」）；
+  **删除 / 导出数据（用户权利）见 [PRIVACY_RIGHTS.md](PRIVACY_RIGHTS.md)** ——
+  应用市场填「用户权利网址」用的就是这份。
 - **数据在哪**：全部在这个 App 的私有沙盒里（SQLite 数据库 + 你选的背景图副本），
   卸载 App 就会一起删掉。开发者没有服务器，也没有任何途径访问。
 - **备份**：`管理课程 → 备份与恢复 → 导出备份` 会生成一个 JSON 文件，
@@ -326,6 +328,7 @@ A：说明书截图用的是**演练沙箱里的演示数据**（高等数学 / 
 ./tools/publish-wizard.sh                    # 上架向导（发布签名 → .app）
 ```
 
+- **上架清单**（AGC 逐条核对 / 填报文案 / 权限与隐私标签 / 素材）：[`STORE.md`](STORE.md)
 - 交接文档（架构、坑、已验证/未验证清单）：[`HANDOFF.md`](HANDOFF.md)
 - 签名与上架：[`signing/README.md`](signing/README.md)、[`signing/release/README.md`](signing/release/README.md)
 - 计划页设计取舍：[`PLAN_REDESIGN.md`](PLAN_REDESIGN.md)

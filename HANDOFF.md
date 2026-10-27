@@ -7580,3 +7580,41 @@ Flutter 要做这个得上 `AnimatedList`/`SliverAnimatedList`，改动面比收
 2. `docs/manual/07-guide.jpg` 仍是 7 步旧图：要重拍成 8 步版得**先把壁纸临时恢复默认渐变**
    （真机现在是用户自己的照片，不能进公开仓库 / 应用市场），拍完他得自己再选一次壁纸 —— 等他拍板。
 3. 上架材料：软著 / 电子版权认证 / APP 备案号。
+
+## 129. 2026-10-27 上架流程逐条核对（AGC）+ 素材补齐
+
+用户贴了一份华为应用市场上架流程（实名 → 建应用 → 应用信息 → 隐私/权限 → Release 包 →
+分发 → 审核），要求「一个一个看有没有干」。核对结果落成 **`STORE.md`**（操作单，含可直接粘的
+AGC 文案）；本轮补了三样仓库里能自己搞定的东西：
+
+### 129.1 本轮新增 / 改动
+
+| 东西 | 说明 |
+|---|---|
+| `docs/store/app-icon-1024.png`、`app-icon-216.png` | AGC 要的图标尺寸。`tools/make-icon.py` 改成**按尺寸重画**（不是放大 512 位图），应用内 512 图标与旧版**逐字节一致** |
+| `PRIVACY_RIGHTS.md` | 「用户权利网址」页：删除 / 导出 / 迁移怎么做。给 AGC 填第二个网址用 |
+| `STORE.md` | 逐条对照表 + 一句话简介（11 字）+ 应用介绍 + 权限/隐私标签对照 + 截图建议 + 发布包步骤 + 审核风险 + 未完成清单 |
+| `signing/release/README.md` | 状态表更新：图标 ✅、隐私政策 ✅（给了公网链接）、发布证书/Profile 仍 ❌ |
+| `README.md` | §8 链到 `PRIVACY_RIGHTS.md`，§11 链到 `STORE.md` |
+
+### 129.2 已自证的部分（仓库里能查）
+
+- 包名 `com.chemica.classout`；`versionCode 1005001` / `versionName 1.5.1`。
+- `deviceTypes = phone + tablet`（⚠️ 平板没真机测过，见 `STORE.md` §6）。
+- 4 个权限都带 `reason` + `usedScene.when = inuse`；**没有网络权限**（可报单机应用）。
+- `./build.sh assembleApp` 通过：`build/outputs/default/ClassOUT-default-unsigned.app` = **388 KB**。
+- 隐私政策 URL（Gitee，实测 200）：
+  `https://gitee.com/the-person-on-the-tree/classout/blob/master/PRIVACY.md`
+- 用户权利 URL（本轮新增，push 后 200）：
+  `https://gitee.com/the-person-on-the-tree/classout/blob/master/PRIVACY_RIGHTS.md`
+- 说明书 9 张截图都是演练沙箱的演示数据（无个人信息）；`03-plan` 的待安排条是收起态，
+  与现在的两页签版本不冲突；**只有 `07-guide.jpg` 还是 1/7 步旧图**。
+
+### 129.3 仍然只能用户来做（`STORE.md` §7）
+
+1. AGC 实名认证 → 2. 发布证书 + 发布 Profile（放 `signing/release/` → `./sign-release.sh`）→
+3. 软著 / 电子版权认证 → 4. APP 备案号 → 5. 平板要不要报（测或改 `deviceTypes`）→
+6. `07-guide` 重拍或不用。
+
+> ⚠️ 工具链是 5.1.0.840（API 18），官方说的「26.0.0 起 AGC 自动重签」用不上，
+> **仍要手动发布签名**。这条写进 `STORE.md` §5。
