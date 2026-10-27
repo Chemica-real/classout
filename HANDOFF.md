@@ -7518,8 +7518,9 @@ Flutter 要做这个得上 `AnimatedList`/`SliverAnimatedList`，改动面比收
 
 - 新增「**开发者与联系方式**」：开发者 **Chemica_**；更新日期 2026-10-16 → **2026-10-20**。
   两侧同步改：`PRIVACY.md` + `domain/Privacy.ets`（"两边必须一致"是文件头写死的铁律）。
-- ⚠️ **邮箱仍是占位符** `<在这里填你的邮箱>`：用户说会另外给。给到之后要改这两处，
-  并重拍 `docs/manual/08-privacy.jpg`（现在的图是旧正文 + 旧日期）。
+- ✅ 联系邮箱已填 **harvapps@qq.com**（用户 2026-10-20 给）：`PRIVACY.md` 与应用内正文两处同步，
+  `docs/manual/08-privacy.jpg` 已用真机重拍到新正文（更新日期 2026-10-20）。
+  `tools/publish-wizard.sh` 里那句"邮箱还是占位符"的警告也改成"已填、换邮箱时两处一起改"。
 - 上架资料还差：**软件著作权 / 电子版权认证**、**APP 备案号**（`tools/publish-wizard.sh` 里也列着）。
 
 ### 128.2 去掉北大 / PKU 痕迹（发布版面向所有学校）
@@ -7575,7 +7576,7 @@ Flutter 要做这个得上 `AnimatedList`/`SliverAnimatedList`，改动面比收
 
 ### 128.5 ⚠️ 还差的（等用户）
 
-1. **隐私政策邮箱**（`PRIVACY.md` + `domain/Privacy.ets` 两处）→ 改完重拍 `docs/manual/08-privacy.jpg`。
-2. `docs/manual/07-guide.jpg` 要不要重拍成 8 步版：需要**先把壁纸临时恢复默认渐变**再拍，
-   拍完用户得自己再选一次壁纸 —— 等他拍板。
+1. ~~隐私政策邮箱~~ → ✅ 已填 `harvapps@qq.com`，`docs/manual/08-privacy.jpg` 已重拍。
+2. `docs/manual/07-guide.jpg` 仍是 7 步旧图：要重拍成 8 步版得**先把壁纸临时恢复默认渐变**
+   （真机现在是用户自己的照片，不能进公开仓库 / 应用市场），拍完他得自己再选一次壁纸 —— 等他拍板。
 3. 上架材料：软著 / 电子版权认证 / APP 备案号。

@@ -70,7 +70,7 @@ export function privacySections(): PrivacySection[] {
     },
     {
       heading: '开发者与联系方式',
-      body: '开发者：Chemica_\n对本政策有疑问，可联系：<在这里填你的邮箱>'
+      body: '开发者：Chemica_\n对本政策有疑问，可联系：harvapps@qq.com'
     },
     {
       heading: '变更',

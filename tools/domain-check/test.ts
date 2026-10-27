@@ -1480,8 +1480,11 @@ check('正文明确说了"不收集"',
   `${privacySections().some((s: PrivacySection): boolean => s.body.indexOf('不收集') >= 0)}`, 'true');
 check('正文点名了日历权限的用途',
   `${privacySections().some((s: PrivacySection): boolean => s.body.indexOf('日历') >= 0)}`, 'true');
-check('正文里还留着待填的邮箱占位（上架前必须换成真邮箱）',
-  `${privacySections().some((s: PrivacySection): boolean => s.body.indexOf('<在这里填你的邮箱>') >= 0)}`, 'true');
+// 这条原来钉的是"占位符还在"（提醒上架前必须换）。邮箱已经在 2026-10-20 填成真地址，
+// 于是改成反向守卫：正文里必须有一个真邮箱，且不能再出现占位符。
+check('正文里有可用的联系邮箱（占位符必须换掉）',
+  `${privacySections().some((s: PrivacySection): boolean =>
+    s.body.indexOf('@') >= 0 && s.body.indexOf('<在这里填你的邮箱>') < 0)}`, 'true');
 
 // ---------- 日历同步节奏 / 闲置重启（用户 2026-10-16）----------
 console.log('【日历同步节奏：n 的整数倍 / 闲置超时】');
