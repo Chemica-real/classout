@@ -2,13 +2,14 @@
 """生成软件著作权 / 电子版权认证要交的两份材料（以及一份申请表信息）。
 
     python3 tools/make-copyright.py
-    python3 tools/make-copyright.py --name "ClassOUT 课表待办计划软件" --version V1.5.1
+    python3 tools/make-copyright.py --name "ClassOUT 课表待办计划软件" --version V1.5.1 \
+        --owner "真实姓名" --date 2026-10-27
 
 产物（默认落在 dist/copyright/，`/dist` 已被 .gitignore 挡住，不会入库）：
 
     ClassOUT-源程序.pdf      60 页（前 30 页 + 后 30 页），每页 50 行，页眉带软件名/版本/页码
     ClassOUT-用户手册.pdf    软件说明书（README 渲染 + 真机截图）
-    申请表信息.txt           登记表要填的字段（著作权人/日期留空，等用户给）
+    申请表信息.txt           登记表要填的字段（著作权人/日期用 --owner / --date 传入）
     提交说明.md              交到哪里、注意什么
 
 注意事项（写在代码里，改之前先读）：
@@ -357,21 +358,21 @@ def build_manual_pdf(path: str, name: str, version: str, date: str):
 
 # ---------------------------------------------------------------- 申请表信息
 
-def write_form_info(path: str, name: str, version: str, date: str, src_lines: int,
+def write_form_info(path: str, name: str, version: str, date: str, owner: str, src_lines: int,
                     manual_pages: int):
     text = f"""ClassOUT 软件著作权登记 · 申请表信息
-（把两处「【待填】」补上就能照着填线上表单；其余已按仓库实际情况写好）
+（照着填线上表单；若仍有【待填】的项，补上即可）
 
 一、软件基本信息
   软件全称        {name}
   软件简称        ClassOUT
   版本号          {version}
-  开发完成日期    【待填】  （建议填第一次发版/定稿的日期，例如 2026-10-27）
+  开发完成日期    {date}
   首次发表日期    【未发表】（应用尚未上架；若走「已发表」需填首次发表日期）
   权利取得方式    原始取得
   权利范围        全部权利
   开发方式        独立开发
-  著作权人        【待填】  （个人真实姓名；若用公司主体就填公司全称）
+  著作权人        {owner if owner else '【待填】'}  （个人真实姓名；若用公司主体就填公司全称）
   编程语言        ArkTS / TypeScript（HarmonyOS ArkUI）
   源程序量        约 {src_lines} 行（42 个 .ets 文件）
   开发硬件环境    x86_64 Linux 开发机 + HarmonyOS 手机（PSN-AL00 / API 26）
@@ -421,7 +422,8 @@ def write_readme(path: str, out_dir: str):
 1. 中国版权保护中心（软件著作权登记）：登记表里「源程序」和「文档」各上传对应的 PDF。
    文档不足 60 页时**全部提交**（本手册约 20 页，正常）。
 2. 易版权（电子版权认证）：源程序 + 说明书 + 实名材料，同样用这两份。
-3. 两处【待填】补齐后再提交：开发完成日期、著作权人（真实姓名）。
+3. 申请表信息里的**著作权人 / 开发完成日期**由 `--owner` / `--date` 传入；
+   本仓库是公开的，**不要把真实姓名写进源码或文档**（只落在 gitignore 的 dist/ 里）。
 
 ## 重新生成
 
@@ -440,6 +442,8 @@ def main():
     ap.add_argument('--name', default='ClassOUT 课表待办计划软件')
     ap.add_argument('--version', default='V1.5.1')
     ap.add_argument('--date', default='2026-10-27')
+    ap.add_argument('--owner', default='',
+                    help='著作权人（真实姓名/公司全称）；只写进 dist 里的申请表信息，不入库')
     ap.add_argument('--outdir', default=os.path.join(ROOT, 'dist/copyright'))
     args = ap.parse_args()
 
@@ -455,7 +459,7 @@ def main():
     print(f'用户手册：{manual_pdf}  {pages} 页')
 
     write_form_info(os.path.join(args.outdir, '申请表信息.txt'), args.name, args.version,
-                    args.date, info['总行数'], pages)
+                    args.date, args.owner, info['总行数'], pages)
     write_readme(os.path.join(args.outdir, '提交说明.md'), args.outdir)
     print(f'申请表信息 / 提交说明：{args.outdir}')
 
