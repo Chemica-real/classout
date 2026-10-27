@@ -7834,3 +7834,39 @@ AGC「备案信息」选 **您的APP为单机APP** 即可，不用备案号（�
 
 > 隐私政策现在含真实姓名「何麒」，这是 AGC 审核要求（政策开发者名称必须与主体一致），
 > 属于有意公开；软著材料里那份 `dist/` 姓名仍然不入库。
+
+## 135. 2026-10-27 发布包签出来了（AGC 发布证书 + Profile 已就位）
+
+用户把 AGC 的发布材料放进了 `signing/release/`：
+`ClassOUT Release.cer`（证书链）+ `ClassOUT ReleaseRelease.p7b`（type=release、无 UDID、
+`bundle-name=com.chemica.classout`、`app-identifier=6917618924955530081`，与 AGC 应用一致）。
+**没有 `.p12`** —— 按 `signing/release/README.md` 的做法复用了 `../classout.p12`
+（同一把私钥，别名 `classout-debug`）。
+
+命令（要 locale shim + 别名）：
+
+```bash
+export PATH="/home/chemica/ChemicaWorkspace/.locale-shim:$PATH"
+export CLASS_OUT_RELEASE_KEY_ALIAS=classout-debug
+./sign-release.sh
+```
+
+结果：
+
+| 项 | 值 |
+|---|---|
+| 产物 | `dist/ClassOUT-1.5.1-release.app` |
+| 大小 | 413,836 B（约 404 KB） |
+| sha256 | `9c2ce2edcf20364d357034e9c932638346e20f56cbb7ca2ed6b43c2c33991c96` |
+| 签名校验 | `hap-sign-tool verify-app` → **verify-app success** |
+| `pack.info` | `bundleName=com.chemica.classout`、`versionName=1.5.1`、`versionCode=1005001`、`deviceType=[phone]` |
+
+- `.cer` / `.p7b` / `.p12` / `.app` 全部被 `.gitignore` 挡住（`git check-ignore` 已核）。
+- `sign-release.sh` 结尾那段"接下来"的提示已更新（原来还写着"图标是游戏素材""补备案号"，
+  都已过时）。
+- ⚠️ Profile 里写着 `version-name 2.0.0 / version-code 2`（AGC 建 Profile 时的占位），
+  与包内 1.5.1 不一致；正常情况下 AGC 不校验这两个字段。**若上传被拒且指向版本**，
+  去 AGC 重新下载一份发布 Profile 再签一次即可。
+
+下一步（用户）：AGC → 软件包管理 → 上传（使用场景「仅测试」）→ 建测试群组 → 创建邀请测试版本
+→ 提交审核 → 分享链接 + 邀请码给同学（流程见 `AGC-FILL.md` §4）。

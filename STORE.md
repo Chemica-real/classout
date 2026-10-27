@@ -24,7 +24,7 @@
 | 1 | 上架前 | 实名认证（个人/企业） | ❌ | 在 AGC「账号中心」完成；没它连证书都申请不了 |
 | 2 | 上架前 | 唯一包名 `com.chemica.classout` | ✅ | `AppScope/app.json5` 的 `bundleName`；**不能再改** |
 | 3 | 上架前 | 应用图标 1024 / 216 | ✅ | `docs/store/app-icon-1024.png`、`app-icon-216.png`（`python3 tools/make-icon.py` 可重生成） |
-| 4 | 上架前 | 应用包（.app ≤ 4GB） | ⚠️ | 已能构建：`build/outputs/default/ClassOUT-default-unsigned.app`（388 KB，**未签名**）；见 §5 |
+| 4 | 上架前 | 应用包（.app ≤ 4GB） | ✅ | **`dist/ClassOUT-1.5.1-release.app`**（413,836 B，release 签名，`verify-app success`；sha256 `9c2ce2ed…`） |
 | 5 | 上架前 | 隐私政策网址（可访问） | ✅ | <https://gitee.com/the-person-on-the-tree/classout/blob/master/PRIVACY.md>（公网 200；**开发者已改为何麒**，与 AGC 一致；含「撤回同意与投诉」，2026-10-27） |
 | 6 | 上架前 | 隐私权利网址（删除/导出入口） | ✅ | <https://gitee.com/the-person-on-the-tree/classout/blob/master/PRIVACY_RIGHTS.md>（本轮新增，200） |
 | 7 | 上架前 | 权限说明 / 隐私标签 | ✅ | 4 个权限的用途都在 `entry/src/main/module.json5` 的 `reason` + `string.json`；对照表见 §3 |
@@ -40,7 +40,7 @@
 | 17 | 隐私与权限 | 每个权限填使用理由 + `when: inuse` | ✅ | `module.json5` 里四个权限都带 `usedScene.when = inuse` |
 | 18 | 隐私与权限 | 隐私政策网址 + 用户权利网址 | ✅ | 同 #5 / #6 |
 | 18b | 隐私与合规 | **首启隐私弹窗**（同意后才初始化 / 申请权限） | ✅ | 2026-10-27 实现并**真机验过**：弹窗 → 全文可滚 → 返回键只能关全文、关不掉弹窗 → 不同意退出（进程消失）→ 同意后正常启动且数据完好 → 二次冷启动不再弹（`Index` 的 `privacyGate`） |
-| 19 | 构建上传 | Release 包 + 发布签名 | ❌ | 需要 AGC 下载**发布证书 `.cer` + 发布 Profile `.p7b`** 放进 `signing/release/`；见 §5 |
+| 19 | 构建上传 | Release 包 + 发布签名 | ✅ | 2026-10-27 已签出：`.cer` + `.p7b` 放进 `signing/release/`（复用 `classout.p12`，别名 `classout-debug`），`sign-release.sh` → `dist/ClassOUT-1.5.1-release.app`；见 §5 |
 | 20 | 配置分发 | 国家/地区、开放测试、付费、分级、备案、上架时间 | ❌ | AGC 表单；付费不适用（仅手表支持付费下载） |
 | 21 | 提交审核 | 功能完整性 / 隐私合规 / 权限合理性 / 信息一致 / 同质化 | ⚠️ | 功能与文案一致（README/介绍都按实际写）；风险见 §6 |
 | 22 | 上架后 | 版本号递增 | ✅ | `versionCode 1005001` / `versionName 1.5.1`；以后每次提审都要加 `versionCode` |

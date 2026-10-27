@@ -77,7 +77,8 @@ JAR="$CLI/sdk/default/openharmony/toolchains/lib/hap-sign-tool.jar"
 | **软著 / 电子版权认证** | ❌ 没有，个人开发者上架要交；办理有周期，越早越好 |
 | **APP 备案号** | ❌ 没有，境内分发要求先备案 |
 | **隐私政策** | ✅ 公网可开：<https://gitee.com/the-person-on-the-tree/classout/blob/master/PRIVACY.md>；用户权利页：<https://gitee.com/the-person-on-the-tree/classout/blob/master/PRIVACY_RIGHTS.md> |
-| **发布证书 / 发布 Profile** | ❌ `signing/release/` 里还没有（只有本说明）；去 AGC 申请后放进来 |
+| **发布证书 / 发布 Profile** | ✅ 2026-10-27 已就位（`ClassOUT Release.cer` + `ClassOUT ReleaseRelease.p7b`，type=release、无 UDID，bundle/APP ID 都对） |
+| **发布密钥库** | ✅ 复用了 `../classout.p12`（同一把私钥；别名 `classout-debug`，签包时设 `CLASS_OUT_RELEASE_KEY_ALIAS=classout-debug`） |
 | 签名材料口令 | ✅ 口令与私钥都已被 `.gitignore` 挡住 |
 
 > 完整的上架逐条清单、AGC 填报文案、权限/隐私标签对照、截图建议见仓库根目录 **`STORE.md`**。
