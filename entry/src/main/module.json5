@@ -4,9 +4,9 @@
     "type": "entry",
     "description": "$string:module_desc",
     "mainElement": "EntryAbility",
+    // 只报手机：平板没有真机验证过布局，先不声明（AGC 的「兼容设备」要和这里一致）
     "deviceTypes": [
-      "phone",
-      "tablet"
+      "phone"
     ],
     "deliveryWithInstall": true,
     "installationFree": false,
