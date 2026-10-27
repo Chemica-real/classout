@@ -8,7 +8,7 @@
 
 import { SEED_COURSES, SEED_START_DATE, SEED_TOTAL_WEEKS, SeedCourse, SeedTemplate } from './SeedData';
 import { Course, CourseSession, DEFAULT_REST_WINDOWS, OverrideKind, PlanBlock, RestWindow,
-  Semester, SectionTime, SessionOverride, SessionRule, Todo, TodoCategory, PKU_SECTION_TIMES,
+  Semester, SectionTime, SessionOverride, SessionRule, Todo, TodoCategory, DEFAULT_SECTION_TIMES,
   VirtualLesson } from './Types';
 import { computeWeekSessions, mergeRoomOverrides, weekOfDate, weekdayOfDate } from './Timetable';
 import { WALLPAPER_MAX_ZOOM, WallpaperGeometry, clampFocus, formatWallpaperFocus,
@@ -113,7 +113,7 @@ for (const sc of SEED_COURSES) {
   }
   courseId++;
 }
-const times: SectionTime[] = PKU_SECTION_TIMES;
+const times: SectionTime[] = DEFAULT_SECTION_TIMES;
 
 function sessionOf(short: string, weekday: number): CourseSession {
   const all: CourseSession[] = computeWeekSessions(sem, courses, rules, [], times, 6);
@@ -1173,7 +1173,7 @@ check('回写用合计：一个块都没有 → -1（调用方据此不回写）
 // ---------- 数据合法性：作息、时段规则、休息时段 ----------
 console.log('【数据合法性：作息与时段规则】');
 
-check('节次：北大第 1 节合法', `${validateSectionTime(PKU_SECTION_TIMES[0]).ok}`, 'true');
+check('节次：默认第 1 节合法', `${validateSectionTime(DEFAULT_SECTION_TIMES[0]).ok}`, 'true');
 check('节次：结束等于开始 → 不合法',
   `${validateSectionTime({ section: 1, startMin: 600, endMin: 600, flexible: false }).ok}`, 'false');
 check('节次：结束早于开始 → 不合法',
@@ -1182,7 +1182,7 @@ check('节次：越过 24:00 → 不合法',
   `${validateSectionTime({ section: 1, startMin: 600, endMin: 1500, flexible: false }).ok}`, 'false');
 check('节次：编号 0 → 不合法',
   `${validateSectionTime({ section: 0, startMin: 600, endMin: 660, flexible: false }).ok}`, 'false');
-check('节次表：北大 12 节合法', `${validateSectionTimes(PKU_SECTION_TIMES).ok}`, 'true');
+check('节次表：默认 12 节合法', `${validateSectionTimes(DEFAULT_SECTION_TIMES).ok}`, 'true');
 check('节次表：空表不合法', `${validateSectionTimes([]).ok}`, 'false');
 check('节次表：编号重复不合法',
   `${validateSectionTimes([
@@ -1192,28 +1192,28 @@ check('节次表：编号重复不合法',
 
 const okRule: SessionRule = { id: 1, courseId: 1, weekday: 2, startSection: 1, endSection: 2,
   weeksMask: '1111111111111111', location: '', isQuiz: false };
-check('时段规则：合法', `${validateSessionRule(okRule, PKU_SECTION_TIMES).ok}`, 'true');
+check('时段规则：合法', `${validateSessionRule(okRule, DEFAULT_SECTION_TIMES).ok}`, 'true');
 check('时段规则：起止时间由首末节次推出（第 1–2 节 = 08:00–09:50）',
-  `${spanOfRule(okRule, PKU_SECTION_TIMES).join('-')}`, '480-590');
+  `${spanOfRule(okRule, DEFAULT_SECTION_TIMES).join('-')}`, '480-590');
 check('时段规则：开始晚于结束 → 不合法',
-  `${validateSessionRule({ ...okRule, startSection: 3, endSection: 2 }, PKU_SECTION_TIMES).ok}`,
+  `${validateSessionRule({ ...okRule, startSection: 3, endSection: 2 }, DEFAULT_SECTION_TIMES).ok}`,
   'false');
 check('时段规则：星期 0 → 不合法',
-  `${validateSessionRule({ ...okRule, weekday: 0 }, PKU_SECTION_TIMES).ok}`, 'false');
+  `${validateSessionRule({ ...okRule, weekday: 0 }, DEFAULT_SECTION_TIMES).ok}`, 'false');
 check('时段规则：星期 8 → 不合法',
-  `${validateSessionRule({ ...okRule, weekday: 8 }, PKU_SECTION_TIMES).ok}`, 'false');
+  `${validateSessionRule({ ...okRule, weekday: 8 }, DEFAULT_SECTION_TIMES).ok}`, 'false');
 check('时段规则：引用了作息表里没有的第 13 节 → 不合法',
-  `${validateSessionRule({ ...okRule, endSection: 13 }, PKU_SECTION_TIMES).ok}`, 'false');
+  `${validateSessionRule({ ...okRule, endSection: 13 }, DEFAULT_SECTION_TIMES).ok}`, 'false');
 check('时段规则提示：节次不存在（钉住具体是哪一条校验拦下的）',
-  `${validateSessionRule({ ...okRule, endSection: 13 }, PKU_SECTION_TIMES).message}`,
+  `${validateSessionRule({ ...okRule, endSection: 13 }, DEFAULT_SECTION_TIMES).message}`,
   '作息表里没有第 13 节');
 check('时段规则：周次全是 0 → 不合法',
-  `${validateSessionRule({ ...okRule, weeksMask: '0000000000000000' }, PKU_SECTION_TIMES).ok}`,
+  `${validateSessionRule({ ...okRule, weeksMask: '0000000000000000' }, DEFAULT_SECTION_TIMES).ok}`,
   'false');
 check('时段规则：周次是空串 → 不合法',
-  `${validateSessionRule({ ...okRule, weeksMask: '' }, PKU_SECTION_TIMES).ok}`, 'false');
+  `${validateSessionRule({ ...okRule, weeksMask: '' }, DEFAULT_SECTION_TIMES).ok}`, 'false');
 check('时段规则提示：开始晚于结束',
-  `${validateSessionRule({ ...okRule, startSection: 3, endSection: 2 }, PKU_SECTION_TIMES).message}`,
+  `${validateSessionRule({ ...okRule, startSection: 3, endSection: 2 }, DEFAULT_SECTION_TIMES).message}`,
   '开始节次不能晚于结束节次');
 
 const cfA: SessionRule = { id: 11, courseId: 1, weekday: 2, startSection: 1, endSection: 2,
@@ -1224,13 +1224,13 @@ const cfC: SessionRule = { id: 13, courseId: 3, weekday: 3, startSection: 1, end
   weeksMask: '1000000000000000', location: '', isQuiz: false };
 const cfD: SessionRule = { id: 14, courseId: 4, weekday: 2, startSection: 1, endSection: 2,
   weeksMask: '0100000000000000', location: '', isQuiz: false };
-check('冲突：同天同周次且时间重叠 → 报 1 处', `${findRuleConflicts([cfA, cfB], PKU_SECTION_TIMES).length}`, '1');
+check('冲突：同天同周次且时间重叠 → 报 1 处', `${findRuleConflicts([cfA, cfB], DEFAULT_SECTION_TIMES).length}`, '1');
 check('冲突：区间取交集（第 2 节 09:00–09:50）',
-  `${findRuleConflicts([cfA, cfB], PKU_SECTION_TIMES)[0].overlapStart}-${findRuleConflicts([cfA, cfB], PKU_SECTION_TIMES)[0].overlapEnd}`,
+  `${findRuleConflicts([cfA, cfB], DEFAULT_SECTION_TIMES)[0].overlapStart}-${findRuleConflicts([cfA, cfB], DEFAULT_SECTION_TIMES)[0].overlapEnd}`,
   '540-590');
-check('冲突：不同星期 → 不算冲突', `${findRuleConflicts([cfA, cfC], PKU_SECTION_TIMES).length}`, '0');
-check('冲突：周次不重叠 → 不算冲突', `${findRuleConflicts([cfA, cfD], PKU_SECTION_TIMES).length}`, '0');
-check('冲突：自己和自己不比', `${findRuleConflicts([cfA], PKU_SECTION_TIMES).length}`, '0');
+check('冲突：不同星期 → 不算冲突', `${findRuleConflicts([cfA, cfC], DEFAULT_SECTION_TIMES).length}`, '0');
+check('冲突：周次不重叠 → 不算冲突', `${findRuleConflicts([cfA, cfD], DEFAULT_SECTION_TIMES).length}`, '0');
+check('冲突：自己和自己不比', `${findRuleConflicts([cfA], DEFAULT_SECTION_TIMES).length}`, '0');
 
 check('休息时段：12:00–13:00 合法',
   `${validateRestWindow({ id: 0, weekday: 0, startMin: 720, endMin: 780, label: '午休' }).ok}`,
@@ -1448,13 +1448,14 @@ check('allCategoryOptions = 内置 + 自定义',
 // ---------- 新手演练的步骤脚本（用户 2026-10-15）----------
 console.log('【新手演练：步骤脚本】');
 
-check('步骤数固定为 7（改了要同步核对引导条）', `${guideStepCount()}`, '7');
+check('步骤数固定为 8（改了要同步核对引导条）', `${guideStepCount()}`, '8');
 check('每一步的标签页都在 0..3 内', `${guideTabsValid()}`, 'true');
 check('每一步都有标题和正文', `${guideTextsNonEmpty()}`, 'true');
 check('第 1 步在课表页', `${guideStepAt(0).tab}`, `${GuideTab.Timetable}`);
 check('待办那一步切到待办页',
   `${guideStepAt(2).tab === GuideTab.Todo && guideStepAt(3).tab === GuideTab.Todo}`, 'true');
 check('计划那一步切到计划页', `${guideStepAt(4).tab}`, `${GuideTab.Plan}`);
+check('「改时间/拆块」那一步也在计划页', `${guideStepAt(5).tab}`, `${GuideTab.Plan}`);
 check('最后一步在设置页（完成按钮就在那儿）', `${guideStepAt(guideStepCount() - 1).tab}`, `${GuideTab.Settings}`);
 check('越界下标退回最后一步', `${guideStepAt(99).title === guideStepAt(guideStepCount() - 1).title}`, 'true');
 check('负数下标退回第 1 步', `${guideStepAt(-3).title === guideStepAt(0).title}`, 'true');

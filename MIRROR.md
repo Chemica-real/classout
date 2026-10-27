@@ -40,7 +40,7 @@
 | `data/*Repo.ets`（`TimetableRepo`/`TodoRepo`/`KvRepo`…） | `lib/data/sqlite_repo.dart` + `repo.dart` | 同一套 SQL schema（`shared/schema.sql`）；`todo_template`、`virtual_lesson` 也读写 |
 | `model/Types.ets`（`VirtualLesson` 虚拟课程课时） | `lib/model/types.dart`（`VirtualLesson`） | 数据层 + 课程管理编辑 + **计划页课时池（选中→点网格排入、块完成联动讲次）** ✅ |
 | `domain/TodoGenRules.ets`（**纯规则**：`renderTitle` / `computeDdl` / `nextSessionOfCourse`） | `lib/domain/todo_generator.dart` 的上半部分 | 已进 fixtures（`todo_gen.json` 84 条），三端逐条对拍 |
-| `data/Seeder.ets`（`ensureSemester` / `ensureRestWindows` / `migrateData` / `cloneCourses`） | `lib/domain/demo_sandbox.dart → buildFirstRunBundle` + `lib/domain/migrate.dart` + `course_manager.dart` 的「复制到当前学期」 | 首次启动：`我的学期`（本周一、16 周）+ 北大 12 节 + 4 段默认不可排，**不内置课表**；老数据迁移：时长 5 分钟归一 / 考试归 0 / 「其他」→「无」 |
+| `data/Seeder.ets`（`ensureSemester` / `ensureRestWindows` / `migrateData` / `cloneCourses`） | `lib/domain/demo_sandbox.dart → buildFirstRunBundle` + `lib/domain/migrate.dart` + `course_manager.dart` 的「复制到当前学期」 | 首次启动：`我的学期`（本周一、16 周）+ 默认 12 节 + 4 段默认不可排，**不内置课表**；老数据迁移：时长 5 分钟归一 / 考试归 0 / 「其他」→「无」 |
 | `data/TodoRepo.ets` 的 `blacklist` / `isBlacklisted` | `lib/data/blacklist.dart`（kv `todo_blacklist`） | 删掉的自动生成待办不再补生成；导入备份清空、进沙箱清空（鸿蒙沙箱是全新库） |
 | `view/Motion.ets` 的 `loadTrayOpen` / `persistTrayOpen`（kv `planTrayOpen`） | `lib/data/tray_pref.dart` | 计划页「待安排」托盘展开状态跨冷启动保留 |
 | `Index.writeRunReport`（kv `last_run_report`） | `lib/data/run_report.dart` + `HomeShell._writeRunReport` | 冷启动写「启动时间 / 学期 / 当前周 / 课程·规则·节次 / 补生成 / 通知权限 / 提醒发布 / 超预算」，备份页诊断块显示 |
@@ -68,7 +68,11 @@
 4. 双指缩放：逻辑有单测 + fixtures，真机多指手测待做（`adb input` 只能单指）。
 5. 玻璃浮窗滚动时偶发重影（Impeller + BackdropFilter 瞬态，HANDOFF §111）。
 6. 版本号、提醒诊断/日历、长按导入：都是**平台性差异**（HANDOFF §117.2 / §118.3 / §122.6）。
-7. **计划页「待安排」托盘（2026-10-18 起鸿蒙单边改了，HANDOFF §127）**：
+7. **PKU 痕迹与新手指引步数（2026-10-20，HANDOFF §128）**：
+   鸿蒙已把「恢复北大默认 12 节」按钮删掉、PKU/北大文案与常量名全清（`DEFAULT_SECTION_TIMES`），
+   新手引导 7 步 → **8 步**（新增第 6 步「改时间、拆成两块」）；安卓端仍是 7 步、
+   `section_times_editor.dart` / `course_manager.dart` 里还留着 PKU 文案与恢复按钮。
+8. **计划页「待安排」托盘（2026-10-18 起鸿蒙单边改了，HANDOFF §127）**：
    鸿蒙的计数**只算待办**、加了**标签下拉栏**、虚拟课时改成**独立的第二页**
    （`待办` / `虚拟课程` 两个页签）并按课程分层 + 课程下拉栏；
    安卓仍是"待办 + 课时"计数、待办无标签筛选、课时一行平铺。要对齐得改 `plan_page.dart`。

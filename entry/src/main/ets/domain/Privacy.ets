@@ -22,7 +22,7 @@ export interface PrivacySection {
 
 /** 政策更新日期（改内容时一起改） */
 export function privacyUpdatedAt(): string {
-  return '2026-10-16';
+  return '2026-10-20';
 }
 
 export function privacySections(): PrivacySection[] {
@@ -69,8 +69,8 @@ export function privacySections(): PrivacySection[] {
       body: '本应用不收集任何个人信息，因此也不存在针对未成年人的信息收集。'
     },
     {
-      heading: '联系方式',
-      body: '对本政策有疑问，可联系：<在这里填你的邮箱>'
+      heading: '开发者与联系方式',
+      body: '开发者：Chemica_\n对本政策有疑问，可联系：<在这里填你的邮箱>'
     },
     {
       heading: '变更',

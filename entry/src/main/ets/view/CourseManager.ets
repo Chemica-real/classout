@@ -1,7 +1,7 @@
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { storedAbilityContext } from '../util/Ctx';
-import { Course, COURSE_COLORS, CourseSession, PKU_SECTION_TIMES, SectionTime, Semester,
+import { Course, COURSE_COLORS, CourseSession, DEFAULT_SECTION_TIMES, SectionTime, Semester,
   SessionRule, TodoTemplate, VirtualLesson } from '../model/Types';
 import { TimetableRepo } from '../data/TimetableRepo';
 import { TodoRepo } from '../data/TodoRepo';
@@ -855,7 +855,7 @@ export struct CourseManager {
     }
     const previousId: number = this.semester === undefined ? 0 : this.semester.id;
     const newId: number = await TimetableRepo.createSemester(ctx, name, this.newSemStart, this.newSemWeeks);
-    for (const st of PKU_SECTION_TIMES) {
+    for (const st of DEFAULT_SECTION_TIMES) {
       await TimetableRepo.upsertSectionTime(ctx, newId, st);
     }
     let copied: number = 0;
@@ -1520,7 +1520,7 @@ export struct CourseManager {
           }
           .width('100%')
           .padding({ top: 4, bottom: 4 })
-          Text('北大 2026 秋季：9/7 开学，16 个教学周（到 12/27）')
+          Text('示例：9/7（周一）开学、16 个教学周，则最后一周到 12/27')
             .fontSize(11)
             .fontColor('#8B97AC')
             .margin({ top: 4 })
@@ -1875,7 +1875,7 @@ export struct CourseManager {
 
       Scroll() {
         Column() {
-          Text('改这里会立刻影响课表格子的排布。北大校本部一天 12 节，第 9、12 节是机动节次（默认画得矮一点）。')
+          Text('改这里会立刻影响课表格子的排布。默认一天 12 节，第 9、12 节是机动节次（默认画得矮一点）；可以自己加节、删节、改起止时间。')
             .fontSize(11)
             .fontColor('#94A0B5')
             .width('100%')
@@ -1940,23 +1940,14 @@ export struct CourseManager {
           }, (st: SectionTime) =>
               `sec-${st.section}-${st.startMin}-${st.endMin}-${st.flexible}`)
 
-          Row() {
-            Button('+ 加一节')
-              .backgroundColor('rgba(255,255,255,0.14)')
-              .fontColor('#7FA8FF')
-              .layoutWeight(1)
-              .onClick((): void => this.addSection())
-            Button('恢复北大默认 12 节')
-              .backgroundColor('rgba(255,255,255,0.14)')
-              .fontColor('#C3CDDE')
-              .layoutWeight(1)
-              .margin({ left: 10 })
-              .onClick((): void => {
-                this.editSections = PKU_SECTION_TIMES.slice(0);
-              })
-          }
-          .width('100%')
-          .margin({ top: 16 })
+          // 只保留「加一节」：不再提供"恢复某一套默认作息"的快捷键
+          //（发布版面向所有学校，不该内置某个学校的作息当卖点；删错了自己再加回来）
+          Button('+ 加一节')
+            .backgroundColor('rgba(255,255,255,0.14)')
+            .fontColor('#7FA8FF')
+            .width('100%')
+            .margin({ top: 16 })
+            .onClick((): void => this.addSection())
 
           Button('保存节次时间')
             .backgroundColor('#2E6BE6')

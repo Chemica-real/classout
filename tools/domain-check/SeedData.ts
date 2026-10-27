@@ -33,7 +33,7 @@ export interface SeedCourse {
 }
 
 export const SEED_SEMESTER_NAME: string = '大一上';
-/** 2026-2027 秋季学期第一教学周周一（北大校历：9/7 星期一开课） */
+/** 示例学期第一教学周周一（9/7 星期一开课） */
 export const SEED_START_DATE: string = '2026-09-07';
 export const SEED_TOTAL_WEEKS: number = 16;
 
@@ -123,7 +123,7 @@ export const SEED_COURSES: SeedCourse[] = [
     ]
   },
   {
-    // 已核对：截图第 10 节左侧那块在「周三」列；北大官方固定排课也是「课程甲习题课 周三10-11」
+    // 已核对：截图第 10 节左侧那块在「周三」列；官方固定排课也是「课程甲习题课 周三10-11」
     name: '课程甲习题课', shortName: '课甲习题', teacher: '老师乙', location: '教学楼408',
     colorIndex: 9,
     templates: [],

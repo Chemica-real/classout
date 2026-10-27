@@ -101,8 +101,13 @@ export class OverrideKind {
   static readonly Extra: string = 'extra';
 }
 
-/** 北大校本部作息（官方 12 节） */
-export const PKU_SECTION_TIMES: SectionTime[] = [
+/**
+ * 默认作息（12 节）。
+ *
+ * 第 9、12 节是**机动节次**（`flexible`），课表格子默认画得矮一点；
+ * 用户可以逐节改起止时间、加节、删节（见「管理课程 → 上课节次时间」）。
+ */
+export const DEFAULT_SECTION_TIMES: SectionTime[] = [
   { section: 1, startMin: 8 * 60, endMin: 8 * 60 + 50, flexible: false },
   { section: 2, startMin: 9 * 60, endMin: 9 * 60 + 50, flexible: false },
   { section: 3, startMin: 10 * 60 + 10, endMin: 11 * 60, flexible: false },

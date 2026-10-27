@@ -1,5 +1,5 @@
 import { common } from '@kit.AbilityKit';
-import { Course, DEFAULT_REST_WINDOWS, PKU_SECTION_TIMES, Semester, SessionRule,
+import { Course, DEFAULT_REST_WINDOWS, DEFAULT_SECTION_TIMES, Semester, SessionRule,
   TodoTemplate } from '../model/Types';
 import { TimetableRepo } from './TimetableRepo';
 import { TodoRepo } from './TodoRepo';
@@ -10,7 +10,7 @@ import { formatDate, today } from '../util/DateUtil';
  *
  * ⚠️ 发布前改过：这里以前还会把作者本人的课表（截图转录的"种子课表"）灌进去 ——
  * 那既是个人数据，对新用户也毫无意义。现在**App 不内置任何课表**，
- * 新装用户拿到的是一个空的学期 + 北大 12 节作息，课表靠自己建（见 README 的"从零开始"）。
+ * 新装用户拿到的是一个空的学期 + 默认 12 节作息，课表靠自己建（见 README 的"从零开始"）。
  */
 
 /** 默认学期名与长度（新装用户看到的第一个学期，随时可在「管理课程 → 学期」改） */
@@ -27,13 +27,13 @@ function mondayOf(d: Date): Date {
 
 export class Seeder {
 
-  /** 保证有学期和节次时间；没有就建 + 填北大 12 节 */
+  /** 保证有学期和节次时间；没有就建 + 填默认 12 节 */
   static async ensureSemester(context: common.Context): Promise<Semester> {
     const existing: Semester | undefined = await TimetableRepo.getSemester(context);
     if (existing !== undefined) {
       const times = await TimetableRepo.listSectionTimes(context, existing.id);
       if (times.length === 0) {
-        for (const st of PKU_SECTION_TIMES) {
+        for (const st of DEFAULT_SECTION_TIMES) {
           await TimetableRepo.upsertSectionTime(context, existing.id, st);
         }
       }
@@ -44,7 +44,7 @@ export class Seeder {
     const start: string = formatDate(mondayOf(today()));
     const id: number = await TimetableRepo.createSemester(context, DEFAULT_SEMESTER_NAME,
       start, DEFAULT_TOTAL_WEEKS);
-    for (const st of PKU_SECTION_TIMES) {
+    for (const st of DEFAULT_SECTION_TIMES) {
       await TimetableRepo.upsertSectionTime(context, id, st);
     }
     return {
