@@ -49,3 +49,7 @@ app_flutter/.flutter-plugins-dependencies
 app_flutter/ios/Pods/
 app_flutter/**/*.iml
 .DS_Store
+
+# 生成软著材料的 PDF 依赖（本地安装，别入库）
+/tools/pylibs/
+__pycache__/

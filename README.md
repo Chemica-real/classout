@@ -329,6 +329,7 @@ A：说明书截图用的是**演练沙箱里的演示数据**（高等数学 / 
 ./tools/domain-check/run.sh                  # 离线断言（必须全绿）
 ./sign-and-install.sh --install              # 调试签名 + 装机
 ./tools/publish-wizard.sh                    # 上架向导（发布签名 → .app）
+python3 tools/make-copyright.py               # 生成软著/电子版权材料（源程序 + 用户手册 PDF）
 ```
 
 - **上架清单**（AGC 逐条核对 / 填报文案 / 权限与隐私标签 / 素材）：[`STORE.md`](STORE.md)

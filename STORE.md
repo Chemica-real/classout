@@ -25,7 +25,7 @@
 | 5 | 上架前 | 隐私政策网址（可访问） | ✅ | <https://gitee.com/the-person-on-the-tree/classout/blob/master/PRIVACY.md>（公网可开，已验证 200） |
 | 6 | 上架前 | 隐私权利网址（删除/导出入口） | ✅ | <https://gitee.com/the-person-on-the-tree/classout/blob/master/PRIVACY_RIGHTS.md>（本轮新增，200） |
 | 7 | 上架前 | 权限说明 / 隐私标签 | ✅ | 4 个权限的用途都在 `entry/src/main/module.json5` 的 `reason` + `string.json`；对照表见 §3 |
-| 8 | 上架前 | 电子版权 / 应用版权证书 | ❌ | 线下/版权中心办理；个人开发者也要 |
+| 8 | 上架前 | 电子版权 / 应用版权证书 | ⏳ **材料已备** | `dist/copyright/`：源程序 PDF（60 页）+ 用户手册 PDF（22 页）+ 申请表信息；等中国版权/易版权实名审核通过就能提交（还差两处待填，见 §7） |
 | 9 | 上架前 | 游戏版号 | — | 本项目不是游戏，不需要 |
 | 10 | 上架前 | APP 备案号 | ❌ | 工信部 APP 备案；境内分发强制 |
 | 11 | AGC | 创建应用（名称/语言/类型/设备） | ❌ | 名称 `ClassOUT`，默认语言简体中文，类型 APP，设备与 §2 一致 |
@@ -184,11 +184,30 @@ export PATH="/home/chemica/ChemicaWorkspace/.locale-shim:$PATH"   # HANDOFF §23
 
 ---
 
-## 7. 未完成清单（按优先级）
+## 7. 软著 / 电子版权材料（已生成）
+
+```bash
+python3 tools/make-copyright.py     # 依赖 tools/pylibs/reportlab（pip --target 装，不入库）
+```
+
+产物在 `dist/copyright/`（`/dist` 已 gitignore）：
+
+| 文件 | 规格 |
+|---|---|
+| `ClassOUT-源程序.pdf` | **60 页**（19,255 行源码里取前 30 + 后 30 页），每页 50 行，页眉带「软件全称 + 版本 + 页码」 |
+| `ClassOUT-用户手册.pdf` | **22 页**（README 渲染 + 10 张真机截图，A4） |
+| `申请表信息.txt` | 登记表字段（开发完成日期、著作权人两处 **【待填】**） |
+| `提交说明.md` | 交到哪、怎么交 |
+
+⚠️ 还剩两处要用户补：**著作权人真实姓名**、**开发完成日期**（未发表，所以不填首次发表日期）。
+软件全称暂定 **ClassOUT 课表待办计划软件**，简称 ClassOUT，版本 V1.5.1；要改就跑
+`make-copyright.py --name "…" --version V1.5.1` 重出。
+
+## 8. 未完成清单（按优先级）
 
 1. **实名认证** → 才能申请证书/Profile（AGC）。
 2. **发布证书 + 发布 Profile** → 放进 `signing/release/` → `./sign-release.sh`（§5）。
-3. **软件著作权 / 电子版权认证** → 线下/版权中心，办理有周期，越早越好。
+3. **软件著作权 / 电子版权认证** → 材料已生成（§7），等两个平台的实名审核通过即提交；先补「著作权人 / 开发完成日期」。
 4. **APP 备案号** → 工信部备案。
 5. ~~决定平板要不要报~~ → 已定：**只报手机**（`deviceTypes` 已改）。
 6. ~~`07-guide.jpg` 重拍~~ → 已完成（8 步版，默认渐变背景）。

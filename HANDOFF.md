@@ -7707,3 +7707,59 @@ AGC 文案）；本轮补了三样仓库里能自己搞定的东西：
 - ⚠️ **本轮真机踩到一个坑**：第一版给弹窗外层加了 `HitTestMode.Block`，结果连子节点
   一起屏蔽 —— 弹窗里**所有按钮/链接都点不动**（截图一模一样，`uitest` 还回 No Error）。
   改成"默认命中 + 外层空 `onClick`"后正常。已记进 §6.5 的坑清单。
+
+## 132. 2026-10-27 等实名审核期间干的两件事：release 冒烟 + 软著材料
+
+用户：「中国版权登记业务平台和易版权的实名认证在审核了，现在能干什么」。
+挑了两件**不依赖那两个审核**的事先做掉。
+
+### 132.1 release 模式真机冒烟（上架包就是 release）
+
+- 命令：`./build.sh assembleHap -p buildMode=release`（产物 `entry-default-unsigned.hap`，1,052,440 B）。
+- 用**调试证书**签了装到 `PSN-AL00`（只为冒烟；发布包必须用发布证书，见 §31 / `sign-release.sh`）。
+- 装完真机点过：首屏课表 / 计划页（两页签 + 标签下拉）/ 设置页都正常，数据完好；
+  之前的同意状态也还在（没重复弹隐私弹窗）。
+- HAP 内容检查：只有 8 个文件（module.json / resources / ets/modules.abc / pack.info 等），
+  `deviceTypes = ['phone']`、4 个权限、无 `.logs`/测试夹具/源码 map 之类的杂物。
+- ⚠️ hvigor 在 release 构建里提示「If obfuscation is needed, enable obfuscation settings」：
+  **本版没开混淆**（不影响上架；要开得单独验证一轮，先不做）。
+- ⚠️ 冒烟完 `entry/build/default/outputs` 里留的是 **release 模式**的 unsigned HAP；
+  下次 `./build.sh assembleHap`（不带参数）会回到 debug 并覆盖，不用手动清。
+
+### 132.2 软著 / 电子版权材料包
+
+新增 `tools/make-copyright.py`（依赖 `tools/pylibs/reportlab`，已 gitignore）：
+
+```bash
+python3 tools/make-copyright.py
+# 产物在 dist/copyright/（/dist 已 gitignore，不入库）
+```
+
+| 产物 | 内容 |
+|---|---|
+| `ClassOUT-源程序.pdf` | **60 页**：19,255 行源码取**前 30 页 + 后 30 页**，每页 50 个显示行，页眉「软件全称 + 版本」+「第 X 页 / 共 60 页」 |
+| `ClassOUT-用户手册.pdf` | **22 页**：README 渲染（标题/段落/列表/表格/代码块）+ 10 张真机截图，A4、带页脚页码 |
+| `申请表信息.txt` | 登记表字段（两处 **【待填】**：著作权人真实姓名、开发完成日期；未发表） |
+| `提交说明.md` | 交到哪里、怎么交 |
+
+实现要点（改之前先看脚本头注释）：
+
+- **字体**：reportlab 打不开 Noto CJK（`postscript outlines are not supported`），
+  改用系统的 **AR PL UMing**（TrueType，`uming.ttc`）；它没有粗体，标题靠字号区分。
+- **源程序**：不插文件路径注释（保持连续代码）；长行按渲染宽度折行（CJK 字宽也算），
+  每页固定 50 个**显示行**；总页数 > 60 才取样，否则全交。
+- **用户手册**：只实现够用的 markdown 子集；README 里的 emoji 会被剥掉（UMing 没有 emoji 字形）。
+- 自检：`pdftoppm` 渲染成 PNG 逐页看过（封面、表格页、截图页、源程序首/末页都正常）。
+
+⚠️ 还差用户补两个字段（补完直接跑一次重生成也行，脚本里 `--date` 可传）：
+**著作权人真实姓名**、**开发完成日期**。软件全称暂定「ClassOUT 课表待办计划软件」，
+简称 ClassOUT，版本 V1.5.1；要改名字就 `--name "…"` 重跑。
+
+### 132.3 还没被这两件事带动、但也不依赖审核的
+
+- APP 备案的**信息表**（主体信息 + 应用信息：无服务器/无域名/无 SDK/无网络权限）可以先填；
+- AGC 的**内容分级问卷**答题稿；
+- 截图统一裁掉状态栏（可选，现在这 10 张都带状态栏，不影响提交）。
+
+> 依赖关系没变：软著/电子版权提交 ← 平台实名审核；发布包签名 ← AGC 实名 + 发布证书/Profile；
+> 上架 ← 备案号 + 上面这些。
