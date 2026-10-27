@@ -16,7 +16,9 @@ import { CourseManager } from '../view/CourseManager';
 import { SettingsPage } from '../view/SettingsPage';
 import { backStack } from '../util/BackStack';
 import { GLASS_BLUR, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_SHEET, GLASS_TINT_PANEL,
-  GLASS_TINT_SHEET, PageBackground, SCRIM_COLOR } from '../view/Glass';
+  GLASS_TINT_SHEET, PAGE_GRADIENT_A, PAGE_GRADIENT_B, PAGE_GRADIENT_C, PageBackground,
+  SCRIM_COLOR } from '../view/Glass';
+import { PrivacySection, privacySections, privacyUpdatedAt } from '../domain/Privacy';
 import { FLOAT_GAP, FLOAT_SIDE, FLOAT_TOP, H_HEADER, H_TABBAR, H_WEEKROW } from '../view/Float';
 import { BOOT_EXTRA_CAP_MS, BOOT_STEP_MS, DUR_BALL_DWELL, DUR_COLLAPSE, DUR_EXPAND,
   DUR_SPRAY, TYPE_MS, collapseCurve, curveOrLinear, dur, expandCurve, isMotionOn,
@@ -24,7 +26,7 @@ import { BOOT_EXTRA_CAP_MS, BOOT_STEP_MS, DUR_BALL_DWELL, DUR_COLLAPSE, DUR_EXPA
 import { WallpaperRepo } from '../data/WallpaperRepo';
 import { MOTTO_DEFAULT, NOTE_EXPANDED_KEY, PLAN_END_KEY, PLAN_START_KEY, SYNC_INTERVAL_KEY,
   TODO_CATEGORIES_KEY, loadCustomCategories, loadMotto, loadNoteExpanded, loadPlanWindow,
-  loadSyncInterval } from '../data/Prefs';
+  loadPrivacyAgreed, loadSyncInterval, savePrivacyAgreed } from '../data/Prefs';
 import { TimeWindow } from '../domain/PlanMath';
 import { SYNC_INTERVAL_DEFAULT, isSyncBoundary } from '../domain/SyncCadence';
 import { serializeCustomCategories } from '../domain/Categories';
@@ -111,6 +113,20 @@ struct Index {
   @State week: number = 1;
   @State tab: number = 0;
   @State loading: boolean = true;
+  /**
+   * 首启「隐私政策」弹窗开着吗（**同意之前什么都不做**）。
+   *
+   * 上架要求（华为/工信部）：首次运行必须先用弹窗告知隐私政策、取得同意，
+   * 之后才能初始化数据、申请权限（日历读写）、写系统日历。
+   * 所以 `aboutToAppear` 先只读"同意过没有"，同意了才走 `bootstrap()`。
+   */
+  @State privacyGate: boolean = false;
+  /** 弹窗里"查看完整隐私政策"那一层开着吗 */
+  @State privacyTextOpen: boolean = false;
+  /** 正在落盘同意状态（防连点；用 @State 是为了让按钮文字跟着变"正在保存…"） */
+  @State privacyAgreeing: boolean = false;
+  /** 启动流程是否真的开始了（没同意之前不许开"连续使用计时"，见 onPageShow） */
+  private bootStarted: boolean = false;
   @State statusText: string = '正在初始化…';
   @State showManager: boolean = false;
 
@@ -275,6 +291,13 @@ struct Index {
   }
 
   onBackPress(): boolean {
+    // 隐私弹窗开着时：返回只用来关"完整政策"那一层，**不能绕过同意**（也不退出）
+    if (this.privacyGate) {
+      if (this.privacyTextOpen) {
+        this.privacyTextOpen = false;
+      }
+      return true;
+    }
     if (backStack.handleBack()) {
       return true;   // 子组件已经处理掉了
     }
@@ -299,9 +322,62 @@ struct Index {
   }
 
   aboutToAppear(): void {
+    // ⚠️ 第一件事**只读"隐私政策同意过没有"**，别的什么都不做
+    //（不建库、不读壁纸、不补生成、不同步日历、不请求权限）。
+    this.checkPrivacyGate().catch((e: Object): void => {
+      hilog.error(DOMAIN, TAG, 'privacy gate check failed: %{public}s', JSON.stringify(e));
+      // 读不出来就当成"没同意"：宁可多问一次，也不能默认同意。
+      this.privacyGate = true;
+    });
+  }
+
+  /** 同意过（且是对当前这一版政策）就直接进启动流程，否则弹窗 */
+  private async checkPrivacyGate(): Promise<void> {
+    const agreed: string = await loadPrivacyAgreed(this.context());
+    if (agreed === privacyUpdatedAt()) {
+      this.beginBoot();
+      return;
+    }
+    this.privacyGate = true;
+    this.loading = true;
+  }
+
+  /** 真正开始启动（首启弹窗点同意之后 / 已同意过的冷启动） */
+  private beginBoot(): void {
+    this.privacyGate = false;
+    this.privacyTextOpen = false;
+    this.bootStarted = true;
+    this.loading = true;
     // 加载页的常驻动效（关掉动画时不启动，见 startBootMotion）
     this.startBootMotion();
+    this.startUseTicker();
     this.bootstrap();
+  }
+
+  /** 同意并继续：落盘"同意的是哪一版政策"，然后开始启动 */
+  private acceptPrivacy(): void {
+    if (this.privacyAgreeing) {
+      return;
+    }
+    this.privacyAgreeing = true;
+    const version: string = privacyUpdatedAt();
+    savePrivacyAgreed(this.context(), version).then((): void => {
+      this.privacyAgreeing = false;
+      this.beginBoot();
+    }).catch((e: Object): void => {
+      // 写库失败也让这一次用起来（否则用户被卡死在弹窗上）；
+      // 代价是下次启动会再问一遍 —— 比"同意了却进不去"好。
+      this.privacyAgreeing = false;
+      hilog.error(DOMAIN, TAG, 'save privacy consent failed: %{public}s', JSON.stringify(e));
+      this.beginBoot();
+    });
+  }
+
+  /** 不同意：退出应用（不留任何数据、不进启动流程） */
+  private refusePrivacy(): void {
+    this.context().terminateSelf().catch((e: Object): void => {
+      hilog.warn(DOMAIN, TAG, 'terminateSelf failed: %{public}s', JSON.stringify(e));
+    });
   }
 
   private bootstrap(): void {
@@ -735,6 +811,10 @@ struct Index {
 
   /** 页面显示（含从后台回来）：开始累计"连续使用时间" */
   onPageShow(): void {
+    // 还没同意隐私政策时不计时（那会计出"连续使用"并在 n 分钟后自动同步日历）
+    if (!this.bootStarted) {
+      return;
+    }
     this.startUseTicker();
   }
 
@@ -808,6 +888,10 @@ struct Index {
   }
 
   private restartAfterIdle(): void {
+    // 隐私弹窗还开着 / 启动压根没开始 —— 绝不重放启动流程（那会绕过同意）
+    if (this.privacyGate || !this.bootStarted) {
+      return;
+    }
     // 正在启动 / 在切库 / 还在播过场 —— 都别插队
     if (this.loading || this.guideBusy || this.bootExit > 0) {
       return;
@@ -2205,6 +2289,164 @@ struct Index {
     .backgroundColor('rgba(12,18,28,0.55)')
   }
 
+  /**
+   * 首启「隐私政策」弹窗。
+   *
+   * ⚠️ 它是**不可绕过**的：全屏、吞掉所有手势（`HitTestMode.Block`）、返回键也不关；
+   * 只有「同意并继续」（落盘后进启动流程）或「不同意并退出」（terminateSelf）。
+   * ⚠️ 弹窗出现时**启动流程还没开始**：不建库、不读壁纸、不补生成、不同步日历、不申请权限。
+   */
+  @Builder
+  PrivacyGateCard() {
+    Column() {
+      Column() {
+        Text('隐私政策')
+          .fontSize(22)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#F2F5FA')
+          .width('100%')
+        Text('使用 ClassOUT 前，请阅读并同意以下说明')
+          .fontSize(12)
+          .fontColor('#A9B5C9')
+          .width('100%')
+          .margin({ top: 6 })
+
+        Text('ClassOUT 完全离线运行：不收集、不上传、不共享你的任何个人信息。'
+          + '没有账号、没有登录、没有统计、没有广告，也没有任何第三方 SDK。')
+          .fontSize(13)
+          .fontColor('#C3CDDE')
+          .width('100%')
+          .margin({ top: 18 })
+        Text('为了把上课与截止提醒写进系统日历，应用会申请日历读写权限；'
+          + '长按拖动时会用振动反馈。课程、待办、计划等数据只保存在这台手机里，卸载即删除。')
+          .fontSize(13)
+          .fontColor('#C3CDDE')
+          .width('100%')
+          .margin({ top: 10 })
+
+        Text('查看完整隐私政策')
+          .fontSize(13)
+          .fontColor('#7FA8FF')
+          .width('100%')
+          .margin({ top: 16 })
+          .onClick((): void => {
+            this.privacyTextOpen = true;
+          })
+
+        Button(this.privacyAgreeing ? '正在保存…' : '同意并继续')
+          .width('100%')
+          .height(46)
+          .margin({ top: 22 })
+          .backgroundColor('#2E6BE6')
+          .fontColor('#FFFFFF')
+          .fontSize(15)
+          .enabled(!this.privacyAgreeing)
+          .onClick((): void => this.acceptPrivacy())
+        Button('不同意并退出')
+          .width('100%')
+          .height(42)
+          .margin({ top: 10 })
+          .backgroundColor('rgba(255,255,255,0.10)')
+          .fontColor('#A9B5C9')
+          .fontSize(13)
+          .onClick((): void => this.refusePrivacy())
+
+        Text('开发者 Chemica_ · harvapps@qq.com')
+          .fontSize(11)
+          .fontColor('#8B97AC')
+          .width('100%')
+          .textAlign(TextAlign.Center)
+          .margin({ top: 16 })
+      }
+      .width('100%')
+      .padding({ left: 20, right: 20, top: 24, bottom: 20 })
+      .borderRadius(20)
+      .backgroundColor('rgba(255,255,255,0.10)')
+      .border({ width: 1, color: 'rgba(255,255,255,0.22)' })
+      .backdropBlur(GLASS_BLUR)
+    }
+    .width('100%')
+    .height('100%')
+    .padding({ left: FLOAT_SIDE, right: FLOAT_SIDE })
+    .justifyContent(FlexAlign.Center)
+    .linearGradient({
+      direction: GradientDirection.Bottom,
+      colors: [[PAGE_GRADIENT_A, 0.0], [PAGE_GRADIENT_B, 0.5], [PAGE_GRADIENT_C, 1.0]]
+    })
+    .hitTestBehavior(HitTestMode.Block)
+  }
+
+  /**
+   * 「查看完整隐私政策」：全屏正文，内容和设置页那份**同源**（`domain/Privacy.ets`）。
+   * 只盖在弹窗上面，关掉后还回到「同意 / 不同意」，不会绕过同意。
+   */
+  @Builder
+  PrivacyTextView() {
+    Column() {
+      Row() {
+        Text('隐私政策')
+          .fontSize(17)
+          .fontWeight(FontWeight.Medium)
+          .fontColor('#F2F5FA')
+          .layoutWeight(1)
+        Text('✕')
+          .fontSize(14)
+          .fontColor('#A9B5C9')
+          .padding({ left: 14, top: 4, bottom: 4 })
+          .onClick((): void => {
+            this.privacyTextOpen = false;
+          })
+      }
+      .width('100%')
+
+      Text(`更新日期：${privacyUpdatedAt()}`)
+        .fontSize(11)
+        .fontColor('#8B97AC')
+        .width('100%')
+        .margin({ top: 6, bottom: 8 })
+
+      Scroll() {
+        Column() {
+          ForEach(privacySections(), (s: PrivacySection) => {
+            Text(s.heading)
+              .fontSize(15)
+              .fontWeight(FontWeight.Medium)
+              .fontColor('#F2F5FA')
+              .width('100%')
+              .margin({ top: 12 })
+            Text(s.body)
+              .fontSize(12)
+              .fontColor('#C3CDDE')
+              .width('100%')
+              .margin({ top: 4 })
+          }, (s: PrivacySection) => `pv-${s.heading}`)
+        }
+        .width('100%')
+        .alignItems(HorizontalAlign.Start)
+        .padding({ bottom: 24 })
+      }
+      .layoutWeight(1)
+      .scrollBar(BarState.Auto)
+      .width('100%')
+
+      Button('关闭')
+        .width('100%')
+        .height(42)
+        .margin({ top: 10 })
+        .backgroundColor('rgba(255,255,255,0.14)')
+        .fontColor('#C3CDDE')
+        .fontSize(13)
+        .onClick((): void => {
+          this.privacyTextOpen = false;
+        })
+    }
+    .width('100%')
+    .height('100%')
+    .padding({ left: 20, right: 20, top: 28, bottom: 20 })
+    .backgroundColor('#0F0C29')
+    .hitTestBehavior(HitTestMode.Block)
+  }
+
   build() {
     Stack() {
       // 玻璃态的"可透物"：铺在所有内容之下。
@@ -2455,6 +2697,14 @@ struct Index {
       // 切库那一两秒挡一下输入
       if (this.guideBusy) {
         this.GuideBusyLayer()
+      }
+
+      // ---- 首启隐私政策弹窗（**最顶层**；同意之前 App 什么都不做）----
+      if (this.privacyGate) {
+        this.PrivacyGateCard()
+        if (this.privacyTextOpen) {
+          this.PrivacyTextView()
+        }
       }
     }
     .width('100%')

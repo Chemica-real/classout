@@ -250,3 +250,28 @@ export async function saveCustomCategories(context: common.Context,
   }
   return clean;
 }
+
+// ---------------- 首次启动的隐私政策同意 ----------------
+
+/**
+ * 隐私政策同意的 kv 键。**值 = 同意时的政策版本**（`privacyUpdatedAt()` 的日期串）。
+ *
+ * 为什么要存版本而不是存 `'1'`：政策内容一改（更新日期跟着改），老用户下次启动会
+ * 被重新问一次 —— 这是上架合规想要的（"同意"必须对应**他看过的那一版**）。
+ */
+export const PRIVACY_AGREED_KV: string = 'privacy_agreed';
+
+/** 读回"同意过的政策版本"；从没同意过 / 读失败都返回 ''（= 需要弹窗） */
+export async function loadPrivacyAgreed(context: common.Context): Promise<string> {
+  try {
+    return await Db.getKv(context, PRIVACY_AGREED_KV);
+  } catch (e) {
+    hilog.warn(0x0000, 'ClassOUT', 'load privacy agreed failed: %{public}s', JSON.stringify(e));
+    return '';
+  }
+}
+
+/** 记下"同意的政策版本"（首启弹窗点「同意并继续」时写） */
+export async function savePrivacyAgreed(context: common.Context, version: string): Promise<void> {
+  await Db.setKv(context, PRIVACY_AGREED_KV, version);
+}
