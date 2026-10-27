@@ -25,7 +25,7 @@
 | 2 | 上架前 | 唯一包名 `com.chemica.classout` | ✅ | `AppScope/app.json5` 的 `bundleName`；**不能再改** |
 | 3 | 上架前 | 应用图标 1024 / 216 | ✅ | `docs/store/app-icon-1024.png`、`app-icon-216.png`（`python3 tools/make-icon.py` 可重生成） |
 | 4 | 上架前 | 应用包（.app ≤ 4GB） | ⚠️ | 已能构建：`build/outputs/default/ClassOUT-default-unsigned.app`（388 KB，**未签名**）；见 §5 |
-| 5 | 上架前 | 隐私政策网址（可访问） | ✅ | <https://gitee.com/the-person-on-the-tree/classout/blob/master/PRIVACY.md>（公网可开，已验证 200） |
+| 5 | 上架前 | 隐私政策网址（可访问） | ✅ | <https://gitee.com/the-person-on-the-tree/classout/blob/master/PRIVACY.md>（公网 200；**开发者已改为何麒**，与 AGC 一致；含「撤回同意与投诉」，2026-10-27） |
 | 6 | 上架前 | 隐私权利网址（删除/导出入口） | ✅ | <https://gitee.com/the-person-on-the-tree/classout/blob/master/PRIVACY_RIGHTS.md>（本轮新增，200） |
 | 7 | 上架前 | 权限说明 / 隐私标签 | ✅ | 4 个权限的用途都在 `entry/src/main/module.json5` 的 `reason` + `string.json`；对照表见 §3 |
 | 8 | 上架前 | 电子版权 / 应用版权证书 | ⏳ **材料已备** | `dist/copyright/`：源程序 PDF（60 页）+ 用户手册 PDF（22 页）+ 申请表信息；等中国版权/易版权实名审核通过就能提交（还差两处待填，见 §7） |

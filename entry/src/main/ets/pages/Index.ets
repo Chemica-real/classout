@@ -2351,7 +2351,7 @@ struct Index {
           .fontSize(13)
           .onClick((): void => this.refusePrivacy())
 
-        Text('开发者 Chemica_ · harvapps@qq.com')
+        Text('开发者 何麒 · harvapps@qq.com')
           .fontSize(11)
           .fontColor('#8B97AC')
           .width('100%')
