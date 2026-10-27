@@ -333,6 +333,7 @@ python3 tools/make-copyright.py               # 生成软著/电子版权材料�
 ```
 
 - **上架清单**（AGC 逐条核对 / 填报文案 / 权限与隐私标签 / 素材）：[`STORE.md`](STORE.md)
+- **AGC 页面逐字段怎么填**（对着「准备提交」截图）：[`AGC-FILL.md`](AGC-FILL.md)
 - 交接文档（架构、坑、已验证/未验证清单）：[`HANDOFF.md`](HANDOFF.md)
 - 签名与上架：[`signing/README.md`](signing/README.md)、[`signing/release/README.md`](signing/release/README.md)
 - 计划页设计取舍：[`PLAN_REDESIGN.md`](PLAN_REDESIGN.md)
