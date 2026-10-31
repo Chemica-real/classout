@@ -42,7 +42,10 @@ DO_BUILD=1
 [ "${1:-}" = "--no-build" ] && DO_BUILD=0
 
 die() { echo "错误：$*" >&2; exit 1; }
-pick() { find "$REL_DIR" -maxdepth 1 -iname "*.$1" 2>/dev/null | head -1; }
+# 排除 verify-*：sign-release.sh 自己会把验证结果写回 release 目录，
+# 那些不是签名材料；不排除的话下一次 find 会先挑到根证书链，报
+# "verify certificate chain failed / certificate does not match key"。
+pick() { find "$REL_DIR" -maxdepth 1 -iname "*.$1" ! -iname "verify-*" 2>/dev/null | head -1; }
 
 [ -x "$JAVA_HOME/bin/java" ] || die "找不到 java（JAVA_HOME=$JAVA_HOME）"
 [ -f "$JAR" ] || die "找不到 hap-sign-tool.jar：$JAR"

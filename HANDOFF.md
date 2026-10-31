@@ -8485,3 +8485,39 @@ LANG=zh_CN.UTF-8 ./build.sh assembleHap       # ERROR: 0，警告 6 条（5 个 
 - 真机日视图确认：`10.23作业` 的第二行已从 `12:00-13:00 · 计概` 变成 `计概 · 12:00-13:00`。
 - 版本：`1.6.2` / versionCode `1006002`。
 
+## 143. 2026-10-31 v1.6.2 测试版更新包 + 邀请测试操作
+
+### 143.1 发布包
+
+- 用 AGC 发布证书/Profile 重新签了 **`dist/ClassOUT-1.6.2-release.app`**（约 488 KB）。
+- `hap-sign-tool verify-app` → **verify success**；`pack.info` 版本 **1.6.2 / 1006002**、`deviceType=phone`。
+- ⚠️ 发现并修了 `sign-release.sh` 的一个真实坑：`signing/release/` 里同时有上次验证写回的
+  `verify-release-certchain.cer` / `verify-release-profile.p7b`，原来的 `pick()` 会先挑到它们，
+  报 `verify certificate chain failed / certificate does not match key`。
+  现在 `pick()` 排除 `verify-*`，发布签名可重复执行。
+
+### 143.2 让同学从 1.5.1 测试版升到 1.6.2
+
+AGC 邀请测试的路径（不是把 .hap 发群里）：
+
+1. AGC → **软件包管理 → 上传**：选 `dist/ClassOUT-1.6.2-release.app`，使用场景「**仅测试**」。
+2. AGC → **应用测试 → 测试版本列表 → 创建测试版本**（或在现有测试版本上更新）：
+   - 类型「邀请测试」；测试时间给 30/90 天；
+   - 软件版本选刚上传的 1.6.2「仅测试」包；
+   - 测试群组沿用 `同学测试`（邀请码可以不变；若 AGC 生成新分享链接，就发新链接）；
+   - 测试说明用 `AGC-FILL.md` §5.3 的 1.6.2 文案；
+   - 提交审核（测试版本比正式上架快）。
+3. 审核通过、测试时间生效后，让同学用**原来的测试链接/应用尝鲜**更新：
+   - 覆盖安装，**不要卸载**，数据保留；
+   - 更新前建议先在「设置 → 本地备份与恢复」导出 JSON；
+   - 设置里的「重置应用并重新引导」会清空数据，别在没备份时点。
+4. 如果之前有人装的是 `hdc` 调试签名的 HAP（不是 AGC 测试版），签名不同，不能直接覆盖成
+   发布签名包；先导出 JSON → 卸载旧包 → 从 AGC 装 1.6.2 → 恢复备份。
+
+### 143.3 注意事项
+
+- `versionCode 1006002 > 1005001`，AGC 会认作新版本。
+- 发布 Profile 里仍写着占位 `2.0.0 / 2`；正常 AGC 不校验。若上传被拒且明确指向版本，去 AGC
+  重新下载发布 Profile 再 `./sign-release.sh --no-build`。
+- 产物 `dist/` 在 `.gitignore` 里，不入库；文档 `AGC-FILL.md` 的版本/测试说明已同步 1.6.2。
+
