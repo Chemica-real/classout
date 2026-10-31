@@ -34,6 +34,10 @@ import { GLASS_BLUR, GLASS_EDGE_SHELF, GLASS_EDGE_SOFT, GLASS_EDGE_STRONG, GLASS
   GLASS_TINT_ROW, GLASS_TINT_SHELF, GLASS_TINT_SHEET } from './Glass';
 import { DRAWER_W, FLOAT_GAP, FLOAT_SIDE, H_COLHEAD, H_DAYBAR } from './Float';
 import { saveNoteExpanded } from '../data/Prefs';
+import { WEEK_CENTER, WEEK_DAYS, WEEK_HEAD_H, WEEK_PAGES, WEEK_TITLE_FONT,
+  weekBlockTitleVisible, weekDatesOf, weekHeaderDateText, weekHeaderWeekdayText, weekMinuteY,
+  weekNumberLabel, weekPageDates, weekPageEnd, weekPageFromOffset, weekPageOfDate,
+  weekPageOffset, weekPageStart, weekRangeText, weekStartOf, weekTapMinute } from '../domain/WeekView';
 import { DUR_DRAWER, DUR_TRAY, curveOrLinear, drawerCurve, dur, loadTrayOpen, motionCurve,
   persistTrayOpen } from './Motion';
 
@@ -102,6 +106,10 @@ const LESSON_MIN: number = 90;
 const CANVAS_DAYS: number = 31;
 /** 窗口里当前日期的下标 */
 const CANVAS_CENTER: number = 15;
+/** 视图档位 1 / 3 / 7（日 / 三日 / 周）；只记本次会话（AppStorage，冷启动回 1） */
+const PLAN_ZOOM_KEY: string = 'planViewLevel';
+/** 周视图每页 7 天（周一 → 周日） */
+const WEEK_COLS: number = 7;
 
 /** 待安排货架的两页：0 = 待办，1 = 虚拟课程（用户 2026-10-18：「放到两页，不必上下放」） */
 const POOL_PAGE_TODO: number = 0;
@@ -326,6 +334,31 @@ export struct PlanDayView {
    *   双指缩放已选中的块 → 改时长（开始时间不动）
    */
   @State selectedBlockId: number = 0;
+  // ---------------- 视图档位 / 周视图 ----------------
+  /** 1 = 日，3 = 三日，7 = 周（离散三档；一次捏合走一档） */
+  @State zoomLevel: number = 1;
+  /** 周视图横向 9 周窗口（当前周在正中） */
+  @State weekDates: string[] = [];
+  @State weekSessions: CourseSession[][] = [];
+  @State weekBlocks: PlanBlock[][] = [];
+  /** 当前可见的周页下标（0..WEEK_PAGES-1） */
+  @State weekPage: number = WEEK_CENTER;
+  /** 周视图网格的屏幕顶边（点击换算时间用） */
+  @State weekGridTop: number = 0;
+  private weekScroller: Scroller = new Scroller();
+  private weekCenteredW: number = 0;
+  /** 进入周视图前的三日竖向滚动位置；捏合缩回时恢复 */
+  private savedThreeScrollY: number = 0;
+  /** 进入周视图前的待安排展开状态；缩回时恢复 */
+  private savedTrayOpen: boolean = false;
+  /** 周视图程序化滚动时忽略 onScrollStop 的时间点 */
+  private weekSuppressStopUntil: number = 0;
+  /** 周视图点击放大时，等布局落地后把该时刻放到这个屏幕高度 */
+  private pendingTapMin: number = -1;
+  private pendingTapScreenY: number = 0;
+  /** 切档蒙版透明度（0 = 无；>0 = 动画中） */
+  @State zoomMask: number = 0;
+  private zoomBusy: boolean = false;
   /** 编辑窗里正在看的块。用对象引用是因为面板直接渲染它；每次改动后 refreshEditor() 会换成新对象 */
   /**
    * 正在编辑的块（undefined = 没开编辑窗）。
@@ -418,8 +451,8 @@ export struct PlanDayView {
   // ---- 视图与列（2026-10-14 新增：日 / 三日两档）----
 
   /**
-   * 视图列数：`COLS_DAY`(1) = 单日，`COLS_THREE`(3) = 三日。
-   * ⚠️ 用户明确删掉了整周列表视图（「功能鸡肋」），**不要再加第三档**。
+   * 日 / 三日画布的列数：`COLS_DAY`(1) = 单日，`COLS_THREE`(3) = 三日。
+   * 周视图（7 列）走独立的 `WeekCanvas`，用 `zoomLevel` 区分，不复用这个数组。
    */
   @State viewCols: number = COLS_DAY;
   /** 当前视图要显示哪几天（长度 = viewCols，**中间那个 = this.date**） */
@@ -460,6 +493,10 @@ export struct PlanDayView {
       hilog.warn(DOMAIN, TAG, 'load tray state failed: %{public}s', JSON.stringify(e));
     });
     this.date = formatDate(today());
+    // 视图档位：只记本次会话（AppStorage，冷启动没有 → 单日）
+    const savedZoom: number | undefined = AppStorage.get<number>(PLAN_ZOOM_KEY);
+    this.zoomLevel = savedZoom === 3 || savedZoom === 7 ? savedZoom : 1;
+    this.viewCols = this.zoomLevel === 1 ? COLS_DAY : COLS_THREE;
     // 先按当前视图把列日期填上，别等 reload 回来（否则首帧网格是空的）
     this.colDates = dayDates(this.date, this.viewCols);
     // ⚠️ 横向翻页的三天也必须**首帧就有值**：DayPager 直接读 pagerDates[0]/[2]，
@@ -550,17 +587,38 @@ export struct PlanDayView {
    *   三日视图 → 当前列在正中（下标 15 在中间，左边 14、右边 16）。
    */
   private centerCanvas(): void {
+    if (this.zoomLevel === 7) {
+      return;
+    }
     const w: number = this.canvasColW();
     if (w <= 0) {
       return;
     }
     const centerIdx: number = this.viewCols > COLS_DAY ? CANVAS_CENTER - 1 : CANVAS_CENTER;
+    const target: number = centerIdx * w;
     this.pagerSnapping = true;
-    this.suppressCanvasStopUntil = Date.now() + 500;
-    this.hScroller.scrollTo({ xOffset: centerIdx * w, yOffset: 0, animation: false });
+    this.suppressCanvasStopUntil = Date.now() + 600;
+    this.hScroller.scrollTo({ xOffset: target, yOffset: 0, animation: false });
+    // 刚切到三日时 DayCanvas 可能还没挂上，第一次 scrollTo 会被夹到 0；
+    // 隔两拍再校准（只在仍停在同一档时补，不抢用户横向滑动）。
     setTimeout((): void => {
+      if (this.zoomLevel === 7 || this.pagerSnapping === false) {
+        return;
+      }
+      if (Math.abs(this.hScroller.currentOffset().xOffset - target) > 2) {
+        this.hScroller.scrollTo({ xOffset: target, yOffset: 0, animation: false });
+      }
+    }, 80);
+    setTimeout((): void => {
+      if (this.zoomLevel === 7) {
+        return;
+      }
+      if (Math.abs(this.hScroller.currentOffset().xOffset - target) > 2) {
+        this.suppressCanvasStopUntil = Date.now() + 300;
+        this.hScroller.scrollTo({ xOffset: target, yOffset: 0, animation: false });
+      }
       this.pagerSnapping = false;
-    }, 420);
+    }, 260);
   }
 
   /**
@@ -857,10 +915,16 @@ export struct PlanDayView {
     this.sessionsByDate = smap;
     this.restWindows = await TimetableRepo.listRestWindows(ctx);
     this.lessons = await TodoRepo.listLessonsOfVirtualCourses(ctx, sem.id);
-    // ---- 2) 用缓存重新切 31 天窗口（当前日期在正中），并把画布回中 ----
-    this.rebuildCanvasWindow();
-    this.loading = false;
-    setTimeout((): void => this.centerCanvas(), 0);
+    // ---- 2) 按当前档位铺画布：周视图铺 9 周窗口，日/三日铺 31 天窗口 ----
+    if (this.zoomLevel === 7) {
+      this.buildWeekWindow();
+      this.loading = false;
+      setTimeout((): void => this.scrollWeekToPage(this.weekPage, false), 0);
+    } else {
+      this.rebuildCanvasWindow();
+      this.loading = false;
+      setTimeout((): void => this.centerCanvas(), 0);
+    }
   }
 
   /**
@@ -888,6 +952,449 @@ export struct PlanDayView {
     this.leftBlocks = cb[CANVAS_CENTER - 1];
     this.rightSessions = cs[CANVAS_CENTER + 1];
     this.rightBlocks = cb[CANVAS_CENTER + 1];
+  }
+
+  // ---------------- 周视图的几何 / 数据 / 翻周 ----------------
+
+  /** 周视图单列宽 = (内容区宽 - 固定时间轴) / 7 */
+  private weekColW(): number {
+    const w: number = this.gridW - AXIS_W;
+    return w > 0 ? w / WEEK_DAYS : 0;
+  }
+
+  /**
+   * 周视图网格高度：整周 + 整天一屏。
+   * 用外层 Scroll 量到的视口高，扣掉上下浮窗（日期栏 + 待安排矮条 + 导航让位）
+   * 和列头；不滚动。量不到时给一个保守值，等布局落地后会自己修正。
+   */
+  private weekGridHeight(): number {
+    const viewport: number = this.gridViewBottom - this.gridViewTop;
+    if (viewport <= 0) {
+      return 420;
+    }
+    const top: number = this.topBarsBlockH() + FLOAT_GAP;
+    const paneH: number = this.bottomPaneH > 0 ? this.bottomPaneH : 52;
+    const bottom: number = this.bottomInset + FLOAT_GAP + paneH + FLOAT_GAP;
+    const h: number = viewport - top - bottom - WEEK_HEAD_H;
+    return h > 160 ? h : 160;
+  }
+
+  private weekTotalH(): number {
+    return WEEK_HEAD_H + this.weekGridHeight();
+  }
+
+  /**
+   * 周视图的「等比例缩小」系数：高度方向压到一屏的比例（约 0.4）。
+   * 块的字号、圆圈、内边距、圆角都按它缩，不是另起一套皮肤。
+   */
+  private weekScale(): number {
+    const s: number = this.weekGridHeight() / this.gridH();
+    if (s < 0.32) {
+      return 0.32;
+    }
+    if (s > 0.72) {
+      return 0.72;
+    }
+    return s;
+  }
+
+  private weekTitleFont(): number {
+    return Math.max(5, LAYOUT.title * this.weekScale());
+  }
+
+  private weekSubFont(): number {
+    return Math.max(4.5, LAYOUT.sub * this.weekScale());
+  }
+
+  private weekHourFont(): number {
+    return Math.max(5, LAYOUT.hour * this.weekScale());
+  }
+
+  private weekPad(): number {
+    return Math.max(1.5, 6 * this.weekScale());
+  }
+
+  private weekRadius(): number {
+    return Math.max(2, 6 * this.weekScale());
+  }
+
+  /** 两行（标题 + 副文字/教室）至少要这么高 */
+  private weekTwoLineH(): number {
+    return this.weekTitleFont() + this.weekSubFont() + this.weekPad() * 2 + 1;
+  }
+
+  /** 单行矮块（15 分钟）不放上下内边距，否则 6vp 的字会被裁掉 */
+  private weekBandTopPad(h: number): number {
+    return h >= this.weekTwoLineH() ? this.weekPad() * 0.5 : 0;
+  }
+
+  /** 周视图一屏的纵向坐标（分钟 → vp） */
+  private weekY(minute: number): number {
+    return weekMinuteY(minute, this.ax().startMin, this.ax().endMin, this.weekGridHeight());
+  }
+
+  /** 周视图一周的块高（分钟 → vp） */
+  private weekBlockH(startMin: number, endMin: number): number {
+    const y0: number = this.weekY(startMin);
+    const y1: number = this.weekY(endMin);
+    const h: number = y1 - y0;
+    return h > 1 ? h : 1;
+  }
+
+  /**
+   * 以 `this.date` 所在周为正中，重切 9 周（63 天）窗口。
+   * 数据全部来自学期缓存；当前周在正中页，周视图进入/翻周后都从这里取。
+   */
+  private buildWeekWindow(): void {
+    const dates: string[] = weekPageDates(this.date);
+    const ss: CourseSession[][] = [];
+    const bb: PlanBlock[][] = [];
+    for (const cd of dates) {
+      const s: CourseSession[] | undefined = this.sessionsByDate.get(cd);
+      const b: PlanBlock[] | undefined = this.blocksByDate.get(cd);
+      ss.push(s === undefined ? [] : s);
+      bb.push(b === undefined ? [] : b);
+    }
+    this.weekDates = dates;
+    this.weekSessions = ss;
+    this.weekBlocks = bb;
+    this.weekPage = weekPageOfDate(this.date, dates);
+  }
+
+  private scrollWeekToPage(page: number, animate: boolean): void {
+    const pageW: number = WEEK_DAYS * this.weekColW();
+    if (pageW <= 0) {
+      return;
+    }
+    const target: number = weekPageOffset(page, pageW);
+    this.weekSuppressStopUntil = Date.now() + 600;
+    this.weekScroller.scrollTo({ xOffset: target, yOffset: 0, animation: animate });
+    // 进入周视图的那一帧，Scroll 的内容可能还没铺开，scrollTo 会被夹到 0。
+    // 隔两拍再校准一次；只在用户仍停在这一页时补，避免和手动滑周打架。
+    setTimeout((): void => {
+      if (this.zoomLevel !== 7 || this.weekPage !== page) {
+        return;
+      }
+      if (Math.abs(this.weekScroller.currentOffset().xOffset - target) > 2) {
+        this.weekSuppressStopUntil = Date.now() + 400;
+        this.weekScroller.scrollTo({ xOffset: target, yOffset: 0, animation: false });
+      }
+    }, 120);
+    setTimeout((): void => {
+      if (this.zoomLevel !== 7 || this.weekPage !== page) {
+        return;
+      }
+      if (Math.abs(this.weekScroller.currentOffset().xOffset - target) > 2) {
+        this.weekSuppressStopUntil = Date.now() + 400;
+        this.weekScroller.scrollTo({ xOffset: target, yOffset: 0, animation: false });
+      }
+    }, 320);
+  }
+
+  private weekStart(): string {
+    return weekPageStart(this.weekDates, this.weekPage);
+  }
+
+  private weekEnd(): string {
+    return weekPageEnd(this.weekDates, this.weekPage);
+  }
+
+  private weekRangeLabel(): string {
+    const a: string = this.weekStart();
+    const b: string = this.weekEnd();
+    if (a.length === 0 || b.length === 0) {
+      return this.headerText();
+    }
+    return weekRangeText(a, b);
+  }
+
+  private weekNumberText(): string {
+    const a: string = this.weekStart();
+    if (a.length === 0) {
+      return '';
+    }
+    return weekNumberLabel(this.semester, a);
+  }
+
+  /** 当前可见周是否是今天那一周 */
+  private weekHasToday(): boolean {
+    const t: string = formatDate(today());
+    return this.weekStart().length > 0 && t >= this.weekStart() && t <= this.weekEnd();
+  }
+
+  /**
+   * 周视图横向惯性停止：吸附到最近的一周（不是最近的一天）。
+   * 当前日期随周页平移（保持同一个星期几），日期条 / 高亮列一起换。
+   */
+  private onWeekScrollStop(): void {
+    if (this.zoomBusy || Date.now() < this.weekSuppressStopUntil) {
+      return;
+    }
+    const pageW: number = WEEK_DAYS * this.weekColW();
+    if (pageW <= 0 || this.weekDates.length === 0) {
+      return;
+    }
+    const x: number = this.weekScroller.currentOffset().xOffset;
+    const page: number = weekPageFromOffset(x, pageW, WEEK_PAGES);
+    const target: number = weekPageOffset(page, pageW);
+    if (Math.abs(x - target) > 0.5) {
+      this.weekSuppressStopUntil = Date.now() + 320;
+      this.weekScroller.scrollTo({ xOffset: target, yOffset: 0, animation: true });
+    }
+    if (page !== this.weekPage) {
+      const delta: number = page - this.weekPage;
+      this.date = formatDate(addDays(parseDate(this.date), delta * WEEK_DAYS));
+      this.weekPage = page;
+    }
+    // 滑到窗口边上：用缓存重切 9 周窗口并回到正中页（不查库）
+    if (page <= 1 || page >= WEEK_PAGES - 2) {
+      this.buildWeekWindow();
+      setTimeout((): void => this.scrollWeekToPage(this.weekPage, false), 0);
+    }
+  }
+
+  /** 日期栏箭头 / 左右滑的周级移动：保持同一个星期几 */
+  private goWeek(delta: number): void {
+    this.date = formatDate(addDays(parseDate(this.date), delta * WEEK_DAYS));
+    this.buildWeekWindow();
+    setTimeout((): void => this.scrollWeekToPage(this.weekPage, false), 0);
+  }
+
+  /** 周视图里的「今天」：回到今天那一周，但**留在周视图** */
+  private goTodayWeek(): void {
+    this.date = formatDate(today());
+    this.buildWeekWindow();
+    setTimeout((): void => this.scrollWeekToPage(this.weekPage, false), 0);
+  }
+
+  // ---------------- 三档缩放：日 ⇄ 三日 ⇄ 周 ----------------
+
+  /**
+   * 只切状态（不改 AppStorage 以外的东西）：
+   * 1 = 日，3 = 三日，7 = 周。档位只记本次会话（AppStorage；冷启动没有 → 1）。
+   */
+  private setZoomState(level: number): void {
+    this.zoomLevel = level;
+    this.viewCols = level === 1 ? COLS_DAY : COLS_THREE;
+    AppStorage.setOrCreate<number>(PLAN_ZOOM_KEY, level);
+  }
+
+  /** 进入周视图：保存三日滚动位置 / 待安排状态，清掉编辑态 */
+  private enterWeek(): void {
+    if (this.zoomLevel === 7) {
+      return;
+    }
+    // ⚠️ 进入周视图前的 3 日滚动/托盘状态必须在**蒙版动画之前**保存：
+    // 蒙版状态一变会重建 DayCanvas，横向/竖向滚动可能被重置为 0，再读就晚了。
+    this.trayOpen = false;
+    this.selectedBlockId = 0;
+    this.selectedTodoId = 0;
+    this.dragBlockId = 0;
+    this.dragOffsetY = 0;
+    this.gridScrollLocked = false;
+    this.canvasDragTargetDate = '';
+    this.closeEditor();
+    this.setZoomState(7);
+    this.buildWeekWindow();
+    setTimeout((): void => this.scrollWeekToPage(this.weekPage, false), 0);
+  }
+
+  /** 周视图捏合缩回三日：按当前日期回三日，竖向恢复进入周视图前的位置 */
+  private leaveWeekToThree(): void {
+    this.setZoomState(3);
+    this.selectedBlockId = 0;
+    this.selectedTodoId = 0;
+    this.trayOpen = this.savedTrayOpen;
+    this.rebuildCanvasWindow();
+    setTimeout((): void => {
+      this.centerCanvas();
+      this.gridScroller.scrollTo({ xOffset: 0, yOffset: this.savedThreeScrollY, animation: false });
+    }, 0);
+  }
+
+  /**
+   * 周视图点某天某时 → 三日视图：
+   * 以点的那天为中心，把点的时刻尽量留在手指原来的屏幕高度；点到计划块则顺手选中。
+   */
+  private leaveWeekToTap(cd: string, minute: number, screenY: number, blockId: number): void {
+    this.date = cd;
+    this.setZoomState(3);
+    this.selectedBlockId = blockId;
+    this.selectedTodoId = 0;
+    this.trayOpen = this.savedTrayOpen;
+    this.pendingTapMin = minute;
+    this.pendingTapScreenY = screenY;
+    this.rebuildCanvasWindow();
+    setTimeout((): void => {
+      this.centerCanvas();
+      setTimeout((): void => this.scrollPendingTimeToScreen(), 30);
+    }, 0);
+  }
+
+  /** 把 pendingTapMin 对应的时刻滚到 pendingTapScreenY（和点击时同一屏幕高度） */
+  private scrollPendingTimeToScreen(): void {
+    if (this.pendingTapMin < 0) {
+      return;
+    }
+    const minute: number = this.pendingTapMin;
+    const screenY: number = this.pendingTapScreenY;
+    this.pendingTapMin = -1;
+    // 三日画布 1 分钟 = 1vp；gridTop 是当前滚动下网格第一行（07:00）的屏幕 y
+    const nowScreenY: number = this.gridTop + (minute - this.ax().startMin);
+    const delta: number = nowScreenY - screenY;
+    const current: number = this.gridScroller.currentOffset().yOffset;
+    let target: number = current + delta;
+    const maxScroll: number = Math.max(0, this.gridH() - this.gridViewBottom + this.gridViewTop);
+    if (target < 0) {
+      target = 0;
+    }
+    if (target > maxScroll) {
+      target = maxScroll;
+    }
+    this.gridScroller.scrollTo({ xOffset: 0, yOffset: target, animation: false });
+  }
+
+  /** 切档蒙版动画：淡入蒙版 → 换档 → 淡出；约 260ms */
+  private runZoomChange(apply: () => void): void {
+    if (this.zoomBusy) {
+      return;
+    }
+    this.zoomBusy = true;
+    animateTo({ duration: 120, curve: Curve.EaseInOut }, (): void => {
+      this.zoomMask = 1;
+    });
+    setTimeout((): void => {
+      apply();
+      setTimeout((): void => {
+        animateTo({ duration: 180, curve: Curve.EaseOut }, (): void => {
+          this.zoomMask = 0;
+        });
+        setTimeout((): void => {
+          this.zoomBusy = false;
+        }, 220);
+      }, 30);
+    }, 130);
+  }
+
+  /** 捏合缩小一档：日 → 三日 → 周 */
+  private requestZoomOut(): void {
+    if (this.zoomLevel === 7) {
+      return;
+    }
+    // 先保存，再起蒙版（蒙版重建可能把 DayCanvas 的滚动位置重置）
+    if (this.zoomLevel === 3) {
+      this.savedThreeScrollY = this.gridScroller.currentOffset().yOffset;
+      this.savedTrayOpen = this.trayOpen;
+    }
+    this.runZoomChange((): void => {
+      if (this.zoomLevel === 1) {
+        this.setZoomState(3);
+        this.rebuildCanvasWindow();
+        setTimeout((): void => this.centerCanvas(), 0);
+      } else if (this.zoomLevel === 3) {
+        this.enterWeek();
+      }
+    });
+  }
+
+  /** 捏合放大一档：周 → 三日 → 日 */
+  private requestZoomIn(): void {
+    if (this.zoomLevel === 1) {
+      return;
+    }
+    this.runZoomChange((): void => {
+      if (this.zoomLevel === 7) {
+        this.leaveWeekToThree();
+      } else if (this.zoomLevel === 3) {
+        this.setZoomState(1);
+        this.rebuildCanvasWindow();
+        setTimeout((): void => this.centerCanvas(), 0);
+      }
+    });
+  }
+
+  // ---- 日 / 三日画布的全局双指：选中块 = 改时长；没选中 = 切档 ----
+
+  private pinchZoomMode: boolean = false;
+  private pinchZoomScale: number = 1;
+  private pinchZoomBlockId: number = 0;
+
+  private onGridPinchStart(event: GestureEvent): void {
+    if (this.dragBlockId > 0 || this.zoomBusy) {
+      return;
+    }
+    this.pinchZoomScale = 1;
+    this.pinchZoomMode = false;
+    if (this.selectedBlockId > 0) {
+      const b: PlanBlock | undefined = this.blockById(this.selectedBlockId);
+      if (b !== undefined) {
+        this.pinchZoomMode = true;
+        this.pinchZoomBlockId = b.id;
+        this.beginPinch(b);
+        return;
+      }
+    }
+    this.pinchZoomBlockId = 0;
+  }
+
+  private onGridPinchUpdate(event: GestureEvent): void {
+    if (this.pinchZoomMode) {
+      const b: PlanBlock | undefined = this.blockById(this.pinchZoomBlockId);
+      if (b !== undefined) {
+        this.updatePinch(b, event);
+      }
+      return;
+    }
+    this.pinchZoomScale = event.scale;
+  }
+
+  private onGridPinchEnd(event: GestureEvent): void {
+    if (this.pinchZoomMode) {
+      const b: PlanBlock | undefined = this.blockById(this.pinchZoomBlockId);
+      if (b !== undefined) {
+        this.endPinch(b);
+      }
+      this.pinchZoomMode = false;
+      this.pinchZoomBlockId = 0;
+      this.pinchZoomScale = 1;
+      return;
+    }
+    const scale: number = event.scale > 0 ? event.scale : this.pinchZoomScale;
+    this.pinchZoomScale = 1;
+    if (scale < 0.85) {
+      this.requestZoomOut();
+    } else if (scale > 1.15) {
+      this.requestZoomIn();
+    }
+  }
+
+  private onWeekPinchEnd(event: GestureEvent): void {
+    if (event.scale > 1.15) {
+      this.requestZoomIn();
+    }
+  }
+
+  /** 周视图点任意处：算日期 + 时刻 + 是否点在计划块上，然后放大到三日 */
+  private onWeekTap(cd: string, event: ClickEvent): void {
+    if (this.zoomBusy) {
+      return;
+    }
+    const gridH: number = this.weekGridHeight();
+    const localY: number = event.windowY - this.weekGridTop;
+    const minute: number = weekTapMinute(localY, this.ax().startMin, this.ax().endMin, gridH);
+    const idx: number = this.weekDates.indexOf(cd);
+    let hitId: number = 0;
+    if (idx >= 0) {
+      for (const b of this.weekBlocks[idx]) {
+        if (minute >= b.startMin && minute <= b.endMin) {
+          hitId = b.id;
+        }
+      }
+    }
+    const screenY: number = event.windowY;
+    this.runZoomChange((): void => {
+      this.leaveWeekToTap(cd, minute, screenY, hitId);
+    });
   }
 
   private refresh(): void {
@@ -1303,6 +1810,10 @@ export struct PlanDayView {
   }
 
   private goDay(delta: number): void {
+    if (this.zoomLevel === 7) {
+      this.goWeek(delta);
+      return;
+    }
     this.date = formatDate(addDays(parseDate(this.date), delta));
     this.selectedTodoId = 0;
     // 点箭头/今天后，之前横向惯性留下的 onScrollStop 不能再来改日期
@@ -1312,6 +1823,10 @@ export struct PlanDayView {
   }
 
   private goToday(): void {
+    if (this.zoomLevel === 7) {
+      this.goTodayWeek();
+      return;
+    }
     this.date = formatDate(today());
     this.selectedTodoId = 0;
     this.suppressCanvasStopUntil = Date.now() + 900;
@@ -3088,6 +3603,34 @@ export struct PlanDayView {
   }
 
   /**
+   * 周视图的待安排矮条：只显示一行「请放大后安排待办」，不能展开。
+   * 放大回三日时恢复进入前的展开/收起状态（见 savedTrayOpen）。
+   */
+  @Builder
+  WeekTrayBar() {
+    Row() {
+      Text('待安排')
+        .fontSize(LAYOUT.tray)
+        .fontWeight(FontWeight.Medium)
+        .fontColor('#8B97AC')
+      Blank()
+      Text('请放大后安排待办')
+        .fontSize(LAYOUT.cardSub)
+        .fontColor('#A9B5C9')
+    }
+    .width('100%')
+    .padding({ left: 14, right: 14, top: 10, bottom: 10 })
+    .glassShelf()
+    .onClick((): void => this.showHint('放大到三日视图后可安排待办'))
+    .onAreaChange((oldArea: Area, newArea: Area): void => {
+      const h: Length | undefined = newArea.height;
+      if (typeof h === 'number') {
+        this.bottomPaneH = h;
+      }
+    })
+  }
+
+  /**
    * 收起的"召唤 bar"（用户要求：「待安排可以常态隐藏，点击小召唤 bar 唤出」）。
    *
    * 它和展开后的货架是**互斥的两块**：一点就换成货架（上滑进来），
@@ -3542,52 +4085,67 @@ export struct PlanDayView {
    * 它原来是流程里的一条 `glassPanel`，会把网格挤下去；现在浮在网格之上，
    * 网格往上滑时会钻到它下面（内容层的 padding 见 `build()`）。
    */
+  /** 当前档位的小字提示（日期栏下常驻） */
+  private zoomHintText(): string {
+    if (this.zoomLevel === 7) {
+      return '点任意处放大 · 双指张开回三日';
+    }
+    return '双指捏合切换 日 / 三日 / 周';
+  }
+
   @Builder
   DayBarFloat() {
-    Row() {
-      Text('‹')
-        .fontSize(22)
-        .fontColor('#7FA8FF')
-        .padding({ left: 8, right: 8 })
-        .onClick((): void => this.goDay(-1))
-      Column() {
-        Text(this.headerText())
-          .fontSize(16)
-          .fontWeight(FontWeight.Medium)
-          .fontColor('#F2F5FA')
-        Text(relativeDayText(parseDate(this.date)))
-          .fontSize(LAYOUT.cardSub)
-          .fontColor('#94A0B5')
+    Column() {
+      Row() {
+        Text('‹')
+          .fontSize(22)
+          .fontColor('#7FA8FF')
+          .padding({ left: 8, right: 8 })
+          .zIndex(5)
+          .onClick((): void => this.goDay(-1))
+        Column() {
+          // 周视图显示整周范围；日/三日显示当前日期
+          Text(this.zoomLevel === 7 ? this.weekRangeLabel() : this.headerText())
+            .fontSize(16)
+            .fontWeight(FontWeight.Medium)
+            .fontColor('#F2F5FA')
+            .maxLines(1)
+          Text(this.zoomLevel === 7 ? this.weekNumberText()
+            : relativeDayText(parseDate(this.date)))
+            .fontSize(LAYOUT.cardSub)
+            .fontColor('#94A0B5')
+        }
+        .layoutWeight(1)
+        .alignItems(HorizontalAlign.Center)
+        // 小字提示挪到「今天」下面，和左侧的日期/相对日两行对齐，
+        // 不再单独占一行 —— 日期栏高度就不会增加。
+        // 右箭头放进这一列里：它之前被列头/提示的布局盖住，点不到。
+        Column() {
+          Row() {
+            Text('›')
+              .fontSize(20)
+              .fontColor('#7FA8FF')
+              .padding({ left: 8, right: 8 })
+              .onClick((): void => this.goDay(1))
+            Text('今天')
+              .fontSize(LAYOUT.tray)
+              .fontColor('#7FA8FF')
+              .onClick((): void => this.goToday())
+          }
+          .alignItems(VerticalAlign.Center)
+          Text(this.zoomHintText())
+            .fontSize(8)
+            .fontColor('#7E8A9F')
+            .maxLines(1)
+            .textAlign(TextAlign.End)
+        }
+        .alignItems(HorizontalAlign.End)
+        .margin({ left: 2 })
       }
-      .layoutWeight(1)
-      .alignItems(HorizontalAlign.Center)
-      Text('›')
-        .fontSize(22)
-        .fontColor('#7FA8FF')
-        .padding({ left: 8, right: 8 })
-        .onClick((): void => this.goDay(1))
-      // 视图切换：日 | 三日。
-      // ⚠️ 用户明确删掉了整周列表视图（"功能鸡肋"），不要再加第三档。
-      ChipButton({
-        text: '日',
-        selected: this.viewCols <= COLS_DAY,
-        fontSize: LAYOUT.cardSub,
-        onTap: (): void => this.setViewCols(COLS_DAY)
-      })
-      ChipButton({
-        text: '三日',
-        selected: this.viewCols === COLS_THREE,
-        fontSize: LAYOUT.cardSub,
-        onTap: (): void => this.setViewCols(COLS_THREE)
-      })
-      Text('今天')
-        .fontSize(LAYOUT.tray)
-        .fontColor('#7FA8FF')
-        .margin({ left: 4 })
-        .onClick((): void => this.goToday())
+      .width('100%')
     }
     .width('100%')
-    .padding({ left: 8, right: 12, top: 10, bottom: 8 })
+    .padding({ left: 8, right: 12, top: 8, bottom: 8 })
     .glassSheet()
   }
 
@@ -3905,15 +4463,8 @@ export struct PlanDayView {
             this.activateColumn(cd);
             this.onBlockTap(b);
           })
-          .gesture(
-            PinchGesture({ fingers: 2 })
-              .onActionStart((): void => {
-                this.activateColumn(cd);
-                this.beginPinch(b);
-              })
-              .onActionUpdate((event: GestureEvent): void => this.updatePinch(b, event))
-              .onActionEnd((): void => this.endPinch(b))
-          )
+          // 改时长的双指不挂在块上：日/三日画布的整块根节点统一处理
+          //（选中块 → 改时长；没选中 → 切档），见 DayCanvas 的 onGridPinch*。
           .parallelGesture(
             LongPressGesture({ repeat: false, duration: 400, fingers: 1 })
               .onAction((): void => {
@@ -4039,6 +4590,281 @@ export struct PlanDayView {
    *       └ 连续 CANVAS_DAYS 天：当前日 = 可编辑的 `PlanGrid`，其余 = 同格式只读列
    * 中间那列必须把 `PlanGrid` 整体左移 AXIS_W（它的坐标含时间轴，而时间轴已经固定在外层）。
    */
+  // ---------------- 周视图渲染（整周 + 整天一屏，所有内容只读）----------------
+
+  private weekHours(): number[] {
+    const out: number[] = [];
+    for (let m: number = this.ax().startMin; m <= this.ax().endMin; m += 60) {
+      out.push(m);
+    }
+    return out;
+  }
+
+  private weekCourseTitle(s: CourseSession): string {
+    return s.course.shortName.length > 0 ? s.course.shortName : s.course.name;
+  }
+
+  private weekCourseColor(s: CourseSession): string {
+    return this.colorOf(s.course.id);
+  }
+
+  private weekPlanColor(b: PlanBlock): string {
+    const id: number = this.blockCourseId(b);
+    return id > 0 ? this.colorOf(id) : '#6B778A';
+  }
+
+  /**
+   * 周视图的列头：63 天（9 周），跟着横向周页一起滑。
+   * 只有 28vp 高，日期 + 星期各一行，字号很小。
+   */
+  @Builder
+  WeekHeaderRow() {
+    Row() {
+      ForEach(this.weekDates, (cd: string, i: number) => {
+        Column() {
+          Text(weekHeaderDateText(cd))
+            .fontSize(this.weekHourFont())
+            .fontColor(cd === this.date ? '#F2F5FA' : '#9BA7BD')
+            .maxLines(1)
+          Text(weekHeaderWeekdayText(cd))
+            .fontSize(this.weekHourFont())
+            .fontColor(cd === formatDate(today()) ? '#7FA8FF'
+              : (cd === this.date ? '#DCE6F6' : '#7E8A9F'))
+            .maxLines(1)
+        }
+        .width(this.weekColW())
+        .height(WEEK_HEAD_H)
+        .justifyContent(FlexAlign.Center)
+        .alignItems(HorizontalAlign.Center)
+        .backgroundColor(cd === this.date ? 'rgba(255,255,255,0.09)' : 'rgba(255,255,255,0.025)')
+        .border({ width: { right: 1 }, color: 'rgba(255,255,255,0.06)' })
+      }, (cd: string) => `wh-${cd}-${cd === this.date}`)
+    }
+    .height(WEEK_HEAD_H)
+  }
+
+  /** 周视图的时间轴：每小时一条字（整周整天一屏，字很小） */
+  @Builder
+  WeekAxis() {
+    Stack({ alignContent: Alignment.TopStart }) {
+      ForEach(this.weekHours(), (m: number) => {
+        Text(minToHHmm(m))
+          .fontSize(this.weekHourFont())
+          .fontColor('#8B97AC')
+          .width(AXIS_W - 6)
+          .textAlign(TextAlign.End)
+          .position({ x: 0, y: Math.max(0, this.weekY(m) - 5) })
+      }, (m: number) => `wax-${m}`)
+    }
+    .width(AXIS_W)
+    .height(this.weekGridHeight())
+  }
+
+  /** 周视图的课程：复用日/三日的灰底块、课名/教室排版，只是整体按比例缩小 */
+  @Builder
+  WeekCourseBand(s: CourseSession) {
+    Stack({ alignContent: Alignment.TopStart }) {
+      if (this.weekBlockH(s.startMin, s.endMin) >= this.weekTwoLineH()) {
+        Column() {
+          Text(this.weekCourseTitle(s))
+            .fontSize(this.weekTitleFont())
+            .lineHeight(this.weekTitleFont())
+            .fontColor('#A9B5C9')
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+          Text(s.location)
+            .fontSize(this.weekSubFont())
+            .lineHeight(this.weekSubFont())
+            .fontColor('#8B97AC')
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+        }
+        .alignItems(HorizontalAlign.Start)
+      } else if (weekBlockTitleVisible(this.weekBlockH(s.startMin, s.endMin))) {
+        Text(this.weekCourseTitle(s))
+          .fontSize(this.weekTitleFont())
+          .lineHeight(this.weekTitleFont())
+          .fontColor('#A9B5C9')
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+      }
+    }
+    .width('100%')
+    .height(this.weekBlockH(s.startMin, s.endMin))
+    .padding({ left: this.weekPad(), right: this.weekPad(),
+      top: this.weekBandTopPad(this.weekBlockH(s.startMin, s.endMin)),
+      bottom: this.weekBandTopPad(this.weekBlockH(s.startMin, s.endMin)) })
+    .backgroundColor('rgba(255,255,255,0.10)')
+    .borderRadius(this.weekRadius())
+    .position({ x: 0, y: this.weekY(s.startMin) })
+    .hitTestBehavior(HitTestMode.None)
+  }
+
+  /**
+   * 周视图的计划块：和日/三日同一套「圆圈 + 标题 + 副文字」；高度不够就只留圆圈+标题，
+   * 再不够只留色带。用户要求 15 分钟以上的块标题都显示（屏太矮时按高度裁掉）。
+   */
+  @Builder
+  WeekPlanBand(b: PlanBlock) {
+    Stack({ alignContent: Alignment.TopStart }) {
+      if (this.weekBlockH(b.startMin, b.endMin) >= this.weekTwoLineH()) {
+        Row() {
+          Text(b.done ? '●' : '○')
+            .fontSize(this.weekTitleFont())
+            .lineHeight(this.weekTitleFont())
+            .fontColor(b.done ? '#7FA8FF' : '#FFFFFF')
+            .margin({ right: this.weekPad() })
+          Column() {
+            Text(this.blockTitle(b))
+              .fontSize(this.weekTitleFont())
+              .lineHeight(this.weekTitleFont())
+              .fontWeight(FontWeight.Medium)
+              .fontColor('#F2F5FA')
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+            Text(this.blockSubText(b))
+              .fontSize(this.weekSubFont())
+              .lineHeight(this.weekSubFont())
+              .fontColor('#CBD6E8')
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+          }
+          .alignItems(HorizontalAlign.Start)
+          .layoutWeight(1)
+        }
+        .alignItems(VerticalAlign.Top)
+      } else if (weekBlockTitleVisible(this.weekBlockH(b.startMin, b.endMin))) {
+        Row() {
+          Text(b.done ? '●' : '○')
+            .fontSize(this.weekTitleFont())
+            .lineHeight(this.weekTitleFont())
+            .fontColor(b.done ? '#7FA8FF' : '#FFFFFF')
+            .margin({ right: this.weekPad() })
+          Text(this.blockTitle(b))
+            .fontSize(this.weekTitleFont())
+            .lineHeight(this.weekTitleFont())
+            .fontWeight(FontWeight.Medium)
+            .fontColor('#F2F5FA')
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .layoutWeight(1)
+        }
+        .alignItems(VerticalAlign.Center)
+      }
+    }
+    .width('100%')
+    .height(this.weekBlockH(b.startMin, b.endMin))
+    .padding({ left: this.weekPad(), right: this.weekPad(),
+      top: this.weekBandTopPad(this.weekBlockH(b.startMin, b.endMin)),
+      bottom: this.weekBandTopPad(this.weekBlockH(b.startMin, b.endMin)) })
+    .backgroundColor(this.weekPlanColor(b))
+    .opacity(b.done ? 0.5 : 0.95)
+    .borderRadius(this.weekRadius())
+    .position({ x: 0, y: this.weekY(b.startMin) })
+    .hitTestBehavior(HitTestMode.None)
+  }
+
+  /** 周视图的一列：只读；点击整列 → 放大到那天的三日视图 */
+  @Builder
+  WeekColumn(cd: string, ss: CourseSession[], bb: PlanBlock[]) {
+    Stack({ alignContent: Alignment.TopStart }) {
+      // 小时线
+      ForEach(this.weekHours(), (m: number) => {
+        Column()
+          .width('100%')
+          .height(1)
+          .backgroundColor('rgba(255,255,255,0.07)')
+          .position({ x: 0, y: this.weekY(m) })
+      }, (m: number) => `wline-${cd}-${m}`)
+      // 禁排底纹
+      ForEach(this.restsOf(cd), (w: RestWindow) => {
+        Column()
+          .width('100%')
+          .height(this.weekBlockH(w.startMin, w.endMin))
+          .backgroundColor('rgba(255,255,255,0.045)')
+          .position({ x: 0, y: this.weekY(w.startMin) })
+      }, (w: RestWindow) => `wrest-${cd}-${w.id}-${w.startMin}`)
+      // 课程
+      ForEach(ss, (s: CourseSession) => {
+        this.WeekCourseBand(s)
+      }, (s: CourseSession) => `wcourse-${cd}-${s.rule.id}-${s.startMin}`)
+      // 计划块
+      ForEach(bb, (b: PlanBlock) => {
+        this.WeekPlanBand(b)
+      }, (b: PlanBlock) => `wblock-${cd}-${b.id}-${b.startMin}-${b.endMin}-${b.done}`)
+      // 今天 + 现在：只在可见周包含今天时画
+      if (cd === formatDate(today()) && this.nowMin >= this.ax().startMin
+        && this.nowMin <= this.ax().endMin) {
+        Column()
+          .width('100%')
+          .height(1)
+          .backgroundColor('#FF5A6A')
+          .position({ x: 0, y: this.weekY(this.nowMin) })
+      }
+    }
+    .width(this.weekColW())
+    .height(this.weekGridHeight())
+    .clip(true)
+    .onAreaChange((oldArea: Area, newArea: Area): void => {
+      const y: Length | undefined = newArea.globalPosition.y;
+      if (typeof y === 'number') {
+        this.weekGridTop = y;
+      }
+    })
+    .onClick((event: ClickEvent): void => this.onWeekTap(cd, event))
+  }
+
+  /**
+   * 周视图画布：9 周（63 天）横向页，一屏正好 7 天（周一→周日），整天压到一屏。
+   * 所有内容只读；点击 → 三日；捏合放大 → 三日；横向滑 → 上一周/下一周。
+   */
+  @Builder
+  WeekCanvas() {
+    Row() {
+      Column() {
+        Blank()
+          .width(AXIS_W)
+          .height(WEEK_HEAD_H)
+        this.WeekAxis()
+      }
+      .width(AXIS_W)
+      .height(this.weekTotalH())
+
+      Scroll(this.weekScroller) {
+        Column() {
+          this.WeekHeaderRow()
+          Row() {
+            ForEach(this.weekDates, (cd: string, i: number) => {
+              this.WeekColumn(cd, this.weekSessions[i], this.weekBlocks[i])
+            }, (cd: string, i: number) =>
+              `wcol-${cd}-${i < this.weekSessions.length ? this.weekSessions[i].length : 0}`
+                + `-${i < this.weekBlocks.length ? this.weekBlocks[i].length : 0}-${this.paletteRaw}`)
+          }
+          .height(this.weekGridHeight())
+        }
+      }
+      .layoutWeight(1)
+      .height(this.weekTotalH())
+      .scrollable(ScrollDirection.Horizontal)
+      .scrollBar(BarState.Off)
+      .edgeEffect(EdgeEffect.Spring)
+      .onScrollStop((): void => this.onWeekScrollStop())
+      .onAreaChange((oldArea: Area, newArea: Area): void => {
+        const w: Length | undefined = newArea.width;
+        if (typeof w === 'number' && w > 0 && Math.abs(w - this.weekCenteredW) > 1) {
+          this.weekCenteredW = w;
+          setTimeout((): void => this.scrollWeekToPage(this.weekPage, false), 0);
+        }
+      })
+      .parallelGesture(
+        PinchGesture({ fingers: 2 })
+          .onActionEnd((event: GestureEvent): void => this.onWeekPinchEnd(event))
+      )
+    }
+    .width('100%')
+    .height(this.weekTotalH())
+  }
+
   /** 三日画布的列头：跟着横向画布一起左右滑，不在外层固定 */
   @Builder
   CanvasHeaderRow() {
@@ -4202,6 +5028,14 @@ export struct PlanDayView {
     }
     .width('100%')
     .height(this.gridH() + (this.viewCols > COLS_DAY ? H_COLHEAD : 0))
+    // 全局双指：选中块 = 改时长（捏哪儿都行）；没选中 = 切档。
+    // 用 parallelGesture 是为了不和横向 Scroll / 长按拖块抢手势。
+    .parallelGesture(
+      PinchGesture({ fingers: 2 })
+        .onActionStart((event: GestureEvent): void => this.onGridPinchStart(event))
+        .onActionUpdate((event: GestureEvent): void => this.onGridPinchUpdate(event))
+        .onActionEnd((event: GestureEvent): void => this.onGridPinchEnd(event))
+    )
   }
 
   build() {
@@ -4210,8 +5044,12 @@ export struct PlanDayView {
         // 时间网格
         Scroll(this.gridScroller) {
           Column() {
-            // 单日 / 三日都用同一块大画布（三日多一行随画布横向滚动的列头）
-            this.DayCanvas()
+            // 日 / 三日：31 天横向画布；周：9 周窗口 + 整周整天一屏
+            if (this.zoomLevel === 7) {
+              this.WeekCanvas()
+            } else {
+              this.DayCanvas()
+            }
           }
           .width('100%')
           // ⚠️ 给上面那叠浮窗让位，而且必须加在**滚动内容**上（不是视口上）：
@@ -4221,8 +5059,11 @@ export struct PlanDayView {
           .padding({
             top: this.topBarsBlockH() + FLOAT_GAP,
             // ⚠️ `+ DDL_MARK_ALLOW`：截止标记会从网格底边往下挂出一行，
-            // 不留余量就会被悬浮货架盖掉下半截（用户实测发现的）
-            bottom: this.bottomInset + FLOAT_GAP + this.bottomPaneH + FLOAT_GAP + DDL_MARK_ALLOW
+            // 不留余量就会被悬浮货架盖掉下半截（用户实测发现的）。
+            // 周视图整天一屏、没有 DDL 标记，不留这段余量。
+            bottom: this.zoomLevel === 7
+              ? this.bottomInset + FLOAT_GAP + this.bottomPaneH + FLOAT_GAP
+              : this.bottomInset + FLOAT_GAP + this.bottomPaneH + FLOAT_GAP + DDL_MARK_ALLOW
           })
         }
         .layoutWeight(1)
@@ -4230,7 +5071,7 @@ export struct PlanDayView {
         .align(Alignment.TopStart)
         // 长按武装之后禁止 Scroll 自己滚动 —— 移动块时屏幕要钉住，
         // 只有块靠近上/下边缘时由 updateEdgeScroll() 用代码滚。
-        .enableScrollInteraction(!this.gridScrollLocked)
+        .enableScrollInteraction(this.zoomLevel !== 7 && !this.gridScrollLocked)
         // 量出网格**可视区**的上下边界（窗口坐标），拖动时用它判断是否进入边缘自动滚动区。
         // 注意量的是 Scroll 本身（视口），不是里面那个 1080vp 高的内容 Stack。
         .onAreaChange((oldArea: Area, newArea: Area): void => {
@@ -4286,7 +5127,9 @@ export struct PlanDayView {
       // 浮在悬浮导航栏之上。货架和导航栏刻意用不同材质（压暗 + 小一号圆角 +
       // 收敛阴影），两层叠在一起才有层次感，而不是两块一样的玻璃（用户要求）。
       Column() {
-        if (this.trayOpen) {
+        if (this.zoomLevel === 7) {
+          this.WeekTrayBar()
+        } else if (this.trayOpen) {
           this.TodoPool()
         } else {
           this.TraySummonBar()
@@ -4345,6 +5188,19 @@ export struct PlanDayView {
             .animation({ duration: dur(DUR_DRAWER), curve: curveOrLinear(drawerCurve) }))
           .onClick((): void => this.closeEditor())
         this.BlockEditor(this.editingBlock)
+      }
+
+      // 切档蒙版：日 ⇄ 三日 ⇄ 周时盖一层半透明毛玻璃，换完再淡出。
+      // 用户要的是「类似蒙版的、幻一点的」过渡；不做连续跟手缩放。
+      if (this.zoomMask > 0) {
+        Column()
+          .width('100%')
+          .height('100%')
+          .backgroundColor('rgba(6,10,18,0.52)')
+          .backdropBlur(6)
+          .opacity(this.zoomMask)
+          .hitTestBehavior(HitTestMode.Block)
+          .zIndex(100)
       }
     }
     .width('100%')

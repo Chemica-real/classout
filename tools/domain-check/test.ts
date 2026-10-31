@@ -26,6 +26,7 @@ import { timetableNowY } from './NowLine';
 import { groupActiveTodos, isOverdue, remainText, sortDoneTodos, TodoGroups } from './TodoGroups';
 import { normalizeDefaultTab, tabLabel, TAB_PLAN, TAB_SETTINGS, TAB_TIMETABLE, TAB_TODO } from './Launch';
 import { courseColorOf, DEFAULT_PALETTE, hexToHsv, hsvToHex, normalizeHex, PALETTE_SIZE, paletteColor, parsePalette, serializePalette } from './Palette';
+import { WEEK_CENTER, WEEK_DAYS, WEEK_PAGES, WEEK_TITLE_MIN_H, weekBlockTitleVisible, weekDatesOf, weekHeaderDateText, weekHeaderWeekdayText, weekMinuteY, weekNumberLabel, weekPageDates, weekPageEnd, weekPageFromOffset, weekPageOfDate, weekPageOffset, weekPageStart, weekRangeText, weekStartOf, weekTapMinute } from './WeekView';
 import { countdownText, formatDateTime, minToHHmm, parseDate, parseDateTime } from './DateUtil';
 import { computeDdl, renderTitle } from './TodoGenRules';
 import { TimeAxis, DEFAULT_WINDOW, WINDOW_MAX_END, WINDOW_MIN_SPAN, WINDOW_SNAP_MIN,
@@ -1554,7 +1555,7 @@ check('allCategoryOptions = 内置 + 自定义',
 // ---------- 新手演练的步骤脚本（用户 2026-10-15）----------
 console.log('【新手演练：步骤脚本】');
 
-check('步骤数固定为 8（改了要同步核对引导条）', `${guideStepCount()}`, '8');
+check('步骤数固定为 9（改了要同步核对引导条）', `${guideStepCount()}`, '9');
 check('每一步的标签页都在 0..3 内', `${guideTabsValid()}`, 'true');
 check('每一步都有标题和正文', `${guideTextsNonEmpty()}`, 'true');
 check('第 1 步在课表页', `${guideStepAt(0).tab}`, `${GuideTab.Timetable}`);
@@ -1562,6 +1563,7 @@ check('待办那一步切到待办页',
   `${guideStepAt(2).tab === GuideTab.Todo && guideStepAt(3).tab === GuideTab.Todo}`, 'true');
 check('计划那一步切到计划页', `${guideStepAt(4).tab}`, `${GuideTab.Plan}`);
 check('「改时间/拆块」那一步也在计划页', `${guideStepAt(5).tab}`, `${GuideTab.Plan}`);
+check('「双指缩放视图」那一步也在计划页', `${guideStepAt(6).tab}`, `${GuideTab.Plan}`);
 check('最后一步在设置页（完成按钮就在那儿）', `${guideStepAt(guideStepCount() - 1).tab}`, `${GuideTab.Settings}`);
 check('越界下标退回最后一步', `${guideStepAt(99).title === guideStepAt(guideStepCount() - 1).title}`, 'true');
 check('负数下标退回第 1 步', `${guideStepAt(-3).title === guideStepAt(0).title}`, 'true');
@@ -1624,6 +1626,48 @@ check('闲置很久当然重启',
   `${shouldRestartAfterIdle(6 * 60 * 60 * 1000, 10)}`, 'true');
 check('时钟回拨（负数）不重启', `${shouldRestartAfterIdle(-1000, 10)}`, 'false');
 check('n=5 时 10 分钟就该重启', `${shouldRestartAfterIdle(10 * 60 * 1000, 5)}`, 'true');
+
+
+// ---------- 周视图几何 / 周号（2026-10-31 捏合缩周）----------
+console.log('【周视图：周一起始 / 7 天 / 周页 / 点到分钟的换算】');
+
+check('某天所在周的周一是 10/26', weekStartOf('2026-10-31'), '2026-10-26');
+check('周日仍归本周（10/26 周一）', weekStartOf('2026-11-01'), '2026-10-26');
+const wd7: string[] = weekDatesOf('2026-10-31');
+check('一周 7 天', `${wd7.length}`, `${WEEK_DAYS}`);
+check('周一列 = 10/26', wd7[0], '2026-10-26');
+check('周日列 = 11/1', wd7[6], '2026-11-01');
+const wp: string[] = weekPageDates('2026-10-31');
+check('周页日期数 = 9 周 × 7 天', `${wp.length}`, `${WEEK_PAGES * WEEK_DAYS}`);
+check('当前周在正中页（下标 4）', `${weekPageOfDate('2026-10-31', wp)}`, `${WEEK_CENTER}`);
+check('正中页周一 = 10/26', weekPageStart(wp, WEEK_CENTER), '2026-10-26');
+check('正中页周日 = 11/1', weekPageEnd(wp, WEEK_CENTER), '2026-11-01');
+check('9 周窗口最左 = 9/28', wp[0], '2026-09-28');
+check('9 周窗口最右 = 11/29', wp[wp.length - 1], '2026-11-29');
+check('周范围文案', weekRangeText('2026-10-26', '2026-11-01'), '10/26 ~ 11/1');
+check('周头日期', weekHeaderDateText('2026-10-26'), '10/26');
+check('周头星期', weekHeaderWeekdayText('2026-10-26'), '周一');
+
+const semWeek: Semester = {
+  id: 1, name: 'test', startDate: '2026-09-07', totalWeeks: 16,
+  firstDayOfWeek: 1, showWeekend: true
+};
+check('10/26 是第 8 周', weekNumberLabel(semWeek, '2026-10-26'), '第 8 周');
+check('学期外写假期', weekNumberLabel(semWeek, '2026-09-01'), '假期');
+
+check('分钟 → y（600 分钟）', `${weekMinuteY(600, 420, 1440, 500).toFixed(2)}`, '88.24');
+check('y → 分钟（往返）', `${Math.round(weekTapMinute(88.23529411764706, 420, 1440, 500))}`, '600');
+check('点击超出下边界被夹住', `${Math.round(weekTapMinute(9999, 420, 1440, 500))}`, '1440');
+check('点击超出上边界被夹住', `${Math.round(weekTapMinute(-50, 420, 1440, 500))}`, '420');
+check('15 分钟的块高（约 7.35vp）能画标题', `${weekBlockTitleVisible(7.35)}`, 'true');
+check('5 分钟的块高（约 2.45vp）不画标题', `${weekBlockTitleVisible(2.45)}`, 'false');
+check('标题最小高度就是 6vp', `${WEEK_TITLE_MIN_H}`, '6');
+
+check('第 4 页的滚动位置', `${weekPageOffset(4, 300)}`, '1200');
+check('滚动位置 → 最近周页', `${weekPageFromOffset(1300, 300, 9)}`, '4');
+check('再远一点 → 下一页', `${weekPageFromOffset(1500, 300, 9)}`, '5');
+check('最左夹到 0', `${weekPageFromOffset(-999, 300, 9)}`, '0');
+check('最右夹到 8', `${weekPageFromOffset(99999, 300, 9)}`, '8');
 
 // ---------- 汇总 ----------
 console.log('');

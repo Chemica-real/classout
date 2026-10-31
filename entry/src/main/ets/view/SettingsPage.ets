@@ -1692,7 +1692,7 @@ export struct SettingsPage {
         .margin({ top: 4 })
         .onClick((): void => this.onStartGuide())
 
-      Text('演练期间右下角会有一条「第 n/N 步」的引导条，跟着点就行；随时可以「退出演练」。')
+      Text('演练期间右下角会有一条「第 n/N 步」的引导条，跟着点就行；计划页的双指缩放（日 / 三日 / 周）也在里面。随时可以「退出演练」。')
         .fontSize(11)
         .fontColor('#8B97AC')
         .width('100%')
