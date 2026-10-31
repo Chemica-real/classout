@@ -530,23 +530,32 @@ export struct PlanDayView {
     return w > 0 ? w : 0;
   }
 
-  /** 大画布的单日列宽 = 视口宽 − 时间轴（和单日视图一致） */
+  /**
+   * 大画布的单日列宽。单日视图 = 内容区整宽；三日视图 = 内容区 / 3。
+   * 两档共用同一份 31 天画布，只是可视窗口宽度不同。
+   */
   private canvasColW(): number {
-    return this.pagerPageW();
+    const w: number = this.pagerPageW();
+    if (this.viewCols > COLS_DAY) {
+      return w / this.viewCols;
+    }
+    return w;
   }
 
-  /** 把画布回中到窗口正中（当前日期） */
+  /**
+   * 把画布回中到「当前日期」：
+   *   单日视图 → 当前列占满视口（下标 15 在左边缘）；
+   *   三日视图 → 当前列在正中（下标 15 在中间，左边 14、右边 16）。
+   */
   private centerCanvas(): void {
-    if (this.viewCols > COLS_DAY) {
-      return;
-    }
     const w: number = this.canvasColW();
     if (w <= 0) {
       return;
     }
+    const centerIdx: number = this.viewCols > COLS_DAY ? CANVAS_CENTER - 1 : CANVAS_CENTER;
     this.pagerSnapping = true;
     this.suppressCanvasStopUntil = Date.now() + 500;
-    this.hScroller.scrollTo({ xOffset: CANVAS_CENTER * w, yOffset: 0, animation: false });
+    this.hScroller.scrollTo({ xOffset: centerIdx * w, yOffset: 0, animation: false });
     setTimeout((): void => {
       this.pagerSnapping = false;
     }, 420);
@@ -559,8 +568,7 @@ export struct PlanDayView {
    * 完整渲染的，吸附后只需要把 `this.date` 换成那一天，然后把窗口在边上时重建。
    */
   private onCanvasScrollStop(): void {
-    if (this.viewCols > COLS_DAY || this.pagerSnapping
-      || Date.now() < this.suppressCanvasStopUntil) {
+    if (this.pagerSnapping || Date.now() < this.suppressCanvasStopUntil) {
       return;
     }
     const w: number = this.canvasColW();
@@ -568,14 +576,18 @@ export struct PlanDayView {
       return;
     }
     const x: number = this.hScroller.currentOffset().xOffset;
-    let idx: number = Math.round(x / w);
-    if (idx < 0) {
-      idx = 0;
+    const three: boolean = this.viewCols > COLS_DAY;
+    // 三日视图：可视 3 列，吸附到**中间那一列**（和旧的「当前日期在中间」语义一致）
+    let idx: number = three ? Math.round(x / w) + 1 : Math.round(x / w);
+    const lo: number = three ? 1 : 0;
+    const hi: number = three ? CANVAS_DAYS - 2 : CANVAS_DAYS - 1;
+    if (idx < lo) {
+      idx = lo;
     }
-    if (idx > CANVAS_DAYS - 1) {
-      idx = CANVAS_DAYS - 1;
+    if (idx > hi) {
+      idx = hi;
     }
-    const target: number = idx * w;
+    const target: number = three ? (idx - 1) * w : idx * w;
     if (Math.abs(x - target) > 0.5) {
       this.pagerSnapping = true;
       this.hScroller.scrollTo({ xOffset: target, yOffset: 0, animation: true });
@@ -588,7 +600,7 @@ export struct PlanDayView {
       this.date = nd;
       this.sessions = this.canvasSessions[idx];
       this.blocks = this.canvasBlocks[idx];
-      this.colDates = [nd];
+      this.colDates = dayDates(nd, this.viewCols);
       this.pagerDates = dayDates(nd, 3);
       // 三日视图的左右列也一起换，免得滑完立刻切三日看到旧数据
       if (idx > 0) {
@@ -608,6 +620,38 @@ export struct PlanDayView {
       this.rebuildCanvasWindow();
       setTimeout((): void => this.centerCanvas(), 0);
     }
+  }
+
+  /**
+   * 三日画布里点侧列：把那一天变成当前日并吸附到中间（侧列只读，先点一下再编辑）。
+   * 单日画布没有可见的侧列，用不到。
+   */
+  private centerOnColumn(cd: string): void {
+    if (cd === this.date) {
+      return;
+    }
+    const i: number = this.canvasDates.indexOf(cd);
+    if (i < 0) {
+      return;
+    }
+    this.date = cd;
+    this.sessions = this.canvasSessions[i];
+    this.blocks = this.canvasBlocks[i];
+    this.colDates = dayDates(cd, this.viewCols);
+    this.pagerDates = dayDates(cd, 3);
+    if (i > 0) {
+      this.leftSessions = this.canvasSessions[i - 1];
+      this.leftBlocks = this.canvasBlocks[i - 1];
+    }
+    if (i < CANVAS_DAYS - 1) {
+      this.rightSessions = this.canvasSessions[i + 1];
+      this.rightBlocks = this.canvasBlocks[i + 1];
+    }
+    this.selectedBlockId = 0;
+    this.closeEditor();
+    // 以新日期为中心重切窗口再回中（数据来自缓存，不查库）
+    this.rebuildCanvasWindow();
+    setTimeout((): void => this.centerCanvas(), 0);
   }
 
   /** 中心列下标 = 当前查看日所在的那一列 */
@@ -735,9 +779,9 @@ export struct PlanDayView {
     this.selectedBlockId = 0;
     this.closeEditor();
     this.rebuildCanvasWindow();
-    if (cols <= COLS_DAY) {
-      setTimeout((): void => this.centerCanvas(), 0);
-    }
+    // ⚠️ 单日和三日都要回中：三日的回中位置比单日少一列（当前日在中间），
+    //    不回中就会停在"当前日在最左边"的旧偏移上。
+    setTimeout((): void => this.centerCanvas(), 0);
   }
 
   private context(): common.UIAbilityContext {
@@ -3915,50 +3959,120 @@ export struct PlanDayView {
    *       └ 连续 CANVAS_DAYS 天：当前日 = 可编辑的 `PlanGrid`，其余 = 同格式只读列
    * 中间那列必须把 `PlanGrid` 整体左移 AXIS_W（它的坐标含时间轴，而时间轴已经固定在外层）。
    */
+  /** 三日画布的列头：跟着横向画布一起左右滑，不在外层固定 */
+  @Builder
+  CanvasHeaderRow() {
+    Row() {
+      ForEach(this.canvasDates, (cd: string, i: number) => {
+        Column() {
+          Text(columnHeaderText(cd))
+            .fontSize(LAYOUT.tray)
+            .fontWeight(cd === this.date ? FontWeight.Medium : FontWeight.Normal)
+            .fontColor(cd === this.date ? '#F2F5FA' : '#A9B5C9')
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+          if (cd === formatDate(today())) {
+            Text('今天')
+              .fontSize(LAYOUT.cardSub)
+              .fontColor('#7FA8FF')
+              .margin({ top: 1 })
+          }
+        }
+        .width(this.canvasColW())
+        .height(H_COLHEAD)
+        .justifyContent(FlexAlign.Center)
+        .alignItems(HorizontalAlign.Center)
+        .backgroundColor(cd === this.date ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.03)')
+        .border({ width: { right: 1 }, color: 'rgba(255,255,255,0.08)' })
+        .onClick((): void => {
+          if (cd !== this.date) {
+            this.centerOnColumn(cd);
+          }
+        })
+      }, (cd: string) => `ch-${cd}-${cd === this.date}`)
+    }
+    .height(H_COLHEAD)
+  }
+
+  /**
+   * 大画布（单日 / 三日共用）。
+   *
+   * 用户 2026-10-30：「实时渲染周围好几天…像大画布一样…四处移动，惯性停止后吸附最近一天」。
+   * 用户 2026-10-31：「三日画布同款做好」。
+   *
+   * 结构：
+   *   固定时间轴（单日时无列头；三日时上面空出 H_COLHEAD）
+   *   └ 横向 Scroll（惯性）
+   *       ├ 三日列的列头（和画布一起左右滑）
+   *       └ 连续 CANVAS_DAYS 天的完整列（PagerPreview）；当前选中日挂手势
+   *
+   * 单日：列宽 = 内容区整宽，当前列占满视口。
+   * 三日：列宽 = 内容区 / 3，当前列在正中，左右各一天；吸附也是吸到中间那一列。
+   */
   @Builder
   DayCanvas() {
     Row() {
-      this.AxisLabels()
-      Scroll(this.hScroller) {
-        Row() {
-          ForEach(this.canvasDates, (cd: string, i: number) => {
-            // 每一列都用**同一套完整渲染**（PagerPreview）；只有当前选中日挂手势。
-            // 这样吸附换日时不会把一个重的 PlanGrid 塞进新列再销毁旧列 —— 那正是
-            // "闪一下"的来源。所有列都是同样的节点，换日只是 interactive 开关换给另一列。
-            Stack({ alignContent: Alignment.TopStart }) {
-              this.PagerPreview(cd, this.canvasSessions[i], this.canvasBlocks[i], cd === this.date)
-            }
-            .width(this.canvasColW())
-            .height(this.gridH())
-            .clip(true)
-            .onAreaChange((oldArea: Area, newArea: Area): void => {
-              if (cd !== this.date) {
-                return;
-              }
-              const y: Length | undefined = newArea.globalPosition.y;
-              if (typeof y === 'number') {
-                this.gridTop = y;
-              }
-            })
-            .onClick((event: ClickEvent): void => {
-              if (cd === this.date) {
-                this.onGridTap(event);
-              }
-            })
-            .onDrop((event: DragEvent, extraParams: string): void => {
-              if (cd === this.date) {
-                this.onPoolDrop(event);
-              }
-            })
-          }, (cd: string, i: number) =>
-            `daycell-${cd}-${cd === this.date}-${i}`
-              + `-${i < this.canvasSessions.length ? this.canvasSessions[i].length : 0}`
-              + `-${i < this.canvasBlocks.length ? this.canvasBlocks[i].length : 0}-${this.paletteRaw}`)
+      // 固定时间轴：三日视图上方留出列头的高度
+      Column() {
+        if (this.viewCols > COLS_DAY) {
+          Blank()
+            .width(AXIS_W)
+            .height(H_COLHEAD)
+            .backgroundColor('rgba(255,255,255,0.03)')
         }
-        .height(this.gridH())
+        this.AxisLabels()
+      }
+      .width(AXIS_W)
+      .height(this.gridH() + (this.viewCols > COLS_DAY ? H_COLHEAD : 0))
+
+      Scroll(this.hScroller) {
+        Column() {
+          if (this.viewCols > COLS_DAY) {
+            this.CanvasHeaderRow()
+          }
+          Row() {
+            ForEach(this.canvasDates, (cd: string, i: number) => {
+              // 每一列都用**同一套完整渲染**（PagerPreview）；只有当前选中日挂手势。
+              // 换日只切换 interactive 开关，不再把重的 PlanGrid 塞进新列再销毁旧列 —— 那正是
+              // "闪一下"的来源。所有列都是同样的节点。
+              Stack({ alignContent: Alignment.TopStart }) {
+                this.PagerPreview(cd, this.canvasSessions[i], this.canvasBlocks[i], cd === this.date)
+              }
+              .width(this.canvasColW())
+              .height(this.gridH())
+              .clip(true)
+              .onAreaChange((oldArea: Area, newArea: Area): void => {
+                if (cd !== this.date) {
+                  return;
+                }
+                const y: Length | undefined = newArea.globalPosition.y;
+                if (typeof y === 'number') {
+                  this.gridTop = y;
+                }
+              })
+              .onClick((event: ClickEvent): void => {
+                if (cd === this.date) {
+                  this.onGridTap(event);
+                } else {
+                  // 三日画布里侧列只读：点一下把它吸到中间（再点就是编辑了）
+                  this.centerOnColumn(cd);
+                }
+              })
+              .onDrop((event: DragEvent, extraParams: string): void => {
+                if (cd === this.date) {
+                  this.onPoolDrop(event);
+                }
+              })
+            }, (cd: string, i: number) =>
+              `daycell-${cd}-${cd === this.date}-${i}`
+                + `-${i < this.canvasSessions.length ? this.canvasSessions[i].length : 0}`
+                + `-${i < this.canvasBlocks.length ? this.canvasBlocks[i].length : 0}-${this.paletteRaw}`)
+          }
+          .height(this.gridH())
+        }
       }
       .layoutWeight(1)
-      .height(this.gridH())
+      .height(this.gridH() + (this.viewCols > COLS_DAY ? H_COLHEAD : 0))
       .scrollable(ScrollDirection.Horizontal)
       .scrollBar(BarState.Off)
       .edgeEffect(EdgeEffect.Spring)
@@ -3976,7 +4090,7 @@ export struct PlanDayView {
       })
     }
     .width('100%')
-    .height(this.gridH())
+    .height(this.gridH() + (this.viewCols > COLS_DAY ? H_COLHEAD : 0))
   }
 
   build() {
@@ -3985,15 +4099,8 @@ export struct PlanDayView {
         // 时间网格
         Scroll(this.gridScroller) {
           Column() {
-            // 表格自己的表头行：跟着网格一起滚（不是浮窗）。
-            // 单日视图改成横向翻页（没有三列头），三日视图保持原样。
-            if (this.viewCols > COLS_DAY) {
-              this.ColHeadRow()
-              this.PlanGrid()
-            } else {
-              this.DayCanvas()
-            }
-            }
+            // 单日 / 三日都用同一块大画布（三日多一行随画布横向滚动的列头）
+            this.DayCanvas()
           }
           .width('100%')
           // ⚠️ 给上面那叠浮窗让位，而且必须加在**滚动内容**上（不是视口上）：
@@ -4006,6 +4113,7 @@ export struct PlanDayView {
             // 不留余量就会被悬浮货架盖掉下半截（用户实测发现的）
             bottom: this.bottomInset + FLOAT_GAP + this.bottomPaneH + FLOAT_GAP + DDL_MARK_ALLOW
           })
+        }
         .layoutWeight(1)
         .scrollBar(BarState.Off)
         .align(Alignment.TopStart)
