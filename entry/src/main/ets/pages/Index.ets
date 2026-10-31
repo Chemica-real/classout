@@ -117,6 +117,9 @@ struct Index {
   @State sectionTimes: SectionTime[] = [];
   @State week: number = 1;
   @State tab: number = 0;
+  /** 计划页正在看的周（由 PlanDayView 发布；只在该 tab 的页头用） */
+  @StorageLink('planHeaderWeek') planHeaderWeek: string = '';
+  @StorageLink('planHeaderRange') planHeaderRange: string = '';
   @State loading: boolean = true;
   /**
    * 首启「隐私政策」弹窗开着吗（**同意之前什么都不做**）。
@@ -1189,6 +1192,22 @@ struct Index {
     return `${a.getMonth() + 1}/${a.getDate()} — ${b.getMonth() + 1}/${b.getDate()}`;
   }
 
+  /** 页头副标题；计划页用 PlanDayView 发布的正在看的那一周 */
+  private headerRangeText(): string {
+    if (this.tab === 2 && this.planHeaderRange.length > 0) {
+      return this.planHeaderRange;
+    }
+    return this.weekRangeText();
+  }
+
+  /** 页头周号；计划页用正在看的那一周，避免和日期条「第 N 周」打架 */
+  private headerWeekText(): string {
+    if (this.tab === 2 && this.planHeaderWeek.length > 0) {
+      return this.planHeaderWeek;
+    }
+    return `第 ${this.week} 周`;
+  }
+
   private isToday(weekday: number): boolean {
     return weekOfDate(this.semester, today()) === this.week && weekdayOf(today()) === weekday;
   }
@@ -1472,7 +1491,7 @@ struct Index {
             .fontSize(22)
             .fontWeight(FontWeight.Bold)
             .fontColor('#F2F5FA')
-          Text(this.weekRangeText())
+          Text(this.headerRangeText())
             .fontSize(12)
             .fontColor('#94A0B5')
             .margin({ top: 2 })
@@ -1481,20 +1500,26 @@ struct Index {
         .layoutWeight(1)
 
         Row() {
-          Text('‹')
-            .fontSize(22)
-            .fontColor('#7FA8FF')
-            .padding({ left: 10, right: 10 })
-            .onClick((): void => this.goWeek(-1))
-          Text(`第 ${this.week} 周`)
+          // 计划页的周切换在日期条上（周/日/三日），页头这里只显示正在看的周；
+          // 课表/待办页仍保留按周翻课表的左右箭头。
+          if (this.tab !== 2) {
+            Text('‹')
+              .fontSize(22)
+              .fontColor('#7FA8FF')
+              .padding({ left: 10, right: 10 })
+              .onClick((): void => this.goWeek(-1))
+          }
+          Text(this.headerWeekText())
             .fontSize(14)
             .fontWeight(FontWeight.Medium)
             .fontColor('#F2F5FA')
-          Text('›')
-            .fontSize(22)
-            .fontColor('#7FA8FF')
-            .padding({ left: 10, right: 10 })
-            .onClick((): void => this.goWeek(1))
+          if (this.tab !== 2) {
+            Text('›')
+              .fontSize(22)
+              .fontColor('#7FA8FF')
+              .padding({ left: 10, right: 10 })
+              .onClick((): void => this.goWeek(1))
+          }
         }
       }
       .width('100%')

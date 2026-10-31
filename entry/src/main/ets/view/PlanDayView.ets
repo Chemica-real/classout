@@ -673,6 +673,7 @@ export struct PlanDayView {
       }
       this.selectedBlockId = 0;
       this.closeEditor();
+      this.publishPlanWeek();
     }
     // 滑到窗口边上：用**已经缓存好的**学期数据重切 31 天窗口并回中，不查库、不重算，
     // 所以甩到边上也不会闪。重切后新日期还是在正中，用户感觉可以一直滑下去。
@@ -922,6 +923,7 @@ export struct PlanDayView {
       setTimeout((): void => this.scrollWeekToPage(this.weekPage, false), 0);
     } else {
       this.rebuildCanvasWindow();
+      this.publishPlanWeek();
       this.loading = false;
       setTimeout((): void => this.centerCanvas(), 0);
     }
@@ -1059,6 +1061,7 @@ export struct PlanDayView {
     this.weekSessions = ss;
     this.weekBlocks = bb;
     this.weekPage = weekPageOfDate(this.date, dates);
+    this.publishPlanWeek();
   }
 
   private scrollWeekToPage(page: number, animate: boolean): void {
@@ -1116,6 +1119,27 @@ export struct PlanDayView {
     return weekNumberLabel(this.semester, a);
   }
 
+  /**
+   * 把「当前正在看的周」发布给 Index 的页头（周号 + 日期范围）。
+   * 只在计划页 tab 使用；切回课表/待办时 Index 仍用今天所在的教学周。
+   */
+  private publishPlanWeek(): void {
+    if (this.semester === undefined) {
+      return;
+    }
+    const base: string = this.zoomLevel === 7 ? this.weekStart() : weekStartOf(this.date);
+    if (base.length === 0) {
+      return;
+    }
+    const w: number = weekOfDate(this.semester, parseDate(base));
+    const label: string = (w >= 1 && w <= this.semester.totalWeeks) ? `第 ${w} 周` : '假期';
+    const end: Date = addDays(parseDate(base), 6);
+    const a: Date = parseDate(base);
+    const range: string = `${a.getMonth() + 1}/${a.getDate()} — ${end.getMonth() + 1}/${end.getDate()}`;
+    AppStorage.setOrCreate<string>('planHeaderWeek', label);
+    AppStorage.setOrCreate<string>('planHeaderRange', range);
+  }
+
   /** 当前可见周是否是今天那一周 */
   private weekHasToday(): boolean {
     const t: string = formatDate(today());
@@ -1145,6 +1169,7 @@ export struct PlanDayView {
       const delta: number = page - this.weekPage;
       this.date = formatDate(addDays(parseDate(this.date), delta * WEEK_DAYS));
       this.weekPage = page;
+      this.publishPlanWeek();
     }
     // 滑到窗口边上：用缓存重切 9 周窗口并回到正中页（不查库）
     if (page <= 1 || page >= WEEK_PAGES - 2) {
@@ -1225,6 +1250,7 @@ export struct PlanDayView {
     this.pendingTapMin = minute;
     this.pendingTapScreenY = screenY;
     this.rebuildCanvasWindow();
+    this.publishPlanWeek();
     setTimeout((): void => {
       this.centerCanvas();
       setTimeout((): void => this.scrollPendingTimeToScreen(), 30);
@@ -1819,6 +1845,7 @@ export struct PlanDayView {
     // 点箭头/今天后，之前横向惯性留下的 onScrollStop 不能再来改日期
     this.suppressCanvasStopUntil = Date.now() + 900;
     this.rebuildCanvasWindow();
+    this.publishPlanWeek();
     setTimeout((): void => this.centerCanvas(), 0);
   }
 
@@ -1831,6 +1858,7 @@ export struct PlanDayView {
     this.selectedTodoId = 0;
     this.suppressCanvasStopUntil = Date.now() + 900;
     this.rebuildCanvasWindow();
+    this.publishPlanWeek();
     setTimeout((): void => this.centerCanvas(), 0);
   }
 
@@ -2763,7 +2791,38 @@ export struct PlanDayView {
         return b;
       }
     }
+    // 选中的块可能在侧列：reload 会把 this.blocks 重置成中间那天，
+    // 但 selectedBlockId 还指着侧列块。只在 this.blocks 里找的话，
+    // 第二次双指就找不到选中块 → 被当成切视图（用户报的"只有第一次生效"）。
+    for (const day of this.canvasBlocks) {
+      for (const b of day) {
+        if (b.id === id) {
+          return b;
+        }
+      }
+    }
     return undefined;
+  }
+
+  /** 一天的块数据签名：reload 后块时长/位置变了，画布格子要跟着重建 */
+  private blockSig(list: PlanBlock[]): string {
+    let s: string = '';
+    for (const b of list) {
+      s += `${b.id}:${b.startMin}:${b.endMin}:${b.done};`;
+    }
+    return s;
+  }
+
+  /** 双指改时长只影响被捏的那一天；把预览值放进那一个格子的 key */
+  private pinchCellSig(cd: string): string {
+    if (this.pinchBlockId <= 0) {
+      return '';
+    }
+    const b: PlanBlock | undefined = this.blockById(this.pinchBlockId);
+    if (b === undefined || b.date !== cd) {
+      return '';
+    }
+    return `p${Math.round(this.pinchEndMin)}`;
   }
 
   /** 正在拖的块属于哪一天（三天同一个时刻只应有一个虚线空位） */
@@ -4498,7 +4557,8 @@ export struct PlanDayView {
           .hitTestBehavior(HitTestMode.None)
         }
       }, (b: PlanBlock) =>
-        `ppb-${cd}-${b.id}-${b.startMin}-${b.endMin}-${b.done}-${this.paletteRaw}`)
+        `ppb-${cd}-${b.id}-${b.startMin}-${b.endMin}-${b.done}-${this.paletteRaw}`
+          + `-${this.pinchBlockId}-${Math.round(this.pinchEndMin)}-${this.selectedBlockId}`)
 
       // 当前选中日正在拖拽：画原位虚线空位（和 PlanGrid 里同款）
       if (interactive && this.dragBlockId > 0 && this.draggedBlockDate() === cd) {
@@ -4982,6 +5042,12 @@ export struct PlanDayView {
                     this.activateColumn(cd);
                     this.onGridTap(event);
                   } else {
+                    // 三日视图里点侧列空白也要退出选中；没有选中块时才考虑放待办
+                    if (this.selectedBlockId > 0) {
+                      this.selectedBlockId = 0;
+                      this.showHint('');
+                      return;
+                    }
                     // 点侧列空白：只把托盘里选中的待办排到那一天，**不跳天、不移动画布**
                     this.placeSelectedOnDate(cd, event);
                   }
@@ -4995,7 +5061,9 @@ export struct PlanDayView {
               }, (cd: string, i: number) =>
                 `daycell-${cd}-${cd === this.date}-${i}`
                   + `-${i < this.canvasSessions.length ? this.canvasSessions[i].length : 0}`
-                  + `-${i < this.canvasBlocks.length ? this.canvasBlocks[i].length : 0}-${this.paletteRaw}`)
+                  + `-${i < this.canvasBlocks.length ? this.canvasBlocks[i].length : 0}`
+                  + `-${i < this.canvasBlocks.length ? this.blockSig(this.canvasBlocks[i]) : ''}`
+                  + `-${this.pinchCellSig(cd)}-${this.selectedBlockId}-${this.paletteRaw}`)
             }
             .height(this.gridH())
 
