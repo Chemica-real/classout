@@ -120,7 +120,10 @@ function blankTemplate(): TodoTemplate {
 @Component
 export struct CourseManager {
   @Prop semesterId: number;
+  /** 从设置页深链进来时直接落到哪个子页：'' / 'semester' / 'courses' / 'backup' */
+  @Prop initialView: string = '';
   close: () => void = (): void => {};
+  private initialApplied: boolean = false;
 
   @State mode: string = 'list';
   @State loading: boolean = true;
@@ -210,6 +213,19 @@ export struct CourseManager {
    * 弹窗 → 二次确认 → 子页 → 关闭整个管理器。
    * 它永远是"最后注册"的（浮层后挂载），所以 Index 一定先问到它。
    */
+  /** 从设置页深链进来的首个子页：返回应该直接回设置，而不是先退回管理器列表 */
+  private deepBackToHost(): boolean {
+    if (this.initialView === 'semester' && this.mode === 'semester') {
+      this.close();
+      return true;
+    }
+    if (this.initialView === 'backup' && this.mode === 'backup') {
+      this.close();
+      return true;
+    }
+    return false;
+  }
+
   private handleBack(): boolean {
     if (this.ruleDialog) {
       this.ruleDialog = false;
@@ -229,6 +245,9 @@ export struct CourseManager {
     }
     if (this.pendingDeleteKey.length > 0) {
       this.pendingDeleteKey = '';
+      return true;
+    }
+    if (this.deepBackToHost()) {
       return true;
     }
     if (this.mode !== 'list') {
@@ -272,6 +291,16 @@ export struct CourseManager {
     this.editSections = await TimetableRepo.listSectionTimes(ctx, sid);
     this.allLessons = await TodoRepo.listLessonsOfVirtualCourses(ctx, sid);
     this.loading = false;
+    if (!this.initialApplied) {
+      this.initialApplied = true;
+      if (this.initialView === 'semester') {
+        this.mode = 'semester';
+      } else if (this.initialView === 'backup') {
+        this.openBackup();
+      } else {
+        this.mode = 'list';
+      }
+    }
   }
 
   private lessonsOf(courseId: number): VirtualLesson[] {
@@ -1573,7 +1602,11 @@ export struct CourseManager {
   SemesterView() {
     Column() {
       this.TopBar('学期设置', '‹ 返回', (): void => {
-        this.mode = 'list';
+        if (this.initialView === 'semester') {
+          this.close();
+        } else {
+          this.mode = 'list';
+        }
       })
 
       Scroll() {
@@ -1834,7 +1867,11 @@ export struct CourseManager {
   BackupView() {
     Column() {
       this.TopBar('备份与恢复', '‹ 返回', (): void => {
-        this.mode = 'list';
+        if (this.initialView === 'backup') {
+          this.close();
+        } else {
+          this.mode = 'list';
+        }
       })
 
       Scroll() {

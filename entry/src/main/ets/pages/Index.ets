@@ -5,6 +5,7 @@ import { Course, CourseSession, OverrideKind, SectionTime, Semester,
   SessionOverride, SessionRule } from '../model/Types';
 import { TimetableRepo } from '../data/TimetableRepo';
 import { Db } from '../data/Db';
+import { DB_NAME } from '../data/Schema';
 import { Seeder } from '../data/Seeder';
 import { computeWeekSessions, dateOfWeekday, mergeRoomOverrides, weekOfDate } from '../domain/Timetable';
 import { timetableNowY } from '../domain/NowLine';
@@ -30,11 +31,11 @@ import { DEFAULT_TAB_KEY, MOTTO_DEFAULT, NOTE_EXPANDED_KEY, PLAN_END_KEY, PLAN_S
   loadCoursePalette, loadCustomCategories, loadDefaultTab, loadMotto, loadNoteExpanded,
   loadPlanWindow, loadPrivacyAgreed, loadQuickStart, loadSyncInterval,
   savePrivacyAgreed } from '../data/Prefs';
-import { TimeWindow } from '../domain/PlanMath';
+import { DEFAULT_WINDOW, TimeWindow } from '../domain/PlanMath';
 import { SYNC_INTERVAL_DEFAULT, isSyncBoundary } from '../domain/SyncCadence';
 import { serializeCustomCategories } from '../domain/Categories';
 import { normalizeDefaultTab } from '../domain/Launch';
-import { courseColorOf, parsePalette, serializePalette } from '../domain/Palette';
+import { DEFAULT_PALETTE, courseColorOf, parsePalette, serializePalette } from '../domain/Palette';
 import { GuideStep, guideStepAt, guideStepCount, isLastGuideStep, nextGuideStep,
   prevGuideStep } from '../domain/Guide';
 import { GuideRepo } from '../data/GuideRepo';
@@ -137,6 +138,8 @@ struct Index {
   private bootStarted: boolean = false;
   @State statusText: string = '正在初始化…';
   @State showManager: boolean = false;
+  /** 管理课程打开时直接落到哪个子页（设置页深链） */
+  @State managerInitialView: string = '';
 
   // 单周覆盖（停课/换教室/调课/补课）
   // 这里刻意用「一组标量」而不是 CourseSession | undefined：
@@ -887,6 +890,63 @@ struct Index {
     hilog.info(DOMAIN, TAG, 'guide started (sandbox db)');
   }
 
+  /**
+   * 设置页「重置应用并重新引导」：自动备份已在设置页做完。
+   * 这里清空真实库（kv 也一起没）、把 AppStorage 恢复默认、重建默认学期，
+   * 然后立刻进入沙箱新手演练 —— 视觉上等价于重装后第一次打开。
+   */
+  private resetAppStorage(): void {
+    AppStorage.setOrCreate('wallpaper', '');
+    AppStorage.setOrCreate('wallpaperFocus', '0,0,1');
+    AppStorage.setOrCreate('bootMotto', MOTTO_DEFAULT);
+    AppStorage.setOrCreate(PLAN_START_KEY, DEFAULT_WINDOW.startMin);
+    AppStorage.setOrCreate(PLAN_END_KEY, DEFAULT_WINDOW.endMin);
+    AppStorage.setOrCreate(SYNC_INTERVAL_KEY, SYNC_INTERVAL_DEFAULT);
+    AppStorage.setOrCreate(QUICK_START_KEY, false);
+    AppStorage.setOrCreate(DEFAULT_TAB_KEY, 0);
+    AppStorage.setOrCreate(COURSE_PALETTE_KEY, serializePalette(DEFAULT_PALETTE));
+    AppStorage.setOrCreate(TODO_CATEGORIES_KEY, '');
+    AppStorage.setOrCreate(NOTE_EXPANDED_KEY, false);
+    AppStorage.setOrCreate('motionOn', true);
+    AppStorage.setOrCreate('planHeaderWeek', '');
+    AppStorage.setOrCreate('planHeaderRange', '');
+    AppStorage.setOrCreate('planViewLevel', 1);
+  }
+
+  private async resetAppAndGuide(): Promise<void> {
+    const ctx: common.UIAbilityContext = this.context();
+    this.guideBusy = true;
+    if (this.guideActive) {
+      await GuideRepo.exitDemo(ctx);
+      this.guideActive = false;
+    }
+    // 背景图文件**不删**：它在 filesDir 里，备份 JSON 记的是这个路径；
+    // 保留文件才能让「恢复备份」把自定义背景一起恢复。视觉上设置/AppStorage 已清空。
+    await Db.use(ctx, DB_NAME);
+    await Db.wipe(ctx);
+    this.resetAppStorage();
+    this.tab = 0;
+    this.week = 1;
+    this.guideActive = false;
+    this.guidePrompt = false;
+    this.guideStep = 0;
+    this.showManager = false;
+    this.managerInitialView = '';
+    this.sessionSheet = false;
+    this.adjustSheet = false;
+    this.extraSheet = false;
+    this.pageModalOpen = false;
+    const real: Semester = await Seeder.ensureSemester(ctx);
+    this.semester = real;
+    this.week = this.clampWeek(today());
+    await this.reloadData();
+    await this.reloadPrefsFromDb(ctx);
+    // 最后一步：进沙箱演练（doStartGuide 自己会改 tab/guideStep/reloadData）
+    await this.doStartGuide();
+    this.guideBusy = false;
+    hilog.info(DOMAIN, TAG, 'app reset, guide started');
+  }
+
   private exitGuide(): void {
     this.doExitGuide().catch((e: Object): void => {
       this.guideBusy = false;
@@ -1548,6 +1608,7 @@ struct Index {
           .fontColor('#7FA8FF')
           .padding({ right: 12 })
           .onClick((): void => {
+            this.managerInitialView = '';
             this.showManager = true;
           })
         Text(this.inSemester() ? '今天' : '回到本周')
@@ -2757,6 +2818,13 @@ struct Index {
                 bottomInset: this.bottomInset(),
                 // 设置页的「新手引导」入口 → 由 Index 负责建沙箱、切库、挂引导条
                 onStartGuide: (): void => this.startGuide(),
+                // 设置首页的学期/课程/备份 → 打开管理课程对应子页
+                onOpenCourseManager: (view: string): void => {
+                  this.managerInitialView = view;
+                  this.showManager = true;
+                },
+                // 重置：自动备份已由设置页完成；这里全清、重建并进沙箱演练
+                onResetApp: (): Promise<void> => this.resetAppAndGuide(),
                 // 设置页的「调整背景」是全屏浮层，开着时也要把浮窗层挪到内容层之下
                 onModalChange: (open: boolean): void => {
                   this.pageModalOpen = open;
@@ -2868,10 +2936,14 @@ struct Index {
           .backgroundColor(SCRIM_COLOR)
         CourseManager({
           semesterId: this.semester.id,
+          initialView: this.managerInitialView,
           close: (): void => {
             this.showManager = false;
+            this.managerInitialView = '';
             // ⚠️ 不能只 refresh()：学期名称/开学日/总周数可能刚被改过（见 reloadSemesterThenRefresh）
             this.reloadSemesterThenRefresh();
+            // 设置页如果还挂着，让它重读学期/课程/概览
+            AppStorage.setOrCreate('settingsRefresh', Date.now());
           }
         })
       }

@@ -16,8 +16,11 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { storedAbilityContext } from '../util/Ctx';
 import { BackHandler, backStack } from '../util/BackStack';
 import { PrivacySection, privacySections, privacyUpdatedAt } from '../domain/Privacy';
-import { RestWindow, TodoCategory } from '../model/Types';
+import { PlanBlock, RestWindow, Todo, TodoCategory, TodoStatus } from '../model/Types';
 import { TimetableRepo } from '../data/TimetableRepo';
+import { computeWeekSessions, weekOfDate } from '../domain/Timetable';
+import { addDays, formatDate, parseDate, today } from '../util/DateUtil';
+import { BackupRepo } from '../data/BackupRepo';
 import { TodoRepo } from '../data/TodoRepo';
 import { ReminderSettings, loadReminderSettings, saveReminderSettings } from '../domain/ReminderScheduler';
 import { Validation, normalizeRestEnd, validateRestWindow } from '../domain/Validate';
@@ -53,9 +56,10 @@ import { SYNC_INTERVAL_CHOICES, SYNC_INTERVAL_DEFAULT, SYNC_INTERVAL_MAX, SYNC_I
 @Styles
 function glassPanelCard() {
   .backdropBlur(GLASS_BLUR)
-  .backgroundColor(GLASS_TINT_PANEL)
+  // 设置页是"一屏多卡"的列表：用比普通玻璃更暗的底，亮壁纸下也读得清
+  .backgroundColor('rgba(10,14,26,0.62)')
   .borderRadius(GLASS_RADIUS)
-  .border({ width: 1, color: GLASS_EDGE_STRONG })
+  .border({ width: 1, color: 'rgba(255,255,255,0.14)' })
   .shadow(GLASS_SHADOW_ROW)
 }
 
@@ -70,14 +74,28 @@ function glassPanel() {
 @Styles
 function glassSheet() {
   .backdropBlur(GLASS_BLUR)
-  .backgroundColor(GLASS_TINT_SHEET)
+  .backgroundColor('rgba(10,14,26,0.62)')
   .borderRadius(GLASS_RADIUS)
-  .border({ width: 1, color: GLASS_EDGE_STRONG })
+  .border({ width: 1, color: 'rgba(255,255,255,0.14)' })
   .shadow(GLASS_SHADOW_SHEET)
 }
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'ClassOUT';
+
+/** 设置首页的一行 */
+interface SettingsRowItem {
+  icon: Resource;
+  title: string;
+  value: string;
+  action: string;
+  danger: boolean;
+}
+
+interface SettingsGroupDef {
+  title: string;
+  kind: string;
+}
 
 /** 每日简报时间的可选档位（分钟） */
 const BRIEF_CHOICES: number[] = [390, 420, 450, 480, 540, 720];
@@ -98,8 +116,29 @@ export struct SettingsPage {
   onModalChange: (open: boolean) => void = (): void => {};
   /** 点「开始演练」→ 由 Index 建沙箱库、切库、挂引导条（见 data/GuideRepo） */
   onStartGuide: () => void = (): void => {};
+  /** 设置首页的学期/课程/备份行 → 由 Index 打开「管理课程」对应子页 */
+  onOpenCourseManager: (view: string) => void = (): void => {};
+  /** 重置：自动备份之后由 Index 全清、重建并进沙箱演练 */
+  onResetApp: () => Promise<void> = (): Promise<void> => Promise.resolve();
   /** 本页标题栏浮窗量出来的高度 */
   @State titleH: number = H_TITLE;
+  /** 设置首页的分组/子页：'' = 首页；其余为子页 key */
+  @State subPage: string = '';
+  /** 顶部概览：本周课程 / 未完成待办 / 未安排待办 */
+  @State ovCourses: number = 0;
+  @State ovTodos: number = 0;
+  @State ovUnscheduled: number = 0;
+  @State semesterName: string = '';
+  @State semesterWeeks: number = 0;
+  @State courseCount: number = 0;
+  /** 重置确认：0 = 警告，1 = 已自动备份，等最终确认 */
+  @State resetOpen: boolean = false;
+  @State resetStep: number = 0;
+  @State resetBusy: boolean = false;
+  @State resetBackupPath: string = '';
+  @State resetBytes: number = 0;
+  /** 管理课程关闭 / 数据变化后，由 Index 递增，让本页重读概览 */
+  @StorageLink('settingsRefresh') @Watch('onSettingsRefresh') refreshToken: number = 0;
 
   @State remSettings: ReminderSettings = { briefEnabled: true, briefMin: 450, classLeadMin: 15 };
   @State restWindows: RestWindow[] = [];
@@ -239,6 +278,16 @@ export struct SettingsPage {
       this.adjusting = false;
       return true;
     }
+    if (this.resetOpen) {
+      if (!this.resetBusy) {
+        this.resetOpen = false;
+      }
+      return true;
+    }
+    if (this.subPage.length > 0) {
+      this.subPage = '';
+      return true;
+    }
     return false;
   }
 
@@ -265,7 +314,60 @@ export struct SettingsPage {
     // 启动选项：从当前库读回来（演练沙箱里是一份全新的库 → 默认关、默认课表）
     this.quickStart = await loadQuickStart(ctx);
     this.defaultTab = await loadDefaultTab(ctx);
+    await this.loadOverview(ctx);
     this.loading = false;
+  }
+
+  private onSettingsRefresh(): void {
+    this.load();
+  }
+
+  /** 首页顶部概览：本周实际课次 / 未完成待办 / 还没排进时间的待办 */
+  private async loadOverview(ctx: common.UIAbilityContext): Promise<void> {
+    const sem = await TimetableRepo.getSemester(ctx);
+    if (sem !== undefined) {
+      this.semesterName = sem.name;
+      this.semesterWeeks = sem.totalWeeks;
+      const courses = await TimetableRepo.listCourses(ctx, sem.id);
+      this.courseCount = courses.length;
+      const rules = await TimetableRepo.listRules(ctx, sem.id);
+      const times = await TimetableRepo.listSectionTimes(ctx, sem.id);
+      const end: string = formatDate(addDays(parseDate(sem.startDate), sem.totalWeeks * 7 - 1));
+      const overrides = await TimetableRepo.listOverridesBetween(ctx, sem.startDate, end);
+      const week: number = weekOfDate(sem, today());
+      if (week >= 1 && week <= sem.totalWeeks) {
+        this.ovCourses = computeWeekSessions(sem, courses, rules, overrides, times, week).length;
+      } else {
+        this.ovCourses = 0;
+      }
+    } else {
+      this.semesterName = '';
+      this.semesterWeeks = 0;
+      this.courseCount = 0;
+      this.ovCourses = 0;
+    }
+    const todos: Todo[] = await TodoRepo.listTodos(ctx, 'status != ?', [TodoStatus.Archived]);
+    const active: Todo[] = [];
+    for (const t of todos) {
+      if (t.status !== TodoStatus.Done) {
+        active.push(t);
+      }
+    }
+    this.ovTodos = active.length;
+    const blocks: PlanBlock[] = await TodoRepo.listAllBlocks(ctx);
+    const scheduled: Set<number> = new Set<number>();
+    for (const b of blocks) {
+      if (b.todoId > 0) {
+        scheduled.add(b.todoId);
+      }
+    }
+    let unscheduled: number = 0;
+    for (const t of active) {
+      if (!scheduled.has(t.id)) {
+        unscheduled++;
+      }
+    }
+    this.ovUnscheduled = unscheduled;
   }
 
   /** 快速启动开关：立刻写内存 + kv（下次启动生效，本次不改当前界面） */
@@ -1824,6 +1926,448 @@ export struct SettingsPage {
     .backgroundColor('#0E1420')
   }
 
+  // ---------------- 设置首页：分组列表 + 子页 ----------------
+
+  private subTitle(): string {
+    switch (this.subPage) {
+      case 'motto': return '首页标语';
+      case 'categories': return '待办类型';
+      case 'planWindow': return '计划页时间范围';
+      case 'launch': return '启动';
+      case 'palette': return '学科调色盘';
+      case 'motion': return '动画';
+      case 'reminder': return '学习提醒';
+      case 'wallpaper': return '背景';
+      case 'rest': return '不可排时段';
+      case 'sync': return '日历同步';
+      case 'guide': return '新手引导';
+      case 'about': return '关于我们';
+      default: return '设置';
+    }
+  }
+
+  private onRow(action: string): void {
+    switch (action) {
+      case 'semester':
+        this.onOpenCourseManager('semester');
+        return;
+      case 'courses':
+        this.onOpenCourseManager('courses');
+        return;
+      case 'backup':
+        this.onOpenCourseManager('backup');
+        return;
+      case 'reset':
+        this.resetStep = 0;
+        this.resetOpen = true;
+        return;
+      default:
+        this.subPage = action;
+    }
+  }
+
+  private termRows(): SettingsRowItem[] {
+    return [
+      {
+        icon: $r('app.media.ic_term'), title: '学期设置',
+        value: this.semesterName.length > 0 ? this.semesterName : '', action: 'semester', danger: false
+      },
+      {
+        icon: $r('app.media.ic_course'), title: '课程管理',
+        value: this.courseCount > 0 ? `${this.courseCount} 门` : '', action: 'courses', danger: false
+      },
+      {
+        icon: $r('app.media.ic_palette'), title: '学科调色盘',
+        value: '10 色', action: 'palette', danger: false
+      }
+    ];
+  }
+
+  private planRows(): SettingsRowItem[] {
+    return [
+      {
+        icon: $r('app.media.ic_plan'), title: '计划页时间范围',
+        value: `${minToHHmm(this.winStart)}–${minToHHmm(this.winEnd)}`,
+        action: 'planWindow', danger: false
+      },
+      {
+        icon: $r('app.media.ic_rest'), title: '不可排时段',
+        value: this.restWindows.length > 0 ? `${this.restWindows.length} 条` : '未设置',
+        action: 'rest', danger: false
+      },
+      {
+        icon: $r('app.media.ic_category'), title: '待办类型',
+        value: `${builtinCategoryOptions().length + parseCustomCategories(this.catRaw).length} 个`,
+        action: 'categories', danger: false
+      }
+    ];
+  }
+
+  private lookRows(): SettingsRowItem[] {
+    return [
+      {
+        icon: $r('app.media.ic_wallpaper'), title: '背景',
+        value: this.wallpaper.length > 0 ? '自定义' : '默认',
+        action: 'wallpaper', danger: false
+      },
+      {
+        icon: $r('app.media.ic_motto'), title: '首页标语',
+        value: this.savedMotto === MOTTO_DEFAULT ? '默认' : this.savedMotto,
+        action: 'motto', danger: false
+      },
+      {
+        icon: $r('app.media.ic_motion'), title: '动画',
+        value: this.motionOn ? '开' : '关',
+        action: 'motion', danger: false
+      },
+      {
+        icon: $r('app.media.ic_launch'), title: '启动',
+        value: `快速启动${this.quickStart ? '开' : '关'} · 默认${tabLabel(this.defaultTab)}`,
+        action: 'launch', danger: false
+      }
+    ];
+  }
+
+  private careRows(): SettingsRowItem[] {
+    return [
+      {
+        icon: $r('app.media.ic_bell'), title: '学习提醒',
+        value: `提前 ${this.remSettings.classLeadMin} 分钟`,
+        action: 'reminder', danger: false
+      },
+      {
+        icon: $r('app.media.ic_sync'), title: '日历同步',
+        value: `每 ${this.syncIntervalMin} 分钟`,
+        action: 'sync', danger: false
+      }
+    ];
+  }
+
+  private dataRows(): SettingsRowItem[] {
+    return [
+      {
+        icon: $r('app.media.ic_backup'), title: '本地备份与恢复',
+        value: 'JSON', action: 'backup', danger: false
+      },
+      {
+        icon: $r('app.media.ic_guide'), title: '新手引导',
+        value: '演练', action: 'guide', danger: false
+      },
+      {
+        icon: $r('app.media.ic_about'), title: '关于我们',
+        value: this.appVersion.length > 0 ? `v${this.appVersion}` : '',
+        action: 'about', danger: false
+      },
+      {
+        icon: $r('app.media.ic_reset'), title: '重置应用并重新引导',
+        value: '', action: 'reset', danger: true
+      }
+    ];
+  }
+
+  @Builder
+  SettingRow(it: SettingsRowItem) {
+    Row() {
+      Image(it.icon)
+        .width(19)
+        .height(19)
+        .objectFit(ImageFit.Contain)
+        .margin({ right: 12 })
+      Text(it.title)
+        .fontSize(15)
+        .fontColor(it.danger ? '#FF6B6B' : '#F2F5FA')
+        .layoutWeight(1)
+      if (it.value.length > 0) {
+        Text(it.value)
+          .fontSize(11)
+          .fontColor('#8B97AC')
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .constraintSize({ maxWidth: 150 })
+          .margin({ left: 8 })
+      }
+      Text('›')
+        .fontSize(18)
+        .fontColor(it.danger ? '#FF6B6B' : '#6F7C91')
+        .margin({ left: 6 })
+    }
+    .width('100%')
+    .height(54)
+    .padding({ left: 14, right: 12 })
+    .onClick((): void => this.onRow(it.action))
+  }
+
+  private groupDefs(): SettingsGroupDef[] {
+    return [
+      { title: '学期与课程', kind: 'term' },
+      { title: '计划与待办', kind: 'plan' },
+      { title: '外观与启动', kind: 'look' },
+      { title: '提醒与同步', kind: 'care' },
+      { title: '数据与帮助', kind: 'data' }
+    ];
+  }
+
+  private rowsOf(kind: string): SettingsRowItem[] {
+    switch (kind) {
+      case 'term': return this.termRows();
+      case 'plan': return this.planRows();
+      case 'look': return this.lookRows();
+      case 'care': return this.careRows();
+      case 'data': return this.dataRows();
+      default: return [];
+    }
+  }
+
+  private groupSig(kind: string): string {
+    let s: string = '';
+    for (const it of this.rowsOf(kind)) {
+      s += `${it.title}:${it.value};`;
+    }
+    return s;
+  }
+
+  @Builder
+  SettingGroup(title: string, kind: string) {
+    Column() {
+      Text(title)
+        .fontSize(11)
+        .fontColor('#7E8A9F')
+        .width('100%')
+        .padding({ left: 4, bottom: 6 })
+      Column() {
+        ForEach(this.rowsOf(kind), (it: SettingsRowItem, idx: number) => {
+          this.SettingRow(it)
+          if (idx < this.rowsOf(kind).length - 1) {
+            Divider()
+              .strokeWidth(1)
+              .color('rgba(255,255,255,0.06)')
+              .margin({ left: 45 })
+          }
+        }, (it: SettingsRowItem) => `${it.action}-${it.title}-${it.value}`)
+      }
+      .width('100%')
+      .glassPanelCard()
+    }
+    .width('100%')
+    .margin({ bottom: 14 })
+    .alignItems(HorizontalAlign.Start)
+  }
+
+  @Builder
+  OverviewCard() {
+    Row() {
+      Column() {
+        Text(`${this.ovCourses}`)
+          .fontSize(24)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#F2F5FA')
+        Text('本周课程')
+          .fontSize(11)
+          .fontColor('#8B97AC')
+          .margin({ top: 2 })
+      }
+      .layoutWeight(1)
+      .alignItems(HorizontalAlign.Center)
+      Divider().vertical(true).height(30).color('rgba(255,255,255,0.10)')
+      Column() {
+        Text(`${this.ovTodos}`)
+          .fontSize(24)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#F2F5FA')
+        Text('待办作业')
+          .fontSize(11)
+          .fontColor('#8B97AC')
+          .margin({ top: 2 })
+      }
+      .layoutWeight(1)
+      .alignItems(HorizontalAlign.Center)
+      Divider().vertical(true).height(30).color('rgba(255,255,255,0.10)')
+      Column() {
+        Text(`${this.ovUnscheduled}`)
+          .fontSize(24)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#F2F5FA')
+        Text('待安排')
+          .fontSize(11)
+          .fontColor('#8B97AC')
+          .margin({ top: 2 })
+      }
+      .layoutWeight(1)
+      .alignItems(HorizontalAlign.Center)
+    }
+    .width('100%')
+    .padding({ top: 14, bottom: 14 })
+    .glassPanelCard()
+    .margin({ bottom: 16 })
+  }
+
+  @Builder
+  SettingsHome() {
+    this.OverviewCard()
+    ForEach(this.groupDefs(), (g: SettingsGroupDef) => {
+      this.SettingGroup(g.title, g.kind)
+    }, (g: SettingsGroupDef) => `${g.kind}-${this.groupSig(g.kind)}`)
+  }
+
+  @Builder
+  SettingsSubPage() {
+    if (this.subPage === 'motto') {
+      this.MottoCard()
+    } else if (this.subPage === 'categories') {
+      this.CategoryCard()
+    } else if (this.subPage === 'planWindow') {
+      this.PlanWindowCard()
+    } else if (this.subPage === 'launch') {
+      this.LaunchCard()
+    } else if (this.subPage === 'palette') {
+      this.PaletteCard()
+    } else if (this.subPage === 'motion') {
+      this.MotionCard()
+    } else if (this.subPage === 'reminder') {
+      this.ReminderCard()
+    } else if (this.subPage === 'wallpaper') {
+      this.WallpaperCard()
+    } else if (this.subPage === 'rest') {
+      this.RestCard()
+    } else if (this.subPage === 'sync') {
+      this.SyncCard()
+    } else if (this.subPage === 'guide') {
+      this.GuideCard()
+    } else if (this.subPage === 'about') {
+      this.AboutCard()
+    }
+  }
+
+  private async prepareReset(): Promise<void> {
+    if (this.resetBusy) {
+      return;
+    }
+    this.resetBusy = true;
+    try {
+      const ctx: common.UIAbilityContext = this.context();
+      this.resetBytes = await BackupRepo.exportToFile(ctx);
+      this.resetBackupPath = BackupRepo.backupFilePath(ctx);
+      this.resetStep = 1;
+      this.showToast('已自动备份，请确认重置');
+    } catch (e) {
+      hilog.error(DOMAIN, TAG, 'reset backup failed: %{public}s', JSON.stringify(e));
+      this.showToast('自动备份失败，未重置');
+    }
+    this.resetBusy = false;
+  }
+
+  private async finishReset(): Promise<void> {
+    if (this.resetBusy) {
+      return;
+    }
+    this.resetBusy = true;
+    try {
+      await this.onResetApp();
+    } catch (e) {
+      hilog.error(DOMAIN, TAG, 'reset failed: %{public}s', JSON.stringify(e));
+      this.showToast('重置失败，数据未清空');
+      this.resetBusy = false;
+      this.resetOpen = false;
+    }
+  }
+
+  @Builder
+  ResetConfirm() {
+    Column() {
+      Column() {
+        Text('重置应用并重新引导')
+          .fontSize(16)
+          .fontWeight(FontWeight.Medium)
+          .fontColor('#FF8A8A')
+          .width('100%')
+        if (this.resetStep === 0) {
+          Text('会先自动导出当前数据的 JSON 备份，然后清空全部课表 / 待办 / 计划 / 设置，'
+            + '原地重建并从沙箱新手演练开始。')
+            .fontSize(12)
+            .fontColor('#CBD6E8')
+            .lineHeight(19)
+            .width('100%')
+            .margin({ top: 10 })
+          Text('备份会保留，可在「本地备份与恢复」里恢复。')
+            .fontSize(11)
+            .fontColor('#8B97AC')
+            .width('100%')
+            .margin({ top: 8 })
+          Row() {
+            Button('取消')
+              .backgroundColor('rgba(255,255,255,0.10)')
+              .fontColor('#CBD6E8')
+              .fontSize(13)
+              .layoutWeight(1)
+              .onClick((): void => {
+                this.resetOpen = false;
+                this.resetStep = 0;
+              })
+            Button(this.resetBusy ? '正在备份…' : '自动备份并继续')
+              .backgroundColor('#D64545')
+              .fontColor('#FFFFFF')
+              .fontSize(13)
+              .layoutWeight(1)
+              .enabled(!this.resetBusy)
+              .onClick((): void => {
+                this.prepareReset();
+              })
+          }
+          .width('100%')
+          .margin({ top: 16 })
+        } else {
+          Text(`已自动备份（${this.resetBytes} 字节）。`)
+            .fontSize(13)
+            .fontColor('#7ED6A5')
+            .width('100%')
+            .margin({ top: 10 })
+          Text(this.resetBackupPath)
+            .fontSize(10)
+            .fontColor('#8B97AC')
+            .width('100%')
+            .maxLines(3)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .margin({ top: 6 })
+          Text('确认后会清空全部数据与设置，并进入沙箱新手演练。')
+            .fontSize(12)
+            .fontColor('#CBD6E8')
+            .width('100%')
+            .margin({ top: 10 })
+          Row() {
+            Button('取消')
+              .backgroundColor('rgba(255,255,255,0.10)')
+              .fontColor('#CBD6E8')
+              .fontSize(13)
+              .layoutWeight(1)
+              .onClick((): void => {
+                this.resetOpen = false;
+                this.resetStep = 0;
+              })
+            Button(this.resetBusy ? '正在重置…' : '确认重置')
+              .backgroundColor('#D64545')
+              .fontColor('#FFFFFF')
+              .fontSize(13)
+              .layoutWeight(1)
+              .enabled(!this.resetBusy)
+              .onClick((): void => {
+                this.finishReset();
+              })
+          }
+          .width('100%')
+          .margin({ top: 16 })
+        }
+      }
+      .width('86%')
+      .padding(18)
+      .glassPanelCard()
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor('rgba(6,10,18,0.62)')
+    .justifyContent(FlexAlign.Center)
+    .alignItems(HorizontalAlign.Center)
+  }
+
   build() {
     Stack() {
       Column() {
@@ -1842,18 +2386,11 @@ export struct SettingsPage {
                 .margin({ bottom: 12 })
             }
 
-            this.WallpaperCard()
-            this.MottoCard()
-            this.LaunchCard()
-            this.PaletteCard()
-            this.MotionCard()
-            this.ReminderCard()
-            this.SyncCard()
-            this.RestCard()
-            this.CategoryCard()
-            this.PlanWindowCard()
-            this.GuideCard()
-            this.AboutCard()
+            if (this.subPage.length === 0) {
+              this.SettingsHome()
+            } else {
+              this.SettingsSubPage()
+            }
           }
           .width('100%')
           // 上下都给悬浮浮窗让位；padding 加在**滚动内容**上，卡片才能滑到浮窗下面
@@ -1876,10 +2413,20 @@ export struct SettingsPage {
         // ⚠️ 定位壳：根 Stack 默认居中排子节点，浮窗必须靠"满屏 + 顶到上边"钉住
         Column() {
           Row() {
-            Text('设置')
+            if (this.subPage.length > 0) {
+              Text('‹ 返回')
+                .fontSize(13)
+                .fontColor('#7FA8FF')
+                .margin({ right: 12 })
+                .onClick((): void => {
+                  this.subPage = '';
+                })
+            }
+            Text(this.subPage.length > 0 ? this.subTitle() : '设置')
               .fontSize(17)
               .fontWeight(FontWeight.Medium)
               .fontColor('#F2F5FA')
+            Blank()
           }
           .width('100%')
           .padding({ left: 16, right: 16, top: 12, bottom: 12 })
@@ -1909,6 +2456,11 @@ export struct SettingsPage {
       // 隐私政策浮层：同样画在页面内部，所以也接上了 onModalChange（见 refreshModal）
       if (this.privacyOpen) {
         this.PrivacyOverlay()
+      }
+
+      // 重置确认（全屏遮罩 + 玻璃卡；自动备份后才让最终确认）
+      if (this.resetOpen) {
+        this.ResetConfirm()
       }
 
       // 全局调色盘的取色器（用户 2026-10-30）
