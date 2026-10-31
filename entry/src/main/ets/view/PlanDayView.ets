@@ -3108,6 +3108,11 @@ export struct PlanDayView {
     if (cid <= 0) {
       return t;
     }
+    // 用户 2026-10-31：待办块同时显示课程和时间时，课程放前面。
+    // 虚拟课时的块保持原顺序（它本来就是"课时"语境，不在此次要求里）。
+    if (b.lessonId <= 0) {
+      return `${this.courseShort(cid)} · ${t}`;
+    }
     return `${t} · ${this.courseShort(cid)}`;
   }
 
