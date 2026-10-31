@@ -441,6 +441,8 @@ export struct PlanDayView {
   @State gridLeft: number = 0;
   /** 拖拽中的目标列。等于中心列 = 不改天 */
   @State dragColIndex: number = 0;
+  /** 三日画布拖块时的目标日期（按手指所在的画布列算） */
+  private canvasDragTargetDate: string = '';
 
   /** 系统返回的处理器（注册到 util/BackStack，由 Index.onBackPress 触发） */
   private backHandler: BackHandler | undefined = undefined;
@@ -623,35 +625,38 @@ export struct PlanDayView {
   }
 
   /**
-   * 三日画布里点侧列：把那一天变成当前日并吸附到中间（侧列只读，先点一下再编辑）。
-   * 单日画布没有可见的侧列，用不到。
+   * 把一个可见列设为当前日，**但不移动画布**。
+   *
+   * 三日画布里点侧列的块时用：用户只是要编辑那一天，不应该把画布"跳"过去
+   *（之前侧列点击会 centerOnColumn，就是用户反馈「点右边一列就跳到下一天」的原因）。
    */
-  private centerOnColumn(cd: string): void {
-    if (cd === this.date) {
-      return;
-    }
+  private activateColumn(cd: string): void {
     const i: number = this.canvasDates.indexOf(cd);
     if (i < 0) {
       return;
     }
-    this.date = cd;
+    // ⚠️ 只切**数据上下文**，绝不动 `this.date`（= 日期条/画布中心）。
+    //    之前这里顺手把 date 改成了侧列那天，于是拖完块一 reload 就按新 date 回中，
+    //    表现为「把明天的块拖到今天，松手后三日图跳到了明天」。
     this.sessions = this.canvasSessions[i];
     this.blocks = this.canvasBlocks[i];
-    this.colDates = dayDates(cd, this.viewCols);
-    this.pagerDates = dayDates(cd, 3);
-    if (i > 0) {
-      this.leftSessions = this.canvasSessions[i - 1];
-      this.leftBlocks = this.canvasBlocks[i - 1];
+  }
+
+  /**
+   * 三日画布点侧列空白：托盘里有选中的待办时，把它排到**点的那一天**，
+   * 但不改当前日期、也不移动画布（用户 2026-10-31 明确不喜欢"点一下就跳天"）。
+   */
+  private placeSelectedOnDate(cd: string, event: ClickEvent): void {
+    if (this.selectedTodoId <= 0) {
+      return;
     }
-    if (i < CANVAS_DAYS - 1) {
-      this.rightSessions = this.canvasSessions[i + 1];
-      this.rightBlocks = this.canvasBlocks[i + 1];
+    const t: Todo | undefined = this.todoOf(this.selectedTodoId);
+    if (t === undefined) {
+      return;
     }
-    this.selectedBlockId = 0;
-    this.closeEditor();
-    // 以新日期为中心重切窗口再回中（数据来自缓存，不查库）
-    this.rebuildCanvasWindow();
-    setTimeout((): void => this.centerCanvas(), 0);
+    const localY: number = event.windowY - this.gridTop;
+    const startMin: number = this.ax().yToMinute(localY);
+    this.place(t, startMin, normalizeDuration(t.estimateMin), cd);
   }
 
   /** 中心列下标 = 当前查看日所在的那一列 */
@@ -1497,7 +1502,9 @@ export struct PlanDayView {
     this.gridScrollLocked = true;
     this.dragBlockId = b.id;
     this.dragOffsetY = 0;
-    this.showHint('拖动改时间；拖到屏幕上/下边缘会自动滚动时间轴');
+    this.showHint(this.viewCols > COLS_DAY
+      ? '上下拖改时间、左右拖可换天；拖到上下边缘会自动滚时间轴'
+      : '拖动改时间；拖到屏幕上/下边缘会自动滚动时间轴');
   }
 
   /**
@@ -1628,9 +1635,21 @@ export struct PlanDayView {
     // （用户要求"半透明态的待办始终处于三天之中某一天的时间线中"）。
     // 命中不到任何列时保留上一列，免得手指滑出网格就跳回中间。
     if (this.viewCols > COLS_DAY && event.touches.length > 0) {
-      const localX: number = event.touches[0].windowX - this.gridLeft;
-      this.dragColIndex = dropColumnOrFallback(this.gridW, this.viewCols, localX,
-        this.dragColIndex);
+      // 画布坐标：窗口 x → 去掉固定时间轴 → 加上横向滚动量 → 除以单日列宽。
+      // 命中不到（滑出画布）就保留上一列，免得松手跳到别的天。
+      const localX: number = event.touches[0].windowX - this.gridLeft - AXIS_W
+        + this.hScroller.currentOffset().xOffset;
+      let ti: number = Math.floor(localX / this.canvasColW());
+      if (ti < 0) {
+        ti = 0;
+      }
+      if (ti > CANVAS_DAYS - 1) {
+        ti = CANVAS_DAYS - 1;
+      }
+      const td: string = this.canvasDates[ti];
+      if (td !== undefined) {
+        this.canvasDragTargetDate = td;
+      }
     }
     this.updateEdgeScroll();
   }
@@ -1654,6 +1673,7 @@ export struct PlanDayView {
     this.gridScrollLocked = false;
     this.dragBlockId = 0;
     this.dragOffsetY = 0;
+    this.canvasDragTargetDate = '';
   }
 
   // ---- 双指缩放改时长 ----
@@ -1708,7 +1728,9 @@ export struct PlanDayView {
     this.dragBlockId = 0;
     this.dragOffsetY = 0;
     this.gridScrollLocked = false;
-    const targetDate: string = this.dateOfCol(targetCol);
+    const targetDate: string = this.viewCols > COLS_DAY && this.canvasDragTargetDate.length > 0
+      ? this.canvasDragTargetDate : this.dateOfCol(targetCol);
+    this.canvasDragTargetDate = '';
     const crossDay: boolean = this.viewCols > COLS_DAY && targetDate !== b.date;
     if (offset === 0 && !crossDay) {
       return;   // 长按了但既没动也没跨天 → 不产生空改动
@@ -2227,6 +2249,49 @@ export struct PlanDayView {
       }
     }
     return undefined;
+  }
+
+  /** 正在拖的块属于哪一天（三天同一个时刻只应有一个虚线空位） */
+  private draggedBlockDate(): string {
+    const b: PlanBlock | undefined = this.blockById(this.dragBlockId);
+    return b === undefined ? '' : b.date;
+  }
+
+  private draggedBlockTitle(): string {
+    const b: PlanBlock | undefined = this.blockById(this.dragBlockId);
+    return b === undefined ? '' : this.blockTitle(b);
+  }
+
+  private draggedBlockSub(): string {
+    const b: PlanBlock | undefined = this.blockById(this.dragBlockId);
+    return b === undefined ? '' : this.blockSubText(b);
+  }
+
+  private draggedBlockH(): number {
+    const b: PlanBlock | undefined = this.blockById(this.dragBlockId);
+    return b === undefined ? 0 : this.blockH(b);
+  }
+
+  private draggedBlockColor(): string {
+    const b: PlanBlock | undefined = this.blockById(this.dragBlockId);
+    return b === undefined ? '#8FA0BA' : this.colorOf(this.blockCourseId(b));
+  }
+
+  /** 拖动中那块在画布内容坐标里的 x：跟手指落在哪一天走 */
+  private dragTargetX(): number {
+    let idx: number = this.canvasDates.indexOf(this.canvasDragTargetDate);
+    if (idx < 0) {
+      idx = this.canvasDates.indexOf(this.date);
+    }
+    if (idx < 0) {
+      idx = 0;
+    }
+    return idx * this.canvasColW();
+  }
+
+  private dragBlockYPos(): number {
+    const b: PlanBlock | undefined = this.blockById(this.dragBlockId);
+    return b === undefined ? 0 : this.blockY(b);
   }
 
   private isSelected(b: PlanBlock): boolean {
@@ -3825,26 +3890,41 @@ export struct PlanDayView {
           .height(this.blockH(b))
           .backgroundColor(this.colorOf(this.blockCourseId(b)))
           .borderRadius(6)
-          .opacity(this.isDragging(b) ? 0.72 : (b.done ? 0.5 : 0.95))
+          // 三日画布里拖块时本体隐藏、由 CanvasDragBlock 在目标列画半透明块；
+          // 单日没有"目标列"，保留 0.72 的跟手半透明。
+          .opacity(this.isDragging(b)
+            ? (this.viewCols > COLS_DAY ? 0 : 0.72)
+            : (b.done ? 0.5 : 0.95))
           .border({
             width: this.isSelected(b) || this.isDragging(b) ? 2 : 0,
             color: '#F2F5FA'
           })
           .position({ x: 0, y: this.blockY(b) })
           .zIndex(this.isDragging(b) ? 10 : (this.isSelected(b) ? 5 : 1))
-          .onClick((): void => this.onBlockTap(b))
+          .onClick((): void => {
+            this.activateColumn(cd);
+            this.onBlockTap(b);
+          })
           .gesture(
             PinchGesture({ fingers: 2 })
-              .onActionStart((): void => this.beginPinch(b))
+              .onActionStart((): void => {
+                this.activateColumn(cd);
+                this.beginPinch(b);
+              })
               .onActionUpdate((event: GestureEvent): void => this.updatePinch(b, event))
               .onActionEnd((): void => this.endPinch(b))
           )
           .parallelGesture(
             LongPressGesture({ repeat: false, duration: 400, fingers: 1 })
-              .onAction((): void => this.onBlockLongPress(b, 0))
+              .onAction((): void => {
+                this.activateColumn(cd);
+                this.onBlockLongPress(b, 0);
+              })
           )
           .onTouch((event: TouchEvent): void => {
             if (event.type === TouchType.Down) {
+              this.activateColumn(cd);
+              this.canvasDragTargetDate = cd;
               this.onBlockTouchDown(b, event);
             } else if (event.type === TouchType.Move) {
               this.onBlockTouchMove(b, event);
@@ -3870,7 +3950,7 @@ export struct PlanDayView {
         `ppb-${cd}-${b.id}-${b.startMin}-${b.endMin}-${b.done}-${this.paletteRaw}`)
 
       // 当前选中日正在拖拽：画原位虚线空位（和 PlanGrid 里同款）
-      if (interactive && this.dragBlockId > 0) {
+      if (interactive && this.dragBlockId > 0 && this.draggedBlockDate() === cd) {
         Column()
           .width('100%')
           .height(this.ghostH())
@@ -3984,14 +4064,37 @@ export struct PlanDayView {
         .alignItems(HorizontalAlign.Center)
         .backgroundColor(cd === this.date ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.03)')
         .border({ width: { right: 1 }, color: 'rgba(255,255,255,0.08)' })
-        .onClick((): void => {
-          if (cd !== this.date) {
-            this.centerOnColumn(cd);
-          }
-        })
       }, (cd: string) => `ch-${cd}-${cd === this.date}`)
     }
     .height(H_COLHEAD)
+  }
+
+  /** 三日画布拖动中的半透明块：画在目标列，跟手指走 */
+  @Builder
+  CanvasDragBlock() {
+    Column() {
+      Text(this.draggedBlockTitle())
+        .fontSize(LAYOUT.title)
+        .fontWeight(FontWeight.Medium)
+        .fontColor('#F2F5FA')
+        .maxLines(2)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+      Text(this.draggedBlockSub())
+        .fontSize(LAYOUT.sub)
+        .fontColor('#CBD6E8')
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+    }
+    .width(this.canvasColW())
+    .height(this.draggedBlockH())
+    .padding({ left: 8, right: 6, top: 3 })
+    .backgroundColor(this.draggedBlockColor())
+    .borderRadius(6)
+    .opacity(0.85)
+    .border({ width: 2, color: '#F2F5FA' })
+    .position({ x: this.dragTargetX(), y: this.dragBlockYPos() })
+    .zIndex(30)
+    .hitTestBehavior(HitTestMode.None)
   }
 
   /**
@@ -4030,44 +4133,52 @@ export struct PlanDayView {
           if (this.viewCols > COLS_DAY) {
             this.CanvasHeaderRow()
           }
-          Row() {
-            ForEach(this.canvasDates, (cd: string, i: number) => {
-              // 每一列都用**同一套完整渲染**（PagerPreview）；只有当前选中日挂手势。
-              // 换日只切换 interactive 开关，不再把重的 PlanGrid 塞进新列再销毁旧列 —— 那正是
-              // "闪一下"的来源。所有列都是同样的节点。
-              Stack({ alignContent: Alignment.TopStart }) {
-                this.PagerPreview(cd, this.canvasSessions[i], this.canvasBlocks[i], cd === this.date)
-              }
-              .width(this.canvasColW())
-              .height(this.gridH())
-              .clip(true)
-              .onAreaChange((oldArea: Area, newArea: Area): void => {
-                if (cd !== this.date) {
-                  return;
+          Stack({ alignContent: Alignment.TopStart }) {
+            Row() {
+              ForEach(this.canvasDates, (cd: string, i: number) => {
+                // 每一列都用**同一套完整渲染**（PagerPreview）；所有列都挂手势，
+                // 交互时只把数据上下文切到那一天，不移动画布。
+                Stack({ alignContent: Alignment.TopStart }) {
+                  this.PagerPreview(cd, this.canvasSessions[i], this.canvasBlocks[i], true)
                 }
-                const y: Length | undefined = newArea.globalPosition.y;
-                if (typeof y === 'number') {
-                  this.gridTop = y;
-                }
-              })
-              .onClick((event: ClickEvent): void => {
-                if (cd === this.date) {
-                  this.onGridTap(event);
-                } else {
-                  // 三日画布里侧列只读：点一下把它吸到中间（再点就是编辑了）
-                  this.centerOnColumn(cd);
-                }
-              })
-              .onDrop((event: DragEvent, extraParams: string): void => {
-                if (cd === this.date) {
-                  this.onPoolDrop(event);
-                }
-              })
-            }, (cd: string, i: number) =>
-              `daycell-${cd}-${cd === this.date}-${i}`
-                + `-${i < this.canvasSessions.length ? this.canvasSessions[i].length : 0}`
-                + `-${i < this.canvasBlocks.length ? this.canvasBlocks[i].length : 0}-${this.paletteRaw}`)
+                .width(this.canvasColW())
+                .height(this.gridH())
+                .clip(true)
+                .onAreaChange((oldArea: Area, newArea: Area): void => {
+                  const y: Length | undefined = newArea.globalPosition.y;
+                  if (typeof y === 'number') {
+                    this.gridTop = y;
+                  }
+                })
+                .onClick((event: ClickEvent): void => {
+                  if (cd === this.date) {
+                    // 先确保数据上下文是当前视图日（可能在点侧列块后切走了）
+                    this.activateColumn(cd);
+                    this.onGridTap(event);
+                  } else {
+                    // 点侧列空白：只把托盘里选中的待办排到那一天，**不跳天、不移动画布**
+                    this.placeSelectedOnDate(cd, event);
+                  }
+                })
+                .onDrop((event: DragEvent, extraParams: string): void => {
+                  if (cd === this.date) {
+                    this.activateColumn(cd);
+                    this.onPoolDrop(event);
+                  }
+                })
+              }, (cd: string, i: number) =>
+                `daycell-${cd}-${cd === this.date}-${i}`
+                  + `-${i < this.canvasSessions.length ? this.canvasSessions[i].length : 0}`
+                  + `-${i < this.canvasBlocks.length ? this.canvasBlocks[i].length : 0}-${this.paletteRaw}`)
+            }
+            .height(this.gridH())
+
+            // 三日画布拖块：在手指所在的那一列画半透明块（本体已在源列隐藏）
+            if (this.viewCols > COLS_DAY && this.dragBlockId > 0) {
+              this.CanvasDragBlock()
+            }
           }
+          .width(this.canvasColW() * CANVAS_DAYS)
           .height(this.gridH())
         }
       }
