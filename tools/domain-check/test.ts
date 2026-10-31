@@ -23,6 +23,7 @@ import { SYNC_INTERVAL_CHOICES, SYNC_INTERVAL_DEFAULT, SYNC_INTERVAL_MAX, SYNC_I
   isSyncBoundary, normalizeSyncInterval, shouldRestartAfterIdle } from './SyncCadence';
 import { maskAll, maskFromText, maskToText, maskHas, resizeMask } from './WeekMask';
 import { timetableNowY } from './NowLine';
+import { groupActiveTodos, isOverdue, remainText, sortDoneTodos, TodoGroups } from './TodoGroups';
 import { countdownText, formatDateTime, minToHHmm, parseDate, parseDateTime } from './DateUtil';
 import { computeDdl, renderTitle } from './TodoGenRules';
 import { TimeAxis, DEFAULT_WINDOW, WINDOW_MAX_END, WINDOW_MIN_SPAN, WINDOW_SNAP_MIN,
@@ -430,6 +431,53 @@ check('   └ 新日期没丢', mergeMove.list[0].newDate, '2026-10-17');
 const loneRoom: SessionOverride[] = [ov(gsId, '2026-10-13', OverrideKind.Room, '', 0, 0, '理教101')];
 check('孤立的换教室保持原样', `${mergeRoomOverrides(loneRoom).list.length}`, '1');
 check('   └ 没有要删的', `${mergeRoomOverrides(loneRoom).deleteIds.length}`, '0');
+
+// ---------- 7.6 待办分组（今天 / 已逾期 / 以后 / 已完成） ----------
+console.log('【待办分组】');
+
+function groupedTodo(id: number, title: string, ddl: string, doneAt: number): Todo {
+  const t: Todo = todo(title, ddl);
+  t.id = id;
+  t.doneAt = doneAt;
+  return t;
+}
+
+const NOW_STAMP: string = '2026-10-31 12:00';
+const TODAY_STR: string = '2026-10-31';
+const groupInput: Todo[] = [
+  groupedTodo(1, 'b', '2026-10-31 23:59', 0),
+  groupedTodo(2, 'x', '2026-10-31 11:00', 0),
+  groupedTodo(3, 'C', '2026-11-02 23:59', 0),
+  groupedTodo(4, 'D', '', 0),
+  groupedTodo(5, 'E', '2026-10-30 23:59', 0),
+  groupedTodo(6, 'a', '2026-10-31 23:59', 0),
+  groupedTodo(7, 'G', '2026-11-01 23:59', 0),
+  groupedTodo(8, 'H', '2026-10-31', 0)
+];
+const tgroups: TodoGroups = groupActiveTodos(groupInput, NOW_STAMP, TODAY_STR);
+check('今天：只有今天到期的，且未到点', tgroups.today.map((t: Todo): string => t.title).join(','), 'a,b');
+check('已逾期：过去时刻，按截止升序', tgroups.overdue.map((t: Todo): string => t.title).join(','), 'E,x');
+check('以后：明天以后 + 无截止 + 半截日期，按截止升序', tgroups.later.map((t: Todo): string => t.title).join(','), 'G,C,D,H');
+check('不改入参顺序', groupInput[0].title, 'b');
+check('截止相同按名称字母序：10.11 在 10.12 前',
+  groupActiveTodos([groupedTodo(1, '10.12 作业', '2026-10-31 23:59', 0),
+    groupedTodo(2, '10.11 作业', '2026-10-31 23:59', 0)], NOW_STAMP, TODAY_STR)
+    .today.map((t: Todo): string => t.title).join(','), '10.11 作业,10.12 作业');
+check('isOverdue：到了点就算', `${isOverdue(groupedTodo(1, 'x', '2026-10-31 11:59', 0), NOW_STAMP)}`, 'true');
+check('isOverdue：没填截止不算', `${isOverdue(groupedTodo(1, 'x', '', 0), NOW_STAMP)}`, 'false');
+check('remainText：还有 11 小时 59 分钟', remainText(parseDateTime('2026-10-31 23:59').getTime(),
+  parseDateTime('2026-10-31 12:00').getTime()), '还有 11 小时 59 分钟');
+check('remainText：不足 1 小时只报分钟', remainText(parseDateTime('2026-10-31 12:30').getTime(),
+  parseDateTime('2026-10-31 12:00').getTime()), '还有 30 分钟');
+check('remainText：整小时不报 0 分钟', remainText(parseDateTime('2026-10-31 14:00').getTime(),
+  parseDateTime('2026-10-31 12:00').getTime()), '还有 2 小时');
+check('remainText：不足 1 分钟', remainText(parseDateTime('2026-10-31 12:00').getTime() + 30000,
+  parseDateTime('2026-10-31 12:00').getTime()), '还有不到 1 分钟');
+check('remainText：已过期返回空串', remainText(parseDateTime('2026-10-31 11:00').getTime(),
+  parseDateTime('2026-10-31 12:00').getTime()), '');
+check('已完成按完成时间倒序', sortDoneTodos([groupedTodo(1, 'old', '2026-10-30 23:59', 100),
+  groupedTodo(2, 'new', '2026-10-30 23:59', 300), groupedTodo(3, 'mid', '2026-10-30 23:59', 200)])
+  .map((t: Todo): string => t.title).join(','), 'new,mid,old');
 
 // ---------- 8. 每日简报正文 ----------
 console.log('【每日简报正文】');

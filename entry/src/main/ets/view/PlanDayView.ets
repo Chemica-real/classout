@@ -3385,11 +3385,15 @@ export struct PlanDayView {
                 // 放在块之后 = 画在块上面；`HitTestMode.None` 保证它不吞点击/拖拽。
                 ForEach(this.colDates, (cd: string, ci: number) => {
                   if (this.nowYFor(cd) >= 0) {
+                    // ⚠️ zIndex 必须高于块（块是 1 / 选中的 5）：不加的话红线会被块整个盖掉
+                    //    （真机实测：12:23 那根线正好压在 12:00-13:00 的块下面，屏幕上看不见）。
+                    //    拖拽中的块是 10，仍然在红线之上，拖动时红线不挡手。
                     Row()
                       .width(this.colWidthOf(ci))
                       .height(1.5)
                       .backgroundColor('#FF5A5F')
                       .position({ x: this.colXOf(ci), y: this.nowYFor(cd) })
+                      .zIndex(6)
                       .hitTestBehavior(HitTestMode.None)
                     Column()
                       .width(8)
@@ -3397,6 +3401,7 @@ export struct PlanDayView {
                       .borderRadius(4)
                       .backgroundColor('#FF5A5F')
                       .position({ x: this.colXOf(ci) + 1, y: this.nowYFor(cd) - 4 })
+                      .zIndex(6)
                       .hitTestBehavior(HitTestMode.None)
                   }
                 }, (cd: string) => `now-${cd}`)

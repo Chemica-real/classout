@@ -4,8 +4,8 @@ import { storedAbilityContext } from '../util/Ctx';
 import { Course, COURSE_COLORS, Todo, TodoCategory, TodoSource, TodoStatus } from '../model/Types';
 import { TimetableRepo } from '../data/TimetableRepo';
 import { TodoRepo } from '../data/TodoRepo';
-import { addDays, countdownText, formatDate, hhmmToMin, minToHHmm, parseDate, relativeDayText,
-  today } from '../util/DateUtil';
+import { addDays, countdownText, formatDate, hhmmToMin, minToHHmm, parseDate, parseDateTime,
+  relativeDayText, today } from '../util/DateUtil';
 import { pickDateTime } from '../util/DateTimePicker';
 import { ExamRange, Validation, examRangeOf, normalizeEstimate, validateEstimate,
   validateExamRange } from '../domain/Validate';
@@ -13,6 +13,7 @@ import { CATEGORY_NAME_MAX, CategoryOption, CategoryVerdict, addCustomCategory,
   allCategoryOptions, categoryLabel, parseCustomCategories,
   validateCategoryName } from '../domain/Categories';
 import { saveCustomCategories, saveNoteExpanded } from '../data/Prefs';
+import { groupActiveTodos, isOverdue, remainText, sortDoneTodos } from '../domain/TodoGroups';
 import { ChipButton } from './ChipButton';
 import { BackHandler, backStack } from '../util/BackStack';
 import { GLASS_BLUR, GLASS_EDGE_SOFT, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_ROW,
@@ -107,6 +108,12 @@ export struct TodoInbox {
   @State activeList: Todo[] = [];
   /** 已完成的待办：放在列表最下方、加灰显示（用户要求"不要让它消失"） */
   @State doneList: Todo[] = [];
+  /**
+   * 时钟滴答（每 30 秒 +1）。只为了让「今天」那些条目的
+   * 「还有 x 小时 y 分钟」**实时更新**（用户 2026-10-30 要求）。
+   */
+  @State clockTick: number = 0;
+  private clockTimer: number = -1;
   /** 「已完成」区是否展开。默认展开 —— 用户要的就是"完成之后能看见它去哪了" */
   @State doneOpen: boolean = true;
   @State courses: Course[] = [];
@@ -161,12 +168,20 @@ export struct TodoInbox {
   private backHandler: BackHandler | undefined = undefined;
 
   aboutToAppear(): void {
+    // 今天那些待办的倒计时要跟着走（用户 2026-10-30：实时更新）
+    this.clockTimer = setInterval((): void => {
+      this.clockTick = this.clockTick + 1;
+    }, 30000);
     this.backHandler = (): boolean => this.handleBack();
     backStack.register(this.backHandler);
     this.load();
   }
 
   aboutToDisappear(): void {
+    if (this.clockTimer !== -1) {
+      clearInterval(this.clockTimer);
+      this.clockTimer = -1;
+    }
     if (this.backHandler !== undefined) {
       backStack.unregister(this.backHandler);
       this.backHandler = undefined;
@@ -333,6 +348,54 @@ export struct TodoInbox {
       }
     }
     return out;
+  }
+
+  /** 现在的时刻，格式与 ddl 一致（`'YYYY-MM-DD HH:mm'`），直接按字符串比较 */
+  private nowStamp(): string {
+    const d: Date = new Date();
+    return `${formatDate(today())} ${minToHHmm(d.getHours() * 60 + d.getMinutes())}`;
+  }
+
+  /** 今天（截止就在今天、还没到点） */
+  private todayTodos(): Todo[] {
+    return groupActiveTodos(this.taskList(), this.nowStamp(), formatDate(today())).today;
+  }
+
+  /** 已逾期（截止时刻已经过了） */
+  private overdueTodos(): Todo[] {
+    return groupActiveTodos(this.taskList(), this.nowStamp(), formatDate(today())).overdue;
+  }
+
+  /** 以后（明天及以后 + 没填截止） */
+  private laterTodos(): Todo[] {
+    return groupActiveTodos(this.taskList(), this.nowStamp(), formatDate(today())).later;
+  }
+
+  /** 已完成：按完成时间倒序（最近完成的在最上面） */
+  private doneSorted(): Todo[] {
+    return sortDoneTodos(this.doneList);
+  }
+
+  /**
+   * 条目副标题。今天的那些多一段「还有 x 小时 y 分钟」；
+   * 逾期的字变红，一眼能看出这条已经晚了。
+   */
+  private rowSubtitle(t: Todo): string {
+    // 今天且没到点：**倒计时放最前面**（最重要），后面才是截止时刻与预计时长。
+    // 这一行只允许一行，太长就省略尾巴 —— 这样被截掉的永远是"预计 N 分钟"，
+    // 倒计时不会被挤到第二行（真机实测原来会折成「预计 60 分 / 钟」两行）。
+    if (t.ddl.length >= 16 && t.ddl.substring(0, 10) === formatDate(today())
+      && !isOverdue(t, this.nowStamp())) {
+      const remain: string = remainText(parseDateTime(t.ddl).getTime(), Date.now());
+      if (remain.length > 0) {
+        return `${remain} · ${t.ddl.substring(11, 16)} 截止 · 预计 ${t.estimateMin} 分钟`;
+      }
+    }
+    return `${this.ddlText(t.ddl)} · 预计 ${t.estimateMin} 分钟`;
+  }
+
+  private rowSubtitleColor(t: Todo): string {
+    return isOverdue(t, this.nowStamp()) ? '#FF8A8A' : '#94A0B5';
   }
 
   /** '2026-10-20 09:00' (+ 结束) → '10 月 20 日 09:00–11:00' */
@@ -1006,9 +1069,11 @@ export struct TodoInbox {
             .textOverflow({ overflow: TextOverflow.Ellipsis })
         }
         .width('100%')
-        Text(`${this.ddlText(t.ddl)} · 预计 ${t.estimateMin} 分钟`)
+        Text(this.rowSubtitle(t))
           .fontSize(11)
-          .fontColor('#94A0B5')
+          .fontColor(this.rowSubtitleColor(t))
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
           .margin({ top: 3 })
         // 备注：有才显示（自动生成的待办备注为空，见 domain/TodoGenerator）
         if (t.note.length > 0) {
@@ -1649,32 +1714,89 @@ export struct TodoInbox {
                 }, (t: Todo) => this.todoKey('x', t))
               }
 
-              Row() {
-                Text('待办')
-                  .fontSize(15)
-                  .fontWeight(FontWeight.Medium)
-                  .fontColor('#F2F5FA')
-                Text(`${this.taskList().length} 条`)
-                  .fontSize(12)
-                  .fontColor('#94A0B5')
-                  .margin({ left: 6 })
-              }
-              .width('100%')
-              .margin({
-                top: this.pendingList.length > 0 || this.examList().length > 0 ? 14 : 0,
-                bottom: 8
-              })
+              // ---- 今天 / 已逾期 / 以后（用户 2026-10-30 拍定）----
+              // 原来是一整条「待办」列表：今天要交的、早就过期的、几天后的混在一起。
+              // 现在竖着分三段，今天的带实时倒计时（见 rowSubtitle），逾期的字变红。
+              if (this.todayTodos().length > 0) {
+                Row() {
+                  Text('今天')
+                    .fontSize(15)
+                    .fontWeight(FontWeight.Medium)
+                    .fontColor('#F2F5FA')
+                  Text(`${this.todayTodos().length} 条`)
+                    .fontSize(12)
+                    .fontColor('#7FA8FF')
+                    .margin({ left: 6 })
+                  Blank()
+                  Text('按截止时间排')
+                    .fontSize(11)
+                    .fontColor('#8B97AC')
+                }
+                .width('100%')
+                .margin({
+                  top: this.pendingList.length > 0 || this.examList().length > 0 ? 14 : 0,
+                  bottom: 8
+                })
 
-              if (this.taskList().length === 0) {
+                ForEach(this.todayTodos(), (t: Todo) => {
+                  this.ActiveRow(t)
+                }, (t: Todo) => this.todoKey('td', t))
+              }
+
+              if (this.overdueTodos().length > 0) {
+                Row() {
+                  Text('已逾期')
+                    .fontSize(15)
+                    .fontWeight(FontWeight.Medium)
+                    .fontColor('#FF8A8A')
+                  Text(`${this.overdueTodos().length} 条`)
+                    .fontSize(12)
+                    .fontColor('#FF8A8A')
+                    .margin({ left: 6 })
+                  Blank()
+                  Text('按截止时间排')
+                    .fontSize(11)
+                    .fontColor('#8B97AC')
+                }
+                .width('100%')
+                .margin({ top: 14, bottom: 8 })
+
+                ForEach(this.overdueTodos(), (t: Todo) => {
+                  this.ActiveRow(t)
+                }, (t: Todo) => this.todoKey('od', t))
+              }
+
+              if (this.laterTodos().length > 0) {
+                Row() {
+                  Text('以后')
+                    .fontSize(15)
+                    .fontWeight(FontWeight.Medium)
+                    .fontColor('#A9B5C9')
+                  Text(`${this.laterTodos().length} 条`)
+                    .fontSize(12)
+                    .fontColor('#94A0B5')
+                    .margin({ left: 6 })
+                  Blank()
+                  Text('按截止时间排')
+                    .fontSize(11)
+                    .fontColor('#8B97AC')
+                }
+                .width('100%')
+                .margin({ top: 14, bottom: 8 })
+
+                ForEach(this.laterTodos(), (t: Todo) => {
+                  this.ActiveRow(t)
+                }, (t: Todo) => this.todoKey('lt', t))
+              }
+
+              if (this.todayTodos().length === 0 && this.overdueTodos().length === 0
+                && this.laterTodos().length === 0) {
                 Text('暂无待办。下课之后，配了模板的课程会自动生成待办到这里。')
                   .fontSize(12)
                   .fontColor('#8B97AC')
                   .width('100%')
                   .padding({ top: 10, bottom: 10 })
               }
-              ForEach(this.taskList(), (t: Todo) => {
-                this.ActiveRow(t)
-              }, (t: Todo) => this.todoKey('a', t))
 
               // ---- 已完成：留在页面最下方、加灰显示 ----
               // ★ 用户实测反馈：完成之后那条**直接消失**了，既看不到它去哪了、也没法恢复。
@@ -1702,7 +1824,7 @@ export struct TodoInbox {
                 .margin({ top: 18, bottom: 8 })
 
                 if (this.doneOpen) {
-                  ForEach(this.doneList, (t: Todo) => {
+                  ForEach(this.doneSorted(), (t: Todo) => {
                     this.DoneRow(t)
                   }, (t: Todo) => this.todoKey('d', t))
                 }
