@@ -15,6 +15,7 @@ import { CATEGORY_NAME_MAX, CategoryOption, CategoryVerdict, addCustomCategory,
 import { saveCustomCategories, saveNoteExpanded } from '../data/Prefs';
 import { courseColorOf, parsePalette } from '../domain/Palette';
 import { groupActiveTodos, isOverdue, remainText, sortDoneTodos } from '../domain/TodoGroups';
+import { TODO_COURSE_ALL, filterTodosByCourse } from '../domain/PlanMath';
 import { ChipButton } from './ChipButton';
 import { BackHandler, backStack } from '../util/BackStack';
 import { GLASS_BLUR, GLASS_EDGE_SOFT, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_ROW,
@@ -118,6 +119,8 @@ export struct TodoInbox {
   /** 「已完成」区是否展开。默认展开 —— 用户要的就是"完成之后能看见它去哪了" */
   @State doneOpen: boolean = true;
   @State courses: Course[] = [];
+  /** 课程筛选：TODO_COURSE_ALL = 全部；0 = 无课程；>0 = 某门课 */
+  @State courseFilter: number = TODO_COURSE_ALL;
   @State loading: boolean = true;
 
   /**
@@ -254,6 +257,19 @@ export struct TodoInbox {
       return;
     }
     this.courses = await TimetableRepo.listCourses(ctx, this.semesterId);
+    // 课程被删/换学期后，别把一个不存在的课程筛选留在界面上
+    if (this.courseFilter > 0) {
+      let found: boolean = false;
+      for (const c of this.courses) {
+        if (c.id === this.courseFilter) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        this.courseFilter = TODO_COURSE_ALL;
+      }
+    }
     this.pendingList = await TodoRepo.listTodos(ctx, 'status = ?', [TodoStatus.Pending]);
     this.activeList = await TodoRepo.listTodos(ctx, 'status = ?', [TodoStatus.Active]);
     this.doneList = await TodoRepo.listDoneTodos(ctx);
@@ -333,10 +349,53 @@ export struct TodoInbox {
 
   // ---- 考试 ----
 
+  /** 课程筛选下拉：全部 / 无课程 / 每门课 */
+  private courseFilterOptions(): SelectOption[] {
+    const out: SelectOption[] = [{ value: '全部课程' }, { value: '无课程' }];
+    for (const c of this.courses) {
+      out.push({ value: c.shortName.length > 0 ? c.shortName : c.name });
+    }
+    return out;
+  }
+
+  private courseFilterIndex(): number {
+    if (this.courseFilter === TODO_COURSE_ALL) {
+      return 0;
+    }
+    if (this.courseFilter === 0) {
+      return 1;
+    }
+    for (let i = 0; i < this.courses.length; i++) {
+      if (this.courses[i].id === this.courseFilter) {
+        return i + 2;
+      }
+    }
+    return 0;
+  }
+
+  private courseFilterText(): string {
+    const idx: number = this.courseFilterIndex();
+    if (idx === 0) {
+      return '全部课程';
+    }
+    if (idx === 1) {
+      return '无课程';
+    }
+    if (idx - 2 < this.courses.length) {
+      const c: Course = this.courses[idx - 2];
+      return c.shortName.length > 0 ? c.shortName : c.name;
+    }
+    return '全部课程';
+  }
+
+  private pendingVisible(): Todo[] {
+    return filterTodosByCourse(this.pendingList, this.courseFilter);
+  }
+
   private examList(): Todo[] {
     const out: Todo[] = [];
     for (const t of this.activeList) {
-      if (t.category === TodoCategory.Exam) {
+      if (t.category === TodoCategory.Exam && this.matchesCourse(t)) {
         out.push(t);
       }
     }
@@ -346,11 +405,15 @@ export struct TodoInbox {
   private taskList(): Todo[] {
     const out: Todo[] = [];
     for (const t of this.activeList) {
-      if (t.category !== TodoCategory.Exam) {
+      if (t.category !== TodoCategory.Exam && this.matchesCourse(t)) {
         out.push(t);
       }
     }
     return out;
+  }
+
+  private matchesCourse(t: Todo): boolean {
+    return this.courseFilter === TODO_COURSE_ALL || t.courseId === this.courseFilter;
   }
 
   /** 现在的时刻，格式与 ddl 一致（`'YYYY-MM-DD HH:mm'`），直接按字符串比较 */
@@ -376,7 +439,7 @@ export struct TodoInbox {
 
   /** 已完成：按完成时间倒序（最近完成的在最上面） */
   private doneSorted(): Todo[] {
-    return sortDoneTodos(this.doneList);
+    return sortDoneTodos(filterTodosByCourse(this.doneList, this.courseFilter));
   }
 
   /**
@@ -1671,13 +1734,46 @@ export struct TodoInbox {
         } else {
           Scroll() {
             Column() {
-              if (this.pendingList.length > 0) {
+              // 课程筛选：和「待安排」同一套路，默认全部课程
+              Row() {
+                Text('课程')
+                  .fontSize(12)
+                  .fontColor('#94A0B5')
+                Blank()
+                Select(this.courseFilterOptions())
+                  .selected(this.courseFilterIndex())
+                  .value(this.courseFilterText())
+                  .font({ size: 12 })
+                  .fontColor('#E5EAF3')
+                  .controlSize(ControlSize.SMALL)
+                  .optionWidth(160)
+                  .selectedOptionBgColor('rgba(46,107,230,0.45)')
+                  .selectedOptionFont({ size: 13 })
+                  .selectedOptionFontColor('#FFFFFF')
+                  .optionBgColor('rgba(16,22,34,0.98)')
+                  .optionFont({ size: 13 })
+                  .optionFontColor('#E5EAF3')
+                  .menuBackgroundColor('rgba(16,22,34,0.98)')
+                  .onSelect((index: number, value: string): void => {
+                    if (index === 0) {
+                      this.courseFilter = TODO_COURSE_ALL;
+                    } else if (index === 1) {
+                      this.courseFilter = 0;
+                    } else if (index - 2 < this.courses.length) {
+                      this.courseFilter = this.courses[index - 2].id;
+                    }
+                  })
+              }
+              .width('100%')
+              .margin({ bottom: 10 })
+
+              if (this.pendingVisible().length > 0) {
                 Row() {
                   Text('待确认')
                     .fontSize(15)
                     .fontWeight(FontWeight.Medium)
                     .fontColor('#F2F5FA')
-                  Text(`${this.pendingList.length} 条`)
+                  Text(`${this.pendingVisible().length} 条`)
                     .fontSize(12)
                     .fontColor('#7FA8FF')
                     .margin({ left: 6 })
@@ -1689,7 +1785,7 @@ export struct TodoInbox {
                 .width('100%')
                 .margin({ bottom: 8 })
 
-                ForEach(this.pendingList, (t: Todo) => {
+                ForEach(this.pendingVisible(), (t: Todo) => {
                   this.PendingCard(t)
                 }, (t: Todo) => this.todoKey('p', t))
               }
@@ -1710,7 +1806,7 @@ export struct TodoInbox {
                     .fontColor('#8B97AC')
                 }
                 .width('100%')
-                .margin({ top: this.pendingList.length > 0 ? 14 : 0, bottom: 8 })
+                .margin({ top: this.pendingVisible().length > 0 ? 14 : 0, bottom: 8 })
 
                 ForEach(this.examList(), (t: Todo) => {
                   this.ExamCard(t)
@@ -1737,7 +1833,7 @@ export struct TodoInbox {
                 }
                 .width('100%')
                 .margin({
-                  top: this.pendingList.length > 0 || this.examList().length > 0 ? 14 : 0,
+                  top: this.pendingVisible().length > 0 || this.examList().length > 0 ? 14 : 0,
                   bottom: 8
                 })
 
@@ -1794,7 +1890,9 @@ export struct TodoInbox {
 
               if (this.todayTodos().length === 0 && this.overdueTodos().length === 0
                 && this.laterTodos().length === 0) {
-                Text('暂无待办。下课之后，配了模板的课程会自动生成待办到这里。')
+                Text(this.courseFilter === TODO_COURSE_ALL
+                  ? '暂无待办。下课之后，配了模板的课程会自动生成待办到这里。'
+                  : `「${this.courseFilterText()}」下暂无待办。`)
                   .fontSize(12)
                   .fontColor('#8B97AC')
                   .width('100%')
@@ -1804,13 +1902,13 @@ export struct TodoInbox {
               // ---- 已完成：留在页面最下方、加灰显示 ----
               // ★ 用户实测反馈：完成之后那条**直接消失**了，既看不到它去哪了、也没法恢复。
               //   现在放到这里：默认展开（就是要让人看见"它没丢"），可收起。
-              if (this.doneList.length > 0) {
+              if (this.doneSorted().length > 0) {
                 Row() {
                   Text('已完成')
                     .fontSize(15)
                     .fontWeight(FontWeight.Medium)
                     .fontColor('#94A0B5')
-                  Text(`${this.doneList.length} 条`)
+                  Text(`${this.doneSorted().length} 条`)
                     .fontSize(12)
                     .fontColor('#7C8798')
                     .margin({ left: 6 })

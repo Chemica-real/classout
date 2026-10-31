@@ -10,9 +10,9 @@ import { generateForLesson } from '../domain/TodoGenerator';
 import { TimeAxis, DEFAULT_WINDOW, allBlocksDone,
   dragOffsetWithScroll, dropRange, edgeScrollDepth, edgeScrollDirection, edgeScrollStep,
   DdlGroup, ddlGroupsOn, durationToH, filterLessonsByCourse, filterTodosByCategory,
-  findFreeSlot, groupLessonsByCourse, halveMinutes, hasBlockOnDate, moveRange, normalizeDuration,
-  LessonGroup, POOL_ALL_COURSES, POOL_FILTER_ALL,
-  resizeRange, sortBlocksByTime,
+  filterTodosByCourse, findFreeSlot, groupLessonsByCourse, halveMinutes, hasBlockOnDate, moveRange,
+  normalizeDuration, LessonGroup, POOL_ALL_COURSES, POOL_FILTER_ALL, TODO_COURSE_ALL,
+  resizeRange, sortBlocksByTime, sortPoolTodos,
   selectPoolTodos } from '../domain/PlanMath';
 import { BLOCK_MIN_MIN, DURATION_STEP_MIN, pinchDeltaLabel, pinchEnd, resizeEndTo,
   totalBlockMinutes } from '../domain/Validate';
@@ -309,6 +309,8 @@ export struct PlanDayView {
    * 和标签筛选一样不进 kv。
    */
   @State poolCourseId: number = POOL_ALL_COURSES;
+  /** 待安排·待办页的课程筛选：TODO_COURSE_ALL = 全部；0 = 无课程；>0 = 某门课 */
+  @State poolTodoCourse: number = TODO_COURSE_ALL;
   /**
    * 「待安排」当前显示哪一页：`POOL_PAGE_TODO`（待办）/ `POOL_PAGE_LESSON`（虚拟课程）。
    * 用户 2026-10-18：「虚拟课程和待办可以放到两页，不必上下放」。默认待办页。
@@ -1808,8 +1810,79 @@ export struct PlanDayView {
    * 先算"该进托盘的"，再按标签挑 —— 换个标签不用重算"排过没有"。
    */
   private poolTodos(): Todo[] {
-    return filterTodosByCategory(selectPoolTodos(this.todos, this.allBlocks),
+    const base: Todo[] = filterTodosByCategory(selectPoolTodos(this.todos, this.allBlocks),
       this.effectivePoolTag());
+    return sortPoolTodos(filterTodosByCourse(base, this.effectivePoolTodoCourse()));
+  }
+
+  /** 课程被删/换学期后，不要把一个不存在的课程筛选留着 */
+  private effectivePoolTodoCourse(): number {
+    if (this.poolTodoCourse === TODO_COURSE_ALL || this.poolTodoCourse === 0) {
+      return this.poolTodoCourse;
+    }
+    for (const c of this.courses) {
+      if (c.id === this.poolTodoCourse) {
+        return this.poolTodoCourse;
+      }
+    }
+    return TODO_COURSE_ALL;
+  }
+
+  private poolTodoCourseOptions(): SelectOption[] {
+    const out: SelectOption[] = [{ value: '全部课程' }, { value: '无课程' }];
+    for (const c of this.courses) {
+      out.push({ value: this.courseShort(c.id) });
+    }
+    return out;
+  }
+
+  private poolTodoCourseIndex(): number {
+    const id: number = this.effectivePoolTodoCourse();
+    if (id === TODO_COURSE_ALL) {
+      return 0;
+    }
+    if (id === 0) {
+      return 1;
+    }
+    for (let i = 0; i < this.courses.length; i++) {
+      if (this.courses[i].id === id) {
+        return i + 2;
+      }
+    }
+    return 0;
+  }
+
+  private poolTodoCourseText(): string {
+    const idx: number = this.poolTodoCourseIndex();
+    if (idx === 0) {
+      return '全部课程';
+    }
+    if (idx === 1) {
+      return '无课程';
+    }
+    if (idx - 2 < this.courses.length) {
+      return this.courseShort(this.courses[idx - 2].id);
+    }
+    return '全部课程';
+  }
+
+  private poolTodoFilterActive(): boolean {
+    return this.effectivePoolTag().length > 0 || this.effectivePoolTodoCourse() !== TODO_COURSE_ALL;
+  }
+
+  private poolTodoEmptyText(): string {
+    const tag: string = this.effectivePoolTag();
+    const course: number = this.effectivePoolTodoCourse();
+    if (tag.length > 0 && course !== TODO_COURSE_ALL) {
+      return `没有同时符合「${this.poolTagText()}」和「${this.poolTodoCourseText()}」的待安排事项。`;
+    }
+    if (tag.length > 0) {
+      return `没有「${this.poolTagText()}」的待安排事项。`;
+    }
+    if (course !== TODO_COURSE_ALL) {
+      return `没有「${this.poolTodoCourseText()}」的待安排事项。`;
+    }
+    return '没有待安排的事项。先去『待办』里确认几条。';
   }
 
   private selectedTodo(): Todo | undefined {
@@ -3480,23 +3553,57 @@ export struct PlanDayView {
       .width('100%')
       .margin({ bottom: 4 })
 
+      if (this.effectivePoolPage() === POOL_PAGE_TODO) {
+        Row() {
+          Text('课程')
+            .fontSize(LAYOUT.sub)
+            .fontColor('#8B97AC')
+          Blank()
+          Select(this.poolTodoCourseOptions())
+            .selected(this.poolTodoCourseIndex())
+            .value(this.poolTodoCourseText())
+            .font({ size: LAYOUT.cardSub })
+            .fontColor('#E5EAF3')
+            .controlSize(ControlSize.SMALL)
+            .optionWidth(160)
+            .selectedOptionBgColor('rgba(46,107,230,0.45)')
+            .selectedOptionFont({ size: LAYOUT.tray })
+            .selectedOptionFontColor('#FFFFFF')
+            .optionBgColor('rgba(16,22,34,0.98)')
+            .optionFont({ size: LAYOUT.tray })
+            .optionFontColor('#E5EAF3')
+            .menuBackgroundColor('rgba(16,22,34,0.98)')
+            .onSelect((index: number, value: string): void => {
+              if (index === 0) {
+                this.poolTodoCourse = TODO_COURSE_ALL;
+              } else if (index === 1) {
+                this.poolTodoCourse = 0;
+              } else if (index - 2 < this.courses.length) {
+                this.poolTodoCourse = this.courses[index - 2].id;
+              }
+              this.selectedTodoId = 0;
+            })
+        }
+        .width('100%')
+        .margin({ bottom: 4 })
+      }
+
       // ---- 本页内容：只显示一页 ----
       if (this.effectivePoolPage() === POOL_PAGE_TODO) {
         if (this.poolTodos().length === 0) {
           Row() {
-            Text(this.effectivePoolTag().length === 0
-              ? '没有待安排的事项。先去『待办』里确认几条。'
-              : `没有「${this.poolTagText()}」的待安排事项。`)
+            Text(this.poolTodoEmptyText())
               .fontSize(LAYOUT.tray)
               .fontColor('#8B97AC')
               .layoutWeight(1)
-            if (this.effectivePoolTag().length > 0) {
+            if (this.poolTodoFilterActive()) {
               Text('看全部')
                 .fontSize(LAYOUT.cardSub)
                 .fontColor('#7FA8FF')
                 .margin({ left: 8 })
                 .onClick((): void => {
                   this.poolTag = POOL_FILTER_ALL;
+                  this.poolTodoCourse = TODO_COURSE_ALL;
                   this.showHint('');
                 })
             }

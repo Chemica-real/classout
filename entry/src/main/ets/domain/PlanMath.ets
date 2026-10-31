@@ -554,6 +554,25 @@ export function filterTodosByCategory(todos: Todo[], category: string): Todo[] {
 export const POOL_ALL_COURSES: number = 0;
 
 /**
+ * 待办按课程筛选：`-1` = 全部课程；`0` = 无课程；`> 0` = 某门课。
+ *
+ * ⚠️ 不要和 `POOL_ALL_COURSES` 混用：虚拟课时一定有课程，所以它的"全部"是 0；
+ * 待办可以是无课程（courseId = 0），这里的"全部"必须是另一个哨兵。
+ */
+export const TODO_COURSE_ALL: number = -1;
+
+/** 按所属课程筛选待办（纯函数；`TODO_COURSE_ALL` = 原样拷贝一份） */
+export function filterTodosByCourse(todos: Todo[], courseId: number): Todo[] {
+  const out: Todo[] = [];
+  for (const t of todos) {
+    if (courseId === TODO_COURSE_ALL || t.courseId === courseId) {
+      out.push(t);
+    }
+  }
+  return out;
+}
+
+/**
  * 虚拟课程的课时按**课程**筛选 —— 和待办的标签筛选同一个套路。
  *
  * 用户 2026-10-18：「虚拟课程应当采用类似的分层/筛选构造，避免全部平铺在上面」。
@@ -604,29 +623,24 @@ export function groupLessonsByCourse(lessons: VirtualLesson[]): LessonGroup[] {
 
 /**
  * 「待安排」托盘的排序：有截止时间的在前（按截止升序），无截止的排最后。
- * 同一截止时间时按 id 升序，保证顺序稳定（ForEach 的 key 依赖它）。
+ * **同一截止时间时按标题字典序**（用户 2026-10-31：「10.11 < 10.21 这样」），
+ * 再相同才按 id，保证顺序稳定（ForEach 的 key 依赖它）。
  */
 export function sortPoolTodos(todos: Todo[]): Todo[] {
   const out: Todo[] = todos.slice();
   out.sort((a: Todo, b: Todo): number => {
     const ad: string = a.ddl;
     const bd: string = b.ddl;
-    const aHas: boolean = ad.length > 0;
-    const bHas: boolean = bd.length > 0;
-    if (aHas && bHas) {
-      if (ad < bd) {
-        return -1;
-      }
-      if (ad > bd) {
-        return 1;
-      }
-      return a.id - b.id;
+    const aHas: boolean = ad.length >= 16;
+    const bHas: boolean = bd.length >= 16;
+    if (aHas !== bHas) {
+      return aHas ? -1 : 1;
     }
-    if (aHas) {
-      return -1;
+    if (aHas && ad !== bd) {
+      return ad < bd ? -1 : 1;
     }
-    if (bHas) {
-      return 1;
+    if (a.title !== b.title) {
+      return a.title < b.title ? -1 : 1;
     }
     return a.id - b.id;
   });

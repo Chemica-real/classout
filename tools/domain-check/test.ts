@@ -36,8 +36,8 @@ import { TimeAxis, DEFAULT_WINDOW, WINDOW_MAX_END, WINDOW_MIN_SPAN, WINDOW_SNAP_
   overlaps, resizeRange,
   hasBlockOnDate, halveMinutes, scheduledDays,
   DdlGroup, ddlGroupsOn, ddlMinuteOf, selectPoolTodos, snap, sortBlocksByTime, sortPoolTodos,
-  filterTodosByCategory, filterLessonsByCourse, groupLessonsByCourse, LessonGroup,
-  POOL_FILTER_ALL, POOL_ALL_COURSES,
+  filterTodosByCategory, filterTodosByCourse, filterLessonsByCourse, groupLessonsByCourse, LessonGroup,
+  POOL_FILTER_ALL, POOL_ALL_COURSES, TODO_COURSE_ALL,
   windowForContent } from './PlanMath';
 
 /**
@@ -745,6 +745,28 @@ check('筛选不改入参', String(tagInput.length), '1');
 filterTodosByCategory(tagInput, POOL_FILTER_ALL).push(td(11, 'Z', 'active', ''));
 check('「全部」也返回拷贝，不改入参', String(tagInput.length), '1');
 
+check('TODO_COURSE_ALL 是 -1（和虚拟课时的 0 区分开）', String(TODO_COURSE_ALL), '-1');
+const byCourse: Todo[] = [
+  td(1, '高数作业', 'active', TodoCategory.Homework),
+  td(2, '高代作业', 'active', TodoCategory.Homework),
+  td(3, '无课程待办', 'active', TodoCategory.None)
+];
+byCourse[0].courseId = 10;
+byCourse[1].courseId = 20;
+check('课程筛选：全部 → 一条不少',
+  titles(filterTodosByCourse(byCourse, TODO_COURSE_ALL)), '高数作业,高代作业,无课程待办');
+check('课程筛选：只留高数',
+  titles(filterTodosByCourse(byCourse, 10)), '高数作业');
+check('课程筛选：只留无课程',
+  titles(filterTodosByCourse(byCourse, 0)), '无课程待办');
+check('课程筛选：没有该课程 → 空',
+  String(filterTodosByCourse(byCourse, 99).length), '0');
+check('课程筛选：空输入 → 空',
+  String(filterTodosByCourse([], 10).length), '0');
+const courseInput: Todo[] = [td(9, 'X', 'active')];
+filterTodosByCourse(courseInput, 10).push(td(10, 'Y', 'active'));
+check('课程筛选：全部/某课都返回拷贝，不改入参', String(courseInput.length), '1');
+
 // 两步串联：先算"该进托盘的"，再按标签挑 —— 已排过的不能被标签筛选"捞回来"
 const tagPoolBase: Todo[] = [
   td(1, '作业已排', 'active', TodoCategory.Homework),
@@ -930,11 +952,15 @@ check('无截止的排最后',
 check('两个都有截止 → 按时间升序',
   titles(sortPoolTodos([td2(1, '晚', '2026-10-15 23:59'), td2(2, '早', '2026-10-14 23:59')])),
   '早,晚');
-check('截止相同时按 id 升序（顺序稳定）',
-  titles(sortPoolTodos([td2(9, 'B', '2026-10-14 23:59'), td2(3, 'A', '2026-10-14 23:59')])),
+check('截止相同时按标题字典序（10.11 < 10.21）',
+  titles(sortPoolTodos([td2(9, '10.21 作业', '2026-10-14 23:59'),
+    td2(3, '10.11 作业', '2026-10-14 23:59')])),
+  '10.11 作业,10.21 作业');
+check('截止相同时标题优先于 id',
+  titles(sortPoolTodos([td2(9, 'A', '2026-10-14 23:59'), td2(3, 'B', '2026-10-14 23:59')])),
   'A,B');
-check('全无截止 → 按 id 升序',
-  titles(sortPoolTodos([td2(7, 'X', ''), td2(2, 'Y', '')])), 'Y,X');
+check('全无截止 → 也按标题字典序',
+  titles(sortPoolTodos([td2(7, 'X', ''), td2(2, 'Y', '')])), 'X,Y');
 check('不修改传入数组（纯函数）',
   `${sortPoolTodos([td2(1, '无', ''), td2(2, '有', '2026-10-14 23:59')])[0].title}|${[td2(1, '无', ''), td2(2, '有', '2026-10-14 23:59')][0].title}`,
   '有|无');
