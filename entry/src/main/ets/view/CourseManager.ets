@@ -730,9 +730,19 @@ export struct CourseManager {
     }
     sem.name = this.semName;
     sem.startDate = this.semStart;
+    const oldWeeks: number = sem.totalWeeks;
     sem.totalWeeks = this.semWeeks;
     await TimetableRepo.updateSemester(ctx, sem);
-    this.toast = '学期设置已保存';
+    // 用户 2026-10-30：允许改教学周数，但**必须同步所有课程的周次掩码**。
+    // 掩码长度在创建时按当时的周数写死；不同步的话，改长之后新周次"没有课"，
+    // 改短之后课程里还留着已经不存在的周次（显示/上课都对不上）。
+    let resized: number = 0;
+    if (oldWeeks !== sem.totalWeeks) {
+      resized = await TimetableRepo.resizeRuleMasks(ctx, sem.id, sem.totalWeeks);
+    }
+    this.toast = resized > 0
+      ? `学期设置已保存；${resized} 个时段的周次已对齐到 ${sem.totalWeeks} 周`
+      : '学期设置已保存';
     this.mode = 'list';
     await this.reload();
   }
@@ -1538,6 +1548,11 @@ export struct CourseManager {
             }, (n: number) => `sw-${n}`)
           }
           .width('100%')
+          Text('改周数会同步所有课程的周次范围：改长时新加的周默认不上课，改短时超出的周次会被截掉。')
+            .fontSize(11)
+            .fontColor('#8B97AC')
+            .width('100%')
+            .margin({ top: 6 })
 
           Button('保存学期设置')
             .backgroundColor('#2E6BE6')

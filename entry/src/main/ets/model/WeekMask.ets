@@ -34,6 +34,34 @@ export function maskNone(totalWeeks: number): string {
 }
 
 /**
+ * 把掩码对齐到**新的学期总周数**。
+ *
+ * 为什么需要它：掩码长度在创建时按当时的 `Semester.totalWeeks` 写死，
+ * 而「管理课程 → 学期设置」允许改总周数。改了之后两边长度对不上：
+ *   - 变长：多出来的周次 `maskHas` 一律返回 false（新课表周看起来像"课全没了"）；
+ *   - 变短：旧掩码尾部还留着 '1'，各处的"周次文本"显示的和实际学期对不上。
+ *
+ * 规则（用户 2026-10-30 拍定）：
+ *   - **变长**：多出来的周次补 `'0'` —— 新加的周默认不上课，课程不会凭空变多；
+ *   - **变短**：直接截掉超出部分 —— 那些周已经不存在了；
+ *   - 长度本来就一致时原样返回（幂等，不产生写库）。
+ */
+export function resizeMask(mask: string, totalWeeks: number): string {
+  const n: number = totalWeeks < 0 ? 0 : Math.floor(totalWeeks);
+  if (mask.length === n) {
+    return mask;
+  }
+  if (mask.length > n) {
+    return mask.substring(0, n);
+  }
+  let out: string = mask;
+  for (let i = mask.length; i < n; i++) {
+    out += '0';
+  }
+  return out;
+}
+
+/**
  * 解析人类写法，生成掩码。支持：
  *   '1-16'        连续区间
  *   '1-8,10-16'   逗号 / 顿号分隔

@@ -3,6 +3,7 @@ import { common } from '@kit.AbilityKit';
 import { Db } from './Db';
 import { Course, OverrideKind, RestWindow, SectionTime, Semester, SessionOverride,
   SessionRule } from '../model/Types';
+import { resizeMask } from '../model/WeekMask';
 
 /** 课表相关表的读写 */
 export class TimetableRepo {
@@ -250,6 +251,31 @@ export class TimetableRepo {
     }
     rs.close();
     return list;
+  }
+
+  /**
+   * 学期总周数变了之后，把本学期**所有课程的周次掩码**对齐到新长度。
+   *
+   * 用户 2026-10-30 拍定的处理：允许改学期周数，但必须同步掩码，否则掩码长度
+   * 和 `Semester.totalWeeks` 不一致 —— 改长时新周次没有课（`maskHas` 越界返回 false），
+   * 改短时课程里还存着已经不存在的周次（周次文本对不上）。
+   * 具体规则见 `model/WeekMask.resizeMask`（变长补 0、变短截断）。
+   *
+   * @returns 真正被改写了几条规则（0 = 本来就已经对齐，没有写库）
+   */
+  static async resizeRuleMasks(context: common.Context, semesterId: number,
+    totalWeeks: number): Promise<number> {
+    const rules: SessionRule[] = await TimetableRepo.listRules(context, semesterId);
+    let changed: number = 0;
+    for (const r of rules) {
+      const next: string = resizeMask(r.weeksMask, totalWeeks);
+      if (next !== r.weeksMask) {
+        r.weeksMask = next;
+        await TimetableRepo.updateRule(context, r);
+        changed++;
+      }
+    }
+    return changed;
   }
 
   private static readRule(rs: relationalStore.ResultSet): SessionRule {

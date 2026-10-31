@@ -707,6 +707,22 @@ export struct TodoInbox {
     return categoryLabel(t.category, this.customCategories());
   }
 
+  /**
+   * 名称输入框的**灰字占位符**：跟着所选类型变（用户 2026-10-30 要求）。
+   *
+   * 例：「类型 = 作业」时占位符是 `10/30 作业`（今天日期 + 类型名），
+   * 换类型立刻跟着变；「无」没有类型名，退回原来那句完整示例。
+   * ⚠️ 只是占位符，不是真的预填内容 —— 用户不点名称框时不会把日期写进标题。
+   */
+  private titlePlaceholder(): string {
+    const label: string = categoryLabel(this.editCategory, this.customCategories());
+    if (label.length === 0) {
+      return '例如：数学作业 P12 第 3-5 题';
+    }
+    const d: Date = today();
+    return `${d.getMonth() + 1}/${d.getDate()} ${label}`;
+  }
+
   private toggleCatCreating(): void {
     this.catCreating = !this.catCreating;
     this.catDraft = '';
@@ -1027,6 +1043,18 @@ export struct TodoInbox {
         .margin({ right: 10 })
       Column() {
         Row() {
+          // ⚠️ 用户要求（2026-10-30）：已完成里**也要显示课程名**。
+          //    原来这里只有类型标签，做完了就分不清是哪门课的作业。
+          if (t.courseId > 0) {
+            Text(this.courseLabel(t.courseId))
+              .fontSize(10)
+              .fontColor('#DCE4F0')
+              .backgroundColor(this.courseColor(t.courseId))
+              .borderRadius(3)
+              .padding({ left: 4, right: 4 })
+              .margin({ right: 6 })
+              .opacity(0.75)
+          }
           this.CategoryTag(t)
           Text(t.title)
             .fontSize(14)
@@ -1102,10 +1130,17 @@ export struct TodoInbox {
         Text(this.countdownOf(t))
           .fontSize(12)
           .fontColor('#FF8A8A')
-        Text('考完了')
+        // ⚠️ 用户要求（2026-10-30）：「考完了」做成**按钮样式**。
+        //    原来只是一行蓝色小字，看起来像状态文字（"已经考完了"），
+        //    而不是"点我把它标成考完"。现在给它底、圆角、白字，一眼是可点的按钮。
+        Button('考完了', { type: ButtonType.Normal })
           .fontSize(11)
-          .fontColor('#7FA8FF')
-          .margin({ top: 6 })
+          .fontColor('#FFFFFF')
+          .backgroundColor('#2E6BE6')
+          .height(26)
+          .padding({ left: 12, right: 12 })
+          .borderRadius(13)
+          .margin({ top: 8 })
           .onClick((): void => this.complete(t))
       }
       .alignItems(HorizontalAlign.End)
@@ -1148,7 +1183,7 @@ export struct TodoInbox {
         Scroll() {
           Column() {
 
-        TextInput({ text: this.editTitle, placeholder: '例如：数学作业 P12 第 3-5 题' })
+        TextInput({ text: this.editTitle, placeholder: this.titlePlaceholder() })
           .fontColor('#F2F5FA')
           .placeholderColor('#8B97AC')
           .caretColor('#7FA8FF')

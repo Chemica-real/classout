@@ -7,6 +7,7 @@ import { TimetableRepo } from '../data/TimetableRepo';
 import { Db } from '../data/Db';
 import { Seeder } from '../data/Seeder';
 import { computeWeekSessions, dateOfWeekday, mergeRoomOverrides, weekOfDate } from '../domain/Timetable';
+import { timetableNowY } from '../domain/NowLine';
 import { generateMissedTodos, GenerationOutcome } from '../domain/TodoGenerator';
 import { ReminderPlan, syncReminders } from '../domain/ReminderScheduler';
 import { formatDate, minToHHmm, today, WEEKDAY_CN, weekdayOf } from '../util/DateUtil';
@@ -256,6 +257,13 @@ struct Index {
   @StorageLink('motionOn') @Watch('onMotionChanged') motionOn: boolean = true;
   /** 首页标语（设置页可改，见 data/Prefs.ets）。加载页第一帧就用它 */
   @StorageLink('bootMotto') motto: string = MOTTO_DEFAULT;
+  /**
+   * 「现在」是当天第几分钟（用户 2026-10-30：课表上要用一根红细线标出当前时间）。
+   * 每 15 秒更新一次 —— 红线只差一两分钟没人看得出来，但每分钟刷一次就够用了。
+   * `-1` = 还没算过（首帧不画）。
+   */
+  @State nowMin: number = -1;
+  private nowTimer: number = -1;
   private typeTimer: number = -1;
   /** 内容层上方要让出的高度（设置页没有页头，所以是 0） */
   private topInset(): number {
@@ -283,6 +291,10 @@ struct Index {
     if (this.typeTimer !== -1) {
       clearInterval(this.typeTimer);
       this.typeTimer = -1;
+    }
+    if (this.nowTimer !== -1) {
+      clearInterval(this.nowTimer);
+      this.nowTimer = -1;
     }
     for (const t of this.bootTimers) {
       clearTimeout(t);
@@ -315,13 +327,18 @@ struct Index {
     }
     if (this.showManager) {
       this.showManager = false;
-      this.refresh();
+      this.reloadSemesterThenRefresh();
       return true;
     }
     return false;   // 交给系统
   }
 
   aboutToAppear(): void {
+    // 「当前时间」红线：先算一次（首帧就是对的），之后每 15 秒跟一次
+    this.nowMin = this.currentMinute();
+    this.nowTimer = setInterval((): void => {
+      this.nowMin = this.currentMinute();
+    }, 15000);
     // ⚠️ 第一件事**只读"隐私政策同意过没有"**，别的什么都不做
     //（不建库、不读壁纸、不补生成、不同步日历、不请求权限）。
     this.checkPrivacyGate().catch((e: Object): void => {
@@ -329,6 +346,32 @@ struct Index {
       // 读不出来就当成"没同意"：宁可多问一次，也不能默认同意。
       this.privacyGate = true;
     });
+  }
+
+  private currentMinute(): number {
+    const d: Date = new Date();
+    return d.getHours() * 60 + d.getMinutes();
+  }
+
+  /**
+   * 课表网格里「现在」的 y 坐标（vp）；`-1` = 不该画。
+   *
+   * 只在**正在看的就是当前周**时画 —— 翻到别的周还标一条"现在"会让人以为
+   * 那周也在此时此刻。当前周之外、或者现在不在第一节到最后一节之间（早上 7 点、
+   * 晚上 10 点之后），都不画。
+   */
+  private nowLineY(): number {
+    if (this.semester.id === 0 || this.sectionTimes.length === 0) {
+      return -1;
+    }
+    if (this.week !== weekOfDate(this.semester, today())) {
+      return -1;
+    }
+    const heights: number[] = [];
+    for (const st of this.sectionTimes) {
+      heights.push(this.sectionHeight(st.section));
+    }
+    return timetableNowY(this.sectionTimes, heights, this.nowMin);
   }
 
   /** 同意过（且是对当前这一版政策）就直接进启动流程，否则弹窗 */
@@ -638,6 +681,42 @@ struct Index {
   private refresh(): void {
     this.reloadData().catch((e: Object): void => {
       hilog.error(DOMAIN, TAG, 'reload failed: %{public}s', JSON.stringify(e));
+    });
+  }
+
+  /**
+   * 关掉「管理课程」之后：**先把学期本身重新读一遍**，再刷新课表。
+   *
+   * 用户 2026-10-30 报的「改学期周数出问题」，除了掩码长度不同步（已由
+   * `TimetableRepo.resizeRuleMasks` 修掉）之外，还有这一处：Index 手里的
+   * `semester` 是冷启动时读的，用户在管理课程里改了**名称 / 开学日 / 总周数**
+   * 之后，页头还显示旧值，当前周也可能停在已经不存在的周次上
+   *（比如 18 周改回 16 周，页头还写着「第 17 周」）——
+   * 重启 App 才对，于是看起来像"后来自己又好了"。
+   *
+   * 处理：重新读学期 → 如果原来停在"本周"，就跟着新的开学日重新算本周；
+   * 否则保留正在看的周次，但夹进新的 `1..totalWeeks`。
+   */
+  private reloadSemesterThenRefresh(): void {
+    const wasCurrent: boolean = this.week === this.clampWeek(today());
+    TimetableRepo.getSemester(this.context()).then((sem: Semester | undefined): void => {
+      if (sem !== undefined) {
+        this.semester = sem;
+        const tw: number = weekOfDate(sem, today());
+        const todayWeek: number = tw < 1 ? 1 : (tw > sem.totalWeeks ? sem.totalWeeks : tw);
+        let target: number = wasCurrent ? todayWeek : this.week;
+        if (target > sem.totalWeeks) {
+          target = sem.totalWeeks;
+        }
+        if (target < 1) {
+          target = 1;
+        }
+        this.week = target;
+      }
+      this.refresh();
+    }).catch((e: Object): void => {
+      hilog.error(DOMAIN, TAG, 'reload semester failed: %{public}s', JSON.stringify(e));
+      this.refresh();
     });
   }
 
@@ -1500,6 +1579,25 @@ struct Index {
           ForEach(this.sessionsOfDay(wd), (s: CourseSession) => {
             this.SessionBlock(s)
           }, (s: CourseSession) => this.sessionKey(s))
+
+          // 「现在」红线：画在**今天那一列**里（用户 2026-10-30 要求随时更新）。
+          // 只画在今天列：跨到别的列会像是"那几天也在此时此刻"。
+          // hitTestBehavior(None)：它只是标记，不能吞掉格子的点击。
+          if (wd === weekdayOf(today()) && this.nowLineY() >= 0) {
+            Row()
+              .width('100%')
+              .height(1.5)
+              .backgroundColor('#FF5A5F')
+              .position({ y: this.nowLineY() })
+              .hitTestBehavior(HitTestMode.None)
+            Column()
+              .width(8)
+              .height(8)
+              .borderRadius(4)
+              .backgroundColor('#FF5A5F')
+              .position({ x: 1, y: this.nowLineY() - 4 })
+              .hitTestBehavior(HitTestMode.None)
+          }
         }
         .layoutWeight(1)
         .height('100%')
@@ -2655,7 +2753,8 @@ struct Index {
           semesterId: this.semester.id,
           close: (): void => {
             this.showManager = false;
-            this.refresh();
+            // ⚠️ 不能只 refresh()：学期名称/开学日/总周数可能刚被改过（见 reloadSemesterThenRefresh）
+            this.reloadSemesterThenRefresh();
           }
         })
       }

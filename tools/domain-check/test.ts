@@ -21,7 +21,8 @@ import { GuideTab, guideStepAt, guideStepCount, guideTabsValid, guideTextsNonEmp
 import { PrivacySection, privacySections, privacyUpdatedAt } from './Privacy';
 import { SYNC_INTERVAL_CHOICES, SYNC_INTERVAL_DEFAULT, SYNC_INTERVAL_MAX, SYNC_INTERVAL_MIN,
   isSyncBoundary, normalizeSyncInterval, shouldRestartAfterIdle } from './SyncCadence';
-import { maskAll, maskFromText, maskToText, maskHas } from './WeekMask';
+import { maskAll, maskFromText, maskToText, maskHas, resizeMask } from './WeekMask';
+import { timetableNowY } from './NowLine';
 import { countdownText, formatDateTime, minToHHmm, parseDate, parseDateTime } from './DateUtil';
 import { computeDdl, renderTitle } from './TodoGenRules';
 import { TimeAxis, DEFAULT_WINDOW, WINDOW_MAX_END, WINDOW_MIN_SPAN, WINDOW_SNAP_MIN,
@@ -147,6 +148,27 @@ check('解析不出来时兜底为全上', maskFromText('瞎写', 16), '11111111
 check('maskToText 回读', maskToText('1111111100111111'), '1-8、11-16');
 check('maskHas 命中第 6 周', `${maskHas('1111111111111111', 6)}`, 'true');
 check('maskHas 不命中第 9 周', `${maskHas('1111111101111111', 9)}`, 'false');
+// 学期总周数可改（用户 2026-10-30 拍定）：改长补 0、改短截断、长度一致原样返回
+check('resizeMask 变长补 0（新周默认不上课）', resizeMask('1111111100000000', 18), '111111110000000000');
+check('resizeMask 变短截断', resizeMask('111111111111111111', 16), '1111111111111111');
+check('resizeMask 长度一致时原样返回（幂等）', resizeMask('1010101010101010', 16), '1010101010101010');
+check('resizeMask 空掩码也能补齐', resizeMask('', 3), '000');
+check('resizeMask 非法负数当 0', resizeMask('11', -2), '');
+
+// ---------- 1.6 当前时间红线（课表网格的分钟 → y 换算） ----------
+console.log('【当前时间红线】');
+const nowHeights: number[] = DEFAULT_SECTION_TIMES.map((st: SectionTime): number => st.flexible ? 36 : 52);
+// 10 节 × 52 + 2 节机动 × 36 = 592
+check('课表红线：第 1 节开始 = y0', `${timetableNowY(DEFAULT_SECTION_TIMES, nowHeights, 8 * 60)}`, '0');
+check('课表红线：08:25 在第一节课正中间', `${timetableNowY(DEFAULT_SECTION_TIMES, nowHeights, 8 * 60 + 25)}`, '26');
+check('课表红线：08:50 第一节课结束 = 第一行底边', `${timetableNowY(DEFAULT_SECTION_TIMES, nowHeights, 8 * 60 + 50)}`, '52');
+check('课表红线：09:30 在第二节（09:00-09:50）30/50 处', `${timetableNowY(DEFAULT_SECTION_TIMES, nowHeights, 9 * 60 + 30)}`, '83.2');
+check('课表红线：课间 08:55 停在两行交界处', `${timetableNowY(DEFAULT_SECTION_TIMES, nowHeights, 8 * 60 + 55)}`, '52');
+check('课表红线：机动节次按 36 行高换算（17:30 = 20/50）', `${timetableNowY(DEFAULT_SECTION_TIMES, nowHeights, 17 * 60 + 30)}`, '430.4');
+check('课表红线：最后一节课结束 = 网格底边', `${timetableNowY(DEFAULT_SECTION_TIMES, nowHeights, 21 * 60 + 30)}`, '592');
+check('课表红线：第一节课之前不画', `${timetableNowY(DEFAULT_SECTION_TIMES, nowHeights, 7 * 60)}`, '-1');
+check('课表红线：最后一节课之后不画', `${timetableNowY(DEFAULT_SECTION_TIMES, nowHeights, 22 * 60)}`, '-1');
+check('课表红线：没有节次时也不画', `${timetableNowY([], [], 9 * 60)}`, '-1');
 
 // ---------- 2. 第 6 周排课 ----------
 console.log('【第 6 周（2026-10-12 ~ 10-18）排课】');

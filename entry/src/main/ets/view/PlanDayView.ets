@@ -277,6 +277,12 @@ export struct PlanDayView {
    */
   @State poolPage: number = POOL_PAGE_TODO;
   @State loading: boolean = true;
+  /**
+   * 「现在」是当天第几分钟（用户 2026-10-30：计划页也要一根红细线标出当前时间）。
+   * 每 15 秒跟一次；`-1` = 还没算过（首帧不画）。
+   */
+  @State nowMin: number = -1;
+  private nowTimer: number = -1;
   @State selectedTodoId: number = 0;
   /**
    * 选中的**块**（单击选中，加黑框高亮）。0 = 没选中任何块。
@@ -402,6 +408,11 @@ export struct PlanDayView {
   private backHandler: BackHandler | undefined = undefined;
 
   aboutToAppear(): void {
+    // 「当前时间」红线：先算一次（首帧就对），之后每 15 秒跟一次
+    this.nowMin = this.nowMinute();
+    this.nowTimer = setInterval((): void => {
+      this.nowMin = this.nowMinute();
+    }, 15000);
     // 待安排的展开状态：用户选择"记忆上次状态"，所以冷启动/切页面都读回来
     loadTrayOpen(this.context()).then((open: boolean): void => {
       this.trayOpen = open;
@@ -419,6 +430,10 @@ export struct PlanDayView {
   }
 
   aboutToDisappear(): void {
+    if (this.nowTimer !== -1) {
+      clearInterval(this.nowTimer);
+      this.nowTimer = -1;
+    }
     // 必须注销：本组件会随标签切换销毁，留着就是指向已销毁组件的处理器
     if (this.backHandler !== undefined) {
       backStack.unregister(this.backHandler);
@@ -1768,6 +1783,24 @@ export struct PlanDayView {
   private nowMinute(): number {
     const d: Date = new Date();
     return d.getHours() * 60 + d.getMinutes();
+  }
+
+  /**
+   * 第 i 列「现在」那条红线的 y 坐标（vp）；`-1` = 这一列不画。
+   *
+   * 只有**今天所在的那一列**画（用户 2026-10-30 要求）：
+   * 单日视图 = 正在看今天才画；三日视图 = 中间/两侧哪一列是今天就画哪一列。
+   * 现在不在时间窗内（比如设置在 07:00–24:00、而现在是 06:30）也不画。
+   */
+  private nowYFor(cd: string): number {
+    if (cd !== formatDate(today())) {
+      return -1;
+    }
+    const axis: TimeAxis = this.ax();
+    if (this.nowMin < axis.startMin || this.nowMin > axis.endMin) {
+      return -1;
+    }
+    return axis.minuteToY(this.nowMin);
   }
 
   /** 一键找空档：跳过课表、已排的块、以及用户设的休息时段 */
@@ -3348,6 +3381,25 @@ export struct PlanDayView {
                     this.PlanBlockView(b, ci)
                   }, (b: PlanBlock) => `blk-${ci}-${b.id}-${b.startMin}-${b.endMin}-${b.done}`)
                 }, (cd: string) => `colblk-${cd}`)
+                // 「现在」红线：只画在今天那一列（用户 2026-10-30 要求随时更新）。
+                // 放在块之后 = 画在块上面；`HitTestMode.None` 保证它不吞点击/拖拽。
+                ForEach(this.colDates, (cd: string, ci: number) => {
+                  if (this.nowYFor(cd) >= 0) {
+                    Row()
+                      .width(this.colWidthOf(ci))
+                      .height(1.5)
+                      .backgroundColor('#FF5A5F')
+                      .position({ x: this.colXOf(ci), y: this.nowYFor(cd) })
+                      .hitTestBehavior(HitTestMode.None)
+                    Column()
+                      .width(8)
+                      .height(8)
+                      .borderRadius(4)
+                      .backgroundColor('#FF5A5F')
+                      .position({ x: this.colXOf(ci) + 1, y: this.nowYFor(cd) - 4 })
+                      .hitTestBehavior(HitTestMode.None)
+                  }
+                }, (cd: string) => `now-${cd}`)
               }
               .width('100%')
               .height(this.gridH())
