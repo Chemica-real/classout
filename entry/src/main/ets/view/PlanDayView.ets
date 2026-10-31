@@ -3836,6 +3836,48 @@ export struct PlanDayView {
           .hitTestBehavior(HitTestMode.None)
       }
 
+      // 截止标记（⚑ … 截止）：每一列都画自己的，和三日视图/旧单日一样可点开列表。
+      // ⚠️ 画布里整列是裁剪的（height = gridH），23:59 那条如果按真实 y 会正好挂在
+      //    下边界外面被裁掉；这里把它夹到网格底部往上 22vp，保证始终看得见。
+      ForEach(this.ddlGroupsOf(cd), (g: DdlGroup) => {
+        Row() {
+          Text(g.todos.length > 1
+            ? `⚑ ${g.todos.length} 项截止`
+            : `⚑ ${g.todos[0].title} 截止`)
+            .fontSize(LAYOUT.tray)
+            .fontColor('#FF8A8A')
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .layoutWeight(1)
+        }
+        .width('100%')
+        .padding({ left: 6, top: 1, bottom: 1 })
+        .backgroundColor(this.ddlOpenKey === this.ddlKeyOf(cd, g.minute)
+          ? 'rgba(214,69,69,0.45)' : 'rgba(214,69,69,0.18)')
+        .borderRadius(4)
+        .position({ x: 0, y: Math.min(this.yOf(g.minute), this.gridH() - 22) })
+        .onClick((): void => {
+          const k: string = this.ddlKeyOf(cd, g.minute);
+          this.ddlOpenKey = this.ddlOpenKey === k ? '' : k;
+        })
+        .bindPopup(this.ddlOpenKey === this.ddlKeyOf(cd, g.minute), {
+          builder: this.DdlExpandPanel(),
+          placement: Placement.Bottom,
+          popupColor: DDL_PANEL_BG,
+          backgroundBlurStyle: BlurStyle.NONE,
+          maskColor: Color.Transparent,
+          enableArrow: false,
+          radius: GLASS_RADIUS,
+          autoCancel: true,
+          width: DDL_PANEL_W,
+          onStateChange: (e: PopupStateChangeParam): void => {
+            if (!e.isVisible && this.ddlOpenKey === this.ddlKeyOf(cd, g.minute)) {
+              this.ddlOpenKey = '';
+            }
+          }
+        })
+      }, (g: DdlGroup) => `ppdlg-${cd}-${g.minute}-${g.todos.length}-${g.todos[0].id}`)
+
       // 今天那根「现在」红线（和当前日同款圆点）
       if (this.nowYFor(cd) >= 0) {
         Row()
