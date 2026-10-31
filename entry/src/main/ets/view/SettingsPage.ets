@@ -1622,9 +1622,12 @@ export struct SettingsPage {
   @Builder
   SyncCard() {
     Column() {
+      // ⚠️ 副标题里**不能塞 `this.syncIntervalMin`**：`@Builder` 的参数按值传入、
+      // 首次渲染后固化，改完间隔这一行会一直显示旧值（真机实测）。
+      // 动态的数字放到下面那行普通 Text 里（它每次都重新求值）。
       this.SectionTitle('日历同步',
-        `连续使用到 ${this.syncIntervalMin} 分钟的整数倍时会自动同步一次（页面上方会弹出提示）；`
-        + `闲置超过 ${this.syncIntervalMin} 分钟后再次打开，App 会重新启动一次，好让提醒始终是最新的。`)
+        '连续使用到设定间隔的整数倍时会自动同步一次（页面上方会弹出提示）；'
+        + '闲置超过设定间隔后再次打开，App 会重新启动一次，好让提醒始终是最新的。')
 
       Flex({ wrap: FlexWrap.Wrap }) {
         ForEach(SYNC_INTERVAL_CHOICES, (m: number) => {
