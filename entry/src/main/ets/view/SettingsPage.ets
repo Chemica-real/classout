@@ -970,7 +970,7 @@ export struct SettingsPage {
   ReminderCard() {
     Column() {
       this.SectionTitle('提醒',
-        '提醒会写进系统日历、由日历负责响铃；每次启动 App 会把未来一段时间的提醒重排一遍。')
+        '课程和计划块会按**整段时间**写进系统日历，由日历提前提醒；每次启动 App 会把未来一段时间的日程重排一遍。')
 
       Row() {
         Column() {
@@ -1007,7 +1007,7 @@ export struct SettingsPage {
         .width('100%')
       }
 
-      this.FieldLabel('上课提前多久提醒')
+      this.FieldLabel('提前多久提醒（上课 / 计划块）')
       Flex({ wrap: FlexWrap.Wrap }) {
         ForEach(LEAD_CHOICES, (m: number) => {
           ChipButton({

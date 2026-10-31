@@ -8,9 +8,20 @@ const TAG: string = 'ClassOUT';
 /** 写进日历事件时打的标记：重新同步时靠它认出「哪些是我们建的」 */
 const MARK: string = 'ClassOUT';
 
-/** 一条要提醒的事（时间 + 标题 + 说明） */
+/**
+ * 一条要写进系统日历的事。
+ *
+ * 用户 2026-10-30 的要求：不要写「还有 15 分钟上课」那种 15 分钟的小事件，
+ * 而是**把课程 / 待办所在的整段时间写成一个日程**，再让日历提前 `leadMin` 分钟提醒。
+ * 所以这里带的是事件真正的起止（`at` / `endAt`）和提前量，而不是"该响铃的时刻"。
+ */
 export interface CalItem {
+  /** 事件开始 */
   at: Date;
+  /** 事件结束（真实时长；<= at 时按 15 分钟兜底） */
+  endAt: Date;
+  /** 提前多少分钟提醒（日历的 reminderTime，0 = 准时） */
+  leadMin: number;
   title: string;
   content: string;
 }
@@ -83,12 +94,17 @@ export async function syncCalendarReminders(context: common.UIAbilityContext,
     const events: calendarManager.Event[] = [];
     for (const it of items) {
       const start: number = it.at.getTime();
+      // 真实时长：课程就是上课时长、计划块就是这块的时长；异常时兜底 15 分钟
+      const rawEnd: number = it.endAt.getTime();
+      const end: number = rawEnd > start ? rawEnd : start + 15 * 60000;
+      const lead: number = it.leadMin < 0 ? 0 : it.leadMin;
       events.push({
         type: calendarManager.EventType.NORMAL,
         title: it.title,
         startTime: start,
-        endTime: start + 15 * 60000,
-        reminderTime: [0],
+        endTime: end,
+        // 日历的 reminderTime 单位是分钟：x = 距开始提前 x 分钟提醒（0 = 准时）
+        reminderTime: [lead],
         description: `${MARK}｜${it.content}`
       });
     }

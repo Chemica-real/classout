@@ -74,11 +74,35 @@ export async function saveReminderSettings(context: common.Context,
   await Db.setKv(context, KV_CLASS_LEAD, `${s.classLeadMin}`);
 }
 
+/**
+ * 一条候选提醒。
+ *
+ * ⚠️ 2026-10-30 起语义变了：`at` / `endAt` 是**真实事件的起止**，不再是
+ * "该响铃的时刻"。原因是用户明确不要「还有 15 分钟上课」这种 15 分钟小日程，
+ * 而要「整段课程 / 整块待办 = 一个日程 + 提前 n 分钟提醒」。
+ *   - 代理提醒（如果可用）：在 `at - leadMin` 响；
+ *   - 系统日历（实际在用的那条路）：事件从 `at` 到 `endAt`，`reminderTime = leadMin`。
+ */
 interface Candidate {
   at: Date;
+  endAt: Date;
+  /** 提前多少分钟提醒（0 = 准时） */
+  leadMin: number;
+  /** 日历事件标题（代理提醒也用这条） */
   title: string;
   content: string;
   kind: string;
+}
+
+/** 某天第 min 分钟对应的 Date（min 可以到 1440，Date 会自己进位到次日 0 点） */
+function atMinute(day: Date, min: number): Date {
+  return new Date(day.getFullYear(), day.getMonth(), day.getDate(),
+    Math.floor(min / 60), min % 60);
+}
+
+/** 候选的"该响铃时刻"（代理提醒用） */
+function notifyAt(c: Candidate): number {
+  return c.at.getTime() - c.leadMin * 60000;
 }
 
 export interface ReminderPlan {
@@ -160,6 +184,9 @@ export async function syncReminders(context: common.UIAbilityContext,
   const rules: SessionRule[] = await TimetableRepo.listRules(context, sem.id);
   const times: SectionTime[] = await TimetableRepo.listSectionTimes(context, sem.id);
   const todos: Todo[] = await TodoRepo.listTodos(context, 'status = ?', [TodoStatus.Active]);
+  // 计划块的标题要能查到**已归档/已完成**的待办：否则日历里会出现一堆标题是「待办」的块
+  // （块还在，但它对应的待办已经不是 active 了）。
+  const allTodos: Todo[] = await TodoRepo.listTodos(context, '1 = 1', []);
   const lessons: VirtualLesson[] = await TodoRepo.listLessonsOfVirtualCourses(context, sem.id);
   const now: Date = new Date();
 
@@ -189,17 +216,23 @@ export async function syncReminders(context: common.UIAbilityContext,
     }
 
     for (const s of daySessions) {
-      const startAt: Date = new Date(d.getFullYear(), d.getMonth(), d.getDate(),
-        Math.floor(s.startMin / 60), s.startMin % 60);
-      const remindAt: Date = new Date(startAt.getTime() - settings.classLeadMin * 60000);
-      if (remindAt.getTime() <= now.getTime()) {
+      const startAt: Date = atMinute(d, s.startMin);
+      const endAt: Date = atMinute(d, s.endMin);
+      // 已经上完的就不排了；**正在上的**保留（日历里能看到"现在这节"）
+      if (endAt.getTime() <= now.getTime()) {
         continue;
       }
       const name: string = s.course.shortName.length > 0 ? s.course.shortName : s.course.name;
+      const loc: string = s.location.length > 0 ? s.location : '教室待定';
       candidates.push({
-        at: remindAt,
-        title: `${name} 还有 ${settings.classLeadMin} 分钟上课`,
-        content: `${s.location.length > 0 ? s.location : '教室待定'}${s.course.teacher.length > 0 ? ' · ' + s.course.teacher : ''}`,
+        at: startAt,
+        endAt: endAt,
+        leadMin: settings.classLeadMin,
+        // ⚠️ 标题就是课名（不再是「XX 还有 15 分钟上课」——那句话只该出现在通知里，
+        //    而且会让日历里多出一堆 15 分钟的小日程）
+        title: `${name} 上课`,
+        content: `${minToHHmm(s.startMin)}-${minToHHmm(s.endMin)} · ${loc}`
+          + `${s.course.teacher.length > 0 ? ' · ' + s.course.teacher : ''}`,
         kind: 'class'
       });
       plan.classes++;
@@ -210,6 +243,9 @@ export async function syncReminders(context: common.UIAbilityContext,
       if (briefAt.getTime() > now.getTime()) {
         candidates.push({
           at: briefAt,
+          // 简报不是"一段正在做的事"：按 15 分钟的短事件放，准时提醒
+          endAt: new Date(briefAt.getTime() + 15 * 60000),
+          leadMin: 0,
           title: '今日简报',
           content: buildBriefing(dateStr, daySessions, todos),
           kind: 'brief'
@@ -245,6 +281,9 @@ export async function syncReminders(context: common.UIAbilityContext,
     const course: Course | undefined = courseMap.get(t.courseId);
     candidates.push({
       at: at,
+      // 截止不是一段时长：保留原来的「提前提醒」小事件，准时提醒
+      endAt: new Date(at.getTime() + 15 * 60000),
+      leadMin: 0,
       title: `${t.title} 即将截止`,
       content: `截止 ${t.ddl}${course !== undefined ? ' · ' + course.name : ''}`,
       kind: 'ddl'
@@ -261,30 +300,34 @@ export async function syncReminders(context: common.UIAbilityContext,
       if (b.done) {
         continue;
       }
-      const at: Date = new Date(d.getFullYear(), d.getMonth(), d.getDate(),
-        Math.floor(b.startMin / 60), b.startMin % 60);
-      if (at.getTime() <= now.getTime()) {
+      const at: Date = atMinute(d, b.startMin);
+      const endAt: Date = atMinute(d, b.endMin);
+      if (endAt.getTime() <= now.getTime()) {
         continue;
       }
-      let title: string = '该做这件事了';
+      // 用户 2026-10-30：整块待办/课时 = 一个日历日程，提前 n 分钟提醒。
+      // 所以标题直接用事项名（不再是「该做…了」）
+      let title: string = '计划块';
       if (b.lessonId > 0) {
         for (const l of lessons) {
           if (l.id === b.lessonId) {
             const c: Course | undefined = courseMap.get(l.courseId);
             const name: string = c === undefined ? '虚拟课程'
               : (c.shortName.length > 0 ? c.shortName : c.name);
-            title = `该上「${name} 第 ${l.seq} 讲」了`;
+            title = `${name} 第 ${l.seq} 讲`;
           }
         }
       } else {
-        for (const t of todos) {
+        for (const t of allTodos) {
           if (t.id === b.todoId) {
-            title = `该做「${t.title}」了`;
+            title = t.title;
           }
         }
       }
       candidates.push({
         at: at,
+        endAt: endAt,
+        leadMin: settings.classLeadMin,
         title: title,
         content: `计划 ${minToHHmm(b.startMin)}-${minToHHmm(b.endMin)}`,
         kind: 'block'
@@ -293,22 +336,28 @@ export async function syncReminders(context: common.UIAbilityContext,
     }
   }
 
-  // ---------- 按时间升序，按预算截断（早的先保） ----------
-  candidates.sort((a: Candidate, b: Candidate): number => a.at.getTime() - b.at.getTime());
+  // ---------- 按"该响铃的时刻"升序，按预算截断（早的先保） ----------
+  candidates.sort((a: Candidate, b: Candidate): number => notifyAt(a) - notifyAt(b));
   let index: number = 0;
   for (const c of candidates) {
     if (plan.published >= REMINDER_BUDGET) {
       plan.skippedByBudget++;
       continue;
     }
+    // 代理提醒只能在"未来"触发：已经开始的事件（比如正在上的课）不排代理提醒，
+    // 但它照样会进系统日历（日历事件可以覆盖当前时刻）。
+    const when: Date = new Date(notifyAt(c));
+    if (when.getTime() <= now.getTime()) {
+      continue;
+    }
     const request: reminderAgentManager.ReminderRequestCalendar = {
       reminderType: reminderAgentManager.ReminderType.REMINDER_TYPE_CALENDAR,
       dateTime: {
-        year: c.at.getFullYear(),
-        month: c.at.getMonth() + 1,
-        day: c.at.getDate(),
-        hour: c.at.getHours(),
-        minute: c.at.getMinutes()
+        year: when.getFullYear(),
+        month: when.getMonth() + 1,
+        day: when.getDate(),
+        hour: when.getHours(),
+        minute: when.getMinutes()
       },
       title: c.title,
       content: c.content,
@@ -342,7 +391,13 @@ export async function syncReminders(context: common.UIAbilityContext,
       'agent reminder unavailable, falling back to system calendar');
     const items: CalItem[] = [];
     for (const c of candidates) {
-      items.push({ at: c.at, title: c.title, content: c.content });
+      items.push({
+        at: c.at,
+        endAt: c.endAt,
+        leadMin: c.leadMin,
+        title: c.title,
+        content: c.content
+      });
     }
     const calPlan: CalendarPlan = await syncCalendarReminders(context, items);
     plan.calendarEvents = calPlan.added;
