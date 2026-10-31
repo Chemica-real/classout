@@ -2804,6 +2804,14 @@ export struct PlanDayView {
     return undefined;
   }
 
+  /** 三日里点任何空白/表头/时间轴都退出选中 */
+  private clearBlockSelection(): void {
+    if (this.selectedBlockId > 0) {
+      this.selectedBlockId = 0;
+      this.showHint('');
+    }
+  }
+
   /** 一天的块数据签名：reload 后块时长/位置变了，画布格子要跟着重建 */
   private blockSig(list: PlanBlock[]): string {
     let s: string = '';
@@ -4950,6 +4958,7 @@ export struct PlanDayView {
         .alignItems(HorizontalAlign.Center)
         .backgroundColor(cd === this.date ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.03)')
         .border({ width: { right: 1 }, color: 'rgba(255,255,255,0.08)' })
+        .onClick((): void => this.clearBlockSelection())
       }, (cd: string) => `ch-${cd}-${cd === this.date}`)
     }
     .height(H_COLHEAD)
@@ -5013,6 +5022,7 @@ export struct PlanDayView {
       }
       .width(AXIS_W)
       .height(this.gridH() + (this.viewCols > COLS_DAY ? H_COLHEAD : 0))
+      .onClick((): void => this.clearBlockSelection())
 
       Scroll(this.hScroller) {
         Column() {
@@ -5044,8 +5054,7 @@ export struct PlanDayView {
                   } else {
                     // 三日视图里点侧列空白也要退出选中；没有选中块时才考虑放待办
                     if (this.selectedBlockId > 0) {
-                      this.selectedBlockId = 0;
-                      this.showHint('');
+                      this.clearBlockSelection();
                       return;
                     }
                     // 点侧列空白：只把托盘里选中的待办排到那一天，**不跳天、不移动画布**
