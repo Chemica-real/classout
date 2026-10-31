@@ -5,7 +5,7 @@ import { Course, CourseSession, PlanBlock, RestWindow, Semester, SessionOverride
   SessionRule, SectionTime, Todo, TodoCategory, TodoSource, TodoStatus, VirtualLesson } from '../model/Types';
 import { TimetableRepo } from '../data/TimetableRepo';
 import { TodoRepo } from '../data/TodoRepo';
-import { sessionsOnDate } from '../domain/Timetable';
+import { computeWeekSessions, sessionsOnDate, weekOfDate } from '../domain/Timetable';
 import { generateForLesson } from '../domain/TodoGenerator';
 import { TimeAxis, DEFAULT_WINDOW, allBlocksDone,
   dragOffsetWithScroll, dropRange, edgeScrollDepth, edgeScrollDirection, edgeScrollStep,
@@ -91,6 +91,17 @@ const TAG: string = 'ClassOUT';
 
 /** 虚拟课时排进计划时的默认时长 */
 const LESSON_MIN: number = 90;
+
+/**
+ * 单日「大画布」一次渲染多少天（奇数，当前日期在正中间）。
+ *
+ * 用户 2026-10-30：不要翻页预览，要像笔记软件那样实时渲染周围好几天，
+ * 所有细节和当前选中日一样，可以四处移动，惯性结束后吸附到最近的一天。
+ * 9 天 = 左右各 4 天，够连续滑好几天；滑到边上会以新日期为中心重建窗口。
+ */
+const CANVAS_DAYS: number = 31;
+/** 窗口里当前日期的下标 */
+const CANVAS_CENTER: number = 15;
 
 /** 待安排货架的两页：0 = 待办，1 = 虚拟课程（用户 2026-10-18：「放到两页，不必上下放」） */
 const POOL_PAGE_TODO: number = 0;
@@ -245,6 +256,22 @@ export struct PlanDayView {
 
   @State semester: Semester | undefined = undefined;
   @State date: string = '';
+  /**
+   * 横向翻页用的三天：[前一天, 当前, 后一天]。
+   * 单日视图靠它拿到左右两页的预览数据；三日视图的 `colDates` 也是这三天。
+   */
+  @State pagerDates: string[] = [];
+  /** 大画布窗口：连续 CANVAS_DAYS 天，当前日期在 CANVAS_CENTER */
+  @State canvasDates: string[] = [];
+  @State canvasSessions: CourseSession[][] = [];
+  @State canvasBlocks: PlanBlock[][] = [];
+  /**
+   * 整个学期的「日期 → 课程 / 计划块」缓存。
+   * 有这个之后，横向滑到窗口边上只需要重新切 31 天窗口，**不用再查库/重算**，
+   * 所以连续甩多远都不会闪一下。数据在每次 reload（编辑之后）时重建。
+   */
+  private sessionsByDate: Map<string, CourseSession[]> = new Map();
+  private blocksByDate: Map<string, PlanBlock[]> = new Map();
   @State blocks: PlanBlock[] = [];
   @State todos: Todo[] = [];
   @State courses: Course[] = [];
@@ -363,6 +390,14 @@ export struct PlanDayView {
    */
   private hintTimer: number = -1;
   private gridScroller: Scroller = new Scroller();
+  /** 单日视图的横向翻页 Scroller */
+  private hScroller: Scroller = new Scroller();
+  /** 正在程序化吸附/回中：期间忽略 onScrollStop，避免自己触发自己 */
+  private pagerSnapping: boolean = false;
+  /** 已按多大的宽度把横向页回中过（宽度变了才重新回中） */
+  private pagerCenteredW: number = 0;
+  /** 在这个时刻之前忽略 onScrollStop（程序化回中/点日期箭头后的余波） */
+  private suppressCanvasStopUntil: number = 0;
   /** 边缘自动滚动的逐帧定时器 id（-1 = 没在滚） */
   private edgeTimer: number = -1;
   /** 当前触摸点（窗口 y）。自动滚动用它判断在不在边缘区 */
@@ -425,6 +460,20 @@ export struct PlanDayView {
     this.date = formatDate(today());
     // 先按当前视图把列日期填上，别等 reload 回来（否则首帧网格是空的）
     this.colDates = dayDates(this.date, this.viewCols);
+    // ⚠️ 横向翻页的三天也必须**首帧就有值**：DayPager 直接读 pagerDates[0]/[2]，
+    //    空数组时 undefined 会一路传到 parseDate(cd).substring 而崩掉整个 PlanDayView。
+    this.pagerDates = dayDates(this.date, 3);
+    this.canvasDates = dayDates(this.date, CANVAS_DAYS);
+    // 首帧画布数组也要有 9 个空桶：DayCanvas 会直接读 canvasSessions[i]，
+    // undefined 会让 ForEach 崩掉（和 pagerDates 那次同一个教训）。
+    const emptySessions: CourseSession[][] = [];
+    const emptyBlocks: PlanBlock[][] = [];
+    for (let i = 0; i < CANVAS_DAYS; i++) {
+      emptySessions.push([]);
+      emptyBlocks.push([]);
+    }
+    this.canvasSessions = emptySessions;
+    this.canvasBlocks = emptyBlocks;
     this.dragColIndex = centerIndex(this.viewCols);
     // 手势导航/返回键要能"从最上面那层开始关"
     this.backHandler = (): boolean => this.handleBack();
@@ -474,6 +523,92 @@ export struct PlanDayView {
   }
 
   // ---- 列几何（纯算术都在 domain/PlanLayout，有离线断言）----
+
+  /** 单日横向页的宽度 = 视口宽 − 时间轴 */
+  private pagerPageW(): number {
+    const w: number = this.gridW - AXIS_W;
+    return w > 0 ? w : 0;
+  }
+
+  /** 大画布的单日列宽 = 视口宽 − 时间轴（和单日视图一致） */
+  private canvasColW(): number {
+    return this.pagerPageW();
+  }
+
+  /** 把画布回中到窗口正中（当前日期） */
+  private centerCanvas(): void {
+    if (this.viewCols > COLS_DAY) {
+      return;
+    }
+    const w: number = this.canvasColW();
+    if (w <= 0) {
+      return;
+    }
+    this.pagerSnapping = true;
+    this.suppressCanvasStopUntil = Date.now() + 500;
+    this.hScroller.scrollTo({ xOffset: CANVAS_CENTER * w, yOffset: 0, animation: false });
+    setTimeout((): void => {
+      this.pagerSnapping = false;
+    }, 420);
+  }
+
+  /**
+   * 大画布横向惯性停止：吸附到最近的一天。
+   *
+   * 注意和旧翻页版的区别：**不换页、不复位滚动**。画布里所有天都是按当前日格式
+   * 完整渲染的，吸附后只需要把 `this.date` 换成那一天，然后把窗口在边上时重建。
+   */
+  private onCanvasScrollStop(): void {
+    if (this.viewCols > COLS_DAY || this.pagerSnapping
+      || Date.now() < this.suppressCanvasStopUntil) {
+      return;
+    }
+    const w: number = this.canvasColW();
+    if (w <= 0 || this.canvasDates.length !== CANVAS_DAYS) {
+      return;
+    }
+    const x: number = this.hScroller.currentOffset().xOffset;
+    let idx: number = Math.round(x / w);
+    if (idx < 0) {
+      idx = 0;
+    }
+    if (idx > CANVAS_DAYS - 1) {
+      idx = CANVAS_DAYS - 1;
+    }
+    const target: number = idx * w;
+    if (Math.abs(x - target) > 0.5) {
+      this.pagerSnapping = true;
+      this.hScroller.scrollTo({ xOffset: target, yOffset: 0, animation: true });
+      setTimeout((): void => {
+        this.pagerSnapping = false;
+      }, 280);
+    }
+    const nd: string = this.canvasDates[idx];
+    if (nd !== undefined && nd !== this.date) {
+      this.date = nd;
+      this.sessions = this.canvasSessions[idx];
+      this.blocks = this.canvasBlocks[idx];
+      this.colDates = [nd];
+      this.pagerDates = dayDates(nd, 3);
+      // 三日视图的左右列也一起换，免得滑完立刻切三日看到旧数据
+      if (idx > 0) {
+        this.leftSessions = this.canvasSessions[idx - 1];
+        this.leftBlocks = this.canvasBlocks[idx - 1];
+      }
+      if (idx < CANVAS_DAYS - 1) {
+        this.rightSessions = this.canvasSessions[idx + 1];
+        this.rightBlocks = this.canvasBlocks[idx + 1];
+      }
+      this.selectedBlockId = 0;
+      this.closeEditor();
+    }
+    // 滑到窗口边上：用**已经缓存好的**学期数据重切 31 天窗口并回中，不查库、不重算，
+    // 所以甩到边上也不会闪。重切后新日期还是在正中，用户感觉可以一直滑下去。
+    if (idx <= 3 || idx >= CANVAS_DAYS - 4) {
+      this.rebuildCanvasWindow();
+      setTimeout((): void => this.centerCanvas(), 0);
+    }
+  }
 
   /** 中心列下标 = 当前查看日所在的那一列 */
   private centerCol(): number {
@@ -599,7 +734,10 @@ export struct PlanDayView {
     this.dragColIndex = centerIndex(cols);
     this.selectedBlockId = 0;
     this.closeEditor();
-    this.refresh();
+    this.rebuildCanvasWindow();
+    if (cols <= COLS_DAY) {
+      setTimeout((): void => this.centerCanvas(), 0);
+    }
   }
 
   private context(): common.UIAbilityContext {
@@ -629,41 +767,78 @@ export struct PlanDayView {
     this.courses = await TimetableRepo.listCourses(ctx, sem.id);
     const rules: SessionRule[] = await TimetableRepo.listRules(ctx, sem.id);
     const times: SectionTime[] = await TimetableRepo.listSectionTimes(ctx, sem.id);
-    // 当前视图要显示哪几天（中间那列 = this.date）
-    this.colDates = dayDates(this.date, this.viewCols);
-    const firstDate: string = this.colDates.length > 0 ? this.colDates[0] : this.date;
-    const lastDate: string = this.colDates.length > 0
-      ? this.colDates[this.colDates.length - 1] : this.date;
-    // 一次把整个范围的单周覆盖查出来，各列共用（sessionsOnDate 内部会按日期过滤）
-    const overrides: SessionOverride[] =
-      await TimetableRepo.listOverridesBetween(ctx, firstDate, lastDate);
-    // 中间列 = 当前查看日（语义与改动前完全一致）
-    this.sessions = sessionsOnDate(sem, this.courses, rules, overrides, times, parseDate(this.date));
-    this.blocks = await TodoRepo.listBlocksOn(ctx, this.date);
-    // 侧列：只有三日视图才去查（单日视图白查就是浪费）
-    if (this.viewCols === COLS_THREE && this.colDates.length === COLS_THREE) {
-      const leftDate: string = this.colDates[0];
-      const rightDate: string = this.colDates[2];
-      this.leftSessions = sessionsOnDate(sem, this.courses, rules, overrides, times,
-        parseDate(leftDate));
-      this.leftBlocks = await TodoRepo.listBlocksOn(ctx, leftDate);
-      this.rightSessions = sessionsOnDate(sem, this.courses, rules, overrides, times,
-        parseDate(rightDate));
-      this.rightBlocks = await TodoRepo.listBlocksOn(ctx, rightDate);
-    } else {
-      this.leftSessions = [];
-      this.leftBlocks = [];
-      this.rightSessions = [];
-      this.rightBlocks = [];
-    }
+    // ---- 1) 一次把整个学期的「日期 → 课程 / 块」算出来缓存 ----
+    // 画布横向滑到边上时只重切窗口，不再查库/重算 —— 这是"甩多远都不闪"的前提。
+    const startD: Date = parseDate(sem.startDate);
+    const endD: Date = addDays(startD, sem.totalWeeks * 7 - 1);
+    const overrides: SessionOverride[] = await TimetableRepo.listOverridesBetween(
+      ctx, formatDate(startD), formatDate(endD));
     this.todos = await TodoRepo.listTodos(ctx, 'status != ?', [TodoStatus.Archived]);
-    // ★ 「排到任何一天都算排过」：托盘过滤要用**全部**日期上的块，不能只用当天的。
-    //   以前只看当天 → 拖到侧列那天之后它仍留在托盘里（用户实测报的就是这条）。
-    //   角标「已排 10/13」是当时给这个行为打的补丁，规则改掉之后它就没有意义了，一并删掉。
     this.allBlocks = await TodoRepo.listAllBlocks(ctx);
+    const bmap: Map<string, PlanBlock[]> = new Map();
+    for (const b of this.allBlocks) {
+      const arr: PlanBlock[] | undefined = bmap.get(b.date);
+      if (arr === undefined) {
+        bmap.set(b.date, [b]);
+      } else {
+        arr.push(b);
+      }
+    }
+    this.blocksByDate = bmap;
+    // 按周缓存，避免"每天重算一遍整周"
+    const weekCache: Map<number, CourseSession[]> = new Map();
+    const smap: Map<string, CourseSession[]> = new Map();
+    for (let i = 0; i < sem.totalWeeks * 7; i++) {
+      const d: Date = addDays(startD, i);
+      const cd: string = formatDate(d);
+      const week: number = weekOfDate(sem, d);
+      let ws: CourseSession[] | undefined = weekCache.get(week);
+      if (ws === undefined) {
+        ws = computeWeekSessions(sem, this.courses, rules, overrides, times, week);
+        weekCache.set(week, ws);
+      }
+      const day: CourseSession[] = [];
+      for (const sess of ws) {
+        if (sess.date === cd) {
+          day.push(sess);
+        }
+      }
+      smap.set(cd, day);
+    }
+    this.sessionsByDate = smap;
     this.restWindows = await TimetableRepo.listRestWindows(ctx);
     this.lessons = await TodoRepo.listLessonsOfVirtualCourses(ctx, sem.id);
+    // ---- 2) 用缓存重新切 31 天窗口（当前日期在正中），并把画布回中 ----
+    this.rebuildCanvasWindow();
     this.loading = false;
+    setTimeout((): void => this.centerCanvas(), 0);
+  }
+
+  /**
+   * 以 `this.date` 为中心重切 31 天窗口（数据全部来自学期缓存，不查库）。
+   * 每次窗口变化后都要把横向滚动回中，否则滚动位置还停在旧下标上会看到另一天。
+   */
+  private rebuildCanvasWindow(): void {
+    const dates: string[] = dayDates(this.date, CANVAS_DAYS);
+    const cs: CourseSession[][] = [];
+    const cb: PlanBlock[][] = [];
+    for (const cd of dates) {
+      const ss: CourseSession[] | undefined = this.sessionsByDate.get(cd);
+      const bb: PlanBlock[] | undefined = this.blocksByDate.get(cd);
+      cs.push(ss === undefined ? [] : ss);
+      cb.push(bb === undefined ? [] : bb);
+    }
+    this.canvasDates = dates;
+    this.canvasSessions = cs;
+    this.canvasBlocks = cb;
+    this.colDates = dayDates(this.date, this.viewCols);
+    this.pagerDates = dayDates(this.date, 3);
+    this.sessions = cs[CANVAS_CENTER];
+    this.blocks = cb[CANVAS_CENTER];
+    this.leftSessions = cs[CANVAS_CENTER - 1];
+    this.leftBlocks = cb[CANVAS_CENTER - 1];
+    this.rightSessions = cs[CANVAS_CENTER + 1];
+    this.rightBlocks = cb[CANVAS_CENTER + 1];
   }
 
   private refresh(): void {
@@ -1081,13 +1256,18 @@ export struct PlanDayView {
   private goDay(delta: number): void {
     this.date = formatDate(addDays(parseDate(this.date), delta));
     this.selectedTodoId = 0;
-    this.refresh();
+    // 点箭头/今天后，之前横向惯性留下的 onScrollStop 不能再来改日期
+    this.suppressCanvasStopUntil = Date.now() + 900;
+    this.rebuildCanvasWindow();
+    setTimeout((): void => this.centerCanvas(), 0);
   }
 
   private goToday(): void {
     this.date = formatDate(today());
     this.selectedTodoId = 0;
-    this.refresh();
+    this.suppressCanvasStopUntil = Date.now() + 900;
+    this.rebuildCanvasWindow();
+    setTimeout((): void => this.centerCanvas(), 0);
   }
 
   private headerText(): string {
@@ -3346,90 +3526,431 @@ export struct PlanDayView {
     .glassPanel()
   }
 
+  /**
+   * 计划网格本体（时间轴 + 各列的课程/块 + 截止标记）。
+   * 抽出来是为了让「单日横向翻页」把同一份网格放进横向 Scroll 的中间页，
+   * 不用复制一整套渲染（复制了迟早会漂移）。
+   */
+  @Builder
+  PlanGrid() {
+    Stack({ alignContent: Alignment.TopStart }) {
+      // ⚠️ 2026-10-15：时间范围现在**可设**（设置页），所以网格里的图层必须裁到网格高度 ——
+      // 否则窗口上/下边界以内的内容（比如把上边界设到 10:00 之后的 08:00 那节课）
+      // 会画到网格外面去。**截止标记不能一起裁**：它本来就故意从网格底边往下挂一行
+      // （见 DDL_MARK_ALLOW），所以它单独放在裁剪层外面。
+      Stack({ alignContent: Alignment.TopStart }) {
+        // 最下面一层：不可排时段的淡纹理（网格线与课程/块都压在它上面）
+        this.RestBands()
+        this.HourLines()
+        if (this.viewCols > COLS_DAY) {
+          this.ColumnSeparators()
+        }
+        // 每一列各自画自己的课程灰带与块。
+        // 单日视图 viewCols=1，这段退化成和以前完全一样的一列。
+        ForEach(this.colDates, (cd: string, ci: number) => {
+          ForEach(this.sessionsOfCol(ci), (s: CourseSession) => {
+            this.ClassBlock(s, ci)
+          }, (s: CourseSession) =>
+            `cls-${ci}-${s.course.id}-${s.startSection}-${s.course.colorHex}-${this.paletteRaw}`)
+        }, (cd: string) => `colcls-${cd}`)
+        // 被拖走的块留在原位的虚线空位：让用户看清"这一块是从哪儿抽出来的"
+        if (this.dragBlockId > 0) {
+          this.DragGhost()
+        }
+        ForEach(this.colDates, (cd: string, ci: number) => {
+          ForEach(this.blocksOfCol(ci), (b: PlanBlock) => {
+            this.PlanBlockView(b, ci)
+          }, (b: PlanBlock) =>
+            `blk-${ci}-${b.id}-${b.startMin}-${b.endMin}-${b.done}-${this.paletteRaw}`)
+        }, (cd: string) => `colblk-${cd}`)
+        // 「现在」红线：只画在今天那一列（用户 2026-10-30 要求随时更新）。
+        // 放在块之后 = 画在块上面；`HitTestMode.None` 保证它不吞点击/拖拽。
+        ForEach(this.colDates, (cd: string, ci: number) => {
+          if (this.nowYFor(cd) >= 0) {
+            // ⚠️ zIndex 必须高于块（块是 1 / 选中的 5）：不加的话红线会被块整个盖掉
+            //    （真机实测：12:23 那根线正好压在 12:00-13:00 的块下面，屏幕上看不见）。
+            //    拖拽中的块是 10，仍然在红线之上，拖动时红线不挡手。
+            Row()
+              .width(this.colWidthOf(ci))
+              .height(1.5)
+              .backgroundColor('#FF5A5F')
+              .position({ x: this.colXOf(ci), y: this.nowYFor(cd) })
+              .zIndex(6)
+              .hitTestBehavior(HitTestMode.None)
+            Column()
+              .width(8)
+              .height(8)
+              .borderRadius(4)
+              .backgroundColor('#FF5A5F')
+              .position({ x: this.colXOf(ci) + 1, y: this.nowYFor(cd) - 4 })
+              .zIndex(6)
+              .hitTestBehavior(HitTestMode.None)
+          }
+        }, (cd: string) => `now-${cd}`)
+      }
+      .width('100%')
+      .height(this.gridH())
+      .clip(true)
+
+      // 截止标记只画在当前查看日那一列：它是"今天要交什么"的提示，
+      // 侧列本来就是只读展示，铺满三列反而更乱。
+      // ⚠️ 它是**裁剪层外**的兄弟节点，因为标记允许从网格底边往下挂一行。
+      this.DdlMarkers()
+    }
+    .width('100%')
+    .height(this.gridH())
+    .onAreaChange((oldArea: Area, newArea: Area): void => {
+      const y: Length | undefined = newArea.globalPosition.y;
+      if (typeof y === 'number') {
+        this.gridTop = y;
+      }
+    })
+    .onClick((event: ClickEvent): void => this.onGridTap(event))
+      .onDrop((event: DragEvent, extraParams: string): void => this.onPoolDrop(event))
+
+  }
+
+
+  // ---------------- 单日横向翻页（用户 2026-10-30）----------------
+
+  /** 固定的时间轴：只画刻度文字，和右侧横向页里的网格线对齐 */
+  @Builder
+  AxisLabels() {
+    Column() {
+      ForEach(this.hourMarks(), (m: number) => {
+        Row() {
+          Text(minToHHmm(m))
+            .fontSize(LAYOUT.hour)
+            .fontColor('#CBD6E8')
+            .width(40)
+            .textAlign(TextAlign.End)
+        }
+        .width(AXIS_W)
+        .height(60)
+        .padding({ right: 6 })
+        .alignItems(VerticalAlign.Top)
+      }, (m: number) => `axl-${m}`)
+    }
+    .width(AXIS_W)
+    .height(this.gridH())
+    .clip(true)
+  }
+
+  /** 计划块的视觉主体（常规 / 紧凑两种排版），交互壳在外面套 */
+  @Builder
+  PlanBlockBody(b: PlanBlock) {
+    if (this.blockTimedH(b) >= compactThreshold()) {
+      Row() {
+        Text(b.done ? '●' : '○')
+          .fontSize(LAYOUT.title)
+          .fontColor(b.done ? '#7FA8FF' : '#FFFFFF')
+          .margin({ right: 6 })
+          // 只读列的外层是 HitTestMode.None，所以这里挂 onClick 不会在邻日误触
+          .onClick((): void => this.onBlockToggleDone(b))
+        Column() {
+          Text(this.blockTitle(b))
+            .fontSize(LAYOUT.title)
+            .fontWeight(FontWeight.Medium)
+            .fontColor('#F2F5FA')
+            .maxLines(2)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+          Text(this.blockSubText(b))
+            .fontSize(LAYOUT.sub)
+            .fontColor('#CBD6E8')
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+        }
+        .layoutWeight(1)
+        .alignItems(HorizontalAlign.Start)
+      }
+      .width('100%')
+      .height('100%')
+      .padding({ left: 8, right: 6, top: 3 })
+    } else {
+      Row() {
+        Text(this.blockCompactTitle(b))
+          .fontSize(LAYOUT.compact)
+          .fontColor('#F2F5FA')
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .layoutWeight(1)
+        Text(minToHHmm(b.startMin))
+          .fontSize(Math.max(9, LAYOUT.compact - 1))
+          .fontColor('#CBD6E8')
+          .margin({ left: 6 })
+      }
+      .width('100%')
+      .height('100%')
+      .padding({ left: 7, right: 5 })
+    }
+  }
+
+  /**
+   * 大画布里「不是当前选中日」的那几列：**完整格式的只读渲染**。
+   *
+   * 用户 2026-10-30 明确要求：不要翻页预览，要实时渲染周围好几天，所有细节
+   *（课程、待办、禁排时段）都跟当前选中日一模一样。所以这里不是缩略图，
+   * 而是和 `PlanGrid` 同一套坐标/字号/配色，只是没有手势。
+   */
+  @Builder
+  PagerPreview(cd: string, ss: CourseSession[], bs: PlanBlock[], interactive: boolean) {
+    Stack({ alignContent: Alignment.TopStart }) {
+      // 横向网格线（刻度文字在固定时间轴上）
+      Column() {
+        ForEach(this.hourMarks(), (m: number) => {
+          Row()
+            .width('100%')
+            .height(60)
+            .border({ width: { bottom: 1 }, color: 'rgba(255,255,255,0.12)' })
+        }, (m: number) => `pph-${cd}-${m}`)
+      }
+      .width('100%')
+      .height(this.gridH())
+
+      // 不可排时段：和当前日同款斜纹 + 标签
+      ForEach(this.restsOf(cd), (w: RestWindow) => {
+        Stack({ alignContent: Alignment.TopEnd }) {
+          if (this.viewCols <= COLS_DAY && this.hOf(w.startMin, w.endMin) >= 46) {
+            Text(w.label)
+              .fontSize(9)
+              .fontColor('#7C8798')
+              .maxLines(1)
+              .padding({ right: 6, top: 3 })
+          }
+        }
+        .width('100%')
+        .height(this.hOf(w.startMin, w.endMin))
+        .backgroundColor('rgba(127,168,255,0.055)')
+        .linearGradient({
+          angle: 45,
+          colors: [
+            ['rgba(255,255,255,0.05)', 0.0], ['rgba(255,255,255,0)', 0.083],
+            ['rgba(255,255,255,0)', 0.167], ['rgba(255,255,255,0.05)', 0.167],
+            ['rgba(255,255,255,0.05)', 0.25], ['rgba(255,255,255,0)', 0.25],
+            ['rgba(255,255,255,0)', 0.333], ['rgba(255,255,255,0.05)', 0.333],
+            ['rgba(255,255,255,0.05)', 0.417], ['rgba(255,255,255,0)', 0.417],
+            ['rgba(255,255,255,0)', 0.5], ['rgba(255,255,255,0.05)', 0.5],
+            ['rgba(255,255,255,0.05)', 0.583], ['rgba(255,255,255,0)', 0.583],
+            ['rgba(255,255,255,0)', 0.667], ['rgba(255,255,255,0.05)', 0.667],
+            ['rgba(255,255,255,0.05)', 0.75], ['rgba(255,255,255,0)', 0.75],
+            ['rgba(255,255,255,0)', 0.833], ['rgba(255,255,255,0.05)', 0.833],
+            ['rgba(255,255,255,0.05)', 0.917], ['rgba(255,255,255,0)', 0.917],
+            ['rgba(255,255,255,0)', 1.0]
+          ]
+        })
+        .border({ width: 1, color: 'rgba(255,255,255,0.07)' })
+        .borderRadius(4)
+        .position({ x: 0, y: this.yOf(w.startMin) })
+        .hitTestBehavior(HitTestMode.None)
+      }, (w: RestWindow) => `ppr-${cd}-${w.id}-${w.startMin}-${w.endMin}`)
+
+      // 课程灰带
+      ForEach(ss, (sess: CourseSession) => {
+        Column() {
+          Text(sess.course.shortName.length > 0 ? sess.course.shortName : sess.course.name)
+            .fontSize(LAYOUT.title)
+            .fontColor('#A9B5C9')
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+          if (this.hOf(sess.startMin, sess.endMin) > 40 && sess.location.length > 0) {
+            Text(sess.location)
+              .fontSize(LAYOUT.sub)
+              .fontColor('#8B97AC')
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+          }
+        }
+        .width('100%')
+        .height(this.hOf(sess.startMin, sess.endMin) - 2)
+        .padding({ left: 6, right: 6, top: 2 })
+        .backgroundColor('rgba(255,255,255,0.10)')
+        .borderRadius(6)
+        .position({ x: 0, y: this.yOf(sess.startMin) })
+        .hitTestBehavior(HitTestMode.None)
+      }, (sess: CourseSession) =>
+        `pps-${cd}-${sess.course.id}-${sess.startSection}-${this.paletteRaw}`)
+
+      // 计划块：常规排版（圆圈 + 标题 + 副行）/ 紧凑排版（一行）。
+      // 当前选中日挂上完整手势（选中 / 开窗 / 长按拖 / 双指缩放），周围日只读。
+      ForEach(bs, (b: PlanBlock) => {
+        if (interactive) {
+          Stack({ alignContent: Alignment.BottomStart }) {
+            this.PlanBlockBody(b)
+          }
+          .width('100%')
+          .height(this.blockH(b))
+          .backgroundColor(this.colorOf(this.blockCourseId(b)))
+          .borderRadius(6)
+          .opacity(this.isDragging(b) ? 0.72 : (b.done ? 0.5 : 0.95))
+          .border({
+            width: this.isSelected(b) || this.isDragging(b) ? 2 : 0,
+            color: '#F2F5FA'
+          })
+          .position({ x: 0, y: this.blockY(b) })
+          .zIndex(this.isDragging(b) ? 10 : (this.isSelected(b) ? 5 : 1))
+          .onClick((): void => this.onBlockTap(b))
+          .gesture(
+            PinchGesture({ fingers: 2 })
+              .onActionStart((): void => this.beginPinch(b))
+              .onActionUpdate((event: GestureEvent): void => this.updatePinch(b, event))
+              .onActionEnd((): void => this.endPinch(b))
+          )
+          .parallelGesture(
+            LongPressGesture({ repeat: false, duration: 400, fingers: 1 })
+              .onAction((): void => this.onBlockLongPress(b, 0))
+          )
+          .onTouch((event: TouchEvent): void => {
+            if (event.type === TouchType.Down) {
+              this.onBlockTouchDown(b, event);
+            } else if (event.type === TouchType.Move) {
+              this.onBlockTouchMove(b, event);
+            } else if (event.type === TouchType.Up) {
+              this.onBlockTouchUp(b);
+            } else {
+              this.onBlockTouchCancel();
+            }
+          })
+        } else {
+          Stack({ alignContent: Alignment.BottomStart }) {
+            this.PlanBlockBody(b)
+          }
+          .width('100%')
+          .height(this.blockH(b))
+          .backgroundColor(this.colorOf(this.blockCourseId(b)))
+          .borderRadius(6)
+          .opacity(b.done ? 0.5 : 0.95)
+          .position({ x: 0, y: this.yOf(b.startMin) })
+          .hitTestBehavior(HitTestMode.None)
+        }
+      }, (b: PlanBlock) =>
+        `ppb-${cd}-${b.id}-${b.startMin}-${b.endMin}-${b.done}-${this.paletteRaw}`)
+
+      // 当前选中日正在拖拽：画原位虚线空位（和 PlanGrid 里同款）
+      if (interactive && this.dragBlockId > 0) {
+        Column()
+          .width('100%')
+          .height(this.ghostH())
+          .borderRadius(6)
+          .border({ width: 2, color: 'rgba(255,255,255,0.35)', style: BorderStyle.Dashed })
+          .position({ x: 0, y: this.ghostY() })
+          .hitTestBehavior(HitTestMode.None)
+      }
+
+      // 今天那根「现在」红线（和当前日同款圆点）
+      if (this.nowYFor(cd) >= 0) {
+        Row()
+          .width('100%')
+          .height(1.5)
+          .backgroundColor('#FF5A5F')
+          .position({ x: 0, y: this.nowYFor(cd) })
+          .zIndex(6)
+          .hitTestBehavior(HitTestMode.None)
+        Column()
+          .width(8)
+          .height(8)
+          .borderRadius(4)
+          .backgroundColor('#FF5A5F')
+          .position({ x: 1, y: this.nowYFor(cd) - 4 })
+          .zIndex(6)
+          .hitTestBehavior(HitTestMode.None)
+      }
+    }
+    .width(this.canvasColW())
+    .height(this.gridH())
+    .clip(true)
+  }
+
+  /**
+   * 单日「大画布」。
+   *
+   * 用户 2026-10-30：「实时渲染周围好几天的视图（所有细节，包括课程、待办、禁排时段，
+   * 而且格式要与当前选中日一模一样），这样就像大画布一样（笔记软件的感觉），
+   * 此时用户可以四处移动了。当移动（惯性停止）结束后，吸附到最近的一天上。」
+   *
+   * 结构：
+   *   固定时间轴（只左右不动，跟着外层竖向滚）
+   *   └ 横向 Scroll（惯性）
+   *       └ 连续 CANVAS_DAYS 天：当前日 = 可编辑的 `PlanGrid`，其余 = 同格式只读列
+   * 中间那列必须把 `PlanGrid` 整体左移 AXIS_W（它的坐标含时间轴，而时间轴已经固定在外层）。
+   */
+  @Builder
+  DayCanvas() {
+    Row() {
+      this.AxisLabels()
+      Scroll(this.hScroller) {
+        Row() {
+          ForEach(this.canvasDates, (cd: string, i: number) => {
+            // 每一列都用**同一套完整渲染**（PagerPreview）；只有当前选中日挂手势。
+            // 这样吸附换日时不会把一个重的 PlanGrid 塞进新列再销毁旧列 —— 那正是
+            // "闪一下"的来源。所有列都是同样的节点，换日只是 interactive 开关换给另一列。
+            Stack({ alignContent: Alignment.TopStart }) {
+              this.PagerPreview(cd, this.canvasSessions[i], this.canvasBlocks[i], cd === this.date)
+            }
+            .width(this.canvasColW())
+            .height(this.gridH())
+            .clip(true)
+            .onAreaChange((oldArea: Area, newArea: Area): void => {
+              if (cd !== this.date) {
+                return;
+              }
+              const y: Length | undefined = newArea.globalPosition.y;
+              if (typeof y === 'number') {
+                this.gridTop = y;
+              }
+            })
+            .onClick((event: ClickEvent): void => {
+              if (cd === this.date) {
+                this.onGridTap(event);
+              }
+            })
+            .onDrop((event: DragEvent, extraParams: string): void => {
+              if (cd === this.date) {
+                this.onPoolDrop(event);
+              }
+            })
+          }, (cd: string, i: number) =>
+            `daycell-${cd}-${cd === this.date}-${i}`
+              + `-${i < this.canvasSessions.length ? this.canvasSessions[i].length : 0}`
+              + `-${i < this.canvasBlocks.length ? this.canvasBlocks[i].length : 0}-${this.paletteRaw}`)
+        }
+        .height(this.gridH())
+      }
+      .layoutWeight(1)
+      .height(this.gridH())
+      .scrollable(ScrollDirection.Horizontal)
+      .scrollBar(BarState.Off)
+      .edgeEffect(EdgeEffect.Spring)
+      // 拖动待办/双指缩放块时别让画布抢手势
+      .enableScrollInteraction(!this.gridScrollLocked && this.dragBlockId === 0
+        && this.pinchBlockId === 0)
+      .onScrollStop((): void => this.onCanvasScrollStop())
+      .onAreaChange((oldArea: Area, newArea: Area): void => {
+        const w: Length | undefined = newArea.width;
+        if (typeof w === 'number' && w > 0 && Math.abs(w - this.pagerCenteredW) > 1) {
+          this.pagerCenteredW = w;
+          // 等这一帧的 gridW 落地再回中
+          setTimeout((): void => this.centerCanvas(), 0);
+        }
+      })
+    }
+    .width('100%')
+    .height(this.gridH())
+  }
+
   build() {
     Stack() {
       Column() {
         // 时间网格
         Scroll(this.gridScroller) {
           Column() {
-            // 表格自己的表头行：跟着网格一起滚（不是浮窗）
+            // 表格自己的表头行：跟着网格一起滚（不是浮窗）。
+            // 单日视图改成横向翻页（没有三列头），三日视图保持原样。
             if (this.viewCols > COLS_DAY) {
               this.ColHeadRow()
+              this.PlanGrid()
+            } else {
+              this.DayCanvas()
             }
-            Stack({ alignContent: Alignment.TopStart }) {
-              // ⚠️ 2026-10-15：时间范围现在**可设**（设置页），所以网格里的图层必须裁到网格高度 ——
-              // 否则窗口上/下边界以内的内容（比如把上边界设到 10:00 之后的 08:00 那节课）
-              // 会画到网格外面去。**截止标记不能一起裁**：它本来就故意从网格底边往下挂一行
-              // （见 DDL_MARK_ALLOW），所以它单独放在裁剪层外面。
-              Stack({ alignContent: Alignment.TopStart }) {
-                // 最下面一层：不可排时段的淡纹理（网格线与课程/块都压在它上面）
-                this.RestBands()
-                this.HourLines()
-                if (this.viewCols > COLS_DAY) {
-                  this.ColumnSeparators()
-                }
-                // 每一列各自画自己的课程灰带与块。
-                // 单日视图 viewCols=1，这段退化成和以前完全一样的一列。
-                ForEach(this.colDates, (cd: string, ci: number) => {
-                  ForEach(this.sessionsOfCol(ci), (s: CourseSession) => {
-                    this.ClassBlock(s, ci)
-                  }, (s: CourseSession) =>
-                    `cls-${ci}-${s.course.id}-${s.startSection}-${s.course.colorHex}-${this.paletteRaw}`)
-                }, (cd: string) => `colcls-${cd}`)
-                // 被拖走的块留在原位的虚线空位：让用户看清"这一块是从哪儿抽出来的"
-                if (this.dragBlockId > 0) {
-                  this.DragGhost()
-                }
-                ForEach(this.colDates, (cd: string, ci: number) => {
-                  ForEach(this.blocksOfCol(ci), (b: PlanBlock) => {
-                    this.PlanBlockView(b, ci)
-                  }, (b: PlanBlock) =>
-                    `blk-${ci}-${b.id}-${b.startMin}-${b.endMin}-${b.done}-${this.paletteRaw}`)
-                }, (cd: string) => `colblk-${cd}`)
-                // 「现在」红线：只画在今天那一列（用户 2026-10-30 要求随时更新）。
-                // 放在块之后 = 画在块上面；`HitTestMode.None` 保证它不吞点击/拖拽。
-                ForEach(this.colDates, (cd: string, ci: number) => {
-                  if (this.nowYFor(cd) >= 0) {
-                    // ⚠️ zIndex 必须高于块（块是 1 / 选中的 5）：不加的话红线会被块整个盖掉
-                    //    （真机实测：12:23 那根线正好压在 12:00-13:00 的块下面，屏幕上看不见）。
-                    //    拖拽中的块是 10，仍然在红线之上，拖动时红线不挡手。
-                    Row()
-                      .width(this.colWidthOf(ci))
-                      .height(1.5)
-                      .backgroundColor('#FF5A5F')
-                      .position({ x: this.colXOf(ci), y: this.nowYFor(cd) })
-                      .zIndex(6)
-                      .hitTestBehavior(HitTestMode.None)
-                    Column()
-                      .width(8)
-                      .height(8)
-                      .borderRadius(4)
-                      .backgroundColor('#FF5A5F')
-                      .position({ x: this.colXOf(ci) + 1, y: this.nowYFor(cd) - 4 })
-                      .zIndex(6)
-                      .hitTestBehavior(HitTestMode.None)
-                  }
-                }, (cd: string) => `now-${cd}`)
-              }
-              .width('100%')
-              .height(this.gridH())
-              .clip(true)
-
-              // 截止标记只画在当前查看日那一列：它是"今天要交什么"的提示，
-              // 侧列本来就是只读展示，铺满三列反而更乱。
-              // ⚠️ 它是**裁剪层外**的兄弟节点，因为标记允许从网格底边往下挂一行。
-              this.DdlMarkers()
-            }
-            .width('100%')
-            .height(this.gridH())
-            .onAreaChange((oldArea: Area, newArea: Area): void => {
-              const y: Length | undefined = newArea.globalPosition.y;
-              if (typeof y === 'number') {
-                this.gridTop = y;
-              }
-            })
-            .onClick((event: ClickEvent): void => this.onGridTap(event))
-              .onDrop((event: DragEvent, extraParams: string): void => this.onPoolDrop(event))
             }
           }
           .width('100%')
