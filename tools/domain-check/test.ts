@@ -24,6 +24,8 @@ import { SYNC_INTERVAL_CHOICES, SYNC_INTERVAL_DEFAULT, SYNC_INTERVAL_MAX, SYNC_I
 import { maskAll, maskFromText, maskToText, maskHas, resizeMask } from './WeekMask';
 import { timetableNowY } from './NowLine';
 import { groupActiveTodos, isOverdue, remainText, sortDoneTodos, TodoGroups } from './TodoGroups';
+import { normalizeDefaultTab, tabLabel, TAB_PLAN, TAB_SETTINGS, TAB_TIMETABLE, TAB_TODO } from './Launch';
+import { courseColorOf, DEFAULT_PALETTE, hexToHsv, hsvToHex, normalizeHex, PALETTE_SIZE, paletteColor, parsePalette, serializePalette } from './Palette';
 import { countdownText, formatDateTime, minToHHmm, parseDate, parseDateTime } from './DateUtil';
 import { computeDdl, renderTitle } from './TodoGenRules';
 import { TimeAxis, DEFAULT_WINDOW, WINDOW_MAX_END, WINDOW_MIN_SPAN, WINDOW_SNAP_MIN,
@@ -170,6 +172,40 @@ check('课表红线：最后一节课结束 = 网格底边', `${timetableNowY(DE
 check('课表红线：第一节课之前不画', `${timetableNowY(DEFAULT_SECTION_TIMES, nowHeights, 7 * 60)}`, '-1');
 check('课表红线：最后一节课之后不画', `${timetableNowY(DEFAULT_SECTION_TIMES, nowHeights, 22 * 60)}`, '-1');
 check('课表红线：没有节次时也不画', `${timetableNowY([], [], 9 * 60)}`, '-1');
+
+// ---------- 1.55 学科调色盘 ----------
+console.log('【学科调色盘】');
+check('空串 → 默认 10 色', parsePalette('').join('|'), DEFAULT_PALETTE.join('|'));
+check('坏格子用同下标的默认色补，好格子保留',
+  parsePalette('nonsense\n#112233').slice(0, 2).join('|'), `${DEFAULT_PALETTE[0]}|#112233`);
+check('多出来的截到 10 格', `${parsePalette(DEFAULT_PALETTE.join('\n') + '\n#FFFFFF').length}`, `${PALETTE_SIZE}`);
+check('normalizeHex 接受 #/不带#/小写', `${normalizeHex('#abcdef')}/${normalizeHex('abcdef')}`, '#ABCDEF/#ABCDEF');
+check('normalizeHex 拒绝短串/非十六进制', `${normalizeHex('#12')}/${normalizeHex('red')}`, '/');
+check('serializePalette 补满并大写', serializePalette(['#abcdef']).split('\n')[0], '#ABCDEF');
+check('paletteColor 越界取模', paletteColor(parsePalette(''), 11), DEFAULT_PALETTE[1]);
+const palCourse: Course = {
+  id: 1, semesterId: 1, name: '高数', shortName: '高数', teacher: '', location: '',
+  colorIndex: 2, colorHex: '', autoTodoEnabled: true, isVirtual: false, note: ''
+};
+check('课程没有自定义色 → 用调色盘那一格', courseColorOf(palCourse, parsePalette('')), DEFAULT_PALETTE[2]);
+const ownCourse: Course = {
+  id: 2, semesterId: 1, name: '英语', shortName: '英语', teacher: '', location: '',
+  colorIndex: 2, colorHex: '#123456', autoTodoEnabled: true, isVirtual: false, note: ''
+};
+check('课程有自定义色 → 用自定义色', courseColorOf(ownCourse, parsePalette('')), '#123456');
+check('hsvToHex 夹明度到 68%', hsvToHex(0, 0.6, 1), '#AD4545');
+check('hsvToHex 120° 中绿', hsvToHex(120, 0.6, 0.5), '#338033');
+const hsvRound = hexToHsv(hsvToHex(215, 0.55, 0.55));
+check('HEX → HSV 往返色相接近', `${Math.abs(hsvRound.h - 215) < 1}`, 'true');
+
+// ---------- 1.7 启动偏好（快速启动 / 默认进入） ----------
+console.log('【启动偏好】');
+check('默认进入：四个合法值原样保留', `${normalizeDefaultTab(0)},${normalizeDefaultTab(1)},${normalizeDefaultTab(2)},${normalizeDefaultTab(3)}`, '0,1,2,3');
+check('默认进入：越界回课表', `${normalizeDefaultTab(99)}`, '0');
+check('默认进入：负数回课表', `${normalizeDefaultTab(-1)}`, '0');
+check('默认进入：小数向下取整', `${normalizeDefaultTab(2.9)}`, '2');
+check('默认进入：NaN 回课表', `${normalizeDefaultTab(Number.NaN)}`, '0');
+check('默认进入：标签名', `${tabLabel(TAB_TIMETABLE)}/${tabLabel(TAB_TODO)}/${tabLabel(TAB_PLAN)}/${tabLabel(TAB_SETTINGS)}`, '课表/待办/计划/设置');
 
 // ---------- 2. 第 6 周排课 ----------
 console.log('【第 6 周（2026-10-12 ~ 10-18）排课】');

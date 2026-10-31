@@ -35,8 +35,11 @@ import { FLOAT_GAP, FLOAT_SIDE, FLOAT_TOP, H_TITLE } from './Float';
 import { persistMotionSetting } from './Motion';
 import { pickTime } from '../util/DateTimePicker';
 import { MOTTO_DEFAULT, MOTTO_MAX_UNITS, clampMottoUnits, cleanMotto,
-  loadMotto, mottoUnits, saveCustomCategories, saveMotto, savePlanWindow,
-  saveSyncInterval } from '../data/Prefs';
+  loadDefaultTab, loadMotto, loadQuickStart, mottoUnits, saveCoursePalette, saveCustomCategories,
+  saveDefaultTab, saveMotto, savePlanWindow, saveQuickStart, saveSyncInterval } from '../data/Prefs';
+import { normalizeDefaultTab, tabLabel } from '../domain/Launch';
+import { DEFAULT_PALETTE, parsePalette } from '../domain/Palette';
+import { CourseColorPicker } from './ColorPicker';
 import { DEFAULT_WINDOW, TimeWindow, WINDOW_MAX_END, WINDOW_MIN_SPAN, WINDOW_SNAP_MIN } from '../domain/PlanMath';
 import { CATEGORY_MAX_COUNT, CATEGORY_NAME_MAX, CategoryOption, CategoryVerdict,
   addCustomCategory, builtinCategoryOptions, parseCustomCategories, removeCustomCategory,
@@ -185,6 +188,21 @@ export struct SettingsPage {
    */
   @StorageLink('syncIntervalMin') syncIntervalMin: number = SYNC_INTERVAL_DEFAULT;
 
+  /**
+   * 快速启动（用户 2026-10-30）：默认关。开了之后下次打开 App 不播加载动画、
+   * 直接进界面，日历同步在后台静默做。
+   * ⚠️ `@StorageLink` 键名必须写字面量。
+   */
+  @StorageLink('quickStart') quickStart: boolean = false;
+  /** 打开 App 默认进入哪个标签页（0 课表 / 1 待办 / 2 计划 / 3 设置） */
+  @StorageLink('defaultTab') defaultTab: number = 0;
+  /** 学科调色盘（10 个全局颜色，`'\n'` 分隔） */
+  @StorageLink('coursePalette') paletteRaw: string = '';
+  /** 全局调色盘取色器：开着吗 / 正在改第几格 / 初值（@Watch 见 refreshModal） */
+  @State @Watch('refreshModal') palettePickerOpen: boolean = false;
+  @State palettePickerIndex: number = 0;
+  @State palettePickerInitial: string = '#2C5FA8';
+
   aboutToAppear(): void {
     // 回显已保存的标语（见上面 `savedMotto` 的注释）
     this.mottoDraft = this.savedMotto;
@@ -244,7 +262,64 @@ export struct SettingsPage {
     const ctx: common.UIAbilityContext = this.context();
     this.remSettings = await loadReminderSettings(ctx);
     this.restWindows = await TimetableRepo.listRestWindows(ctx);
+    // 启动选项：从当前库读回来（演练沙箱里是一份全新的库 → 默认关、默认课表）
+    this.quickStart = await loadQuickStart(ctx);
+    this.defaultTab = await loadDefaultTab(ctx);
     this.loading = false;
+  }
+
+  /** 快速启动开关：立刻写内存 + kv（下次启动生效，本次不改当前界面） */
+  private toggleQuickStart(on: boolean): void {
+    this.quickStart = on;
+    saveQuickStart(this.context(), on).then((): void => {
+      this.showToast(on ? '快速启动已开（下次启动生效）' : '快速启动已关');
+    }).catch((e: Object): void => {
+      hilog.error(DOMAIN, TAG, 'save quick start failed: %{public}s', JSON.stringify(e));
+    });
+  }
+
+  private paletteColors(): string[] {
+    return parsePalette(this.paletteRaw);
+  }
+
+  private openPalettePicker(idx: number): void {
+    this.palettePickerIndex = idx;
+    this.palettePickerInitial = this.paletteColors()[idx];
+    this.palettePickerOpen = true;
+  }
+
+  private applyPaletteColor(hex: string): void {
+    const list: string[] = this.paletteColors();
+    list[this.palettePickerIndex] = hex;
+    saveCoursePalette(this.context(), list).then((clean: string[]): void => {
+      this.paletteRaw = clean.join('\n');
+      this.palettePickerOpen = false;
+      this.showToast('调色盘已更新（所有用这个色的课都变了）');
+    }).catch((e: Object): void => {
+      hilog.error(DOMAIN, TAG, 'save palette failed: %{public}s', JSON.stringify(e));
+      this.showToast('保存失败');
+    });
+  }
+
+  private resetPalette(): void {
+    saveCoursePalette(this.context(), DEFAULT_PALETTE).then((clean: string[]): void => {
+      this.paletteRaw = clean.join('\n');
+      this.showToast('调色盘已恢复默认');
+    }).catch((e: Object): void => {
+      hilog.error(DOMAIN, TAG, 'reset palette failed: %{public}s', JSON.stringify(e));
+    });
+  }
+
+  /** 默认进入的标签：同样立刻落盘 */
+  private pickDefaultTab(tab: number): void {
+    const n: number = normalizeDefaultTab(tab);
+    this.defaultTab = n;
+    saveDefaultTab(this.context(), n).then((v: number): void => {
+      this.defaultTab = v;
+      this.showToast(`打开 App 默认进入：${tabLabel(v)}`);
+    }).catch((e: Object): void => {
+      hilog.error(DOMAIN, TAG, 'save default tab failed: %{public}s', JSON.stringify(e));
+    });
   }
 
   /** 弹一条会自动消失的提示（不占布局，避免整页上下跳） */
@@ -259,7 +334,7 @@ export struct SettingsPage {
 
   /** 两个全屏浮层（调整背景 / 隐私政策）任一开着，都要让 Index 把悬浮浮窗层挪下去 */
   private refreshModal(): void {
-    this.onModalChange(this.adjusting || this.privacyOpen);
+    this.onModalChange(this.adjusting || this.privacyOpen || this.palettePickerOpen);
   }
 
   private onAdjustChanged(): void {
@@ -923,6 +998,103 @@ export struct SettingsPage {
    * 打字机、光晕漂移、扫光），不需要重启 App —— 每个动效都在用
    * `dur()` / `curveOrLinear()` 取值，而它们直接读这个开关（见 view/Motion.ets）。
    */
+  /**
+   * 「启动」卡片（用户 2026-10-30）：快速启动 + 默认进入哪个界面。
+   */
+  @Builder
+  LaunchCard() {
+    Column() {
+      this.SectionTitle('启动',
+        '快速启动打开后，点图标会直接进界面，不再播一开始的加载动画；日历同步在后台静默做。')
+
+      Row() {
+        Column() {
+          Text('快速启动')
+            .fontSize(14)
+            .fontColor('#F2F5FA')
+          Text(this.quickStart
+            ? '打开直接进界面；启动时的同步在后台做，不挡操作'
+            : '关：打开时完整播放加载动画（默认）')
+            .fontSize(11)
+            .fontColor('#94A0B5')
+            .margin({ top: 2 })
+        }
+        .layoutWeight(1)
+        .alignItems(HorizontalAlign.Start)
+        Toggle({ type: ToggleType.Switch, isOn: this.quickStart })
+          .onChange((on: boolean): void => this.toggleQuickStart(on))
+      }
+      .width('100%')
+
+      this.FieldLabel('打开 App 默认进入')
+      Flex({ wrap: FlexWrap.Wrap }) {
+        ForEach([0, 1, 2, 3], (t: number) => {
+          ChipButton({
+            text: tabLabel(t),
+            selected: this.defaultTab === t,
+            onTap: (): void => this.pickDefaultTab(t)
+          })
+        }, (t: number) => `dt-${t}-${this.defaultTab === t}`)
+      }
+      .width('100%')
+
+      Text('改完立刻存，下次打开生效；「闲置后重新启动」也会遵守这里的选择。')
+        .fontSize(11)
+        .fontColor('#8B97AC')
+        .width('100%')
+        .margin({ top: 6 })
+    }
+    .width('100%')
+    .padding(16)
+    .glassPanelCard()
+    .alignItems(HorizontalAlign.Start)
+    .margin({ bottom: 12 })
+  }
+
+  /**
+   * 学科调色盘（用户 2026-10-30）：10 个全局颜色，改一格所有用它的课一起变。
+   * 每门课还能在「管理课程 → 编辑课程」里单独覆盖。
+   */
+  @Builder
+  PaletteCard() {
+    Column() {
+      this.SectionTitle('学科调色盘',
+        '这 10 个颜色就是所有课程的颜色。点一格可以调色；改一格，用这个颜色的课都会跟着变。')
+      Flex({ wrap: FlexWrap.Wrap }) {
+        ForEach(this.paletteColors(), (col: string, idx: number) => {
+          Text(' ')
+            .width(38)
+            .height(38)
+            .backgroundColor(col)
+            .borderRadius(19)
+            .border({ width: 1, color: 'rgba(255,255,255,0.22)' })
+            .margin({ right: 10, bottom: 10 })
+            .onClick((): void => this.openPalettePicker(idx))
+        }, (col: string, idx: number) => `pal-${idx}-${col}`)
+      }
+      .width('100%')
+
+      Row() {
+        Text('想给某门课单独调色？到「管理课程 → 编辑课程 → 颜色」里点「调色…」。')
+          .fontSize(11)
+          .fontColor('#8B97AC')
+          .layoutWeight(1)
+        Text('恢复默认')
+          .fontSize(12)
+          .fontColor('#A9B5C9')
+          .padding({ left: 10, right: 4, top: 4, bottom: 4 })
+          .onClick((): void => this.resetPalette())
+      }
+      .width('100%')
+      .margin({ top: 2 })
+    }
+    .width('100%')
+    .padding(16)
+    .glassPanelCard()
+    .alignItems(HorizontalAlign.Start)
+    .margin({ bottom: 12 })
+  }
+
   @Builder
   MotionCard() {
     Column() {
@@ -970,7 +1142,7 @@ export struct SettingsPage {
   ReminderCard() {
     Column() {
       this.SectionTitle('提醒',
-        '课程和计划块会按**整段时间**写进系统日历，由日历提前提醒；每次启动 App 会把未来一段时间的日程重排一遍。')
+        '课程和计划块会按「整段时间」写进系统日历，由日历提前提醒；每次启动 App 会把未来一段时间的日程重排一遍。')
 
       Row() {
         Column() {
@@ -1669,6 +1841,8 @@ export struct SettingsPage {
 
             this.WallpaperCard()
             this.MottoCard()
+            this.LaunchCard()
+            this.PaletteCard()
             this.MotionCard()
             this.ReminderCard()
             this.SyncCard()
@@ -1732,6 +1906,32 @@ export struct SettingsPage {
       // 隐私政策浮层：同样画在页面内部，所以也接上了 onModalChange（见 refreshModal）
       if (this.privacyOpen) {
         this.PrivacyOverlay()
+      }
+
+      // 全局调色盘的取色器（用户 2026-10-30）
+      if (this.palettePickerOpen) {
+        Column() {
+          Column() {
+            CourseColorPicker({
+              initial: this.palettePickerInitial,
+              title: `调色盘第 ${this.palettePickerIndex + 1} 格`,
+              onPick: (hex: string): void => this.applyPaletteColor(hex),
+              onCancel: (): void => {
+                this.palettePickerOpen = false;
+              }
+            })
+          }
+          .width('90%')
+          .onClick((): void => {})
+        }
+        .width('100%')
+        .height('100%')
+        .padding({ left: 16, right: 16 })
+        .justifyContent(FlexAlign.Center)
+        .backgroundColor('rgba(12,18,28,0.55)')
+        .onClick((): void => {
+          this.palettePickerOpen = false;
+        })
       }
     }
     .width('100%')

@@ -186,6 +186,9 @@ export class TimetableRepo {
       teacher: rs.getString(rs.getColumnIndex('teacher')),
       location: rs.getString(rs.getColumnIndex('location')),
       colorIndex: rs.getLong(rs.getColumnIndex('color_index')),
+      // 老库/新库都可能有/没有这一列（ensureColumn 补过），取不到就当没有自定义色
+      colorHex: rs.getColumnIndex('color_hex') >= 0
+        ? rs.getString(rs.getColumnIndex('color_hex')) : '',
       autoTodoEnabled: rs.getLong(rs.getColumnIndex('auto_todo_enabled')) === 1,
       isVirtual: rs.getLong(rs.getColumnIndex('is_virtual')) === 1,
       note: rs.getString(rs.getColumnIndex('note'))
@@ -201,6 +204,7 @@ export class TimetableRepo {
       'teacher': c.teacher,
       'location': c.location,
       'color_index': c.colorIndex,
+      'color_hex': c.colorHex === undefined ? '' : c.colorHex,
       'auto_todo_enabled': c.autoTodoEnabled ? 1 : 0,
       'is_virtual': c.isVirtual ? 1 : 0,
       'note': c.note
@@ -212,8 +216,9 @@ export class TimetableRepo {
     const store: relationalStore.RdbStore = await Db.get(context);
     await store.executeSql(
       `UPDATE course SET name = ?, short_name = ?, teacher = ?, location = ?, color_index = ?,
-       auto_todo_enabled = ?, is_virtual = ?, note = ? WHERE id = ?`,
+       color_hex = ?, auto_todo_enabled = ?, is_virtual = ?, note = ? WHERE id = ?`,
       [c.name, c.shortName, c.teacher, c.location, c.colorIndex,
+        c.colorHex === undefined ? '' : c.colorHex,
         c.autoTodoEnabled ? 1 : 0, c.isVirtual ? 1 : 0, c.note, c.id]);
   }
 

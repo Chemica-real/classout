@@ -1,7 +1,7 @@
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { storedAbilityContext } from '../util/Ctx';
-import { Course, COURSE_COLORS, Todo, TodoCategory, TodoSource, TodoStatus } from '../model/Types';
+import { Course, Todo, TodoCategory, TodoSource, TodoStatus } from '../model/Types';
 import { TimetableRepo } from '../data/TimetableRepo';
 import { TodoRepo } from '../data/TodoRepo';
 import { addDays, countdownText, formatDate, hhmmToMin, minToHHmm, parseDate, parseDateTime,
@@ -13,6 +13,7 @@ import { CATEGORY_NAME_MAX, CategoryOption, CategoryVerdict, addCustomCategory,
   allCategoryOptions, categoryLabel, parseCustomCategories,
   validateCategoryName } from '../domain/Categories';
 import { saveCustomCategories, saveNoteExpanded } from '../data/Prefs';
+import { courseColorOf, parsePalette } from '../domain/Palette';
 import { groupActiveTodos, isOverdue, remainText, sortDoneTodos } from '../domain/TodoGroups';
 import { ChipButton } from './ChipButton';
 import { BackHandler, backStack } from '../util/BackStack';
@@ -143,6 +144,8 @@ export struct TodoInbox {
   @StorageLink('todoCategories') catRaw: string = '';
   /** 备注区是单行输入框还是大文本框 —— 全局记忆（用户 2026-10-16） */
   @StorageLink('noteExpanded') noteExpanded: boolean = false;
+  /** 学科调色盘（设置页可改，课表/待办/计划共用这一份） */
+  @StorageLink('coursePalette') paletteRaw: string = '';
   /** 「＋新建类型」展开的输入行 */
   @State catCreating: boolean = false;
   @State catDraft: string = '';
@@ -300,7 +303,7 @@ export struct TodoInbox {
    */
   private todoKey(prefix: string, t: Todo): string {
     return `${prefix}-${t.id}-${t.title}-${t.ddl}-${t.category}-${t.courseId}`
-      + `-${t.estimateMin}-${t.status}-${t.note}-${t.doneAt}`;
+      + `-${t.estimateMin}-${t.status}-${t.note}-${t.doneAt}-${this.paletteRaw}`;
   }
 
   private courseOf(id: number): Course | undefined {
@@ -325,7 +328,7 @@ export struct TodoInbox {
     if (c === undefined) {
       return '#C7D3E4';
     }
-    return COURSE_COLORS[c.colorIndex % COURSE_COLORS.length];
+    return courseColorOf(c, parsePalette(this.paletteRaw));
   }
 
   // ---- 考试 ----

@@ -4,6 +4,8 @@ import { Db } from './Db';
 import { DEFAULT_WINDOW, TimeWindow, formatWindow, normalizeWindow, parseWindow } from '../domain/PlanMath';
 import { parseCustomCategories, serializeCustomCategories } from '../domain/Categories';
 import { SYNC_INTERVAL_DEFAULT, normalizeSyncInterval } from '../domain/SyncCadence';
+import { normalizeDefaultTab } from '../domain/Launch';
+import { parsePalette, serializePalette } from '../domain/Palette';
 
 /**
  * 首页标语（ClassOUT 字标下面那一行）。
@@ -274,4 +276,96 @@ export async function loadPrivacyAgreed(context: common.Context): Promise<string
 /** 记下"同意的政策版本"（首启弹窗点「同意并继续」时写） */
 export async function savePrivacyAgreed(context: common.Context, version: string): Promise<void> {
   await Db.setKv(context, PRIVACY_AGREED_KV, version);
+}
+
+
+// ---------------- 启动：快速启动 + 默认进入哪个标签（用户 2026-10-30）----------------
+
+/**
+ * 快速启动：打开 App 时**不播加载动画**，直接进界面，日历同步在后台静默做。
+ * 默认关（用户明确要求）。
+ *
+ * ⚠️ `@StorageLink` 的键名必须写字面量 `'quickStart'`。
+ */
+export const QUICK_START_KEY: string = 'quickStart';
+export const QUICK_START_KV: string = 'quick_start';
+
+/**
+ * 默认进入哪个标签页（0 课表 / 1 待办 / 2 计划 / 3 设置）。
+ * ⚠️ `@StorageLink` 的键名必须写字面量 `'defaultTab'`。
+ */
+export const DEFAULT_TAB_KEY: string = 'defaultTab';
+export const DEFAULT_TAB_KV: string = 'default_tab';
+
+export async function loadQuickStart(context: common.Context): Promise<boolean> {
+  try {
+    return (await Db.getKv(context, QUICK_START_KV)) === '1';
+  } catch (e) {
+    hilog.warn(0x0000, 'ClassOUT', 'load quick start failed: %{public}s', JSON.stringify(e));
+    return false;
+  }
+}
+
+export async function saveQuickStart(context: common.Context, on: boolean): Promise<void> {
+  AppStorage.setOrCreate(QUICK_START_KEY, on);
+  try {
+    await Db.setKv(context, QUICK_START_KV, on ? '1' : '0');
+  } catch (e) {
+    hilog.warn(0x0000, 'ClassOUT', 'save quick start failed: %{public}s', JSON.stringify(e));
+  }
+}
+
+export async function loadDefaultTab(context: common.Context): Promise<number> {
+  try {
+    const raw: string = await Db.getKv(context, DEFAULT_TAB_KV);
+    return normalizeDefaultTab(raw.length > 0 ? parseInt(raw, 10) : 0);
+  } catch (e) {
+    hilog.warn(0x0000, 'ClassOUT', 'load default tab failed: %{public}s', JSON.stringify(e));
+    return 0;
+  }
+}
+
+export async function saveDefaultTab(context: common.Context, tab: number): Promise<number> {
+  const n: number = normalizeDefaultTab(tab);
+  AppStorage.setOrCreate(DEFAULT_TAB_KEY, n);
+  try {
+    await Db.setKv(context, DEFAULT_TAB_KV, `${n}`);
+  } catch (e) {
+    hilog.warn(0x0000, 'ClassOUT', 'save default tab failed: %{public}s', JSON.stringify(e));
+  }
+  return n;
+}
+
+
+// ---------------- 学科调色盘（全局 10 色，用户 2026-10-30）----------------
+
+/**
+ * 全局调色盘的 AppStorage 键，值是 `'\n'` 分隔的 10 个 `'#RRGGBB'`。
+ * 每门课还能用自己的 `Course.colorHex` 覆盖它。
+ *
+ * ⚠️ 组件里 `@StorageLink` 必须写字面量 `'coursePalette'`。
+ */
+export const COURSE_PALETTE_KEY: string = 'coursePalette';
+export const COURSE_PALETTE_KV: string = 'course_palette';
+
+export async function loadCoursePalette(context: common.Context): Promise<string[]> {
+  try {
+    return parsePalette(await Db.getKv(context, COURSE_PALETTE_KV));
+  } catch (e) {
+    hilog.warn(0x0000, 'ClassOUT', 'load course palette failed: %{public}s', JSON.stringify(e));
+    return parsePalette('');
+  }
+}
+
+/** 保存全局调色盘：内存 + kv；返回规范化后的 10 色 */
+export async function saveCoursePalette(context: common.Context,
+  list: string[]): Promise<string[]> {
+  const clean: string[] = parsePalette(serializePalette(list));
+  AppStorage.setOrCreate(COURSE_PALETTE_KEY, serializePalette(clean));
+  try {
+    await Db.setKv(context, COURSE_PALETTE_KV, serializePalette(clean));
+  } catch (e) {
+    hilog.warn(0x0000, 'ClassOUT', 'save course palette failed: %{public}s', JSON.stringify(e));
+  }
+  return clean;
 }

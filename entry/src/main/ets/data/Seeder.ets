@@ -112,6 +112,7 @@ export class Seeder {
         teacher: c.teacher,
         location: c.location,
         colorIndex: c.colorIndex,
+        colorHex: c.colorHex === undefined ? '' : c.colorHex,
         autoTodoEnabled: c.autoTodoEnabled,
         isVirtual: c.isVirtual,
         note: c.note

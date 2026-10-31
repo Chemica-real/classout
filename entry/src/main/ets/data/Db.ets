@@ -61,6 +61,8 @@ export class Db {
     await Db.ensureColumn(store, 'plan_block', 'lesson_id', 'lesson_id INTEGER NOT NULL DEFAULT 0');
     // 考试的结束时刻（v1.1）：老库里没有这一列
     await Db.ensureColumn(store, 'todo', 'end_at', "end_at TEXT NOT NULL DEFAULT ''");
+    // 每门课的自定义颜色（v1.6）：老库里没有这一列
+    await Db.ensureColumn(store, 'course', 'color_hex', "color_hex TEXT NOT NULL DEFAULT ''");
     Db.store = store;
     hilog.info(DOMAIN, TAG, '%{public}s', 'database ready');
     return store;

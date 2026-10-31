@@ -1,7 +1,7 @@
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { storedAbilityContext } from '../util/Ctx';
-import { Course, COURSE_COLORS, CourseSession, OverrideKind, SectionTime, Semester,
+import { Course, CourseSession, OverrideKind, SectionTime, Semester,
   SessionOverride, SessionRule } from '../model/Types';
 import { TimetableRepo } from '../data/TimetableRepo';
 import { Db } from '../data/Db';
@@ -25,12 +25,16 @@ import { BOOT_EXTRA_CAP_MS, BOOT_STEP_MS, DUR_BALL_DWELL, DUR_COLLAPSE, DUR_EXPA
   DUR_SPRAY, TYPE_MS, collapseCurve, curveOrLinear, dur, expandCurve, isMotionOn,
   loadMotionSetting, motionCurve } from '../view/Motion';
 import { WallpaperRepo } from '../data/WallpaperRepo';
-import { MOTTO_DEFAULT, NOTE_EXPANDED_KEY, PLAN_END_KEY, PLAN_START_KEY, SYNC_INTERVAL_KEY,
-  TODO_CATEGORIES_KEY, loadCustomCategories, loadMotto, loadNoteExpanded, loadPlanWindow,
-  loadPrivacyAgreed, loadSyncInterval, savePrivacyAgreed } from '../data/Prefs';
+import { DEFAULT_TAB_KEY, MOTTO_DEFAULT, NOTE_EXPANDED_KEY, PLAN_END_KEY, PLAN_START_KEY,
+  COURSE_PALETTE_KEY, QUICK_START_KEY, SYNC_INTERVAL_KEY, TODO_CATEGORIES_KEY,
+  loadCoursePalette, loadCustomCategories, loadDefaultTab, loadMotto, loadNoteExpanded,
+  loadPlanWindow, loadPrivacyAgreed, loadQuickStart, loadSyncInterval,
+  savePrivacyAgreed } from '../data/Prefs';
 import { TimeWindow } from '../domain/PlanMath';
 import { SYNC_INTERVAL_DEFAULT, isSyncBoundary } from '../domain/SyncCadence';
 import { serializeCustomCategories } from '../domain/Categories';
+import { normalizeDefaultTab } from '../domain/Launch';
+import { courseColorOf, parsePalette, serializePalette } from '../domain/Palette';
 import { GuideStep, guideStepAt, guideStepCount, isLastGuideStep, nextGuideStep,
   prevGuideStep } from '../domain/Guide';
 import { GuideRepo } from '../data/GuideRepo';
@@ -219,6 +223,18 @@ struct Index {
    */
   @StorageLink('syncIntervalMin') syncIntervalMin: number = SYNC_INTERVAL_DEFAULT;
   /**
+   * 快速启动（用户 2026-10-30，默认关）：打开 App 不播加载动画，直接进界面，
+   * 同步在后台静默做。设置页可改，冷启动/闲置重播前先读回来。
+   */
+  @StorageLink('quickStart') quickStart: boolean = false;
+  /** 打开 App 默认进入哪个标签页（0 课表 / 1 待办 / 2 计划 / 3 设置） */
+  @StorageLink('defaultTab') defaultTab: number = 0;
+  /**
+   * 这一次启动是不是"静默启动"（快速启动）：
+   * 它会让 `dwellBootStep` / `playBootExit` 直接跳过加载页与过场。
+   */
+  private quickBoot: boolean = false;
+  /**
    * `EntryAbility` 判定"闲置太久、该重启动"时自增它；
    * `@Watch` 收到就重放一遍启动流程（见 `restartAfterIdle`）。
    */
@@ -257,6 +273,11 @@ struct Index {
   @StorageLink('motionOn') @Watch('onMotionChanged') motionOn: boolean = true;
   /** 首页标语（设置页可改，见 data/Prefs.ets）。加载页第一帧就用它 */
   @StorageLink('bootMotto') motto: string = MOTTO_DEFAULT;
+  /**
+   * 学科调色盘（`'\n'` 分隔的 10 个颜色）。设置页改一格，课表/待办/计划一起变。
+   * ⚠️ `@StorageLink` 键名必须写字面量。
+   */
+  @StorageLink('coursePalette') paletteRaw: string = '';
   /**
    * 「现在」是当天第几分钟（用户 2026-10-30：课表上要用一根红细线标出当前时间）。
    * 每 15 秒更新一次 —— 红线只差一两分钟没人看得出来，但每分钟刷一次就够用了。
@@ -339,13 +360,34 @@ struct Index {
     this.nowTimer = setInterval((): void => {
       this.nowMin = this.currentMinute();
     }, 15000);
-    // ⚠️ 第一件事**只读"隐私政策同意过没有"**，别的什么都不做
-    //（不建库、不读壁纸、不补生成、不同步日历、不请求权限）。
-    this.checkPrivacyGate().catch((e: Object): void => {
-      hilog.error(DOMAIN, TAG, 'privacy gate check failed: %{public}s', JSON.stringify(e));
-      // 读不出来就当成"没同意"：宁可多问一次，也不能默认同意。
-      this.privacyGate = true;
+    // 先读"快速启动 / 默认进入"这两个启动偏好（只读 kv，不建库不做别的），
+    // 再判断隐私政策 —— 因为快速启动要在**第一帧之前**决定要不要显示加载页。
+    this.prepareLaunch().catch((e: Object): void => {
+      hilog.error(DOMAIN, TAG, 'launch prefs failed: %{public}s', JSON.stringify(e));
+      this.checkPrivacyGate().catch((e2: Object): void => {
+        hilog.error(DOMAIN, TAG, 'privacy gate check failed: %{public}s', JSON.stringify(e2));
+        this.privacyGate = true;
+      });
     });
+  }
+
+  /**
+   * 启动偏好 → 隐私门。
+   * ⚠️ 读失败也照常往下走（默认：快速启动关、默认课表）。
+   */
+  private async prepareLaunch(): Promise<void> {
+    const ctx: common.UIAbilityContext = this.context();
+    try {
+      const q: boolean = await loadQuickStart(ctx);
+      const t: number = await loadDefaultTab(ctx);
+      AppStorage.setOrCreate(QUICK_START_KEY, q);
+      AppStorage.setOrCreate(DEFAULT_TAB_KEY, t);
+      this.quickStart = q;
+      this.defaultTab = t;
+    } catch (e) {
+      hilog.warn(DOMAIN, TAG, 'load launch prefs failed: %{public}s', JSON.stringify(e));
+    }
+    await this.checkPrivacyGate();
   }
 
   private currentMinute(): number {
@@ -390,10 +432,23 @@ struct Index {
     this.privacyGate = false;
     this.privacyTextOpen = false;
     this.bootStarted = true;
+    this.startUseTicker();
+    // 快速启动：**第一帧就直接是应用界面**，加载页与过场整段不出现。
+    // 数据初始化照跑（init），只是不再挡在界面前面；日历同步在后台静默做完。
+    if (this.quickStart) {
+      this.quickBoot = true;
+      this.loading = false;
+      this.bootExit = 0;
+      this.tab = normalizeDefaultTab(this.defaultTab);
+      this.init().catch((e: Object): void => {
+        hilog.error(DOMAIN, TAG, 'quick init failed: %{public}s', JSON.stringify(e));
+      });
+      return;
+    }
+    this.quickBoot = false;
     this.loading = true;
     // 加载页的常驻动效（关掉动画时不启动，见 startBootMotion）
     this.startBootMotion();
-    this.startUseTicker();
     this.bootstrap();
   }
 
@@ -497,7 +552,8 @@ struct Index {
    * （`BOOT_EXTRA_CAP_MS`）。关掉动画时直接返回 —— 那时用户要的就是最快启动。
    */
   private async dwellBootStep(startedAt: number): Promise<void> {
-    if (!this.motionOn || this.bootExtra >= BOOT_EXTRA_CAP_MS) {
+    // 快速启动 / 关掉动画时**一步都不补等**：用户要的就是最快进界面
+    if (this.quickBoot || !this.motionOn || this.bootExtra >= BOOT_EXTRA_CAP_MS) {
       return;
     }
     const wait0: number = BOOT_STEP_MS - (Date.now() - startedAt);
@@ -538,10 +594,16 @@ struct Index {
     AppStorage.setOrCreate(PLAN_END_KEY, planWin.endMin);
     // 自定义待办类型：设置页与待办编辑窗共用这一份（存 '\n' 分隔的字符串）
     AppStorage.setOrCreate(TODO_CATEGORIES_KEY, serializeCustomCategories(await loadCustomCategories(ctx)));
+    // 学科调色盘（10 色，存 '\n' 分隔的字符串）
+    AppStorage.setOrCreate(COURSE_PALETTE_KEY, serializePalette(await loadCoursePalette(ctx)));
     // 备注区是单行还是大文本框：用户要求记住（待办编辑窗与计划编辑窗共用）
     AppStorage.setOrCreate(NOTE_EXPANDED_KEY, await loadNoteExpanded(ctx));
     // 日历同步/闲置重启的间隔 n（分钟）
     AppStorage.setOrCreate(SYNC_INTERVAL_KEY, await loadSyncInterval(ctx));
+    // 启动偏好（快速启动 / 默认进入）：冷启动第一帧之前已经读过一次；
+    // 这里再读是为了"设置页改完、下次启动立刻生效"，以及退出演练后回到真实库的值。
+    AppStorage.setOrCreate(QUICK_START_KEY, await loadQuickStart(ctx));
+    AppStorage.setOrCreate(DEFAULT_TAB_KEY, await loadDefaultTab(ctx));
     // 动画总开关：AppStorage 是内存态，每次冷启动都要从 kv 读回来
     await loadMotionSetting(ctx);
     this.bootStep = 0;
@@ -641,8 +703,10 @@ struct Index {
    * ⚠️ **关掉动画时整段跳过**：直接 `loading=false`，不给用户白等两秒。
    */
   private playBootExit(): void {
-    if (!this.motionOn) {
+    // 快速启动：没有加载页可收，直接停在应用界面
+    if (this.quickBoot || !this.motionOn) {
       this.loading = false;
+      this.bootExit = 0;
       return;
     }
     this.bootExit = 1;
@@ -860,6 +924,9 @@ struct Index {
     AppStorage.setOrCreate(PLAN_END_KEY, w.endMin);
     AppStorage.setOrCreate(TODO_CATEGORIES_KEY,
       serializeCustomCategories(await loadCustomCategories(ctx)));
+    AppStorage.setOrCreate(QUICK_START_KEY, await loadQuickStart(ctx));
+    AppStorage.setOrCreate(DEFAULT_TAB_KEY, await loadDefaultTab(ctx));
+    AppStorage.setOrCreate(COURSE_PALETTE_KEY, serializePalette(await loadCoursePalette(ctx)));
     await loadMotionSetting(ctx);
   }
 
@@ -991,13 +1058,31 @@ struct Index {
     this.extraSheet = false;
     this.showManager = false;
     this.pageModalOpen = false;
-    this.tab = 0;
+    // 用户 2026-10-30：闲置重播也算"点开应用"，回到设置的默认界面
+    this.tab = normalizeDefaultTab(this.defaultTab);
     this.statusText = '正在重新启动…';
     this.typedStatus = '';
     this.bootStep = 0;
     this.bootExtra = 0;
     this.bootExit = 0;
-    this.loading = true;
+    // ★ 真 bug 修复（用户报「重播加载动画时动画是静止不动的」）：
+    //   这几项是**加载页动效的开关**（外圈旋转 / 底部点阵 / 进场）。
+    //   上一次启动结束时它们都停在 true，重播时只把 loading 设回 true，
+    //   属性值没变 → 隐式动画不会重新开始，看上去就是一帧静止的加载页。
+    //   必须清回 false 再调 startBootMotion()（它下一帧翻成 true，动画才会重跑）。
+    this.bootIn = false;
+    this.bootSpin = false;
+    this.bootBar = false;
+    this.ballSpray = false;
+    if (this.quickStart) {
+      this.quickBoot = true;
+      this.loading = false;
+      hilog.info(DOMAIN, TAG, '%{public}s', 'idle restart: quick, no boot animation');
+    } else {
+      this.quickBoot = false;
+      this.loading = true;
+      this.startBootMotion();
+    }
     // ⚠️ 计时器要**重新开**：`onPageShow` 不会因为这次重放而再触发一次
     // （页面一直是"显示中"），只停不开的话，这一整个前台会话都不会再自动同步。
     this.startUseTicker();
@@ -1048,6 +1133,11 @@ struct Index {
     return y;
   }
 
+  /** 一门课最终显示的颜色（自定义色优先，否则取全局调色盘） */
+  private courseColor(c: Course): string {
+    return courseColorOf(c, parsePalette(this.paletteRaw));
+  }
+
   private blockHeight(s: CourseSession): number {
     let h: number = 0;
     for (let sec = s.startSection; sec <= s.endSection; sec++) {
@@ -1088,7 +1178,9 @@ struct Index {
     return `s-${s.course.id}-${s.date}-${s.originDate}-${s.weekday}`
       + `-${s.startSection}-${s.endSection}-${this.sectionOffset(s.startSection)}-${this.blockHeight(s)}`
       + `-${s.location}-${s.isQuiz}-${s.fromOverride}`
-      + `-${s.course.name}-${s.course.shortName}-${s.course.teacher}-${s.course.colorIndex}`;
+      + `-${s.course.name}-${s.course.shortName}-${s.course.teacher}-${s.course.colorIndex}`
+      // 调色盘/自定义色变了也要重画：@Builder 的参数按值固化，key 不变就不会重建（§6.4）
+      + `-${s.course.colorHex}-${this.paletteRaw}`;
   }
 
   private weekRangeText(): string {
@@ -1526,7 +1618,7 @@ struct Index {
       .alignItems(HorizontalAlign.Start)
       .justifyContent(FlexAlign.Center)
       .padding({ left: 4, right: 3, top: 2, bottom: 2 })
-      .backgroundColor(COURSE_COLORS[s.course.colorIndex % COURSE_COLORS.length])
+      .backgroundColor(this.courseColor(s.course))
       .borderRadius(6)
       .border(s.isQuiz
         ? { width: 1.5, color: '#FFFFFF', style: BorderStyle.Dashed }

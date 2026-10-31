@@ -71,6 +71,8 @@ export class BackupRepo {
         teacher: rs.getString(rs.getColumnIndex('teacher')),
         location: rs.getString(rs.getColumnIndex('location')),
         colorIndex: rs.getLong(rs.getColumnIndex('color_index')),
+        colorHex: rs.getColumnIndex('color_hex') >= 0
+          ? rs.getString(rs.getColumnIndex('color_hex')) : '',
         autoTodoEnabled: rs.getLong(rs.getColumnIndex('auto_todo_enabled')) === 1,
         isVirtual: rs.getLong(rs.getColumnIndex('is_virtual')) === 1,
         note: rs.getString(rs.getColumnIndex('note'))
@@ -253,8 +255,9 @@ export class BackupRepo {
     for (const c of b.courses as Course[]) {
       await store.executeSql(
         `INSERT INTO course (id, semester_id, name, short_name, teacher, location, color_index,
-         auto_todo_enabled, is_virtual, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         color_hex, auto_todo_enabled, is_virtual, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [c.id, c.semesterId, c.name, c.shortName, c.teacher, c.location, c.colorIndex,
+          c.colorHex === undefined ? '' : c.colorHex,
           c.autoTodoEnabled ? 1 : 0, c.isVirtual ? 1 : 0, c.note]);
     }
     for (const r of b.rules as SessionRule[]) {

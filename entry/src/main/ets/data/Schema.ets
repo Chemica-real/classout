@@ -41,6 +41,7 @@ export const SCHEMA_SQL: string[] = [
      teacher TEXT NOT NULL DEFAULT '',
      location TEXT NOT NULL DEFAULT '',
      color_index INTEGER NOT NULL DEFAULT 0,
+     color_hex TEXT NOT NULL DEFAULT '',
      auto_todo_enabled INTEGER NOT NULL DEFAULT 1,
      is_virtual INTEGER NOT NULL DEFAULT 0,
      note TEXT NOT NULL DEFAULT ''

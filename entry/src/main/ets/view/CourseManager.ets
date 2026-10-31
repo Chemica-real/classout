@@ -1,7 +1,7 @@
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { storedAbilityContext } from '../util/Ctx';
-import { Course, COURSE_COLORS, CourseSession, DEFAULT_SECTION_TIMES, SectionTime, Semester,
+import { Course, CourseSession, DEFAULT_SECTION_TIMES, SectionTime, Semester,
   SessionRule, TodoTemplate, VirtualLesson } from '../model/Types';
 import { TimetableRepo } from '../data/TimetableRepo';
 import { TodoRepo } from '../data/TodoRepo';
@@ -14,6 +14,8 @@ import { TEMPLATE_VARS, TemplateCheck, Validation, validateSectionTimes, validat
   validateTemplateDdl, validateTemplateTitle } from '../domain/Validate';
 import { renderTitle } from '../domain/TodoGenRules';
 import { ChipButton } from './ChipButton';
+import { CourseColorPicker } from './ColorPicker';
+import { courseColorOf, DEFAULT_PALETTE, normalizeHex, parsePalette } from '../domain/Palette';
 import { pickDate } from '../util/DateTimePicker';
 import { BackHandler, backStack } from '../util/BackStack';
 import { GLASS_BLUR, GLASS_EDGE_SOFT, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_ROW,
@@ -78,6 +80,7 @@ function blankCourse(semesterId: number): Course {
     teacher: '',
     location: '',
     colorIndex: 0,
+    colorHex: '',
     autoTodoEnabled: true,
     isVirtual: false,
     note: ''
@@ -136,6 +139,11 @@ export struct CourseManager {
   @State backupPath: string = '';
 
   @State editCourse: Course = blankCourse(0);
+  /** 学科调色盘（设置页可改，10 个颜色） */
+  @StorageLink('coursePalette') paletteRaw: string = '';
+  /** 取色器开着吗；`colorPickerInitial` 是打开时的当前颜色 */
+  @State colorPickerOpen: boolean = false;
+  @State colorPickerInitial: string = '#2C5FA8';
   @State editRules: SessionRule[] = [];
   @State editTemplates: TodoTemplate[] = [];
 
@@ -344,6 +352,7 @@ export struct CourseManager {
       teacher: c.teacher,
       location: c.location,
       colorIndex: c.colorIndex,
+      colorHex: c.colorHex === undefined ? '' : c.colorHex,
       autoTodoEnabled: c.autoTodoEnabled,
       isVirtual: c.isVirtual,
       note: c.note
@@ -633,6 +642,7 @@ export struct CourseManager {
       teacher: '',
       location: this.editCourse.location,
       colorIndex: this.editCourse.colorIndex,
+      colorHex: this.editCourse.colorHex,
       autoTodoEnabled: true,
       isVirtual: false,
       note: ''
@@ -680,6 +690,36 @@ export struct CourseManager {
     this.toast = '已删除该模板';
     this.editTemplates = await TodoRepo.listTemplatesByCourse(ctx, this.editCourse.id);
     await this.reload();
+  }
+
+  // ---------------- 学科调色盘 ----------------
+
+  /** 当前全局 10 色 */
+  private paletteColors(): string[] {
+    return parsePalette(this.paletteRaw);
+  }
+
+  /** 一门课最终显示的颜色（自定义色优先） */
+  private courseColor(c: Course): string {
+    return courseColorOf(c, this.paletteColors());
+  }
+
+  /** 打开取色器：初值优先用这门课自己的自定义色，没有就用调色盘里那一格 */
+  private openColorPicker(): void {
+    const own: string = this.editCourse.colorHex === undefined ? '' : normalizeHex(this.editCourse.colorHex);
+    this.colorPickerInitial = own.length > 0 ? own : this.paletteColors()[this.editCourse.colorIndex];
+    this.colorPickerOpen = true;
+  }
+
+  /** 选中一个预设色：同时清掉自定义色（否则预设点了没反应） */
+  private pickPresetColor(idx: number): void {
+    this.editCourse.colorIndex = idx;
+    this.editCourse.colorHex = '';
+  }
+
+  /** 清掉自定义色，回到调色盘里的那一格 */
+  private clearCustomColor(): void {
+    this.editCourse.colorHex = '';
   }
 
   // ---------------- 学期 ----------------
@@ -1070,7 +1110,7 @@ export struct CourseManager {
                   .fontSize(14)
                   .fontWeight(FontWeight.Medium)
                   .fontColor('#F2F5FA')
-                  .backgroundColor(COURSE_COLORS[c.colorIndex % COURSE_COLORS.length])
+                  .backgroundColor(this.courseColor(c))
                   .borderRadius(4)
                   .padding({ left: 6, right: 6, top: 2, bottom: 2 })
                 Text(c.name)
@@ -1127,7 +1167,7 @@ export struct CourseManager {
           }, (c: Course) =>
             // ⚠️ key 必须带上**这一行真正渲染的字段**：只写 id 的话，
             // 改完课程回到列表会按 key 复用旧节点、看到的是旧名字（§12.4 第 4 条）
-            `lc-${c.id}-${c.name}-${c.shortName}-${c.colorIndex}-${c.autoTodoEnabled}-${c.isVirtual}-${this.rulesOf(c.id).length}-${this.templatesOf(c.id).length}`)
+            `lc-${c.id}-${c.name}-${c.shortName}-${c.colorIndex}-${c.colorHex}-${this.paletteRaw}-${c.autoTodoEnabled}-${c.isVirtual}-${this.rulesOf(c.id).length}-${this.templatesOf(c.id).length}`)
 
           if (this.courses.length > 0) {
             if (this.confirmClear) {
@@ -1224,26 +1264,65 @@ export struct CourseManager {
             })
 
           this.FieldLabel('颜色')
+          // 10 个全局色（设置页里可以改） + 每门课自己的自定义色
           Flex({ wrap: FlexWrap.Wrap }) {
-            ForEach(COURSE_COLORS, (col: string, idx: number) => {
+            ForEach(this.paletteColors(), (col: string, idx: number) => {
               Text(' ')
                 .width(30)
                 .height(30)
                 .backgroundColor(col)
                 .borderRadius(15)
                 .border({
-                  width: this.editCourse.colorIndex === idx ? 3 : 1,
-                  color: this.editCourse.colorIndex === idx ? '#F2F5FA' : 'rgba(255,255,255,0.12)'
+                  width: this.editCourse.colorIndex === idx && (this.editCourse.colorHex === undefined
+                    || this.editCourse.colorHex.length === 0) ? 3 : 1,
+                  color: this.editCourse.colorIndex === idx && (this.editCourse.colorHex === undefined
+                    || this.editCourse.colorHex.length === 0) ? '#F2F5FA' : 'rgba(255,255,255,0.12)'
                 })
                 .margin({ right: 8, bottom: 8 })
-                .onClick((): void => {
-                  this.editCourse.colorIndex = idx;
-                })
+                .onClick((): void => this.pickPresetColor(idx))
             }, (col: string, idx: number) =>
               // 选中环是按 idx 判定的：key 里必须带「选中与否」，否则换了颜色不重画
-              `col-${idx}-${this.editCourse.colorIndex === idx}`)
+              `col-${idx}-${col}-${this.editCourse.colorIndex === idx}-${this.editCourse.colorHex}`)
           }
           .width('100%')
+
+          Row() {
+            if (this.editCourse.colorHex !== undefined && this.editCourse.colorHex.length > 0) {
+              Text(' ')
+                .width(30)
+                .height(30)
+                .backgroundColor(this.editCourse.colorHex)
+                .borderRadius(15)
+                .border({ width: 2, color: '#F2F5FA' })
+                .margin({ right: 8 })
+            }
+            Text(this.editCourse.colorHex !== undefined && this.editCourse.colorHex.length > 0
+              ? `自定义色 ${this.editCourse.colorHex}` : '自定义颜色')
+              .fontSize(13)
+              .fontColor('#7FA8FF')
+              .layoutWeight(1)
+            if (this.editCourse.colorHex !== undefined && this.editCourse.colorHex.length > 0) {
+              Text('清除')
+                .fontSize(12)
+                .fontColor('#A9B5C9')
+                .padding({ left: 10, right: 10, top: 4, bottom: 4 })
+                .onClick((): void => this.clearCustomColor())
+            }
+            Text('调色…')
+              .fontSize(13)
+              .fontColor('#E8B25C')
+              .backgroundColor('rgba(232,178,92,0.16)')
+              .borderRadius(10)
+              .padding({ left: 12, right: 12, top: 5, bottom: 5 })
+              .onClick((): void => this.openColorPicker())
+          }
+          .width('100%')
+          .margin({ bottom: 8 })
+          Text('预设色在「设置 → 学科调色盘」里可以整体调整；这里的自定义色只影响这一门课。')
+            .fontSize(11)
+            .fontColor('#8B97AC')
+            .width('100%')
+            .margin({ bottom: 4 })
 
           Row() {
             Column() {
@@ -2279,6 +2358,35 @@ export struct CourseManager {
             this.tplDialog = false;
           })
         this.TemplateDialog()
+      }
+      // 每门课的自定义颜色取色器（用户 2026-10-30）
+      if (this.colorPickerOpen) {
+        Column() {
+          Column() {
+            CourseColorPicker({
+              initial: this.colorPickerInitial,
+              title: '这门课的颜色',
+              onPick: (hex: string): void => {
+                this.editCourse.colorHex = hex;
+                this.colorPickerOpen = false;
+              },
+              onCancel: (): void => {
+                this.colorPickerOpen = false;
+              }
+            })
+          }
+          .width('90%')
+          // 吞掉面板内的点击，别让"点外面关闭"的逻辑把刚点的一下也当成外面
+          .onClick((): void => {})
+        }
+        .width('100%')
+        .height('100%')
+        .padding({ left: 16, right: 16 })
+        .justifyContent(FlexAlign.Center)
+        .backgroundColor('rgba(12,18,28,0.55)')
+        .onClick((): void => {
+          this.colorPickerOpen = false;
+        })
       }
     }
     .width('100%')

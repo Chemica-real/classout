@@ -1,7 +1,7 @@
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { storedAbilityContext } from '../util/Ctx';
-import { Course, COURSE_COLORS, CourseSession, PlanBlock, RestWindow, Semester, SessionOverride,
+import { Course, CourseSession, PlanBlock, RestWindow, Semester, SessionOverride,
   SessionRule, SectionTime, Todo, TodoCategory, TodoSource, TodoStatus, VirtualLesson } from '../model/Types';
 import { TimetableRepo } from '../data/TimetableRepo';
 import { TodoRepo } from '../data/TodoRepo';
@@ -24,6 +24,7 @@ import { AXIS_W, canBeginDrag, centerIndex, COLS_DAY, COLS_THREE, columnAtX, col
 import { addDays, formatDate, hhmmToMin, minToHHmm, parseDate, relativeDayText, today, WEEKDAY_CN,
   weekdayOf } from '../util/DateUtil';
 import { CategoryOption, allCategoryOptions, categoryLabel, parseCustomCategories } from '../domain/Categories';
+import { courseColorOf, parsePalette } from '../domain/Palette';
 import { ChipButton } from './ChipButton';
 import { pickDateTime } from '../util/DateTimePicker';
 import { hapticLongPress } from '../util/Haptics';
@@ -259,6 +260,8 @@ export struct PlanDayView {
    * 这里会跟着刷新（同一个 AppStorage 键）。
    */
   @StorageLink('todoCategories') catRaw: string = '';
+  /** 学科调色盘（设置页可改；课程灰带/块/托盘一起跟着变） */
+  @StorageLink('coursePalette') paletteRaw: string = '';
   /**
    * 「待安排」的**标签筛选**（用户 2026-10-18）：`POOL_FILTER_ALL`（空串）= 全部。
    *
@@ -683,7 +686,7 @@ export struct PlanDayView {
     if (c === undefined) {
       return '#8FA0BA';
     }
-    return COURSE_COLORS[c.colorIndex % COURSE_COLORS.length];
+    return courseColorOf(c, parsePalette(this.paletteRaw));
   }
 
   private todoOf(id: number): Todo | undefined {
@@ -3370,7 +3373,8 @@ export struct PlanDayView {
                 ForEach(this.colDates, (cd: string, ci: number) => {
                   ForEach(this.sessionsOfCol(ci), (s: CourseSession) => {
                     this.ClassBlock(s, ci)
-                  }, (s: CourseSession) => `cls-${ci}-${s.course.id}-${s.startSection}`)
+                  }, (s: CourseSession) =>
+                    `cls-${ci}-${s.course.id}-${s.startSection}-${s.course.colorHex}-${this.paletteRaw}`)
                 }, (cd: string) => `colcls-${cd}`)
                 // 被拖走的块留在原位的虚线空位：让用户看清"这一块是从哪儿抽出来的"
                 if (this.dragBlockId > 0) {
@@ -3379,7 +3383,8 @@ export struct PlanDayView {
                 ForEach(this.colDates, (cd: string, ci: number) => {
                   ForEach(this.blocksOfCol(ci), (b: PlanBlock) => {
                     this.PlanBlockView(b, ci)
-                  }, (b: PlanBlock) => `blk-${ci}-${b.id}-${b.startMin}-${b.endMin}-${b.done}`)
+                  }, (b: PlanBlock) =>
+                    `blk-${ci}-${b.id}-${b.startMin}-${b.endMin}-${b.done}-${this.paletteRaw}`)
                 }, (cd: string) => `colblk-${cd}`)
                 // 「现在」红线：只画在今天那一列（用户 2026-10-30 要求随时更新）。
                 // 放在块之后 = 画在块上面；`HitTestMode.None` 保证它不吞点击/拖拽。

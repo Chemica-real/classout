@@ -33,6 +33,11 @@ export interface Course {
   teacher: string;
   location: string;
   colorIndex: number;
+  /**
+   * 自定义颜色（`'#RRGGBB'`，空串 = 用全局调色盘的 `colorIndex`）。
+   * 用户 2026-10-30：每门课都可以单独调色（学科调色盘）。
+   */
+  colorHex?: string;
   /** 是否在这门课下课时自动生成待办 */
   autoTodoEnabled: boolean;
   /** 虚拟课程（CS106L 那种不定时上课的），v1.1 起用 */
