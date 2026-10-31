@@ -283,12 +283,16 @@ export async function savePrivacyAgreed(context: common.Context, version: string
 
 /**
  * 快速启动：打开 App 时**不播加载动画**，直接进界面，日历同步在后台静默做。
- * 默认关（用户明确要求）。
+ * 默认**开**：AGC 冷启动「加载完成时延」目标 4s，完整启动动画本身就有 5.58s，
+ * 默认播放会被判超时（2026-10-31 自检 6416ms）。用户想要动画可在设置里关掉。
+ * 已显式存过 `'0'` 的用户不会被改；只有 kv 里没有这个键的新装/升级才走默认。
  *
  * ⚠️ `@StorageLink` 的键名必须写字面量 `'quickStart'`。
  */
 export const QUICK_START_KEY: string = 'quickStart';
 export const QUICK_START_KV: string = 'quick_start';
+/** 冷启动默认快速启动（AGC 4s 自检；见上方注释） */
+export const QUICK_START_DEFAULT: boolean = true;
 
 /**
  * 默认进入哪个标签页（0 课表 / 1 待办 / 2 计划 / 3 设置）。
@@ -299,10 +303,12 @@ export const DEFAULT_TAB_KV: string = 'default_tab';
 
 export async function loadQuickStart(context: common.Context): Promise<boolean> {
   try {
-    return (await Db.getKv(context, QUICK_START_KV)) === '1';
+    const raw: string = await Db.getKv(context, QUICK_START_KV);
+    // 空串 = 从没设置过：走新的默认「开」
+    return raw.length === 0 ? QUICK_START_DEFAULT : raw === '1';
   } catch (e) {
     hilog.warn(0x0000, 'ClassOUT', 'load quick start failed: %{public}s', JSON.stringify(e));
-    return false;
+    return QUICK_START_DEFAULT;
   }
 }
 

@@ -232,7 +232,7 @@ struct Index {
    * 快速启动（用户 2026-10-30，默认关）：打开 App 不播加载动画，直接进界面，
    * 同步在后台静默做。设置页可改，冷启动/闲置重播前先读回来。
    */
-  @StorageLink('quickStart') quickStart: boolean = false;
+  @StorageLink('quickStart') quickStart: boolean = true;
   /** 打开 App 默认进入哪个标签页（0 课表 / 1 待办 / 2 计划 / 3 设置） */
   @StorageLink('defaultTab') defaultTab: number = 0;
   /**
@@ -902,7 +902,7 @@ struct Index {
     AppStorage.setOrCreate(PLAN_START_KEY, DEFAULT_WINDOW.startMin);
     AppStorage.setOrCreate(PLAN_END_KEY, DEFAULT_WINDOW.endMin);
     AppStorage.setOrCreate(SYNC_INTERVAL_KEY, SYNC_INTERVAL_DEFAULT);
-    AppStorage.setOrCreate(QUICK_START_KEY, false);
+    AppStorage.setOrCreate(QUICK_START_KEY, true);
     AppStorage.setOrCreate(DEFAULT_TAB_KEY, 0);
     AppStorage.setOrCreate(COURSE_PALETTE_KEY, serializePalette(DEFAULT_PALETTE));
     AppStorage.setOrCreate(TODO_CATEGORIES_KEY, '');

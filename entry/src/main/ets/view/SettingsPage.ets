@@ -232,7 +232,7 @@ export struct SettingsPage {
    * 直接进界面，日历同步在后台静默做。
    * ⚠️ `@StorageLink` 键名必须写字面量。
    */
-  @StorageLink('quickStart') quickStart: boolean = false;
+  @StorageLink('quickStart') quickStart: boolean = true;
   /** 打开 App 默认进入哪个标签页（0 课表 / 1 待办 / 2 计划 / 3 设置） */
   @StorageLink('defaultTab') defaultTab: number = 0;
   /** 学科调色盘（10 个全局颜色，`'\n'` 分隔） */
@@ -1115,8 +1115,8 @@ export struct SettingsPage {
             .fontSize(14)
             .fontColor('#F2F5FA')
           Text(this.quickStart
-            ? '打开直接进界面；启动时的同步在后台做，不挡操作'
-            : '关：打开时完整播放加载动画（默认）')
+            ? '打开直接进界面；启动时的同步在后台做，不挡操作（默认）'
+            : '关：打开时完整播放加载动画')
             .fontSize(11)
             .fontColor('#94A0B5')
             .margin({ top: 2 })
