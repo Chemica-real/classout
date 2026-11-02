@@ -5204,6 +5204,24 @@ export struct PlanDayView {
                 // 每一列都用**同一套完整渲染**（PagerPreview）；所有列都挂手势，
                 // 交互时只把数据上下文切到那一天，不移动画布。
                 Stack({ alignContent: Alignment.TopStart }) {
+                  // 空白命中层：放在块下面，块自己有 onClick，不会被它抢走。
+                  // 之前把 onClick 挂在整列 Stack 上，子块点击后列回调仍会触发，
+                  // 把刚选中的块立刻清掉（详情窗打不开）。
+                  Column()
+                    .width('100%')
+                    .height('100%')
+                    .onClick((event: ClickEvent): void => {
+                      if (cd === this.date) {
+                        this.activateColumn(cd);
+                        this.onGridTap(event);
+                      } else {
+                        if (this.selectedBlockId > 0) {
+                          this.clearBlockSelection();
+                          return;
+                        }
+                        this.placeSelectedOnDate(cd, event);
+                      }
+                    })
                   this.PagerPreview(cd, this.canvasSessions[i], this.canvasBlocks[i], true)
                 }
                 .width(this.canvasColW())
@@ -5213,21 +5231,6 @@ export struct PlanDayView {
                   const y: Length | undefined = newArea.globalPosition.y;
                   if (typeof y === 'number') {
                     this.gridTop = y;
-                  }
-                })
-                .onClick((event: ClickEvent): void => {
-                  if (cd === this.date) {
-                    // 先确保数据上下文是当前视图日（可能在点侧列块后切走了）
-                    this.activateColumn(cd);
-                    this.onGridTap(event);
-                  } else {
-                    // 三日视图里点侧列空白也要退出选中；没有选中块时才考虑放待办
-                    if (this.selectedBlockId > 0) {
-                      this.clearBlockSelection();
-                      return;
-                    }
-                    // 点侧列空白：只把托盘里选中的待办排到那一天，**不跳天、不移动画布**
-                    this.placeSelectedOnDate(cd, event);
                   }
                 })
                 .onDrop((event: DragEvent, extraParams: string): void => {
