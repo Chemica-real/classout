@@ -8651,3 +8651,45 @@ AGC 邀请测试的路径（不是把 .hap 发群里）：
 - 构建通过；domain-check 639 项全绿（634 + 5）。
 - 版本 1.7.3 / 1007003。
 
+## 149. 2026-11-01 v1.8.0 计划页撤销/重做
+
+### 149.1 用户拍板
+
+- 范围：计划页所有直接编辑（拖动/双指/详情改日期/开始/时长/截止/拆分/排入/移除此块/块完成），
+  **删待办、虚拟课时完成不进撤销栈**（它们会清空旧历史，避免跨过破坏性动作继续用旧快照）。
+- 历史：本次运行内模块单例，切标签保留，杀进程清空；最多 **30** 步；新动作清空 redo。
+- 回滚：同一待办/课时的**全部块 + todo 行**前后快照；外部写操作使数据签名变化 → 清空历史。
+- 视图：撤销后不跳日期；当前选中若失效（块 id 变）才清除。
+- UI：日期栏 `‹` **左侧同一行**放 `↶/↷`，不增加高度；无历史灰掉；短提示「已撤销：…」。
+- 日历不立即重排，等下一次同步；详情抽屉打开时按钮在遮罩下，无法点击，不做特殊处理。
+- 删除待办确认文案删掉“自动生成会记住”，只保留「删除后不可恢复」。
+
+### 149.2 实现
+
+- `domain/PlanHistory.ets`
+  - `PlanHistoryEntry`：label、todoId/lessonId、blocksBefore/After、todoBefore/After；
+  - `PlanHistoryStore`：30 步、push/peek/commit、redo 截断、数据签名；
+  - `planDataSignature`：所有块 + todo 的稳定签名，用来识别计划页之外的外部改动；
+  - `samePlanBlockSet`：忽略数据库 id 比较块内容。
+- `PlanDayView`
+  - 每次 `reload` 末尾统一 `recordHistoryAfterReload()`：有 pending 动作时用上一轮 baseline 做 before；
+    无 pending 且签名变化 → 清空历史；undo/redo apply 时只更新 baseline/signature。
+  - 动作开始前 `beginHistory/beginBlockHistory`；覆盖拖动、双指、详情各 ±/输入/日期/截止、
+    拆分、排入、移除此块、块完成。
+  - `applyHistoryEntry`：`replaceBlocksForTodo/Lesson` + `updateTodo`，按快照整组回滚；
+    恢复后如果当前 selectedBlockId 不存在就清掉。
+  - 日期栏左侧加入 ↶/↷ 按钮；`canUndo/canRedo` 状态；短提示。
+- `TodoRepo`：新增 `listBlocksByLesson`、`replaceBlocksForTodo`、`replaceBlocksForLesson`。
+- `Index`：管理课程关闭、进出演练、重置应用时 `planHistory.clear()` 并递增 `planHistoryToken`；
+  计划页 `@Watch` 刷新按钮状态。
+- `Guide` 从 18 步扩到 **19 步**，加“撤销和重做”；`Changelog` 加 1.8.0 条目。
+- 删除确认文案改为「删除后不可恢复。」
+
+### 149.3 验收
+
+- 真机：选中考试块 → 详情 +15 分钟（10:10–12:00 → 10:10–12:15）→ 关闭 → 撤销恢复 12:00
+  → 重做恢复 12:15 → 再撤销恢复 12:00；数据最终保持测试前的 12:00。
+- `domain-check` **649 项全绿**（新增 PlanHistory 断言）；构建通过。
+- 版本：`1.8.0 / 1008000`。
+- 已知边界：`git` only；撤回栈不跨进程；删待办/虚拟课时完成不提供撤销。
+

@@ -20,6 +20,8 @@ import { GuideTab, guideStepAt, guideStepCount, guideTabsValid, guideTextsNonEmp
   isLastGuideStep, nextGuideStep, prevGuideStep } from './Guide';
 import { PrivacySection, privacySections, privacyUpdatedAt } from './Privacy';
 import { ChangelogEntry, changelogBetween, changelogEntries } from './Changelog';
+import { PlanHistoryEntry, PlanHistoryStore, clonePlanBlock, planDataSignature,
+  samePlanBlockSet } from './PlanHistory';
 import { SYNC_INTERVAL_CHOICES, SYNC_INTERVAL_DEFAULT, SYNC_INTERVAL_MAX, SYNC_INTERVAL_MIN,
   isSyncBoundary, normalizeSyncInterval, shouldRestartAfterIdle } from './SyncCadence';
 import { maskAll, maskFromText, maskToText, maskHas, resizeMask } from './WeekMask';
@@ -1582,7 +1584,7 @@ check('allCategoryOptions = 内置 + 自定义',
 // ---------- 新手演练的步骤脚本（用户 2026-10-15）----------
 console.log('【新手演练：步骤脚本】');
 
-check('步骤数固定为 18（改了要同步核对引导条）', `${guideStepCount()}`, '18');
+check('步骤数固定为 19（改了要同步核对引导条）', `${guideStepCount()}`, '19');
 check('每一步的标签页都在 0..3 内', `${guideTabsValid()}`, 'true');
 check('每一步都有标题和正文', `${guideTextsNonEmpty()}`, 'true');
 check('第 1 步在课表页', `${guideStepAt(0).tab}`, `${GuideTab.Timetable}`);
@@ -1594,9 +1596,9 @@ check('计划那一步切到计划页', `${guideStepAt(8).tab}`, `${GuideTab.Pla
 check('「排入/拖动/详情」也在计划页',
   `${guideStepAt(9).tab === GuideTab.Plan && guideStepAt(10).tab === GuideTab.Plan
     && guideStepAt(11).tab === GuideTab.Plan}`, 'true');
-check('「对半/双指/切视图」也在计划页',
+check('「对半/双指/切视图/撤销」也在计划页',
   `${guideStepAt(13).tab === GuideTab.Plan && guideStepAt(14).tab === GuideTab.Plan
-    && guideStepAt(15).tab === GuideTab.Plan}`, 'true');
+    && guideStepAt(15).tab === GuideTab.Plan && guideStepAt(16).tab === GuideTab.Plan}`, 'true');
 check('最后一步在设置页（完成按钮就在那儿）', `${guideStepAt(guideStepCount() - 1).tab}`, `${GuideTab.Settings}`);
 check('越界下标退回最后一步', `${guideStepAt(99).title === guideStepAt(guideStepCount() - 1).title}`, 'true');
 check('负数下标退回第 1 步', `${guideStepAt(-3).title === guideStepAt(0).title}`, 'true');
@@ -1606,6 +1608,50 @@ check('prev 在第 1 步上不动', `${prevGuideStep(0)}`, '0');
 check('prev 正常回退', `${prevGuideStep(3)}`, '2');
 check('isLast 只在最后一步为真',
   `${!isLastGuideStep(0) && isLastGuideStep(guideStepCount() - 1)}`, 'true');
+
+// ---------- 计划撤销/重做栈 ----------
+console.log('【计划撤销/重做】');
+const ph: PlanHistoryStore = new PlanHistoryStore();
+const entry1: PlanHistoryEntry = {
+  label: '移动块', todoId: 7, lessonId: 0,
+  blocksBefore: [blk(1, 7, '2026-10-15', false)],
+  blocksAfter: [blk(1, 7, '2026-10-15', false)],
+  todoBefore: todo('作业', '2026-10-15 23:59'),
+  todoAfter: todo('作业', '2026-10-15 23:59')
+};
+ph.push(entry1);
+check('push 后可撤销', `${ph.canUndo()}`, 'true');
+check('peekUndo 返回最后一条', ph.peekUndo()?.label === '移动块' ? 'yes' : 'no', 'yes');
+ph.commitUndo();
+check('commitUndo 后可重做', `${ph.canRedo() && !ph.canUndo()}`, 'true');
+ph.commitRedo();
+check('commitRedo 回到最新', `${ph.canUndo() && !ph.canRedo()}`, 'true');
+ph.commitUndo();
+ph.push({ ...entry1, label: '改时长' });
+check('undo 后新动作清空 redo', `${ph.canUndo() && !ph.canRedo()}`, 'true');
+const phCap: PlanHistoryStore = new PlanHistoryStore();
+for (let i = 0; i < 35; i++) {
+  phCap.push({ ...entry1, label: `动作${i}` });
+}
+check('历史上限 30', `${phCap.size()}`, '30');
+const sigBlocks: PlanBlock[] = [blk(1, 7, '2026-10-15', false)];
+const sigA: string = planDataSignature(sigBlocks, [todo('A', '')]);
+const sigB: string = planDataSignature(sigBlocks, [todo('B', '')]);
+check('数据签名随待办变化', `${sigA !== sigB}`, 'true');
+const phSig: PlanHistoryStore = new PlanHistoryStore();
+phSig.push(entry1);
+phSig.syncSignature(sigA);
+check('外部数据变化 → 历史清空', `${phSig.syncSignature(sigB) && !phSig.hasEntries()}`, 'true');
+check('块集合比较忽略 id', `${samePlanBlockSet(
+  [{ id: 3, todoId: 7, lessonId: 0, date: '2026-10-15', startMin: 600, endMin: 660, done: false }],
+  [{ id: 99, todoId: 7, lessonId: 0, date: '2026-10-15', startMin: 600, endMin: 660, done: false }]
+)}`, 'true');
+check('cloneBlock 不共享引用', `${(() => {
+  const src: PlanBlock = blk(1, 7, '2026-10-15', false);
+  const cp: PlanBlock = clonePlanBlock(src);
+  src.startMin = 1;
+  return cp.startMin;
+})()}`, '600');
 
 // ---------- 更新日志 ----------
 console.log('【更新日志】');

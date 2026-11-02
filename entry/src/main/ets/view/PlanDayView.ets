@@ -1,6 +1,8 @@
 import { common } from '@kit.AbilityKit';
 import { pasteboard } from '@kit.BasicServicesKit';
 import { hapticScrollEdge } from '../util/Haptics';
+import { PlanHistoryEntry, clonePlanBlock, clonePlanTodo, planDataSignature, planHistory,
+  samePlanBlockSet, samePlanTodo } from '../domain/PlanHistory';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { storedAbilityContext } from '../util/Ctx';
 import { Course, CourseSession, PlanBlock, RestWindow, Semester, SessionOverride,
@@ -94,6 +96,13 @@ function glassShelf() {
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'ClassOUT';
+
+/** 正在等待 reload 提交的历史动作 */
+interface PendingPlanHistory {
+  label: string;
+  todoId: number;
+  lessonId: number;
+}
 
 /** 虚拟课时排进计划时的默认时长 */
 const LESSON_MIN: number = 90;
@@ -338,6 +347,16 @@ export struct PlanDayView {
    *   双指缩放已选中的块 → 改时长（开始时间不动）
    */
   @State selectedBlockId: number = 0;
+  /** 日期栏撤销/重做按钮的可用状态 */
+  @State canUndo: boolean = false;
+  @State canRedo: boolean = false;
+  /** 最近一次 reload 的计划快照（历史 before） */
+  private baselineBlocks: PlanBlock[] = [];
+  private baselineTodos: Todo[] = [];
+  private pendingHistory: PendingPlanHistory | undefined = undefined;
+  private historyApplying: boolean = false;
+  /** 管理课程/演练等外部操作后，通知计划页刷新按钮状态 */
+  @StorageLink('planHistoryToken') @Watch('onHistoryToken') historyToken: number = 0;
   /** 用户滚动过计划网格之后，到顶/底才振动 */
   @State planScrollMoved: boolean = false;
   @State planContentH: number = 0;
@@ -873,6 +892,158 @@ export struct PlanDayView {
     });
   }
 
+  private onHistoryToken(): void {
+    this.syncHistoryButtons();
+  }
+
+  private syncHistoryButtons(): void {
+    this.canUndo = planHistory.canUndo();
+    this.canRedo = planHistory.canRedo();
+  }
+
+  private captureHistoryBaseline(): void {
+    this.baselineBlocks = this.allBlocks.map((b: PlanBlock): PlanBlock => clonePlanBlock(b));
+    this.baselineTodos = this.todos.map((t: Todo): Todo => clonePlanTodo(t));
+  }
+
+  /** 动作开始、改内存/落库之前调用；reload 完成时提交 */
+  private beginHistory(label: string, todoId: number, lessonId: number): void {
+    if (this.historyApplying) {
+      return;
+    }
+    this.pendingHistory = { label: label, todoId: todoId, lessonId: lessonId };
+  }
+
+  private beginBlockHistory(label: string, b: PlanBlock): void {
+    this.beginHistory(label, b.todoId, b.lessonId);
+  }
+
+  /** 删待办 / 虚拟课时完成这类不进历史的操作，直接把旧历史作废 */
+  private clearHistoryForExcluded(): void {
+    planHistory.clear();
+    this.pendingHistory = undefined;
+    this.syncHistoryButtons();
+  }
+
+  /**
+   * reload 末尾统一提交历史。
+   * - 有 pending：用上一次 baseline 作为 before，当前数据作为 after；
+   * - 正在 undo/redo：只更新签名和 baseline，不再记录；
+   * - 无 pending：数据签名变了说明是外部改动，清空历史。
+   */
+  private recordHistoryAfterReload(): void {
+    const sig: string = planDataSignature(this.allBlocks, this.todos);
+    if (this.historyApplying) {
+      this.historyApplying = false;
+      planHistory.markSignature(sig);
+      this.captureHistoryBaseline();
+      this.syncHistoryButtons();
+      return;
+    }
+    const p: PendingPlanHistory | undefined = this.pendingHistory;
+    if (p !== undefined) {
+      this.pendingHistory = undefined;
+      const beforeBlocks: PlanBlock[] = this.baselineBlocks.filter((b: PlanBlock): boolean =>
+        p.todoId > 0 ? b.todoId === p.todoId : b.lessonId === p.lessonId);
+      const afterBlocks: PlanBlock[] = this.allBlocks.filter((b: PlanBlock): boolean =>
+        p.todoId > 0 ? b.todoId === p.todoId : b.lessonId === p.lessonId);
+      const beforeTodo: Todo | undefined = p.todoId > 0
+        ? this.baselineTodos.find((t: Todo): boolean => t.id === p.todoId) : undefined;
+      const afterTodo: Todo | undefined = p.todoId > 0
+        ? this.todos.find((t: Todo): boolean => t.id === p.todoId) : undefined;
+      const blocksChanged: boolean = !samePlanBlockSet(beforeBlocks, afterBlocks);
+      const todoChanged: boolean = p.todoId > 0 && !samePlanTodo(beforeTodo, afterTodo);
+      if (blocksChanged || todoChanged) {
+        const entry: PlanHistoryEntry = {
+          label: p.label,
+          todoId: p.todoId,
+          lessonId: p.lessonId,
+          blocksBefore: beforeBlocks.map((b: PlanBlock): PlanBlock => clonePlanBlock(b)),
+          blocksAfter: afterBlocks.map((b: PlanBlock): PlanBlock => clonePlanBlock(b)),
+          todoBefore: beforeTodo === undefined ? undefined : clonePlanTodo(beforeTodo),
+          todoAfter: afterTodo === undefined ? undefined : clonePlanTodo(afterTodo)
+        };
+        planHistory.push(entry);
+      }
+      planHistory.markSignature(sig);
+      this.captureHistoryBaseline();
+      this.syncHistoryButtons();
+      return;
+    }
+    planHistory.syncSignature(sig);
+    this.captureHistoryBaseline();
+    this.syncHistoryButtons();
+  }
+
+  private async applyHistoryEntry(entry: PlanHistoryEntry, before: boolean): Promise<boolean> {
+    const ctx: common.UIAbilityContext = this.context();
+    const blocks: PlanBlock[] = before ? entry.blocksBefore : entry.blocksAfter;
+    const todo: Todo | undefined = before ? entry.todoBefore : entry.todoAfter;
+    this.historyApplying = true;
+    try {
+      if (entry.todoId > 0) {
+        await TodoRepo.replaceBlocksForTodo(ctx, entry.todoId, blocks);
+        if (todo !== undefined) {
+          await TodoRepo.updateTodo(ctx, todo);
+        }
+      } else if (entry.lessonId > 0) {
+        await TodoRepo.replaceBlocksForLesson(ctx, entry.lessonId, blocks);
+      }
+      await this.reload();
+      if (this.selectedBlockId > 0 && this.blockById(this.selectedBlockId) === undefined) {
+        this.selectedBlockId = 0;
+      }
+      return true;
+    } catch (e) {
+      this.historyApplying = false;
+      hilog.error(DOMAIN, TAG, 'apply plan history failed: %{public}s', JSON.stringify(e));
+      this.showHint('撤销失败：数据没有改动');
+      return false;
+    }
+  }
+
+  private undoPlan(): void {
+    this.doUndo().catch((e: Object): void => {
+      hilog.error(DOMAIN, TAG, 'undo failed: %{public}s', JSON.stringify(e));
+    });
+  }
+
+  private async doUndo(): Promise<void> {
+    const entry: PlanHistoryEntry | undefined = planHistory.peekUndo();
+    if (entry === undefined) {
+      return;
+    }
+    this.closeEditor();
+    const ok: boolean = await this.applyHistoryEntry(entry, true);
+    if (!ok) {
+      return;
+    }
+    planHistory.commitUndo();
+    this.syncHistoryButtons();
+    this.showHint(`已撤销：${entry.label}`);
+  }
+
+  private redoPlan(): void {
+    this.doRedo().catch((e: Object): void => {
+      hilog.error(DOMAIN, TAG, 'redo failed: %{public}s', JSON.stringify(e));
+    });
+  }
+
+  private async doRedo(): Promise<void> {
+    const entry: PlanHistoryEntry | undefined = planHistory.peekRedo();
+    if (entry === undefined) {
+      return;
+    }
+    this.closeEditor();
+    const ok: boolean = await this.applyHistoryEntry(entry, false);
+    if (!ok) {
+      return;
+    }
+    planHistory.commitRedo();
+    this.syncHistoryButtons();
+    this.showHint(`已重做：${entry.label}`);
+  }
+
   private async reload(): Promise<void> {
     const ctx: common.UIAbilityContext = this.context();
     const sem: Semester | undefined = await TimetableRepo.getSemester(ctx);
@@ -925,6 +1096,7 @@ export struct PlanDayView {
     this.sessionsByDate = smap;
     this.restWindows = await TimetableRepo.listRestWindows(ctx);
     this.lessons = await TodoRepo.listLessonsOfVirtualCourses(ctx, sem.id);
+    this.recordHistoryAfterReload();
     // ---- 2) 按当前档位铺画布：周视图铺 9 周窗口，日/三日铺 31 天窗口 ----
     if (this.zoomLevel === 7) {
       this.buildWeekWindow();
@@ -2376,6 +2548,7 @@ export struct PlanDayView {
     if (next === b.endMin) {
       return;   // 没变，不产生空改动
     }
+    this.beginBlockHistory('改时长', b);
     b.endMin = next;
     this.persistBlock(b);
     this.showHint(`时长改为 ${b.endMin - b.startMin} 分钟`);
@@ -2399,6 +2572,7 @@ export struct PlanDayView {
     }
     // moveRange 把开始时间吸附到 15 分钟刻度（用户要求「以开始时间为准吸附」）
     const range: number[] = moveRange(this.ax(), b.startMin, b.endMin, offset);
+    this.beginBlockHistory('移动块', b);
     b.startMin = range[0];
     b.endMin = range[1];
     if (crossDay) {
@@ -2561,6 +2735,7 @@ export struct PlanDayView {
       return;
     }
     this.editorError = '';
+    this.beginBlockHistory('改开始时间', b);
     b.startMin = min;
     b.endMin = min + dur;
     this.persistBlock(b);
@@ -2590,12 +2765,14 @@ export struct PlanDayView {
       return;
     }
     this.editorError = '';
+    this.beginBlockHistory('改时长', b);
     b.endMin = b.startMin + n;
     this.persistBlock(b);
   }
 
   /** 「日期 ‹ ›」：整块挪到前一天/后一天。跨天挪块不靠拖拽，靠这个（用户选的方案） */
   private shiftBlockDate(b: PlanBlock, delta: number): void {
+    this.beginBlockHistory('改日期', b);
     b.date = formatDate(addDays(parseDate(b.date), delta));
     this.persistBlock(b);
     this.showHint(`改到 ${b.date}`);
@@ -2609,6 +2786,7 @@ export struct PlanDayView {
       return;
     }
     this.editorError = '';
+    this.beginBlockHistory('改开始时间', b);
     b.startMin = min;
     b.endMin = min + dur;
     this.persistBlock(b);
@@ -2621,6 +2799,7 @@ export struct PlanDayView {
       return;
     }
     this.editorError = '';
+    this.beginBlockHistory('改时长', b);
     b.endMin = end;
     this.persistBlock(b);
   }
@@ -2642,6 +2821,7 @@ export struct PlanDayView {
     if (t === undefined) {
       return;
     }
+    this.beginHistory('改截止时间', todoId, 0);
     t.ddl = ddl;
     await TodoRepo.updateTodo(ctx, t);
     this.showHint(ddl.length > 0 ? `截止时间改为 ${ddl}` : '已取消截止时间');
@@ -2656,6 +2836,8 @@ export struct PlanDayView {
   }
 
   private async doRemoveTodo(b: PlanBlock): Promise<void> {
+    // 删待办不进撤销栈：旧计划快照不能跨过这次删除继续用
+    this.clearHistoryForExcluded();
     const ctx: common.UIAbilityContext = this.context();
     const t: Todo | undefined = await TodoRepo.getTodo(ctx, b.todoId);
     if (t !== undefined && t.source === TodoSource.Template && t.generationKey.length > 0) {
@@ -2737,6 +2919,7 @@ export struct PlanDayView {
 
   private async doPlace(todo: Todo, startMin: number, duration: number,
     date: string): Promise<void> {
+    this.beginHistory('排入计划', todo.id, 0);
     const ctx: common.UIAbilityContext = this.context();
     const block: PlanBlock = {
       id: 0,
@@ -2785,6 +2968,7 @@ export struct PlanDayView {
       this.showHint('这块太短了，拆不开');
       return;
     }
+    this.beginBlockHistory('拆成两块', b);
     const ctx: common.UIAbilityContext = this.context();
     const mid: number = b.startMin + parts[0];
     const first: PlanBlock = {
@@ -2812,6 +2996,12 @@ export struct PlanDayView {
   /** 块打勾/取消；所有块完成 → 待办自动完成；虚拟课时完成 → 触发生成模板 */
   private async doToggle(block: PlanBlock): Promise<void> {
     const ctx: common.UIAbilityContext = this.context();
+    if (block.lessonId > 0) {
+      // 虚拟课时完成会自动生成待办，不进撤销栈；旧历史作废
+      this.clearHistoryForExcluded();
+    } else {
+      this.beginHistory(block.done ? '取消完成' : '标记完成', block.todoId, 0);
+    }
     block.done = !block.done;
     await TodoRepo.updateBlock(ctx, block);
 
@@ -2850,6 +3040,7 @@ export struct PlanDayView {
   }
 
   private async doRemove(block: PlanBlock): Promise<void> {
+    this.beginBlockHistory('移除此块', block);
     const ctx: common.UIAbilityContext = this.context();
     const todoId: number = block.todoId;
     await TodoRepo.deleteBlock(ctx, block.id);
@@ -4327,12 +4518,33 @@ export struct PlanDayView {
   DayBarFloat() {
     Column() {
       Row() {
-        Text('‹')
-          .fontSize(22)
-          .fontColor('#7FA8FF')
-          .padding({ left: 8, right: 8 })
-          .zIndex(5)
-          .onClick((): void => this.goDay(-1))
+        Row() {
+          Text('↶')
+            .fontSize(18)
+            .fontColor(this.canUndo ? '#7FA8FF' : '#4B5668')
+            .padding({ left: 4, right: 4 })
+            .onClick((): void => {
+              if (this.canUndo) {
+                this.undoPlan();
+              }
+            })
+          Text('↷')
+            .fontSize(18)
+            .fontColor(this.canRedo ? '#7FA8FF' : '#4B5668')
+            .padding({ left: 4, right: 4 })
+            .onClick((): void => {
+              if (this.canRedo) {
+                this.redoPlan();
+              }
+            })
+          Text('‹')
+            .fontSize(22)
+            .fontColor('#7FA8FF')
+            .padding({ left: 4, right: 8 })
+            .onClick((): void => this.goDay(-1))
+        }
+        .alignItems(VerticalAlign.Center)
+        .zIndex(5)
         Column() {
           // 周视图显示整周范围；日/三日显示当前日期
           Text(this.zoomLevel === 7 ? this.weekRangeLabel() : this.headerText())

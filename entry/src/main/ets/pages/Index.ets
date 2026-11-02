@@ -41,6 +41,7 @@ import { GuideStep, guideStepAt, guideStepCount, isLastGuideStep, nextGuideStep,
   prevGuideStep } from '../domain/Guide';
 import { GuideRepo } from '../data/GuideRepo';
 import { ChangelogEntry, changelogBetween } from '../domain/Changelog';
+import { planHistory } from '../domain/PlanHistory';
 import { loadLastSeenVersion, saveLastSeenVersion } from '../data/Prefs';
 
 import { ChipButton } from '../view/ChipButton';
@@ -977,6 +978,7 @@ struct Index {
    */
   private async doStartGuide(): Promise<void> {
     const ctx: common.UIAbilityContext = this.context();
+    this.clearPlanHistory();
     this.guideBusy = true;
     this.guidePrompt = false;
     await GuideRepo.markPrompted(ctx);
@@ -1000,6 +1002,12 @@ struct Index {
    * 这里清空真实库（kv 也一起没）、把 AppStorage 恢复默认、重建默认学期，
    * 然后立刻进入沙箱新手演练 —— 视觉上等价于重装后第一次打开。
    */
+  /** 清空计划页撤销栈，并通知仍挂载的计划页刷新按钮状态 */
+  private clearPlanHistory(): void {
+    planHistory.clear();
+    AppStorage.setOrCreate('planHistoryToken', Date.now());
+  }
+
   private resetAppStorage(): void {
     AppStorage.setOrCreate('wallpaper', '');
     AppStorage.setOrCreate('wallpaperFocus', '0,0,1');
@@ -1020,6 +1028,7 @@ struct Index {
 
   private async resetAppAndGuide(): Promise<void> {
     const ctx: common.UIAbilityContext = this.context();
+    this.clearPlanHistory();
     this.guideBusy = true;
     if (this.guideActive) {
       await GuideRepo.exitDemo(ctx);
@@ -1069,6 +1078,7 @@ struct Index {
    */
   private async doExitGuide(): Promise<void> {
     const ctx: common.UIAbilityContext = this.context();
+    this.clearPlanHistory();
     this.guideBusy = true;
     this.guideActive = false;
     this.tab = 0;
@@ -3087,6 +3097,8 @@ struct Index {
           close: (): void => {
             this.showManager = false;
             this.managerInitialView = '';
+            // 管理课程里可能改了课程/学期/恢复了备份；计划历史不再可信
+            this.clearPlanHistory();
             // ⚠️ 不能只 refresh()：学期名称/开学日/总周数可能刚被改过（见 reloadSemesterThenRefresh）
             this.reloadSemesterThenRefresh();
             // 设置页如果还挂着，让它重读学期/课程/概览

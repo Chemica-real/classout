@@ -1190,7 +1190,7 @@ export struct TodoInbox {
           .fontWeight(FontWeight.Medium)
           .fontColor('#F2F5FA')
           .width('100%')
-        Text('删除后不可恢复；自动生成的待办会记住不再生成。')
+        Text('删除后不可恢复。')
           .fontSize(12)
           .fontColor('#94A0B5')
           .width('100%')

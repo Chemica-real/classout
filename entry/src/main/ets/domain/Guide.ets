@@ -111,6 +111,11 @@ export function guideSteps(): GuideStep[] {
       tab: GuideTab.Plan
     },
     {
+      title: '撤销和重做',
+      body: '日期栏左上角的 ↶ / ↷ 可以撤销或重做刚才的计划操作；只保留本次运行最近 30 步。',
+      tab: GuideTab.Plan
+    },
+    {
       title: '最后一站：设置',
       body: '背景、标语、待办类型、提醒、备份都在这里；点一行进子页。',
       tab: GuideTab.Settings

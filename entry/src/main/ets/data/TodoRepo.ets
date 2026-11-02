@@ -606,4 +606,54 @@ export class TodoRepo {
     const store: relationalStore.RdbStore = await Db.get(context);
     await store.executeSql('DELETE FROM plan_block WHERE id = ?', [id]);
   }
+
+  /** 某一讲虚拟课时的全部块（撤销移动/缩放用） */
+  static async listBlocksByLesson(context: common.Context, lessonId: number): Promise<PlanBlock[]> {
+    const store: relationalStore.RdbStore = await Db.get(context);
+    const rs = await store.querySql(
+      'SELECT * FROM plan_block WHERE lesson_id = ? ORDER BY date, start_min', [lessonId]);
+    const list: PlanBlock[] = [];
+    while (rs.goToNextRow()) {
+      list.push(TodoRepo.readBlock(rs));
+    }
+    rs.close();
+    return list;
+  }
+
+  /**
+   * 撤销/重做：把某待办的全部块替换成快照。
+   * 快照里的 id 是旧的，这里一律以新 id 插入，避免和现存的其它块撞主键。
+   */
+  static async replaceBlocksForTodo(context: common.Context, todoId: number,
+    blocks: PlanBlock[]): Promise<void> {
+    const store: relationalStore.RdbStore = await Db.get(context);
+    await store.executeSql('DELETE FROM plan_block WHERE todo_id = ?', [todoId]);
+    for (const b of blocks) {
+      await store.insert('plan_block', {
+        'todo_id': todoId,
+        'lesson_id': 0,
+        'date': b.date,
+        'start_min': b.startMin,
+        'end_min': b.endMin,
+        'done': b.done ? 1 : 0
+      });
+    }
+  }
+
+  /** 撤销/重做：把某一讲虚拟课时的全部块替换成快照。 */
+  static async replaceBlocksForLesson(context: common.Context, lessonId: number,
+    blocks: PlanBlock[]): Promise<void> {
+    const store: relationalStore.RdbStore = await Db.get(context);
+    await store.executeSql('DELETE FROM plan_block WHERE lesson_id = ?', [lessonId]);
+    for (const b of blocks) {
+      await store.insert('plan_block', {
+        'todo_id': 0,
+        'lesson_id': lessonId,
+        'date': b.date,
+        'start_min': b.startMin,
+        'end_min': b.endMin,
+        'done': b.done ? 1 : 0
+      });
+    }
+  }
 }
