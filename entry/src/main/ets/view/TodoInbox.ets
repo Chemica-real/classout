@@ -16,7 +16,7 @@ import { saveCustomCategories, saveNoteExpanded } from '../data/Prefs';
 import { courseColorOf, parsePalette } from '../domain/Palette';
 import { groupActiveTodos, isOverdue, remainText, sortDoneTodos } from '../domain/TodoGroups';
 import { TODO_COURSE_ALL, filterTodosByCourse, sortPoolTodos } from '../domain/PlanMath';
-import { TODO_SORT_DDL, TODO_SORT_TITLE, loadTodoSort, saveTodoSort } from '../data/Prefs';
+import { TODO_SORT_DDL, TODO_SORT_TITLE, loadConfirmTodoDelete, loadTodoSort, saveTodoSort } from '../data/Prefs';
 import { ChipButton } from './ChipButton';
 import { BackHandler, backStack } from '../util/BackStack';
 import { GLASS_BLUR, GLASS_EDGE_SOFT, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_ROW,
@@ -124,6 +124,21 @@ export struct TodoInbox {
   @State courseFilter: number = TODO_COURSE_ALL;
   /** 排序：截止时间（同则标题）或标题；@StorageLink 让选择立即生效并跨页保留 */
   @StorageLink('todoSort') sortMode: string = TODO_SORT_DDL;
+  /** 删除待办前是否二次确认（设置页可关） */
+  @StorageLink('confirmTodoDelete') confirmTodoDelete: boolean = true;
+  /** 左滑状态：正在滑的待办 / 位移 */
+  @State swipeId: number = 0;
+  @State swipeDx: number = 0;
+  /** 删除确认 / 碎裂动画 */
+  @State deleteTargetId: number = 0;
+  @State deleteKind: string = '';
+  @State deleteX: number = 0;
+  @State deleteY: number = 0;
+  @State deleteConfirmOpen: boolean = false;
+  @State globalShatterId: number = 0;
+  @State globalShatterX: number = 0;
+  @State globalShatterY: number = 0;
+  @State globalShatterFly: boolean = false;
   /** 各分组是否展开（默认全开；切标签后重置） */
   @State pendingOpen: boolean = true;
   @State examOpen: boolean = true;
@@ -267,6 +282,7 @@ export struct TodoInbox {
     }
     this.courses = await TimetableRepo.listCourses(ctx, this.semesterId);
     this.sortMode = await loadTodoSort(ctx);
+    this.confirmTodoDelete = await loadConfirmTodoDelete(ctx);
     // 课程被删/换学期后，别把一个不存在的课程筛选留在界面上
     if (this.courseFilter > 0) {
       let found: boolean = false;
@@ -1048,6 +1064,160 @@ export struct TodoInbox {
         .padding({ left: 5, right: 5, top: 1, bottom: 1 })
         .margin({ right: 6 })
     }
+  }
+
+  /**
+   * 左滑删除的外壳：红色底 + 左移；松手超过阈值后进入确认/碎裂删除。
+   * 卡片本体不复制任何逻辑，只是被包一层 translate。
+   */
+  @Builder
+  SwipeCard(t: Todo, kind: string) {
+    Stack({ alignContent: Alignment.TopStart }) {
+      Column() {
+        if (kind === 'pending') {
+          this.PendingCard(t)
+        } else if (kind === 'exam') {
+          this.ExamCard(t)
+        } else if (kind === 'done') {
+          this.DoneRow(t)
+        } else {
+          this.ActiveRow(t)
+        }
+      }
+      .width('100%')
+      .translate({ x: this.swipeId === t.id ? this.swipeDx : 0 })
+      .gesture(
+        PanGesture({ direction: PanDirection.Horizontal, distance: 8 })
+          .onActionStart((): void => {
+            this.swipeId = t.id;
+            this.swipeDx = 0;
+          })
+          .onActionUpdate((event: GestureEvent): void => {
+            const dx: number = event.offsetX;
+            this.swipeDx = dx < -110 ? -110 : (dx > 0 ? 0 : dx);
+          })
+          .onActionEnd((event: GestureEvent): void => {
+            const dx: number = this.swipeDx;
+            const x: number = event.fingerList.length > 0 ? event.fingerList[0].globalX : 540;
+            const y: number = event.fingerList.length > 0 ? event.fingerList[0].globalY : 1200;
+            this.swipeId = 0;
+            this.swipeDx = 0;
+            if (dx < -60) {
+              this.requestDelete(t, kind, x, y);
+            }
+          })
+      )
+    }
+    .width('100%')
+    // 只在滑开时露出红底；静止时透明，否则半透明卡片会把红底透出来
+    .backgroundColor(this.swipeId === t.id && this.swipeDx < 0
+      ? 'rgba(214,69,69,0.86)' : Color.Transparent)
+    .borderRadius(10)
+    .clip(true)
+  }
+
+  private requestDelete(t: Todo, kind: string, x: number, y: number): void {
+    if (this.confirmTodoDelete) {
+      this.deleteTargetId = t.id;
+      this.deleteKind = kind;
+      this.deleteX = x;
+      this.deleteY = y;
+      this.deleteConfirmOpen = true;
+      return;
+    }
+    this.performDelete(t, kind, x, y);
+  }
+
+  private confirmDelete(): void {
+    const id: number = this.deleteTargetId;
+    const kind: string = this.deleteKind;
+    const x: number = this.deleteX;
+    const y: number = this.deleteY;
+    this.deleteConfirmOpen = false;
+    const t: Todo | undefined = this.findTodo(id);
+    if (t === undefined) {
+      return;
+    }
+    this.performDelete(t, kind, x, y);
+  }
+
+  private performDelete(t: Todo, kind: string, x: number, y: number): void {
+    // 待确认卡本身已有 4 块碎片；其它类型走页面级碎片层
+    if (kind === 'pending') {
+      this.removeConfirmed(t);
+      return;
+    }
+    if (!isMotionOn()) {
+      this.optimisticRemove(t.id);
+      this.doRemove(t).catch((e: Object): void => {
+        hilog.error(DOMAIN, TAG, 'todo remove failed: %{public}s', JSON.stringify(e));
+      });
+      return;
+    }
+    this.globalShatterId = t.id;
+    this.globalShatterX = x;
+    this.globalShatterY = y;
+    this.globalShatterFly = false;
+    setTimeout((): void => {
+      this.getUIContext().animateTo(
+        { duration: dur(DUR_SHARD), curve: curveOrLinear(motionCurve) },
+        (): void => { this.globalShatterFly = true; });
+    }, 16);
+    setTimeout((): void => {
+      this.globalShatterId = 0;
+      this.globalShatterFly = false;
+      this.getUIContext().animateTo(
+        { duration: dur(DUR_ITEM), curve: curveOrLinear(motionCurve) },
+        (): void => { this.optimisticRemove(t.id); });
+      this.doRemove(t).catch((e: Object): void => {
+        hilog.error(DOMAIN, TAG, 'todo remove failed: %{public}s', JSON.stringify(e));
+      });
+    }, dur(DUR_SHARD) + 16);
+  }
+
+  @Builder
+  DeleteConfirm() {
+    Column() {
+      Column() {
+        Text('删除这条待办？')
+          .fontSize(16)
+          .fontWeight(FontWeight.Medium)
+          .fontColor('#F2F5FA')
+          .width('100%')
+        Text('删除后不可恢复；自动生成的待办会记住不再生成。')
+          .fontSize(12)
+          .fontColor('#94A0B5')
+          .width('100%')
+          .margin({ top: 8 })
+        Row() {
+          Button('取消')
+            .backgroundColor('rgba(255,255,255,0.10)')
+            .fontColor('#CBD6E8')
+            .fontSize(13)
+            .layoutWeight(1)
+            .onClick((): void => {
+              this.deleteConfirmOpen = false;
+            })
+          Button('删除')
+            .backgroundColor('#D64545')
+            .fontColor('#FFFFFF')
+            .fontSize(13)
+            .layoutWeight(1)
+            .margin({ left: 10 })
+            .onClick((): void => this.confirmDelete())
+        }
+        .width('100%')
+        .margin({ top: 16 })
+      }
+      .width('86%')
+      .padding(18)
+      .glassSheet()
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor('rgba(6,10,18,0.62)')
+    .justifyContent(FlexAlign.Center)
+    .alignItems(HorizontalAlign.Center)
   }
 
   @Builder
@@ -1869,7 +2039,7 @@ export struct TodoInbox {
 
                 if (this.pendingOpen) {
                   ForEach(this.pendingVisible(), (t: Todo) => {
-                    this.PendingCard(t)
+                    this.SwipeCard(t, 'pending')
                   }, (t: Todo) => this.todoKey('p', t))
                 }
               }
@@ -1901,7 +2071,7 @@ export struct TodoInbox {
 
                 if (this.examOpen) {
                   ForEach(this.examList(), (t: Todo) => {
-                    this.ExamCard(t)
+                    this.SwipeCard(t, 'exam')
                   }, (t: Todo) => this.todoKey('x', t))
                 }
               }
@@ -1939,7 +2109,7 @@ export struct TodoInbox {
 
                 if (this.todayOpen) {
                   ForEach(this.todayTodos(), (t: Todo) => {
-                    this.ActiveRow(t)
+                    this.SwipeCard(t, 'active')
                   }, (t: Todo) => this.todoKey('td', t))
                 }
               }
@@ -1971,7 +2141,7 @@ export struct TodoInbox {
 
                 if (this.overdueOpen) {
                   ForEach(this.overdueTodos(), (t: Todo) => {
-                    this.ActiveRow(t)
+                    this.SwipeCard(t, 'active')
                   }, (t: Todo) => this.todoKey('od', t))
                 }
               }
@@ -2003,7 +2173,7 @@ export struct TodoInbox {
 
                 if (this.laterOpen) {
                   ForEach(this.laterTodos(), (t: Todo) => {
-                    this.ActiveRow(t)
+                    this.SwipeCard(t, 'active')
                   }, (t: Todo) => this.todoKey('lt', t))
                 }
               }
@@ -2046,7 +2216,7 @@ export struct TodoInbox {
 
                 if (this.doneOpen) {
                   ForEach(this.doneSorted(), (t: Todo) => {
-                    this.DoneRow(t)
+                    this.SwipeCard(t, 'done')
                   }, (t: Todo) => this.todoKey('d', t))
                 }
               }
@@ -2101,6 +2271,32 @@ export struct TodoInbox {
         .padding({ left: FLOAT_SIDE, right: FLOAT_SIDE, bottom: this.bottomInset + FLOAT_GAP })
         .justifyContent(FlexAlign.End)
         .hitTestBehavior(HitTestMode.Transparent)
+      }
+
+      // 页面级碎裂层：非「待确认」类型删除时，在松手位置炸开
+      if (this.globalShatterId > 0) {
+        ForEach([0, 1, 2, 3], (i: number) => {
+          Column()
+            .width(16)
+            .height(16)
+            .borderRadius(4)
+            .backgroundColor(i % 2 === 0 ? 'rgba(255,255,255,0.30)' : 'rgba(127,168,255,0.55)')
+            .position({
+              x: this.globalShatterX + (i % 2 === 0 ? -18 : 18),
+              y: this.globalShatterY + (i < 2 ? -14 : 14)
+            })
+            .translate({
+              x: this.globalShatterFly ? SHARD_DX[i] : 0,
+              y: this.globalShatterFly ? SHARD_DY[i] : 0
+            })
+            .rotate({ angle: this.globalShatterFly ? SHARD_ROT[i] : 0 })
+            .opacity(this.globalShatterFly ? 0 : 1)
+            .hitTestBehavior(HitTestMode.None)
+        }, (i: number) => `gs-${this.globalShatterId}-${i}`)
+      }
+
+      if (this.deleteConfirmOpen) {
+        this.DeleteConfirm()
       }
 
       if (this.editorVisible) {

@@ -38,8 +38,9 @@ import { FLOAT_GAP, FLOAT_SIDE, FLOAT_TOP, H_TITLE } from './Float';
 import { persistMotionSetting } from './Motion';
 import { pickTime } from '../util/DateTimePicker';
 import { MOTTO_DEFAULT, MOTTO_MAX_UNITS, clampMottoUnits, cleanMotto,
-  loadDefaultTab, loadMotto, loadQuickStart, mottoUnits, saveCoursePalette, saveCustomCategories,
-  saveDefaultTab, saveMotto, savePlanWindow, saveQuickStart, saveSyncInterval } from '../data/Prefs';
+  loadConfirmTodoDelete, loadDefaultTab, loadMotto, loadQuickStart, mottoUnits, saveConfirmTodoDelete,
+  saveCoursePalette, saveCustomCategories, saveDefaultTab, saveMotto, savePlanWindow, saveQuickStart,
+  saveSyncInterval } from '../data/Prefs';
 import { normalizeDefaultTab, tabLabel } from '../domain/Launch';
 import { DEFAULT_PALETTE, parsePalette } from '../domain/Palette';
 import { CourseColorPicker } from './ColorPicker';
@@ -233,6 +234,8 @@ export struct SettingsPage {
    * ⚠️ `@StorageLink` 键名必须写字面量。
    */
   @StorageLink('quickStart') quickStart: boolean = true;
+  /** 删除待办前是否二次确认（默认开；设置页可关） */
+  @StorageLink('confirmTodoDelete') confirmTodoDelete: boolean = true;
   /** 打开 App 默认进入哪个标签页（0 课表 / 1 待办 / 2 计划 / 3 设置） */
   @StorageLink('defaultTab') defaultTab: number = 0;
   /** 学科调色盘（10 个全局颜色，`'\n'` 分隔） */
@@ -314,6 +317,7 @@ export struct SettingsPage {
     // 启动选项：从当前库读回来（演练沙箱里是一份全新的库 → 默认关、默认课表）
     this.quickStart = await loadQuickStart(ctx);
     this.defaultTab = await loadDefaultTab(ctx);
+    this.confirmTodoDelete = await loadConfirmTodoDelete(ctx);
     await this.loadOverview(ctx);
     this.loading = false;
   }
@@ -1198,6 +1202,38 @@ export struct SettingsPage {
   }
 
   @Builder
+  DeleteConfirmCard() {
+    Column() {
+      this.SectionTitle('删除待办前询问',
+        '待办左滑删除、或从编辑窗删除时，先弹一次确认。')
+      Row() {
+        Column() {
+          Text('删除前先问我')
+            .fontSize(14)
+            .fontColor('#F2F5FA')
+          Text(this.confirmTodoDelete ? '开：左滑删除会先确认' : '关：左滑直接删除（仍会播放碎裂动画）')
+            .fontSize(11)
+            .fontColor('#94A0B5')
+            .margin({ top: 2 })
+        }
+        .layoutWeight(1)
+        .alignItems(HorizontalAlign.Start)
+        Toggle({ type: ToggleType.Switch, isOn: this.confirmTodoDelete })
+          .onChange((on: boolean): void => {
+            this.confirmTodoDelete = on;
+            saveConfirmTodoDelete(this.context(), on).catch((e: Object): void => {
+              hilog.warn(DOMAIN, TAG, 'save confirm delete failed: %{public}s', JSON.stringify(e));
+            });
+          })
+      }
+      .width('100%')
+    }
+    .width('100%')
+    .padding(16)
+    .glassPanelCard()
+  }
+
+  @Builder
   MotionCard() {
     Column() {
       this.SectionTitle('动画', '关掉之后所有动效都退化为直接切换：列表增删、抽屉、托盘、打字机与背景光晕漂移全部停。')
@@ -1932,6 +1968,7 @@ export struct SettingsPage {
     switch (this.subPage) {
       case 'motto': return '首页标语';
       case 'categories': return '待办类型';
+      case 'deleteConfirm': return '删除待办前询问';
       case 'planWindow': return '计划页时间范围';
       case 'launch': return '启动';
       case 'palette': return '学科调色盘';
@@ -1999,6 +2036,10 @@ export struct SettingsPage {
         icon: $r('app.media.ic_category'), title: '待办类型',
         value: `${builtinCategoryOptions().length + parseCustomCategories(this.catRaw).length} 个`,
         action: 'categories', danger: false
+      },
+      {
+        icon: $r('app.media.ic_confirm'), title: '删除待办前询问',
+        value: this.confirmTodoDelete ? '开' : '关', action: 'deleteConfirm', danger: false
       }
     ];
   }
@@ -2215,6 +2256,8 @@ export struct SettingsPage {
       this.MottoCard()
     } else if (this.subPage === 'categories') {
       this.CategoryCard()
+    } else if (this.subPage === 'deleteConfirm') {
+      this.DeleteConfirmCard()
     } else if (this.subPage === 'planWindow') {
       this.PlanWindowCard()
     } else if (this.subPage === 'launch') {

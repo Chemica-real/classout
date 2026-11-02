@@ -322,6 +322,30 @@ export async function saveTodoSort(context: common.Context, mode: string): Promi
   }
 }
 
+// ---------------- 删除待办前询问 ----------------
+
+export const CONFIRM_DELETE_KEY: string = 'confirmTodoDelete';
+export const CONFIRM_DELETE_KV: string = 'confirm_todo_delete';
+
+export async function loadConfirmTodoDelete(context: common.Context): Promise<boolean> {
+  try {
+    const raw: string = await Db.getKv(context, CONFIRM_DELETE_KV);
+    return raw.length === 0 ? true : raw === '1';
+  } catch (e) {
+    hilog.warn(0x0000, 'ClassOUT', 'load confirm delete failed: %{public}s', JSON.stringify(e));
+    return true;
+  }
+}
+
+export async function saveConfirmTodoDelete(context: common.Context, on: boolean): Promise<void> {
+  AppStorage.setOrCreate(CONFIRM_DELETE_KEY, on);
+  try {
+    await Db.setKv(context, CONFIRM_DELETE_KV, on ? '1' : '0');
+  } catch (e) {
+    hilog.warn(0x0000, 'ClassOUT', 'save confirm delete failed: %{public}s', JSON.stringify(e));
+  }
+}
+
 /**
  * 默认进入哪个标签页（0 课表 / 1 待办 / 2 计划 / 3 设置）。
  * ⚠️ `@StorageLink` 的键名必须写字面量 `'defaultTab'`。
