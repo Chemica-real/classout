@@ -294,6 +294,34 @@ export const QUICK_START_KV: string = 'quick_start';
 /** 冷启动默认快速启动（AGC 4s 自检；见上方注释） */
 export const QUICK_START_DEFAULT: boolean = true;
 
+// ---------------- 待办页排序 ----------------
+
+/** `@StorageLink` 键（必须写字面量） */
+export const TODO_SORT_KEY: string = 'todoSort';
+export const TODO_SORT_KV: string = 'todo_sort';
+export const TODO_SORT_DDL: string = 'ddl';
+export const TODO_SORT_TITLE: string = 'title';
+
+export async function loadTodoSort(context: common.Context): Promise<string> {
+  try {
+    const raw: string = await Db.getKv(context, TODO_SORT_KV);
+    return raw === TODO_SORT_TITLE ? TODO_SORT_TITLE : TODO_SORT_DDL;
+  } catch (e) {
+    hilog.warn(0x0000, 'ClassOUT', 'load todo sort failed: %{public}s', JSON.stringify(e));
+    return TODO_SORT_DDL;
+  }
+}
+
+export async function saveTodoSort(context: common.Context, mode: string): Promise<void> {
+  const v: string = mode === TODO_SORT_TITLE ? TODO_SORT_TITLE : TODO_SORT_DDL;
+  AppStorage.setOrCreate(TODO_SORT_KEY, v);
+  try {
+    await Db.setKv(context, TODO_SORT_KV, v);
+  } catch (e) {
+    hilog.warn(0x0000, 'ClassOUT', 'save todo sort failed: %{public}s', JSON.stringify(e));
+  }
+}
+
 /**
  * 默认进入哪个标签页（0 课表 / 1 待办 / 2 计划 / 3 设置）。
  * ⚠️ `@StorageLink` 的键名必须写字面量 `'defaultTab'`。

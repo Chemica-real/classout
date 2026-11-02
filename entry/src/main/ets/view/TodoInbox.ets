@@ -15,7 +15,8 @@ import { CATEGORY_NAME_MAX, CategoryOption, CategoryVerdict, addCustomCategory,
 import { saveCustomCategories, saveNoteExpanded } from '../data/Prefs';
 import { courseColorOf, parsePalette } from '../domain/Palette';
 import { groupActiveTodos, isOverdue, remainText, sortDoneTodos } from '../domain/TodoGroups';
-import { TODO_COURSE_ALL, filterTodosByCourse } from '../domain/PlanMath';
+import { TODO_COURSE_ALL, filterTodosByCourse, sortPoolTodos } from '../domain/PlanMath';
+import { TODO_SORT_DDL, TODO_SORT_TITLE, loadTodoSort, saveTodoSort } from '../data/Prefs';
 import { ChipButton } from './ChipButton';
 import { BackHandler, backStack } from '../util/BackStack';
 import { GLASS_BLUR, GLASS_EDGE_SOFT, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_ROW,
@@ -121,6 +122,14 @@ export struct TodoInbox {
   @State courses: Course[] = [];
   /** 课程筛选：TODO_COURSE_ALL = 全部；0 = 无课程；>0 = 某门课 */
   @State courseFilter: number = TODO_COURSE_ALL;
+  /** 排序：截止时间（同则标题）或标题；@StorageLink 让选择立即生效并跨页保留 */
+  @StorageLink('todoSort') sortMode: string = TODO_SORT_DDL;
+  /** 各分组是否展开（默认全开；切标签后重置） */
+  @State pendingOpen: boolean = true;
+  @State examOpen: boolean = true;
+  @State todayOpen: boolean = true;
+  @State overdueOpen: boolean = true;
+  @State laterOpen: boolean = true;
   @State loading: boolean = true;
 
   /**
@@ -257,6 +266,7 @@ export struct TodoInbox {
       return;
     }
     this.courses = await TimetableRepo.listCourses(ctx, this.semesterId);
+    this.sortMode = await loadTodoSort(ctx);
     // 课程被删/换学期后，别把一个不存在的课程筛选留在界面上
     if (this.courseFilter > 0) {
       let found: boolean = false;
@@ -388,8 +398,26 @@ export struct TodoInbox {
     return '全部课程';
   }
 
+  private sortByTitle(list: Todo[]): Todo[] {
+    const out: Todo[] = list.slice();
+    out.sort((a: Todo, b: Todo): number => {
+      if (a.title !== b.title) {
+        return a.title < b.title ? -1 : 1;
+      }
+      if (a.ddl !== b.ddl) {
+        return a.ddl < b.ddl ? -1 : 1;
+      }
+      return a.id - b.id;
+    });
+    return out;
+  }
+
+  private sortList(list: Todo[]): Todo[] {
+    return this.sortMode === TODO_SORT_TITLE ? this.sortByTitle(list) : sortPoolTodos(list);
+  }
+
   private pendingVisible(): Todo[] {
-    return filterTodosByCourse(this.pendingList, this.courseFilter);
+    return this.sortList(filterTodosByCourse(this.pendingList, this.courseFilter));
   }
 
   private examList(): Todo[] {
@@ -399,7 +427,7 @@ export struct TodoInbox {
         out.push(t);
       }
     }
-    return out;
+    return this.sortList(out);
   }
 
   private taskList(): Todo[] {
@@ -424,17 +452,20 @@ export struct TodoInbox {
 
   /** 今天（截止就在今天、还没到点） */
   private todayTodos(): Todo[] {
-    return groupActiveTodos(this.taskList(), this.nowStamp(), formatDate(today())).today;
+    const g = groupActiveTodos(this.taskList(), this.nowStamp(), formatDate(today()));
+    return this.sortMode === TODO_SORT_TITLE ? this.sortByTitle(g.today) : g.today;
   }
 
   /** 已逾期（截止时刻已经过了） */
   private overdueTodos(): Todo[] {
-    return groupActiveTodos(this.taskList(), this.nowStamp(), formatDate(today())).overdue;
+    const g = groupActiveTodos(this.taskList(), this.nowStamp(), formatDate(today()));
+    return this.sortMode === TODO_SORT_TITLE ? this.sortByTitle(g.overdue) : g.overdue;
   }
 
   /** 以后（明天及以后 + 没填截止） */
   private laterTodos(): Todo[] {
-    return groupActiveTodos(this.taskList(), this.nowStamp(), formatDate(today())).later;
+    const g = groupActiveTodos(this.taskList(), this.nowStamp(), formatDate(today()));
+    return this.sortMode === TODO_SORT_TITLE ? this.sortByTitle(g.later) : g.later;
   }
 
   /** 已完成：按完成时间倒序（最近完成的在最上面） */
@@ -1780,6 +1811,35 @@ export struct TodoInbox {
                   })
               }
               .width('100%')
+              .margin({ bottom: 6 })
+
+              Row() {
+                Text('排序')
+                  .fontSize(12)
+                  .fontColor('#94A0B5')
+                Blank()
+                Select([{ value: '截止时间' }, { value: '标题' }] as SelectOption[])
+                  .selected(this.sortMode === TODO_SORT_TITLE ? 1 : 0)
+                  .value(this.sortMode === TODO_SORT_TITLE ? '标题' : '截止时间')
+                  .font({ size: 12 })
+                  .fontColor('#E5EAF3')
+                  .controlSize(ControlSize.SMALL)
+                  .optionWidth(140)
+                  .selectedOptionBgColor('rgba(46,107,230,0.45)')
+                  .selectedOptionFont({ size: 13 })
+                  .selectedOptionFontColor('#FFFFFF')
+                  .optionBgColor('rgba(16,22,34,0.98)')
+                  .optionFont({ size: 13 })
+                  .optionFontColor('#E5EAF3')
+                  .menuBackgroundColor('rgba(16,22,34,0.98)')
+                  .onSelect((index: number, value: string): void => {
+                    this.sortMode = index === 1 ? TODO_SORT_TITLE : TODO_SORT_DDL;
+                    saveTodoSort(this.context(), this.sortMode).catch((e: Object): void => {
+                      hilog.warn(DOMAIN, TAG, 'save todo sort failed: %{public}s', JSON.stringify(e));
+                    });
+                  })
+              }
+              .width('100%')
               .margin({ bottom: 10 })
 
               if (this.pendingVisible().length > 0) {
@@ -1796,13 +1856,22 @@ export struct TodoInbox {
                   Text('下课自动生成，确认后才生效')
                     .fontSize(11)
                     .fontColor('#8B97AC')
+                  Text(this.pendingOpen ? '▾' : '▸')
+                    .fontSize(13)
+                    .fontColor('#8B97AC')
+                    .margin({ left: 6 })
                 }
                 .width('100%')
                 .margin({ bottom: 8 })
+                .onClick((): void => {
+                  this.pendingOpen = !this.pendingOpen;
+                })
 
-                ForEach(this.pendingVisible(), (t: Todo) => {
-                  this.PendingCard(t)
-                }, (t: Todo) => this.todoKey('p', t))
+                if (this.pendingOpen) {
+                  ForEach(this.pendingVisible(), (t: Todo) => {
+                    this.PendingCard(t)
+                  }, (t: Todo) => this.todoKey('p', t))
+                }
               }
 
               if (this.examList().length > 0) {
@@ -1819,13 +1888,22 @@ export struct TodoInbox {
                   Text('点一下可改考场')
                     .fontSize(11)
                     .fontColor('#8B97AC')
+                  Text(this.examOpen ? '▾' : '▸')
+                    .fontSize(13)
+                    .fontColor('#8B97AC')
+                    .margin({ left: 6 })
                 }
                 .width('100%')
                 .margin({ top: this.pendingVisible().length > 0 ? 14 : 0, bottom: 8 })
+                .onClick((): void => {
+                  this.examOpen = !this.examOpen;
+                })
 
-                ForEach(this.examList(), (t: Todo) => {
-                  this.ExamCard(t)
-                }, (t: Todo) => this.todoKey('x', t))
+                if (this.examOpen) {
+                  ForEach(this.examList(), (t: Todo) => {
+                    this.ExamCard(t)
+                  }, (t: Todo) => this.todoKey('x', t))
+                }
               }
 
               // ---- 今天 / 已逾期 / 以后（用户 2026-10-30 拍定）----
@@ -1842,19 +1920,28 @@ export struct TodoInbox {
                     .fontColor('#7FA8FF')
                     .margin({ left: 6 })
                   Blank()
-                  Text('按截止时间排')
+                  Text(this.sortMode === TODO_SORT_TITLE ? '按标题排' : '按截止时间排')
                     .fontSize(11)
                     .fontColor('#8B97AC')
+                  Text(this.todayOpen ? '▾' : '▸')
+                    .fontSize(13)
+                    .fontColor('#8B97AC')
+                    .margin({ left: 6 })
                 }
                 .width('100%')
                 .margin({
                   top: this.pendingVisible().length > 0 || this.examList().length > 0 ? 14 : 0,
                   bottom: 8
                 })
+                .onClick((): void => {
+                  this.todayOpen = !this.todayOpen;
+                })
 
-                ForEach(this.todayTodos(), (t: Todo) => {
-                  this.ActiveRow(t)
-                }, (t: Todo) => this.todoKey('td', t))
+                if (this.todayOpen) {
+                  ForEach(this.todayTodos(), (t: Todo) => {
+                    this.ActiveRow(t)
+                  }, (t: Todo) => this.todoKey('td', t))
+                }
               }
 
               if (this.overdueTodos().length > 0) {
@@ -1868,16 +1955,25 @@ export struct TodoInbox {
                     .fontColor('#FF8A8A')
                     .margin({ left: 6 })
                   Blank()
-                  Text('按截止时间排')
+                  Text(this.sortMode === TODO_SORT_TITLE ? '按标题排' : '按截止时间排')
                     .fontSize(11)
                     .fontColor('#8B97AC')
+                  Text(this.overdueOpen ? '▾' : '▸')
+                    .fontSize(13)
+                    .fontColor('#8B97AC')
+                    .margin({ left: 6 })
                 }
                 .width('100%')
                 .margin({ top: 14, bottom: 8 })
+                .onClick((): void => {
+                  this.overdueOpen = !this.overdueOpen;
+                })
 
-                ForEach(this.overdueTodos(), (t: Todo) => {
-                  this.ActiveRow(t)
-                }, (t: Todo) => this.todoKey('od', t))
+                if (this.overdueOpen) {
+                  ForEach(this.overdueTodos(), (t: Todo) => {
+                    this.ActiveRow(t)
+                  }, (t: Todo) => this.todoKey('od', t))
+                }
               }
 
               if (this.laterTodos().length > 0) {
@@ -1891,16 +1987,25 @@ export struct TodoInbox {
                     .fontColor('#94A0B5')
                     .margin({ left: 6 })
                   Blank()
-                  Text('按截止时间排')
+                  Text(this.sortMode === TODO_SORT_TITLE ? '按标题排' : '按截止时间排')
                     .fontSize(11)
                     .fontColor('#8B97AC')
+                  Text(this.laterOpen ? '▾' : '▸')
+                    .fontSize(13)
+                    .fontColor('#8B97AC')
+                    .margin({ left: 6 })
                 }
                 .width('100%')
                 .margin({ top: 14, bottom: 8 })
+                .onClick((): void => {
+                  this.laterOpen = !this.laterOpen;
+                })
 
-                ForEach(this.laterTodos(), (t: Todo) => {
-                  this.ActiveRow(t)
-                }, (t: Todo) => this.todoKey('lt', t))
+                if (this.laterOpen) {
+                  ForEach(this.laterTodos(), (t: Todo) => {
+                    this.ActiveRow(t)
+                  }, (t: Todo) => this.todoKey('lt', t))
+                }
               }
 
               if (this.todayTodos().length === 0 && this.overdueTodos().length === 0
