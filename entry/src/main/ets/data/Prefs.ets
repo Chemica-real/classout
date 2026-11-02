@@ -346,6 +346,29 @@ export async function saveConfirmTodoDelete(context: common.Context, on: boolean
   }
 }
 
+// ---------------- 更新日志：上次看到的版本 ----------------
+
+export const LAST_SEEN_VERSION_KV: string = 'last_seen_version_code';
+
+export async function loadLastSeenVersion(context: common.Context): Promise<number> {
+  try {
+    const raw: string = await Db.getKv(context, LAST_SEEN_VERSION_KV);
+    const n: number = parseInt(raw, 10);
+    return Number.isNaN(n) ? 0 : n;
+  } catch (e) {
+    hilog.warn(0x0000, 'ClassOUT', 'load last seen version failed: %{public}s', JSON.stringify(e));
+    return 0;
+  }
+}
+
+export async function saveLastSeenVersion(context: common.Context, code: number): Promise<void> {
+  try {
+    await Db.setKv(context, LAST_SEEN_VERSION_KV, `${code}`);
+  } catch (e) {
+    hilog.warn(0x0000, 'ClassOUT', 'save last seen version failed: %{public}s', JSON.stringify(e));
+  }
+}
+
 /**
  * 默认进入哪个标签页（0 课表 / 1 待办 / 2 计划 / 3 设置）。
  * ⚠️ `@StorageLink` 的键名必须写字面量 `'defaultTab'`。

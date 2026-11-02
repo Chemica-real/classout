@@ -19,6 +19,7 @@ import { TODO_COURSE_ALL, filterTodosByCourse, sortPoolTodos } from '../domain/P
 import { TODO_SORT_DDL, TODO_SORT_TITLE, loadConfirmTodoDelete, loadTodoSort, saveTodoSort } from '../data/Prefs';
 import { ChipButton } from './ChipButton';
 import { BackHandler, backStack } from '../util/BackStack';
+import { hapticScrollEdge } from '../util/Haptics';
 import { GLASS_BLUR, GLASS_EDGE_SOFT, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_ROW,
   GLASS_SHADOW_SHEET, GLASS_TINT_ROW, GLASS_TINT_SHEET } from './Glass';
 import { DRAWER_W, FLOAT_GAP, FLOAT_SIDE, H_ACTIONS } from './Float';
@@ -146,6 +147,11 @@ export struct TodoInbox {
   @State overdueOpen: boolean = true;
   @State laterOpen: boolean = true;
   @State loading: boolean = true;
+  /** 用户真正滚动过之后，到顶/底才振动（首屏布局也会触发 onReachStart） */
+  @State scrollMoved: boolean = false;
+  @State scrollContentH: number = 0;
+  @State scrollViewH: number = 0;
+  private lastScrollY: number = 0;
 
   /**
    * 编辑窗是否开着。
@@ -2222,6 +2228,12 @@ export struct TodoInbox {
               }
             }
             .width('100%')
+            .onAreaChange((oldArea: Area, newArea: Area): void => {
+              const h: Length | undefined = newArea.height;
+              if (typeof h === 'number' && h > 0) {
+                this.scrollContentH = h;
+              }
+            })
             // 上下都给悬浮浮窗让位：上面是页头，下面是「行动按钮 + 导航栏」两条。
             // ⚠️ padding 加在**滚动内容**上而不是视口上，列表才能滑到浮窗下面
             // （见 view/Float.ets 的文件头注释）。
@@ -2234,6 +2246,42 @@ export struct TodoInbox {
           .layoutWeight(1)
           .scrollBar(BarState.Off)
           .align(Alignment.TopStart)
+          .onAreaChange((oldArea: Area, newArea: Area): void => {
+            const h: Length | undefined = newArea.height;
+            if (typeof h === 'number' && h > 0) {
+              this.scrollViewH = h;
+            }
+          })
+          .onScroll((xOffset: number, yOffset: number): void => {
+            this.scrollMoved = true;
+            const max: number = this.scrollContentH - this.scrollViewH;
+            if (this.scrollContentH > this.scrollViewH + 4) {
+              if (yOffset <= 1 && this.lastScrollY > 1) {
+                hapticScrollEdge();
+              } else if (yOffset >= max - 1 && this.lastScrollY < max - 1) {
+                hapticScrollEdge();
+              }
+            }
+            this.lastScrollY = yOffset;
+          })
+          .onReachStart((): void => {
+            if (this.scrollMoved) {
+              hapticScrollEdge();
+            }
+          })
+          .onScrollStart((): void => {
+            this.scrollMoved = true;
+          })
+          .onScrollEdge((side: Edge): void => {
+            if (this.scrollMoved) {
+              hapticScrollEdge();
+            }
+          })
+          .onReachEnd((): void => {
+            if (this.scrollMoved) {
+              hapticScrollEdge();
+            }
+          })
         }
       }
       .width('100%')

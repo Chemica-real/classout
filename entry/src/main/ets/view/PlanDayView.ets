@@ -1,5 +1,6 @@
 import { common } from '@kit.AbilityKit';
 import { pasteboard } from '@kit.BasicServicesKit';
+import { hapticScrollEdge } from '../util/Haptics';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { storedAbilityContext } from '../util/Ctx';
 import { Course, CourseSession, PlanBlock, RestWindow, Semester, SessionOverride,
@@ -337,6 +338,11 @@ export struct PlanDayView {
    *   双指缩放已选中的块 → 改时长（开始时间不动）
    */
   @State selectedBlockId: number = 0;
+  /** 用户滚动过计划网格之后，到顶/底才振动 */
+  @State planScrollMoved: boolean = false;
+  @State planContentH: number = 0;
+  @State planViewH: number = 0;
+  private lastPlanScrollY: number = 0;
   // ---------------- 视图档位 / 周视图 ----------------
   /** 1 = 日，3 = 三日，7 = 周（离散三档；一次捏合走一档） */
   @State zoomLevel: number = 1;
@@ -5292,6 +5298,12 @@ export struct PlanDayView {
             }
           }
           .width('100%')
+          .onAreaChange((oldArea: Area, newArea: Area): void => {
+            const h: Length | undefined = newArea.height;
+            if (typeof h === 'number' && h > 0) {
+              this.planContentH = h;
+            }
+          })
           // ⚠️ 给上面那叠浮窗让位，而且必须加在**滚动内容**上（不是视口上）：
           // 这样网格往上滑时会钻到日期栏/页头下面，滑到底时最后一行也完全露得出来。
           // 上下都给浮窗让位：上面是日期栏，下面是"待安排托盘 + 导航栏"。
@@ -5309,6 +5321,36 @@ export struct PlanDayView {
         .layoutWeight(1)
         .scrollBar(BarState.Off)
         .align(Alignment.TopStart)
+        .onScroll((xOffset: number, yOffset: number): void => {
+          this.planScrollMoved = true;
+          const max: number = this.planContentH - this.planViewH;
+          if (this.planContentH > this.planViewH + 4) {
+            if (yOffset <= 1 && this.lastPlanScrollY > 1) {
+              hapticScrollEdge();
+            } else if (yOffset >= max - 1 && this.lastPlanScrollY < max - 1) {
+              hapticScrollEdge();
+            }
+          }
+          this.lastPlanScrollY = yOffset;
+        })
+        .onReachStart((): void => {
+          if (this.planScrollMoved) {
+            hapticScrollEdge();
+          }
+        })
+        .onScrollStart((): void => {
+          this.planScrollMoved = true;
+        })
+        .onScrollEdge((side: Edge): void => {
+          if (this.planScrollMoved) {
+            hapticScrollEdge();
+          }
+        })
+        .onReachEnd((): void => {
+          if (this.planScrollMoved) {
+            hapticScrollEdge();
+          }
+        })
         // 长按武装之后禁止 Scroll 自己滚动 —— 移动块时屏幕要钉住，
         // 只有块靠近上/下边缘时由 updateEdgeScroll() 用代码滚。
         .enableScrollInteraction(this.zoomLevel !== 7 && !this.gridScrollLocked)
@@ -5325,6 +5367,9 @@ export struct PlanDayView {
           }
           if (typeof top === 'number' && typeof h === 'number') {
             this.gridViewBottom = top + h;
+          }
+          if (typeof h === 'number' && h > 0) {
+            this.planViewH = h;
           }
           if (typeof left === 'number') {
             this.gridLeft = left;

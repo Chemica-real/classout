@@ -36,6 +36,7 @@ import { GLASS_BLUR, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_ROW, GLASS_SH
   GLASS_TINT_PANEL, GLASS_TINT_SHEET } from './Glass';
 import { FLOAT_GAP, FLOAT_SIDE, FLOAT_TOP, H_TITLE } from './Float';
 import { persistMotionSetting } from './Motion';
+import { hapticScrollEdge } from '../util/Haptics';
 import { pickTime } from '../util/DateTimePicker';
 import { MOTTO_DEFAULT, MOTTO_MAX_UNITS, clampMottoUnits, cleanMotto,
   loadConfirmTodoDelete, loadDefaultTab, loadMotto, loadQuickStart, mottoUnits, saveConfirmTodoDelete,
@@ -151,6 +152,11 @@ export struct SettingsPage {
   @State pendingDeleteKey: string = '';
   @State toast: string = '';
   @State loading: boolean = true;
+  /** 用户滚动过之后，到顶/底才振动 */
+  @State scrollMoved: boolean = false;
+  @State scrollContentH: number = 0;
+  @State scrollViewH: number = 0;
+  private lastScrollY: number = 0;
   /** 自定义背景在沙盒里的路径；'' = 用默认渐变（见 view/Glass.ets） */
   @StorageLink('wallpaper') @Watch('onWallpaperChanged') wallpaper: string = '';
   /** 设置页里的背景缩略图 */
@@ -1956,6 +1962,42 @@ export struct SettingsPage {
       .layoutWeight(1)
       .scrollBar(BarState.Off)
       .align(Alignment.TopStart)
+      .onAreaChange((oldArea: Area, newArea: Area): void => {
+        const h: Length | undefined = newArea.height;
+        if (typeof h === 'number' && h > 0) {
+          this.scrollViewH = h;
+        }
+      })
+      .onScroll((xOffset: number, yOffset: number): void => {
+        this.scrollMoved = true;
+        const max: number = this.scrollContentH - this.scrollViewH;
+        if (this.scrollContentH > this.scrollViewH + 4) {
+          if (yOffset <= 1 && this.lastScrollY > 1) {
+            hapticScrollEdge();
+          } else if (yOffset >= max - 1 && this.lastScrollY < max - 1) {
+            hapticScrollEdge();
+          }
+        }
+        this.lastScrollY = yOffset;
+      })
+      .onReachStart((): void => {
+        if (this.scrollMoved) {
+          hapticScrollEdge();
+        }
+      })
+      .onScrollStart((): void => {
+        this.scrollMoved = true;
+      })
+      .onScrollEdge((side: Edge): void => {
+        if (this.scrollMoved) {
+          hapticScrollEdge();
+        }
+      })
+      .onReachEnd((): void => {
+        if (this.scrollMoved) {
+          hapticScrollEdge();
+        }
+      })
     }
     .width('100%')
     .height('100%')
@@ -2436,6 +2478,12 @@ export struct SettingsPage {
             }
           }
           .width('100%')
+          .onAreaChange((oldArea: Area, newArea: Area): void => {
+            const h: Length | undefined = newArea.height;
+            if (typeof h === 'number' && h > 0) {
+              this.scrollContentH = h;
+            }
+          })
           // 上下都给悬浮浮窗让位；padding 加在**滚动内容**上，卡片才能滑到浮窗下面
           .padding({
             left: 16, right: 16, top: 12 + this.topInset + this.titleH + FLOAT_GAP,

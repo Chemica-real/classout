@@ -19,6 +19,7 @@ import { CATEGORY_NAME_MAX, CategoryOption, LEGACY_OTHER, addCustomCategory,
 import { GuideTab, guideStepAt, guideStepCount, guideTabsValid, guideTextsNonEmpty,
   isLastGuideStep, nextGuideStep, prevGuideStep } from './Guide';
 import { PrivacySection, privacySections, privacyUpdatedAt } from './Privacy';
+import { ChangelogEntry, changelogBetween, changelogEntries } from './Changelog';
 import { SYNC_INTERVAL_CHOICES, SYNC_INTERVAL_DEFAULT, SYNC_INTERVAL_MAX, SYNC_INTERVAL_MIN,
   isSyncBoundary, normalizeSyncInterval, shouldRestartAfterIdle } from './SyncCadence';
 import { maskAll, maskFromText, maskToText, maskHas, resizeMask } from './WeekMask';
@@ -1581,15 +1582,21 @@ check('allCategoryOptions = 内置 + 自定义',
 // ---------- 新手演练的步骤脚本（用户 2026-10-15）----------
 console.log('【新手演练：步骤脚本】');
 
-check('步骤数固定为 9（改了要同步核对引导条）', `${guideStepCount()}`, '9');
+check('步骤数固定为 18（改了要同步核对引导条）', `${guideStepCount()}`, '18');
 check('每一步的标签页都在 0..3 内', `${guideTabsValid()}`, 'true');
 check('每一步都有标题和正文', `${guideTextsNonEmpty()}`, 'true');
 check('第 1 步在课表页', `${guideStepAt(0).tab}`, `${GuideTab.Timetable}`);
-check('待办那一步切到待办页',
-  `${guideStepAt(2).tab === GuideTab.Todo && guideStepAt(3).tab === GuideTab.Todo}`, 'true');
-check('计划那一步切到计划页', `${guideStepAt(4).tab}`, `${GuideTab.Plan}`);
-check('「改时间/拆块」那一步也在计划页', `${guideStepAt(5).tab}`, `${GuideTab.Plan}`);
-check('「双指缩放视图」那一步也在计划页', `${guideStepAt(6).tab}`, `${GuideTab.Plan}`);
+check('待办第 4–8 步都在待办页',
+  `${guideStepAt(3).tab === GuideTab.Todo && guideStepAt(4).tab === GuideTab.Todo
+    && guideStepAt(5).tab === GuideTab.Todo && guideStepAt(6).tab === GuideTab.Todo
+    && guideStepAt(7).tab === GuideTab.Todo}`, 'true');
+check('计划那一步切到计划页', `${guideStepAt(8).tab}`, `${GuideTab.Plan}`);
+check('「排入/拖动/详情」也在计划页',
+  `${guideStepAt(9).tab === GuideTab.Plan && guideStepAt(10).tab === GuideTab.Plan
+    && guideStepAt(11).tab === GuideTab.Plan}`, 'true');
+check('「对半/双指/切视图」也在计划页',
+  `${guideStepAt(13).tab === GuideTab.Plan && guideStepAt(14).tab === GuideTab.Plan
+    && guideStepAt(15).tab === GuideTab.Plan}`, 'true');
 check('最后一步在设置页（完成按钮就在那儿）', `${guideStepAt(guideStepCount() - 1).tab}`, `${GuideTab.Settings}`);
 check('越界下标退回最后一步', `${guideStepAt(99).title === guideStepAt(guideStepCount() - 1).title}`, 'true');
 check('负数下标退回第 1 步', `${guideStepAt(-3).title === guideStepAt(0).title}`, 'true');
@@ -1599,6 +1606,20 @@ check('prev 在第 1 步上不动', `${prevGuideStep(0)}`, '0');
 check('prev 正常回退', `${prevGuideStep(3)}`, '2');
 check('isLast 只在最后一步为真',
   `${!isLastGuideStep(0) && isLastGuideStep(guideStepCount() - 1)}`, 'true');
+
+// ---------- 更新日志 ----------
+console.log('【更新日志】');
+check('更新日志至少有 4 个版本', `${changelogEntries().length >= 4}`, 'true');
+check('版本按 versionCode 升序',
+  `${changelogEntries().every((e: ChangelogEntry, i: number): boolean =>
+    i === 0 || changelogEntries()[i - 1].code < e.code)}`, 'true');
+check('从 1.7.1 到 1.7.3 只显示 1.7.2 / 1.7.3',
+  changelogBetween(1007001, 1007003).map((e: ChangelogEntry): string => e.version).join(','),
+  '1.7.2,1.7.3');
+check('首次运行 lastSeen=0 → 显示当前及之前的全部条目',
+  `${changelogBetween(0, 1007003).length >= 4}`, 'true');
+check('当前版本没有更新 → 空',
+  `${changelogBetween(1007003, 1007003).length}`, '0');
 
 // ---------- 隐私政策（上架要交的正文；应用内与 PRIVACY.md 是同一份）----------
 console.log('【隐私政策正文】');

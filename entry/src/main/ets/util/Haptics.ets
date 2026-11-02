@@ -40,6 +40,42 @@ function isSupported(): boolean {
   return supported;
 }
 
+/** 上一次滚动到边的时刻：防止同一位置连续触发，变成嗡嗡嗡 */
+let lastEdgeAt: number = 0;
+
+/**
+ * 滚动到顶/底时的轻反馈。调用方用 `onReachStart/onReachEnd` 触发；
+ * 内部 500ms 节流，避免回弹/连续滑动时反复振。
+ */
+export function hapticScrollEdge(): void {
+  const now: number = Date.now();
+  if (now - lastEdgeAt < 500) {
+    return;
+  }
+  lastEdgeAt = now;
+  hilog.info(DOMAIN, TAG, 'haptic: scroll edge requested');
+  if (!isSupported()) {
+    hilog.info(DOMAIN, TAG, 'haptic: scroll edge unsupported');
+    return;
+  }
+  const effect: vibrator.VibrateEffect = {
+    type: 'preset',
+    effectId: LONG_PRESS_EFFECT,
+    count: 1
+  };
+  const attribute: vibrator.VibrateAttribute = {
+    id: 0,
+    usage: 'physicalFeedback'
+  };
+  vibrator.startVibration(effect, attribute)
+    .then((): void => {
+      hilog.info(DOMAIN, TAG, 'haptic: scroll edge vibration fired');
+    })
+    .catch((e: BusinessError): void => {
+      hilog.info(DOMAIN, TAG, 'haptic skipped: %{public}s', JSON.stringify(e));
+    });
+}
+
 /**
  * 长按反馈。**可以直接调，不用先判断支持与否** —— 不支持时它自己会返回。
  */

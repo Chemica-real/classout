@@ -8618,3 +8618,36 @@ AGC 邀请测试的路径（不是把 .hap 发群里）：
   - 动画关闭时直接删，不白等。
 - 版本：`1.7.2 / 1007002`。
 
+## 148. 2026-11-01 v1.7.3 阶段 3：滚动震动 + 18 步引导 + 更新日志
+
+### 148.1 滚动到顶/底震动
+
+- `util/Haptics.hapticScrollEdge()`：复用 soft 预设，500ms 节流，失败静默。
+- 主 Scroll 挂 `onScroll/onReachStart/onReachEnd`：
+  - 课表（Index）
+  - 待办页
+  - 计划页网格
+  - 设置页
+- 只有用户**真的滚动过**（onScroll 置位）才振，避免首屏布局触发的 onReachStart 白振。
+
+### 148.2 新手引导拆细
+
+- `domain/Guide.guideSteps()` 从 9 步拆成 **18 步**：课表 3 步、待办 5 步、计划 8 步、设置 2 步。
+- 每一步只讲一个动作，正文压到 1–2 句；新增「排序和折叠」「左滑删除」等本轮功能。
+- 离线断言同步：步骤数 18、待办 4–8、计划 8–15、最后一步设置。
+
+### 148.3 更新日志
+
+- `domain/Changelog.ets`：1.7.0 / 1.7.1 / 1.7.2 / 1.7.3 的短条目；
+  `changelogBetween(lastCode, currentCode)` 取 `(last, current]`，first run（last=0）取当前近期全部。
+- kv `last_seen_version_code`；`Index.prepareChangelog` 在 `init()` 末尾读当前 versionCode，
+  有差异就弹 `ChangelogSheet`（加载/过场/引导切库结束后才出现），点「开始使用」写回 lastSeen。
+- 这样以后每次更新只显示「比用户上一个版本新」的条目；本次第一次上线该功能，老用户会看到
+  1.7.0–1.7.3 的近期变化。
+- 领域断言 +5（版本升序、区间、首次运行、无差异为空）。
+
+### 148.4 验收
+
+- 构建通过；domain-check 639 项全绿（634 + 5）。
+- 版本 1.7.3 / 1007003。
+

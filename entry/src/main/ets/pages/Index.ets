@@ -1,6 +1,7 @@
-import { common } from '@kit.AbilityKit';
+import { common, bundleManager } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { storedAbilityContext } from '../util/Ctx';
+import { hapticScrollEdge } from '../util/Haptics';
 import { Course, CourseSession, OverrideKind, SectionTime, Semester,
   SessionOverride, SessionRule } from '../model/Types';
 import { TimetableRepo } from '../data/TimetableRepo';
@@ -39,6 +40,8 @@ import { DEFAULT_PALETTE, courseColorOf, parsePalette, serializePalette } from '
 import { GuideStep, guideStepAt, guideStepCount, isLastGuideStep, nextGuideStep,
   prevGuideStep } from '../domain/Guide';
 import { GuideRepo } from '../data/GuideRepo';
+import { ChangelogEntry, changelogBetween } from '../domain/Changelog';
+import { loadLastSeenVersion, saveLastSeenVersion } from '../data/Prefs';
 
 import { ChipButton } from '../view/ChipButton';
 import { SectionPicker } from '../view/SectionPicker';
@@ -122,6 +125,11 @@ struct Index {
   @StorageLink('planHeaderWeek') planHeaderWeek: string = '';
   @StorageLink('planHeaderRange') planHeaderRange: string = '';
   @State loading: boolean = true;
+  /** 课表滚动过之后，到顶/底才振动 */
+  @State timetableScrollMoved: boolean = false;
+  @State timetableContentH: number = 0;
+  @State timetableViewH: number = 0;
+  private lastTimetableScrollY: number = 0;
   /**
    * 首启「隐私政策」弹窗开着吗（**同意之前什么都不做**）。
    *
@@ -219,6 +227,10 @@ struct Index {
   @State guideBarH: number = 0;
   /** 首次启动那句询问开着吗 */
   @State guidePrompt: boolean = false;
+  /** 更新日志弹层：上次版本之后的变化 */
+  @State changelogOpen: boolean = false;
+  @State changelogEntries: ChangelogEntry[] = [];
+  @State changelogVersionCode: number = 0;
   /** 正在切库/灌演示数据（挡一下输入，免得中途点进半截状态） */
   @State guideBusy: boolean = false;
 
@@ -650,8 +662,101 @@ struct Index {
     // 第一次用（或升级后第一次）问一句要不要走一遍演练。它是**非模态**的：
     // 用户点「先自己用用」之前照样能用 App（只是那张卡浮在最上面）。
     this.guidePrompt = !(await GuideRepo.guidePrompted(ctx));
+    await this.prepareChangelog(ctx);
     // 不直接切界面，而是播完"浓缩成小球 → 扩张淡出"这段过场（见 playBootExit）
     this.playBootExit();
+  }
+
+  /**
+   * 更新日志：比较上次看到的 versionCode 与当前包。
+   * 首次出现这个功能时（lastSeen=0）也显示当前近期的全部条目，避免老用户升级后什么都看不到。
+   */
+  private async prepareChangelog(ctx: common.UIAbilityContext): Promise<void> {
+    try {
+      const info: bundleManager.BundleInfo =
+        bundleManager.getBundleInfoForSelfSync(bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT);
+      const code: number = info.versionCode;
+      this.changelogVersionCode = code;
+      const last: number = await loadLastSeenVersion(ctx);
+      const entries: ChangelogEntry[] = changelogBetween(last, code);
+      if (entries.length > 0) {
+        this.changelogEntries = entries;
+        this.changelogOpen = true;
+      } else {
+        await saveLastSeenVersion(ctx, code);
+      }
+    } catch (e) {
+      hilog.warn(DOMAIN, TAG, 'prepare changelog failed: %{public}s', JSON.stringify(e));
+    }
+  }
+
+  private dismissChangelog(): void {
+    this.changelogOpen = false;
+    saveLastSeenVersion(this.context(), this.changelogVersionCode).catch((e: Object): void => {
+      hilog.warn(DOMAIN, TAG, 'save last seen version failed: %{public}s', JSON.stringify(e));
+    });
+  }
+
+  @Builder
+  ChangelogSheet() {
+    Column() {
+      Column() {
+        Row() {
+          Text('更新日志')
+            .fontSize(18)
+            .fontWeight(FontWeight.Medium)
+            .fontColor('#F2F5FA')
+          Blank()
+          Text(this.changelogEntries.length > 0
+            ? 'v' + this.changelogEntries[this.changelogEntries.length - 1].version : '')
+            .fontSize(11)
+            .fontColor('#7FA8FF')
+        }
+        .width('100%')
+        .margin({ bottom: 10 })
+
+        Scroll() {
+          Column() {
+            ForEach(this.changelogEntries, (e: ChangelogEntry) => {
+              Text('v' + e.version)
+                .fontSize(13)
+                .fontWeight(FontWeight.Medium)
+                .fontColor('#7FA8FF')
+                .width('100%')
+                .margin({ top: 8 })
+              ForEach(e.items, (item: string) => {
+                Text('· ' + item)
+                  .fontSize(12)
+                  .fontColor('#CBD6E8')
+                  .lineHeight(19)
+                  .width('100%')
+                  .margin({ top: 3 })
+              }, (item: string) => `${e.code}-${item}`)
+            }, (e: ChangelogEntry) => `cl-${e.code}`)
+          }
+          .width('100%')
+        }
+        .constraintSize({ maxHeight: 420 })
+        .scrollBar(BarState.Off)
+        .align(Alignment.TopStart)
+
+        Button('开始使用')
+          .backgroundColor('#2E6BE6')
+          .fontColor('#FFFFFF')
+          .fontSize(14)
+          .width('100%')
+          .margin({ top: 16 })
+          .onClick((): void => this.dismissChangelog())
+      }
+      .width('88%')
+      .padding(18)
+      .glassSheet()
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor('rgba(6,10,18,0.62)')
+    .justifyContent(FlexAlign.Center)
+    .alignItems(HorizontalAlign.Center)
   }
 
   /** 浓缩结束：小球停留 + **即刻**往外喷射粒子 */
@@ -2759,6 +2864,12 @@ struct Index {
                 this.Grid()
               }
               .width('100%')
+              .onAreaChange((oldArea: Area, newArea: Area): void => {
+                const h: Length | undefined = newArea.height;
+                if (typeof h === 'number' && h > 0) {
+                  this.timetableContentH = h;
+                }
+              })
               // 上方让出「页头 + 周条」两条浮窗，下方让出悬浮导航栏
               // ⚠️ `+ FLOAT_GAP`：用户要求「多个玻璃矩形相连时中间要有空行」，
               // 不留缝的话页头浮窗会和下面那条周条贴在一起
@@ -2768,6 +2879,42 @@ struct Index {
             .layoutWeight(1)
             .scrollBar(BarState.Off)
             .align(Alignment.TopStart)
+            .onAreaChange((oldArea: Area, newArea: Area): void => {
+              const h: Length | undefined = newArea.height;
+              if (typeof h === 'number' && h > 0) {
+                this.timetableViewH = h;
+              }
+            })
+            .onScroll((xOffset: number, yOffset: number): void => {
+              this.timetableScrollMoved = true;
+              const max: number = this.timetableContentH - this.timetableViewH;
+              if (this.timetableContentH > this.timetableViewH + 4) {
+                if (yOffset <= 1 && this.lastTimetableScrollY > 1) {
+                  hapticScrollEdge();
+                } else if (yOffset >= max - 1 && this.lastTimetableScrollY < max - 1) {
+                  hapticScrollEdge();
+                }
+              }
+              this.lastTimetableScrollY = yOffset;
+            })
+            .onReachStart((): void => {
+              if (this.timetableScrollMoved) {
+                hapticScrollEdge();
+              }
+            })
+            .onScrollStart((): void => {
+              this.timetableScrollMoved = true;
+            })
+            .onScrollEdge((side: Edge): void => {
+              if (this.timetableScrollMoved) {
+                hapticScrollEdge();
+              }
+            })
+            .onReachEnd((): void => {
+              if (this.timetableScrollMoved) {
+                hapticScrollEdge();
+              }
+            })
             // 切标签：淡入 + 轻微上移（只动 opacity/translate，不重排）
           } else if (this.tab === 1) {
             Column() {
@@ -2989,6 +3136,11 @@ struct Index {
       // 切库那一两秒挡一下输入
       if (this.guideBusy) {
         this.GuideBusyLayer()
+      }
+
+      // 更新日志：加载/过场/引导切库结束后再出现
+      if (this.changelogOpen && !this.loading && this.bootExit === 0 && !this.guideBusy) {
+        this.ChangelogSheet()
       }
 
       // ---- 首启隐私政策弹窗（**最顶层**；同意之前 App 什么都不做）----
