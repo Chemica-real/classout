@@ -1,4 +1,5 @@
 import { common } from '@kit.AbilityKit';
+import { pasteboard } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { storedAbilityContext } from '../util/Ctx';
 import { Course, CourseSession, PlanBlock, RestWindow, Semester, SessionOverride,
@@ -1734,10 +1735,49 @@ export struct PlanDayView {
     return t !== undefined && t.category === TodoCategory.Exam;
   }
 
+  /** 考试块的警告边框：日/三日/周统一红色，选中时也不被白框吃掉 */
+  private blockBorderWidth(b: PlanBlock): number {
+    return this.blockIsExam(b) || this.isSelected(b) || this.isDragging(b) ? 2 : 0;
+  }
+
+  private blockBorderColor(b: PlanBlock): string {
+    return this.blockIsExam(b) ? '#FF5A5A' : '#F2F5FA';
+  }
+
+  private blockWarningShadow(b: PlanBlock): ShadowOptions {
+    return {
+      radius: this.blockIsExam(b) ? 7 : 0,
+      color: this.blockIsExam(b) ? 'rgba(255,90,90,0.55)' : 'rgba(0,0,0,0)',
+      offsetX: 0,
+      offsetY: 0
+    };
+  }
+
   /** 这个块对应待办的备注（没有就返回空串） */
   private blockNote(b: PlanBlock): string {
     const t: Todo | undefined = this.todoOf(b.todoId);
     return t === undefined ? '' : t.note;
+  }
+
+  /** 点备注复制全文（用户 2026-11-01） */
+  private copyBlockNote(b: PlanBlock): void {
+    const text: string = this.blockNote(b);
+    if (text.length === 0) {
+      return;
+    }
+    try {
+      const data: pasteboard.PasteData =
+        pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, text);
+      pasteboard.getSystemPasteboard().setData(data).then((): void => {
+        this.showHint('备注已复制');
+      }).catch((e: Object): void => {
+        hilog.warn(DOMAIN, TAG, 'copy note failed: %{public}s', JSON.stringify(e));
+        this.showHint('复制失败');
+      });
+    } catch (e) {
+      hilog.warn(DOMAIN, TAG, 'copy note failed: %{public}s', JSON.stringify(e));
+      this.showHint('复制失败');
+    }
   }
 
   /** 折叠 / 展开备注；状态写进 kv，下次打开还是这个样子 */
@@ -3196,9 +3236,10 @@ export struct PlanDayView {
         .borderRadius(6)
         // 选中即黑框高亮（用户要的"选中状态加黑框"）
         .border({
-          width: this.isSelected(b) || this.isDragging(b) ? 2 : 0,
-          color: '#F2F5FA'
+          width: this.blockBorderWidth(b),
+          color: this.blockBorderColor(b)
         })
+        .shadow(this.blockWarningShadow(b))
         .onClick((): void => this.onBlockTap(b))
         // 双指缩放改时长。挂在**内层内容**上而不是外层 Stack：
         // 外层已经用 parallelGesture 挂了长按，同一个节点再挂一个手势有可能把前一个顶掉。
@@ -3234,9 +3275,10 @@ export struct PlanDayView {
         .opacity(this.isDragging(b) ? 0.72 : (b.done ? 0.5 : 0.95))
         .borderRadius(6)
         .border({
-          width: this.isSelected(b) || this.isDragging(b) ? 2 : 0,
-          color: '#F2F5FA'
+          width: this.blockBorderWidth(b),
+          color: this.blockBorderColor(b)
         })
+        .shadow(this.blockWarningShadow(b))
         .onClick((): void => this.onBlockTap(b))
         .gesture(
           PinchGesture({ fingers: 2 })
@@ -3867,6 +3909,7 @@ export struct PlanDayView {
     Row() {
       // 左侧留白：它既是"底下还有一页"的暗示，也是"点外面关掉"的区域
       Blank()
+        .onClick((): void => this.closeEditor())
       Column() {
         // 抽屉头：标题固定、不跟着内容滚；右侧 ✕ = 关掉（底部那个「完成」也还在）
         Row() {
@@ -4097,6 +4140,7 @@ export struct PlanDayView {
                   .fontSize(LAYOUT.cardSub)
                   .fontColor('#C3CDDE')
                   .width('100%')
+                  .onClick((): void => this.copyBlockNote(b))
               }
               .constraintSize({ maxHeight: 140 })
               .width('100%')
@@ -4115,6 +4159,7 @@ export struct PlanDayView {
                 .padding(8)
                 .backgroundColor('rgba(255,255,255,0.06)')
                 .borderRadius(8)
+                .onClick((): void => this.copyBlockNote(b))
             }
             Row() {
               Blank()
@@ -4633,9 +4678,10 @@ export struct PlanDayView {
             ? (this.viewCols > COLS_DAY ? 0 : 0.72)
             : (b.done ? 0.5 : 0.95))
           .border({
-            width: this.isSelected(b) || this.isDragging(b) ? 2 : 0,
-            color: '#F2F5FA'
+            width: this.blockBorderWidth(b),
+            color: this.blockBorderColor(b)
           })
+          .shadow(this.blockWarningShadow(b))
           .position({ x: 0, y: this.blockY(b) })
           .zIndex(this.isDragging(b) ? 10 : (this.isSelected(b) ? 5 : 1))
           .onClick((): void => {
@@ -4940,6 +4986,11 @@ export struct PlanDayView {
     .backgroundColor(this.weekPlanColor(b))
     .opacity(b.done ? 0.5 : 0.95)
     .borderRadius(this.weekRadius())
+    .border({
+      width: this.blockIsExam(b) ? 2 : 0,
+      color: this.blockBorderColor(b)
+    })
+    .shadow(this.blockWarningShadow(b))
     .position({ x: 0, y: this.weekY(b.startMin) })
     .hitTestBehavior(HitTestMode.None)
   }

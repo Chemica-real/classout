@@ -121,19 +121,6 @@ function atTime(day: Date, hour: number, minute: number): Date {
   return new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour, minute);
 }
 
-/** 把 ddl 字符串 'YYYY-MM-DD HH:mm' 变成本地 Date */
-function ddlDate(ddl: string): Date | undefined {
-  if (ddl.length < 16) {
-    return undefined;
-  }
-  const y: number = parseInt(ddl.substring(0, 4), 10);
-  const mo: number = parseInt(ddl.substring(5, 7), 10);
-  const d: number = parseInt(ddl.substring(8, 10), 10);
-  const h: number = parseInt(ddl.substring(11, 13), 10);
-  const mi: number = parseInt(ddl.substring(14, 16), 10);
-  return new Date(y, mo - 1, d, h, mi);
-}
-
 /** 通知权限：没开就请求一次 */
 async function ensureNotification(context: common.UIAbilityContext): Promise<boolean> {
   try {
@@ -255,41 +242,8 @@ export async function syncReminders(context: common.UIAbilityContext,
     }
   }
 
-  // ---------- 作业截止提醒：前一天 20:00；若已过则退化为截止前 2 小时 ----------
-  for (const t of todos) {
-    // ⚠️ **考试不排「即将截止」**：考试的 ddl 存的是它的**开始时刻**（见 Types.Todo.endAt），
-    //    排成"XX 即将截止"语义就错了。用户 2026-10-16 的原话是「考试无需显示截止」，
-    //    当时改了计划网格的 ⚑ 标记、计划块属性面板、每日简报三处，**漏了这里**。
-    //    考试的提醒交给它的计划块（syncExamBlock 会建块 → "该做「XX」了"）。
-    if (t.category === TodoCategory.Exam) {
-      continue;
-    }
-    const due: Date | undefined = ddlDate(t.ddl);
-    if (due === undefined || due.getTime() <= now.getTime()) {
-      continue;
-    }
-    let at: Date = atTime(addDays(due, -1), 20, 0);
-    if (at.getTime() <= now.getTime()) {
-      at = new Date(due.getTime() - 2 * 3600000);
-    }
-    if (at.getTime() <= now.getTime()) {
-      continue;
-    }
-    if (at.getTime() - now.getTime() > WINDOW_DAYS * 86400000) {
-      continue;
-    }
-    const course: Course | undefined = courseMap.get(t.courseId);
-    candidates.push({
-      at: at,
-      // 截止不是一段时长：保留原来的「提前提醒」小事件，准时提醒
-      endAt: new Date(at.getTime() + 15 * 60000),
-      leadMin: 0,
-      title: `${t.title} 即将截止`,
-      content: `截止 ${t.ddl}${course !== undefined ? ' · ' + course.name : ''}`,
-      kind: 'ddl'
-    });
-    plan.ddl++;
-  }
+  // 用户 2026-11-01：不再生成任何「即将截止」日历事件；截止只留在应用内的
+  // 待办列表和每日简报里。计划块日程仍然生成，见下方。
 
   // ---------- 计划块到点提醒 ----------
   for (let offset = 0; offset <= BLOCK_WINDOW_DAYS; offset++) {
@@ -318,11 +272,32 @@ export async function syncReminders(context: common.UIAbilityContext,
           }
         }
       } else {
+        let content: string = '截止：未设置\n';
         for (const t of allTodos) {
           if (t.id === b.todoId) {
-            title = t.title;
+            const c: Course | undefined = courseMap.get(t.courseId);
+            const short: string = c === undefined ? ''
+              : (c.shortName.length > 0 ? c.shortName : c.name);
+            if (short.length > 0) {
+              title = `${short} ${t.title}`;
+            } else {
+              title = t.title;
+            }
+            const dueLabel: string = t.category === TodoCategory.Exam ? '考试时间' : '截止';
+            const due: string = t.ddl.length >= 16 ? t.ddl : '未设置';
+            content = `${dueLabel}：${due}\n${t.note}`;
           }
         }
+        candidates.push({
+          at: at,
+          endAt: endAt,
+          leadMin: settings.classLeadMin,
+          title: title,
+          content: content,
+          kind: 'block'
+        });
+        plan.blocks++;
+        continue;
       }
       candidates.push({
         at: at,

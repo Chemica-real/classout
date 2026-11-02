@@ -558,6 +558,11 @@ export struct TodoInbox {
     const ctx: common.UIAbilityContext = this.context();
     const doneAt: number = status === TodoStatus.Done ? Date.now() : 0;
     await TodoRepo.setTodoStatus(ctx, id, status, doneAt);
+    // 完成 / 重新打开时，同步计划页里这个待办的所有分块。
+    // 计划页自己打勾时不会走这里，避免逐块操作被整批覆盖。
+    if (status === TodoStatus.Done || status === TodoStatus.Active) {
+      await TodoRepo.setBlocksDone(ctx, id, status === TodoStatus.Done);
+    }
     await this.reload();
   }
 
@@ -1249,10 +1254,20 @@ export struct TodoInbox {
             .textOverflow({ overflow: TextOverflow.Ellipsis })
         }
         .width('100%')
-        Text(`${this.examWhen(t)}${t.note.length > 0 ? ' · ' + t.note : ''}`)
+        Text(this.examWhen(t))
           .fontSize(11)
           .fontColor('#94A0B5')
           .margin({ top: 3 })
+        if (t.note.length > 0) {
+          // 用户 2026-11-01：考试备注不再整段撑开卡片，和下面的待办一样只显示前几行。
+          Text(t.note)
+            .fontSize(11)
+            .fontColor('#94A0B5')
+            .maxLines(3)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .width('100%')
+            .margin({ top: 3 })
+        }
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)

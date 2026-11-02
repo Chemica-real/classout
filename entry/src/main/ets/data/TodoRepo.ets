@@ -229,6 +229,22 @@ export class TodoRepo {
       [status, doneAt, id]);
   }
 
+  /**
+   * 把一个待办在计划页的**所有分块**统一标记完成 / 未完成。
+   *
+   * 用户 2026-11-01：「待办界面点击完成，应当使得计划界面所有该待办的分块都完成」。
+   * 从待办页完成时调用；计划页自己逐块打勾时不调用，否则块之间会互相覆盖。
+   */
+  static async setBlocksDone(context: common.Context, todoId: number,
+    done: boolean): Promise<void> {
+    if (todoId <= 0) {
+      return;
+    }
+    const store: relationalStore.RdbStore = await Db.get(context);
+    await store.executeSql('UPDATE plan_block SET done = ? WHERE todo_id = ?',
+      [done ? 1 : 0, todoId]);
+  }
+
   // ---------- 待办类型（自定义 category） ----------
 
   /** 这个类型下有多少条待办（含各状态；删类型时要告诉用户会改到多少条） */

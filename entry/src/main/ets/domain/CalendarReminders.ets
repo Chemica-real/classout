@@ -105,7 +105,9 @@ export async function syncCalendarReminders(context: common.UIAbilityContext,
         endTime: end,
         // 日历的 reminderTime 单位是分钟：x = 距开始提前 x 分钟提醒（0 = 准时）
         reminderTime: [lead],
-        description: `${MARK}｜${it.content}`
+        // MARK 放末尾：日程备注第一行必须是「截止：…」，不能被识别标记顶到前面。
+        // 清理时仍然靠 description 里是否含 MARK 来认领。
+        description: `${it.content}\n\n${MARK}`
       });
     }
     if (events.length > 0) {
