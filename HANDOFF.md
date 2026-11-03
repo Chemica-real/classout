@@ -8693,3 +8693,35 @@ AGC 邀请测试的路径（不是把 .hap 发群里）：
 - 版本：`1.8.0 / 1008000`。
 - 已知边界：`git` only；撤回栈不跨进程；删待办/虚拟课时完成不提供撤销。
 
+## 150. 2026-11-01 v1.8.1 修复滚动震动 + 设置开关
+
+用户反馈：向下滑一直乱振、向上到顶不震；震动要能在设置里关。
+
+### 150.1 根因
+
+1. 之前用 `contentH - viewH` 在 `onScroll` 里判底。实际 Scroll 的 yOffset 在顶部回弹时只有 6.66→1→6，
+   被误判为“到底”；同时 `onReachStart` / `onScrollEdge` / `onReachEnd` 多个入口叠加，
+   向下滑就反复触发。
+2. 顶部的 `onScroll` 条件 `yOffset <=1 && lastY>1` 会被“下滑起手时的 6vp 回弹”误判为到顶；
+   真正到顶时 `onReachStart` 已经能触发，却被阈值挡住。
+3. 待办卡片的左滑 `PanGesture` 用成 `.gesture()`，从卡片上纵向滑时抢走外层 Scroll，
+   列表只回弹 6vp（同一次调试抓到的），也放大了误振。
+
+### 150.2 修法
+
+- 顶部只认 `onReachStart`（`scrollMoved` 守卫，首屏布局/下滑起手不触发）；
+- 底部只认 `onReachEnd` + `onScrollEdge(side === Edge.Bottom)`；
+- 从 `onScroll` 删除 `contentH - viewH` 判底和“回弹到 1”判顶，`onScroll` 只记录用户确实滚过；
+- 待办卡片的横向左滑改为 `.parallelGesture(PanGesture(...))`，并只在
+  `abs(offsetX) > abs(offsetY)` 时移动卡片，纵向滚动交回外层 Scroll；
+- 新增 kv `scroll_haptic` / AppStorage `scrollHaptic`（默认开）：
+  - 设置 → 外观与启动 → **滚动震动** 可关；
+  - `hapticScrollEdge()` 先读 AppStorage，关掉后完全静默；
+  - Index 冷启动/进出演练/重置同步这个偏好。
+
+### 150.3 验收
+
+- 真机：一次下滑无振动；持续下滑到底只振一次；持续上滑到顶只振一次。
+- 待办列表可正常纵向滚动（不再只回弹 6vp）。
+- 版本：`1.8.1 / 1008001`。
+

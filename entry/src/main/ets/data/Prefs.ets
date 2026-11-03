@@ -369,6 +369,30 @@ export async function saveLastSeenVersion(context: common.Context, code: number)
   }
 }
 
+// ---------------- 滚动到顶/底震动 ----------------
+
+export const SCROLL_HAPTIC_KEY: string = 'scrollHaptic';
+export const SCROLL_HAPTIC_KV: string = 'scroll_haptic';
+
+export async function loadScrollHaptic(context: common.Context): Promise<boolean> {
+  try {
+    const raw: string = await Db.getKv(context, SCROLL_HAPTIC_KV);
+    return raw.length === 0 ? true : raw === '1';
+  } catch (e) {
+    hilog.warn(0x0000, 'ClassOUT', 'load scroll haptic failed: %{public}s', JSON.stringify(e));
+    return true;
+  }
+}
+
+export async function saveScrollHaptic(context: common.Context, on: boolean): Promise<void> {
+  AppStorage.setOrCreate(SCROLL_HAPTIC_KEY, on);
+  try {
+    await Db.setKv(context, SCROLL_HAPTIC_KV, on ? '1' : '0');
+  } catch (e) {
+    hilog.warn(0x0000, 'ClassOUT', 'save scroll haptic failed: %{public}s', JSON.stringify(e));
+  }
+}
+
 /**
  * 默认进入哪个标签页（0 课表 / 1 待办 / 2 计划 / 3 设置）。
  * ⚠️ `@StorageLink` 的键名必须写字面量 `'defaultTab'`。

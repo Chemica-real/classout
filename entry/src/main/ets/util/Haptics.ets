@@ -48,6 +48,11 @@ let lastEdgeAt: number = 0;
  * 内部 500ms 节流，避免回弹/连续滑动时反复振。
  */
 export function hapticScrollEdge(): void {
+  // 设置 → 外观与启动 → 滚动震动（默认开）
+  const enabled: boolean | undefined = AppStorage.get<boolean>('scrollHaptic');
+  if (enabled === false) {
+    return;
+  }
   const now: number = Date.now();
   if (now - lastEdgeAt < 500) {
     return;

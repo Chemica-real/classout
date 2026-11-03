@@ -5538,26 +5538,18 @@ export struct PlanDayView {
         .align(Alignment.TopStart)
         .onScroll((xOffset: number, yOffset: number): void => {
           this.planScrollMoved = true;
-          const max: number = this.planContentH - this.planViewH;
-          if (this.planContentH > this.planViewH + 4) {
-            if (yOffset <= 1 && this.lastPlanScrollY > 1) {
-              hapticScrollEdge();
-            } else if (yOffset >= max - 1 && this.lastPlanScrollY < max - 1) {
-              hapticScrollEdge();
-            }
-          }
           this.lastPlanScrollY = yOffset;
+        })
+        .onScrollStart((): void => {
+          this.planScrollMoved = true;
         })
         .onReachStart((): void => {
           if (this.planScrollMoved) {
             hapticScrollEdge();
           }
         })
-        .onScrollStart((): void => {
-          this.planScrollMoved = true;
-        })
         .onScrollEdge((side: Edge): void => {
-          if (this.planScrollMoved) {
+          if (this.planScrollMoved && side === Edge.Bottom) {
             hapticScrollEdge();
           }
         })

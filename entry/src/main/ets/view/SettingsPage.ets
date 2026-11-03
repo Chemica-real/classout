@@ -39,9 +39,9 @@ import { persistMotionSetting } from './Motion';
 import { hapticScrollEdge } from '../util/Haptics';
 import { pickTime } from '../util/DateTimePicker';
 import { MOTTO_DEFAULT, MOTTO_MAX_UNITS, clampMottoUnits, cleanMotto,
-  loadConfirmTodoDelete, loadDefaultTab, loadMotto, loadQuickStart, mottoUnits, saveConfirmTodoDelete,
-  saveCoursePalette, saveCustomCategories, saveDefaultTab, saveMotto, savePlanWindow, saveQuickStart,
-  saveSyncInterval } from '../data/Prefs';
+  loadConfirmTodoDelete, loadDefaultTab, loadMotto, loadQuickStart, loadScrollHaptic, mottoUnits,
+  saveConfirmTodoDelete, saveCoursePalette, saveCustomCategories, saveDefaultTab, saveMotto,
+  savePlanWindow, saveQuickStart, saveScrollHaptic, saveSyncInterval } from '../data/Prefs';
 import { normalizeDefaultTab, tabLabel } from '../domain/Launch';
 import { DEFAULT_PALETTE, parsePalette } from '../domain/Palette';
 import { CourseColorPicker } from './ColorPicker';
@@ -242,6 +242,8 @@ export struct SettingsPage {
   @StorageLink('quickStart') quickStart: boolean = true;
   /** 删除待办前是否二次确认（默认开；设置页可关） */
   @StorageLink('confirmTodoDelete') confirmTodoDelete: boolean = true;
+  /** 滚动到顶/底是否震动（默认开） */
+  @StorageLink('scrollHaptic') scrollHaptic: boolean = true;
   /** 打开 App 默认进入哪个标签页（0 课表 / 1 待办 / 2 计划 / 3 设置） */
   @StorageLink('defaultTab') defaultTab: number = 0;
   /** 学科调色盘（10 个全局颜色，`'\n'` 分隔） */
@@ -324,6 +326,7 @@ export struct SettingsPage {
     this.quickStart = await loadQuickStart(ctx);
     this.defaultTab = await loadDefaultTab(ctx);
     this.confirmTodoDelete = await loadConfirmTodoDelete(ctx);
+    this.scrollHaptic = await loadScrollHaptic(ctx);
     await this.loadOverview(ctx);
     this.loading = false;
   }
@@ -1240,6 +1243,38 @@ export struct SettingsPage {
   }
 
   @Builder
+  ScrollHapticCard() {
+    Column() {
+      this.SectionTitle('滚动震动',
+        '列表滑到顶部或底部时给一次轻震动；不想要可以关掉。')
+      Row() {
+        Column() {
+          Text('滚动到顶/底震动')
+            .fontSize(14)
+            .fontColor('#F2F5FA')
+          Text(this.scrollHaptic ? '开：到顶/底轻震一下' : '关：完全静音')
+            .fontSize(11)
+            .fontColor('#94A0B5')
+            .margin({ top: 2 })
+        }
+        .layoutWeight(1)
+        .alignItems(HorizontalAlign.Start)
+        Toggle({ type: ToggleType.Switch, isOn: this.scrollHaptic })
+          .onChange((on: boolean): void => {
+            this.scrollHaptic = on;
+            saveScrollHaptic(this.context(), on).catch((e: Object): void => {
+              hilog.warn(DOMAIN, TAG, 'save scroll haptic failed: %{public}s', JSON.stringify(e));
+            });
+          })
+      }
+      .width('100%')
+    }
+    .width('100%')
+    .padding(16)
+    .glassPanelCard()
+  }
+
+  @Builder
   MotionCard() {
     Column() {
       this.SectionTitle('动画', '关掉之后所有动效都退化为直接切换：列表增删、抽屉、托盘、打字机与背景光晕漂移全部停。')
@@ -1970,26 +2005,22 @@ export struct SettingsPage {
       })
       .onScroll((xOffset: number, yOffset: number): void => {
         this.scrollMoved = true;
-        const max: number = this.scrollContentH - this.scrollViewH;
-        if (this.scrollContentH > this.scrollViewH + 4) {
-          if (yOffset <= 1 && this.lastScrollY > 1) {
-            hapticScrollEdge();
-          } else if (yOffset >= max - 1 && this.lastScrollY < max - 1) {
-            hapticScrollEdge();
-          }
+        // 只判断回到顶部；底部走 onReachEnd/onScrollEdge，避免下滑一路误触。
+        if (yOffset <= 1 && this.lastScrollY > 30) {
+          hapticScrollEdge();
         }
         this.lastScrollY = yOffset;
+      })
+      .onScrollStart((): void => {
+        this.scrollMoved = true;
       })
       .onReachStart((): void => {
         if (this.scrollMoved) {
           hapticScrollEdge();
         }
       })
-      .onScrollStart((): void => {
-        this.scrollMoved = true;
-      })
       .onScrollEdge((side: Edge): void => {
-        if (this.scrollMoved) {
+        if (this.scrollMoved && side === Edge.Bottom) {
           hapticScrollEdge();
         }
       })
@@ -2015,6 +2046,7 @@ export struct SettingsPage {
       case 'launch': return '启动';
       case 'palette': return '学科调色盘';
       case 'motion': return '动画';
+      case 'scrollHaptic': return '滚动震动';
       case 'reminder': return '学习提醒';
       case 'wallpaper': return '背景';
       case 'rest': return '不可排时段';
@@ -2102,6 +2134,11 @@ export struct SettingsPage {
         icon: $r('app.media.ic_motion'), title: '动画',
         value: this.motionOn ? '开' : '关',
         action: 'motion', danger: false
+      },
+      {
+        icon: $r('app.media.ic_haptic'), title: '滚动震动',
+        value: this.scrollHaptic ? '开' : '关',
+        action: 'scrollHaptic', danger: false
       },
       {
         icon: $r('app.media.ic_launch'), title: '启动',
@@ -2308,6 +2345,8 @@ export struct SettingsPage {
       this.PaletteCard()
     } else if (this.subPage === 'motion') {
       this.MotionCard()
+    } else if (this.subPage === 'scrollHaptic') {
+      this.ScrollHapticCard()
     } else if (this.subPage === 'reminder') {
       this.ReminderCard()
     } else if (this.subPage === 'wallpaper') {

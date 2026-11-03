@@ -1092,7 +1092,9 @@ export struct TodoInbox {
       }
       .width('100%')
       .translate({ x: this.swipeId === t.id ? this.swipeDx : 0 })
-      .gesture(
+      // parallelGesture：横向滑动删待办不能抢走外层 Scroll 的纵向滚动。
+      // 之前用 gesture()，从卡片上往下滑时 Scroll 只回弹 6vp，列表根本不动。
+      .parallelGesture(
         PanGesture({ direction: PanDirection.Horizontal, distance: 8 })
           .onActionStart((): void => {
             this.swipeId = t.id;
@@ -1100,6 +1102,11 @@ export struct TodoInbox {
           })
           .onActionUpdate((event: GestureEvent): void => {
             const dx: number = event.offsetX;
+            const dy: number = event.offsetY;
+            if (Math.abs(dy) > Math.abs(dx)) {
+              this.swipeDx = 0;
+              return;
+            }
             this.swipeDx = dx < -110 ? -110 : (dx > 0 ? 0 : dx);
           })
           .onActionEnd((event: GestureEvent): void => {
@@ -2254,26 +2261,18 @@ export struct TodoInbox {
           })
           .onScroll((xOffset: number, yOffset: number): void => {
             this.scrollMoved = true;
-            const max: number = this.scrollContentH - this.scrollViewH;
-            if (this.scrollContentH > this.scrollViewH + 4) {
-              if (yOffset <= 1 && this.lastScrollY > 1) {
-                hapticScrollEdge();
-              } else if (yOffset >= max - 1 && this.lastScrollY < max - 1) {
-                hapticScrollEdge();
-              }
-            }
             this.lastScrollY = yOffset;
+          })
+          .onScrollStart((): void => {
+            this.scrollMoved = true;
           })
           .onReachStart((): void => {
             if (this.scrollMoved) {
               hapticScrollEdge();
             }
           })
-          .onScrollStart((): void => {
-            this.scrollMoved = true;
-          })
           .onScrollEdge((side: Edge): void => {
-            if (this.scrollMoved) {
+            if (this.scrollMoved && side === Edge.Bottom) {
               hapticScrollEdge();
             }
           })

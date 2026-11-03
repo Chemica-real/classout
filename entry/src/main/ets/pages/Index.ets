@@ -30,7 +30,7 @@ import { WallpaperRepo } from '../data/WallpaperRepo';
 import { DEFAULT_TAB_KEY, MOTTO_DEFAULT, NOTE_EXPANDED_KEY, PLAN_END_KEY, PLAN_START_KEY,
   COURSE_PALETTE_KEY, QUICK_START_KEY, SYNC_INTERVAL_KEY, TODO_CATEGORIES_KEY,
   loadCoursePalette, loadCustomCategories, loadDefaultTab, loadMotto, loadNoteExpanded,
-  loadPlanWindow, loadPrivacyAgreed, loadQuickStart, loadSyncInterval,
+  loadPlanWindow, loadPrivacyAgreed, loadQuickStart, loadScrollHaptic, loadSyncInterval,
   savePrivacyAgreed } from '../data/Prefs';
 import { DEFAULT_WINDOW, TimeWindow } from '../domain/PlanMath';
 import { SYNC_INTERVAL_DEFAULT, isSyncBoundary } from '../domain/SyncCadence';
@@ -623,6 +623,7 @@ struct Index {
     // 这里再读是为了"设置页改完、下次启动立刻生效"，以及退出演练后回到真实库的值。
     AppStorage.setOrCreate(QUICK_START_KEY, await loadQuickStart(ctx));
     AppStorage.setOrCreate(DEFAULT_TAB_KEY, await loadDefaultTab(ctx));
+    AppStorage.setOrCreate('scrollHaptic', await loadScrollHaptic(ctx));
     // 动画总开关：AppStorage 是内存态，每次冷启动都要从 kv 读回来
     await loadMotionSetting(ctx);
     this.bootStep = 0;
@@ -1016,6 +1017,7 @@ struct Index {
     AppStorage.setOrCreate(PLAN_END_KEY, DEFAULT_WINDOW.endMin);
     AppStorage.setOrCreate(SYNC_INTERVAL_KEY, SYNC_INTERVAL_DEFAULT);
     AppStorage.setOrCreate(QUICK_START_KEY, true);
+    AppStorage.setOrCreate('scrollHaptic', true);
     AppStorage.setOrCreate(DEFAULT_TAB_KEY, 0);
     AppStorage.setOrCreate(COURSE_PALETTE_KEY, serializePalette(DEFAULT_PALETTE));
     AppStorage.setOrCreate(TODO_CATEGORIES_KEY, '');
@@ -1104,6 +1106,7 @@ struct Index {
       serializeCustomCategories(await loadCustomCategories(ctx)));
     AppStorage.setOrCreate(QUICK_START_KEY, await loadQuickStart(ctx));
     AppStorage.setOrCreate(DEFAULT_TAB_KEY, await loadDefaultTab(ctx));
+    AppStorage.setOrCreate('scrollHaptic', await loadScrollHaptic(ctx));
     AppStorage.setOrCreate(COURSE_PALETTE_KEY, serializePalette(await loadCoursePalette(ctx)));
     await loadMotionSetting(ctx);
   }
@@ -2897,26 +2900,21 @@ struct Index {
             })
             .onScroll((xOffset: number, yOffset: number): void => {
               this.timetableScrollMoved = true;
-              const max: number = this.timetableContentH - this.timetableViewH;
-              if (this.timetableContentH > this.timetableViewH + 4) {
-                if (yOffset <= 1 && this.lastTimetableScrollY > 1) {
-                  hapticScrollEdge();
-                } else if (yOffset >= max - 1 && this.lastTimetableScrollY < max - 1) {
-                  hapticScrollEdge();
-                }
+              if (yOffset <= 1 && this.lastTimetableScrollY > 30) {
+                hapticScrollEdge();
               }
               this.lastTimetableScrollY = yOffset;
+            })
+            .onScrollStart((): void => {
+              this.timetableScrollMoved = true;
             })
             .onReachStart((): void => {
               if (this.timetableScrollMoved) {
                 hapticScrollEdge();
               }
             })
-            .onScrollStart((): void => {
-              this.timetableScrollMoved = true;
-            })
             .onScrollEdge((side: Edge): void => {
-              if (this.timetableScrollMoved) {
+              if (this.timetableScrollMoved && side === Edge.Bottom) {
                 hapticScrollEdge();
               }
             })
