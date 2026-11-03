@@ -16,6 +16,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { storedAbilityContext } from '../util/Ctx';
 import { BackHandler, backStack } from '../util/BackStack';
 import { PrivacySection, privacySections, privacyUpdatedAt } from '../domain/Privacy';
+import { ChangelogEntry, changelogEntries } from '../domain/Changelog';
 import { PlanBlock, RestWindow, Todo, TodoCategory, TodoStatus } from '../model/Types';
 import { TimetableRepo } from '../data/TimetableRepo';
 import { computeWeekSessions, weekOfDate } from '../domain/Timetable';
@@ -157,6 +158,8 @@ export struct SettingsPage {
   @State scrollContentH: number = 0;
   @State scrollViewH: number = 0;
   private lastScrollY: number = 0;
+  /** 设置主列表的滚动控制器：打开子页时回到顶部（更新日志最新版在最上面） */
+  private settingsScroller: Scroller = new Scroller();
   /** 自定义背景在沙盒里的路径；'' = 用默认渐变（见 view/Glass.ets） */
   @StorageLink('wallpaper') @Watch('onWallpaperChanged') wallpaper: string = '';
   /** 设置页里的背景缩略图 */
@@ -1890,6 +1893,49 @@ export struct SettingsPage {
    * 上架（应用市场）要求应用内有隐私政策可看 + 一个可访问的链接；
    * 正文在 `domain/Privacy.ets`，仓库根目录的 `PRIVACY.md` 是同一份（填链接用那份）。
    */
+  private changelogSorted(): ChangelogEntry[] {
+    return changelogEntries().slice().sort((a: ChangelogEntry, b: ChangelogEntry): number =>
+      b.code - a.code);
+  }
+
+  @Builder
+  ChangelogCard() {
+    Column() {
+      this.SectionTitle('更新日志', '只列面向用户的变化；最新版本在最上面。')
+      ForEach(this.changelogSorted(), (e: ChangelogEntry) => {
+        Column() {
+          Row() {
+            Text(`v${e.version}`)
+              .fontSize(15)
+              .fontWeight(FontWeight.Medium)
+              .fontColor('#F2F5FA')
+            Blank()
+            Text(`${e.code}`)
+              .fontSize(10)
+              .fontColor('#5F6B80')
+          }
+          .width('100%')
+          ForEach(e.items, (item: string) => {
+            Text(`· ${item}`)
+              .fontSize(12)
+              .fontColor('#CBD6E8')
+              .lineHeight(19)
+              .width('100%')
+              .margin({ top: 6 })
+          }, (item: string) => `${e.version}-${item}`)
+        }
+        .width('100%')
+        .padding(16)
+        .glassPanelCard()
+        .alignItems(HorizontalAlign.Start)
+        .margin({ top: 12 })
+      }, (e: ChangelogEntry) => e.version)
+    }
+    .width('100%')
+    .padding(16)
+    .glassPanelCard()
+  }
+
   @Builder
   AboutCard() {
     Column() {
@@ -2067,8 +2113,15 @@ export struct SettingsPage {
       case 'sync': return '日历同步';
       case 'guide': return '新手引导';
       case 'about': return '关于我们';
+      case 'changelog': return '更新日志';
       default: return '设置';
     }
+  }
+
+  private scrollSettingsToTopSoon(): void {
+    setTimeout((): void => {
+      this.settingsScroller.scrollTo({ xOffset: 0, yOffset: 0 });
+    }, 0);
   }
 
   private onRow(action: string): void {
@@ -2088,6 +2141,7 @@ export struct SettingsPage {
         return;
       default:
         this.subPage = action;
+        this.scrollSettingsToTopSoon();
     }
   }
 
@@ -2186,6 +2240,11 @@ export struct SettingsPage {
       {
         icon: $r('app.media.ic_guide'), title: '新手引导',
         value: '演练', action: 'guide', danger: false
+      },
+      {
+        icon: $r('app.media.ic_history'), title: '更新日志',
+        value: this.appVersion.length > 0 ? `v${this.appVersion}` : '',
+        action: 'changelog', danger: false
       },
       {
         icon: $r('app.media.ic_about'), title: '关于我们',
@@ -2373,6 +2432,8 @@ export struct SettingsPage {
       this.GuideCard()
     } else if (this.subPage === 'about') {
       this.AboutCard()
+    } else if (this.subPage === 'changelog') {
+      this.ChangelogCard()
     }
   }
 
@@ -2509,7 +2570,7 @@ export struct SettingsPage {
   build() {
     Stack() {
       Column() {
-        Scroll() {
+        Scroll(this.settingsScroller) {
           Column() {
             // 提示条：不占布局地贴在顶部会跳，所以这里就放在流的开头，
             // 但只有内容出现时才会有高度（用 if 而不是留空位）
@@ -2596,6 +2657,7 @@ export struct SettingsPage {
                 .margin({ right: 12 })
                 .onClick((): void => {
                   this.subPage = '';
+                  this.scrollSettingsToTopSoon();
                 })
             }
             Text(this.subPage.length > 0 ? this.subTitle() : '设置')
