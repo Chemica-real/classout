@@ -2029,6 +2029,20 @@ export struct SettingsPage {
           hapticScrollEdge();
         }
       })
+      // 设置页子页/长列表滚动停止时再兜底判一次顶/底：
+      // 设置页的 onReachStart/End 在部分子页布局下不稳定，停止时判一次更可靠。
+      .onScrollStop((): void => {
+        if (!this.scrollMoved || this.scrollContentH <= 0 || this.scrollViewH <= 0) {
+          return;
+        }
+        const max: number = this.scrollContentH - this.scrollViewH;
+        if (max <= 4) {
+          return;
+        }
+        if (this.lastScrollY <= 2 || this.lastScrollY >= max - 2) {
+          hapticScrollEdge();
+        }
+      })
     }
     .width('100%')
     .height('100%')
@@ -2533,6 +2547,38 @@ export struct SettingsPage {
       .layoutWeight(1)
       .scrollBar(BarState.Off)
       .align(Alignment.TopStart)
+      .onAreaChange((oldArea: Area, newArea: Area): void => {
+        const h: Length | undefined = newArea.height;
+        if (typeof h === 'number' && h > 0) {
+          this.scrollViewH = h;
+        }
+      })
+      .onScroll((xOffset: number, yOffset: number): void => {
+        this.scrollMoved = true;
+        // 顶部兜底：设置页的 onReachStart 在长列表快速回顶时偶尔不触发
+        if (yOffset <= 1 && this.lastScrollY > 30) {
+          hapticScrollEdge();
+        }
+        this.lastScrollY = yOffset;
+      })
+      .onScrollStart((): void => {
+        this.scrollMoved = true;
+      })
+      .onReachStart((): void => {
+        if (this.scrollMoved) {
+          hapticScrollEdge();
+        }
+      })
+      .onScrollEdge((side: Edge): void => {
+        if (this.scrollMoved && side === Edge.Bottom) {
+          hapticScrollEdge();
+        }
+      })
+      .onReachEnd((): void => {
+        if (this.scrollMoved) {
+          hapticScrollEdge();
+        }
+      })
       }
       .width('100%')
       .height('100%')

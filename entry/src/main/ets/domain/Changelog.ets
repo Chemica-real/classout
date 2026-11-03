@@ -69,6 +69,15 @@ export function changelogEntries(): ChangelogEntry[] {
         '左滑删待办的横向手势不再抢走列表的纵向滚动。'
       ]
     }
+    ,
+    {
+      code: 1008002,
+      version: '1.8.2',
+      items: [
+        '设置页滑到顶部/底部也补上震动反馈（原回调挂在了隐私页的 Scroll 上，已移到设置主列表）。',
+        '滚动震动开关仍然可以在设置里关闭。'
+      ]
+    }
   ];
 }
 
