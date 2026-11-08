@@ -474,4 +474,26 @@ void main() {
     expect(find.text('编辑课时'), findsOneWidget);
     expect(find.byType(Slider), findsOneWidget);
   });
+
+
+  testWidgets('课程筛选和排序行：能选课、切标题排序', (tester) async {
+    final b = _demo();
+    final course = b.courses.first;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: TodoPage(bundle: b, onChanged: (_) {})),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('todo-course-filter')));
+    await tester.pumpAndSettle();
+    expect(find.text(course.name), findsWidgets);
+    await tester.tap(find.text(course.name).last);
+    await tester.pumpAndSettle();
+    expect(find.text(course.name), findsWidgets);
+
+    await tester.tap(find.byKey(const ValueKey('todo-sort')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('标题').last);
+    await tester.pumpAndSettle();
+    expect(find.text('标题'), findsWidgets);
+  });
 }
