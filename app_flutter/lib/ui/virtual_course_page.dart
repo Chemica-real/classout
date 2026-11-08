@@ -255,6 +255,9 @@ class _VirtualCoursePageState extends State<VirtualCoursePage> {
                   max: 200,
                   divisions: 37,
                   label: '$duration',
+                  activeColor: const Color(0xFF2E6BE6),
+                  inactiveColor: Colors.white.withValues(alpha: 0.16),
+                  thumbColor: const Color(0xFF7FA8FF),
                   onChanged: (v) => setLocal(
                       () => duration = (v / 5).round() * 5),
                 ),
@@ -308,6 +311,11 @@ class _VirtualCoursePageState extends State<VirtualCoursePage> {
                     ),
                     const Spacer(),
                     FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF2E6BE6),
+                        foregroundColor: Colors.white,
+                        shape: const StadiumBorder(),
+                      ),
                       onPressed: () {
                         final blocks = _blocksOf(l);
                         for (final b in blocks) {
