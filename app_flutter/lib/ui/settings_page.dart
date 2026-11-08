@@ -48,6 +48,7 @@ class SettingsPage extends StatefulWidget {
   /// 打开课程管理 / 备份页（设置分组行用）
   final VoidCallback? onOpenCourses;
   final VoidCallback? onOpenBackup;
+  final Future<void> Function()? onResetApp;
 
   const SettingsPage({
     super.key,
@@ -60,6 +61,7 @@ class SettingsPage extends StatefulWidget {
     this.onStartGuide,
     this.onOpenCourses,
     this.onOpenBackup,
+    this.onResetApp,
   });
 
   @override
@@ -277,6 +279,8 @@ class _SettingsPageState extends State<SettingsPage>
         _row(Icons.explore_outlined, '新手引导', '演练', () => _go('guide')),
         _row(Icons.history, '更新日志', 'v$appVersion', () => _showChangelog(context)),
         _row(Icons.info_outline, '关于我们', 'v$appVersion', () => _go('about')),
+        _row(Icons.restore_outlined, '重置应用并重新引导', '', _confirmReset,
+            danger: true),
       ]),
     ];
   }
@@ -335,6 +339,30 @@ class _SettingsPageState extends State<SettingsPage>
     }
   }
 
+  Future<void> _confirmReset() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF141C2B),
+        title: const Text('重置应用？', style: TextStyle(color: inkPrimary)),
+        content: const Text(
+            '会清空课表、待办、计划、设置和自定义背景，然后回到新手引导。'
+            '这个操作不可撤销，建议先在「本地备份与恢复」里导出一份。',
+            style: TextStyle(color: inkSecondary)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('确认重置', style: TextStyle(color: dangerRed))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await widget.onResetApp?.call();
+  }
+
   void _go(String key) => setState(() => _sub = key);
 
   void _openCourses(String mode) {
@@ -380,7 +408,8 @@ class _SettingsPageState extends State<SettingsPage>
     );
   }
 
-  Widget _row(IconData icon, String title, String value, VoidCallback onTap) {
+  Widget _row(IconData icon, String title, String value, VoidCallback onTap,
+      {bool danger = false}) {
     return InkWell(
       onTap: onTap,
       child: SizedBox(
@@ -389,11 +418,12 @@ class _SettingsPageState extends State<SettingsPage>
           padding: const EdgeInsets.symmetric(horizontal: 14),
           child: Row(
             children: [
-              Icon(icon, size: 19, color: inkSecondary),
+              Icon(icon, size: 19, color: danger ? dangerRed : inkSecondary),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(title,
-                    style: const TextStyle(fontSize: 15, color: inkPrimary)),
+                    style: TextStyle(
+                        fontSize: 15, color: danger ? dangerRed : inkPrimary)),
               ),
               if (value.isNotEmpty)
                 Text(value,

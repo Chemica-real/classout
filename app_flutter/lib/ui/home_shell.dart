@@ -753,6 +753,15 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     // 原来这里还弹一条完成 SnackBar，是与鸿蒙多出来的东西（§112 同款问题）。
   }
 
+  Future<void> _resetApp() async {
+    final kv = await widget.repo.dumpKv();
+    for (final k in kv.keys) {
+      await widget.repo.removeKv(k);
+    }
+    await widget.repo.replaceAll(buildFirstRunBundle());
+    await _reload(boot: true);
+  }
+
   Future<void> _applySettings(AppSettings next) async {
     setState(() => _settings = next);
     await next.save(widget.repo);
@@ -931,7 +940,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                             onImport: _import,
                             report: _runReport,
                             blacklistCount: _blacklistCount);
-                      })
+                      },
+                      onResetApp: _resetApp)
                   // 课表 / 待办 / 计划：页头都是**悬浮浮窗**，内容从它下面滑过
                   // （计划页自己的日期条由 PlanPage 叠在页头下面）
                   : Stack(
