@@ -415,10 +415,22 @@ class _VirtualCoursePageState extends State<VirtualCoursePage> {
                 ),
                 child: Row(
                   children: [
-                    IconButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.chevron_left,
-                            color: inkPrimary)),
+                    GestureDetector(
+                      onTap: () => Navigator.pop(context),
+                      behavior: HitTestBehavior.opaque,
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 4),
+                        child: Row(
+                          children: [
+                            Icon(Icons.chevron_left, color: accentBlue, size: 20),
+                            Text('返回',
+                                style: TextStyle(
+                                    fontSize: 14, color: accentBlue)),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
                     Expanded(
                       child: Text(widget.course.name,
                           maxLines: 1,
