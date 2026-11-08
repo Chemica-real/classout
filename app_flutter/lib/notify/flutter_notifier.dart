@@ -4,6 +4,8 @@
 // ⚠️ 这台 Linux 机器只能保证**编译与调用顺序正确**；权限弹窗、锁屏展示、
 //    免打扰行为必须在真机上验（HANDOFF §42 记了这条）。
 
+import 'dart:ui' show Color;
+
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
@@ -40,7 +42,8 @@ class FlutterNotifier implements ReminderNotifier {
         AndroidFlutterLocalNotificationsPlugin>();
     if (android != null) {
       try {
-        await android.createNotificationChannel(const AndroidNotificationChannel(
+        await android
+            .createNotificationChannel(const AndroidNotificationChannel(
           _channelId,
           _channelName,
           description: 'ClassOUT 生成的上课与截止提醒',
@@ -99,6 +102,8 @@ class FlutterNotifier implements ReminderNotifier {
         channelDescription: 'ClassOUT 生成的上课与截止提醒',
         importance: Importance.high,
         priority: Priority.high,
+        color: Color(0xFF2E6BE6),
+        category: AndroidNotificationCategory.reminder,
       ),
       iOS: DarwinNotificationDetails(),
     );
@@ -133,6 +138,8 @@ class FlutterNotifier implements ReminderNotifier {
           channelDescription: 'ClassOUT 生成的上课与截止提醒',
           importance: Importance.high,
           priority: Priority.high,
+          color: Color(0xFF2E6BE6),
+          category: AndroidNotificationCategory.reminder,
         ),
         iOS: DarwinNotificationDetails(),
       ),
