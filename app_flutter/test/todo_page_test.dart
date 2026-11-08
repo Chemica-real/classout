@@ -464,6 +464,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('虚拟课程'), findsOneWidget);
     expect(find.text('0 / 1 讲'), findsOneWidget);
+    expect(find.textContaining('暂无待办'), findsNothing,
+        reason: '有虚拟课程时不应再显示普通待办空提示');
     await tester.ensureVisible(find.text('测试虚拟课程'));
     await tester.tap(find.text('测试虚拟课程'));
     await tester.pumpAndSettle();
