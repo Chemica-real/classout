@@ -44,6 +44,10 @@ class TodoPage extends StatefulWidget {
   /// 悬浮页头的高度（内容顶部留同样的空）
   final double topInset;
 
+  /// 虚拟课时页也要沿用同一张壁纸（鸿蒙课时页的 PageBackground）
+  final String wallpaperPath;
+  final String wallpaperFocus;
+
   /// 备注展开状态变了（外壳负责写 kv）
   final void Function(bool on)? onNotePref;
 
@@ -59,6 +63,8 @@ class TodoPage extends StatefulWidget {
     this.topInset = 0,
     this.onNotePref,
     this.now,
+    this.wallpaperPath = '',
+    this.wallpaperFocus = '0,0,1',
   });
 
   @override
@@ -459,6 +465,8 @@ class _TodoPageState extends State<TodoPage> {
         bundle: widget.bundle,
         course: c,
         onChanged: widget.onChanged,
+        wallpaperPath: widget.wallpaperPath,
+        wallpaperFocus: widget.wallpaperFocus,
       ),
     ));
   }
@@ -1284,7 +1292,9 @@ class _VirtualCourseRow extends StatelessWidget {
       child: GestureDetector(
         onTap: onTap,
         behavior: HitTestBehavior.opaque,
-        child: Container(
+        child: Opacity(
+          opacity: allDone ? 0.72 : 1,
+          child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           decoration: BoxDecoration(
             color: glassTintRow,
@@ -1309,15 +1319,19 @@ class _VirtualCourseRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 15, color: inkPrimary)),
               ),
-              if (allDone)
+              if (allDone) ...[
+                const Icon(Icons.workspace_premium,
+                    size: 15, color: Color(0xFFE0A94E)),
+                const SizedBox(width: 3),
                 const Text('✓ 已完成',
                     style: TextStyle(fontSize: 12, color: Color(0xFFE0A94E)))
-              else
+              ] else
                 Text('$done / $total 讲',
                     style: const TextStyle(fontSize: 12, color: inkSecondary)),
               const SizedBox(width: 4),
               const Icon(Icons.chevron_right, size: 18, color: inkTertiary),
             ],
+          ),
           ),
         ),
       ),

@@ -3,7 +3,11 @@
 // 待办页只列“课程文件夹”（颜色 + 全名 + 已完成/总讲数）；点进去才是课时页。
 // 每一讲可以打勾、改名、改这一讲时长、删除；打勾会同步已有计划块并按模板生成待办。
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+
+import 'wallpaper_view.dart';
 
 import '../data/backup.dart';
 import '../domain/dates.dart' show formatDate, today;
@@ -16,12 +20,16 @@ class VirtualCoursePage extends StatefulWidget {
   final BackupBundle bundle;
   final Course course;
   final ValueChanged<BackupBundle> onChanged;
+  final String wallpaperPath;
+  final String wallpaperFocus;
 
   const VirtualCoursePage({
     super.key,
     required this.bundle,
     required this.course,
     required this.onChanged,
+    this.wallpaperPath = '',
+    this.wallpaperFocus = '0,0,1',
   });
 
   @override
@@ -177,18 +185,29 @@ class _VirtualCoursePageState extends State<VirtualCoursePage> {
     final nameCtl = TextEditingController(text: l.title);
     var duration = _durationOf(l);
     var error = '';
-    final saved = await showModalBottomSheet<bool>(
+    final saved = await showGeneralDialog<bool>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => StatefulBuilder(
+      barrierDismissible: true,
+      barrierLabel: '',
+      barrierColor: Colors.black45,
+      transitionDuration: dur(300),
+      pageBuilder: (ctx, _, __) => Align(
+        alignment: Alignment.centerRight,
+        child: SafeArea(
+          child: Material(
+            color: Colors.transparent,
+            child: FractionallySizedBox(
+            widthFactor: 0.86,
+            heightFactor: 1,
+            child: StatefulBuilder(
         builder: (ctx, setLocal) => Padding(
           padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
           child: Container(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
             decoration: const BoxDecoration(
               color: Color(0xF20E1420),
-              borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+              borderRadius: BorderRadius.horizontal(left: Radius.circular(22)),
+              border: Border(left: BorderSide(color: glassEdgeSoft)),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -308,6 +327,17 @@ class _VirtualCoursePageState extends State<VirtualCoursePage> {
             ),
           ),
         ),
+          ),
+        ),
+      ),
+      ),
+      ),
+      transitionBuilder: (ctx, animation, _, child) => SlideTransition(
+        position: Tween<Offset>(
+                begin: const Offset(1, 0), end: Offset.zero)
+            .animate(CurvedAnimation(
+                parent: animation, curve: curveOr(drawerCurve))),
+        child: child,
       ),
     );
     nameCtl.dispose();
@@ -353,31 +383,56 @@ class _VirtualCoursePageState extends State<VirtualCoursePage> {
   @override
   Widget build(BuildContext context) {
     final lessons = _lessons;
+    final hasWallpaper =
+        widget.wallpaperPath.isNotEmpty && File(widget.wallpaperPath).existsSync();
     return Scaffold(
       backgroundColor: const Color(0xFF0E1420),
-      body: SafeArea(
+      body: Container(
+        decoration: const BoxDecoration(gradient: pageGradient),
+        child: Stack(
+          children: [
+            if (hasWallpaper)
+              Positioned.fill(
+                child: WallpaperImage(
+                    path: widget.wallpaperPath, focus: widget.wallpaperFocus),
+              ),
+            if (hasWallpaper)
+              const Positioned.fill(
+                child: ColoredBox(color: Color(0x9E060810)),
+              ),
+            SafeArea(
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-              child: Row(
-                children: [
-                  IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.chevron_left,
-                          color: inkPrimary)),
-                  Expanded(
-                    child: Text(widget.course.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w700,
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: glassTintPanel,
+                  borderRadius: BorderRadius.circular(glassRadius),
+                  border: Border.all(color: glassEdgeStrong),
+                  boxShadow: glassShadowSheet,
+                ),
+                child: Row(
+                  children: [
+                    IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.chevron_left,
                             color: inkPrimary)),
-                  ),
-                  Text('$_doneCount / ${lessons.length} 讲',
-                      style: const TextStyle(fontSize: 12, color: inkSecondary)),
-                ],
+                    Expanded(
+                      child: Text(widget.course.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                              color: inkPrimary)),
+                    ),
+                    Text('$_doneCount / ${lessons.length} 讲',
+                        style: const TextStyle(
+                            fontSize: 12, color: inkSecondary)),
+                  ],
+                ),
               ),
             ),
             Expanded(
@@ -450,6 +505,9 @@ class _VirtualCoursePageState extends State<VirtualCoursePage> {
                   );
                 },
               ),
+            ),
+          ],
+        ),
             ),
           ],
         ),

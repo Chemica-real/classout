@@ -469,5 +469,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('第一讲：像素测试'), findsOneWidget);
     expect(find.textContaining('30 分钟'), findsOneWidget);
+    await tester.tap(find.text('第一讲：像素测试'));
+    await tester.pumpAndSettle();
+    expect(find.text('编辑课时'), findsOneWidget);
+    expect(find.byType(Slider), findsOneWidget);
   });
 }
