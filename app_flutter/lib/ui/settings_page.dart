@@ -194,7 +194,13 @@ class _SettingsPageState extends State<SettingsPage>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 toastLine(),
-                if (_sub.isEmpty) ..._settingsHome() else ..._settingsSub(),
+                if (_sub.isEmpty)
+                  ..._settingsHome()
+                else
+                  _SubpageScope(
+                    hideTitles: true,
+                    child: Column(children: _settingsSub()),
+                  ),
               ],
             ),
           ),
@@ -1491,6 +1497,17 @@ class _DeleteConfirmRow extends StatelessWidget {
 
 /// 设置页的一张玻璃卡（鸿蒙端 `glassPanelCard` + SectionTitle）：
 /// 标题 16 / 说明 12 / 内容 / 脚注 11
+/// 子页里卡片自己的标题会和悬浮标题条重复；用 scope 把卡片标题/说明藏掉。
+class _SubpageScope extends InheritedWidget {
+  final bool hideTitles;
+  const _SubpageScope({required this.hideTitles, required super.child});
+  static bool of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_SubpageScope>()?.hideTitles ??
+      false;
+  @override
+  bool updateShouldNotify(_SubpageScope old) => old.hideTitles != hideTitles;
+}
+
 class _Card extends StatelessWidget {
   final String title;
   final String description;
@@ -1512,12 +1529,14 @@ class _Card extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title,
-                style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                    color: inkPrimary)),
-            const SizedBox(height: 3),
+            if (!_SubpageScope.of(context)) ...[
+              Text(title,
+                  style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                      color: inkPrimary)),
+              const SizedBox(height: 3),
+            ],
             Text(description,
                 style: const TextStyle(
                     fontSize: 11, height: 1.4, color: Color(0xFF94A0B5))),
