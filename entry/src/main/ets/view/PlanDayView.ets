@@ -4091,8 +4091,11 @@ export struct PlanDayView {
     .width('100%')
     .alignItems(HorizontalAlign.Start)
     .padding({ left: 12, right: 12, top: 10, bottom: 10 })
-    // 托盘区域整体拦截点击：避免透过半透明货架点到下面的计划块
+    // 托盘区域整体拦截点击：避免透过半透明货架点到下面的计划块。
+    // 只有 Block 还不够：没有 click 处理器的空白区域会被外层 Transparent 浮层继续传给网格，
+    // 这里补一个空 onClick，让点在托盘空白处的事件真正停在托盘上。
     .hitTestBehavior(HitTestMode.Block)
+    .onClick((): void => {})
     // 悬浮货架：和导航栏刻意用不同材质（见 Glass.ets 的 GLASS_TINT_SHELF）
     .glassShelf()
     // 展开：从下往上滑出来 / 收起：滑回去（都只动位移与透明度）
