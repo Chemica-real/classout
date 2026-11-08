@@ -754,6 +754,15 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   }
 
   Future<void> _resetApp() async {
+    // 鸿蒙 resetApp：先自动导出一份 JSON 再清空；安卓沿用同一个固定备份文件。
+    final current = _bundle;
+    if (current != null) {
+      try {
+        await writeBackupFile(backupToJson(current));
+      } catch (e) {
+        debugPrint('[ClassOUT] reset backup failed: $e');
+      }
+    }
     final kv = await widget.repo.dumpKv();
     for (final k in kv.keys) {
       await widget.repo.removeKv(k);

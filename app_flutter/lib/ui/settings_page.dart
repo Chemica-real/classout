@@ -354,8 +354,8 @@ class _SettingsPageState extends State<SettingsPage>
         backgroundColor: const Color(0xFF141C2B),
         title: const Text('重置应用？', style: TextStyle(color: inkPrimary)),
         content: const Text(
-            '会清空课表、待办、计划、设置和自定义背景，然后回到新手引导。'
-            '这个操作不可撤销，建议先在「本地备份与恢复」里导出一份。',
+            '会先自动导出一份 JSON 备份，然后清空课表、待办、计划、设置和自定义背景，'
+            '再回到新手引导。备份文件仍可在「本地备份与恢复」里找到。',
             style: TextStyle(color: inkSecondary)),
         actions: [
           TextButton(
