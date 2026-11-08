@@ -498,4 +498,40 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('标题'), findsWidgets);
   });
+
+
+  testWidgets('考试卡：即将考试段、倒计时和「考完了」都能走通', (tester) async {
+    final demo = _demo();
+    final exam = Todo(
+      id: 777,
+      title: '期末考试',
+      courseId: demo.courses.first.id,
+      category: TodoCategory.exam,
+      status: TodoStatus.active,
+      ddl: '2026-11-10 09:00',
+      estimateMin: 120,
+    );
+    final b = demo.copyWith(todos: [
+      ...demo.todos.where((t) => t.category != TodoCategory.exam),
+      exam,
+    ]);
+    BackupBundle? last;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: TodoPage(
+          bundle: b,
+          onChanged: (x) => last = x,
+          now: DateTime(2026, 11, 9, 9),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('即将考试'), findsOneWidget);
+    expect(find.text('期末考试'), findsOneWidget);
+    expect(find.text('考完了'), findsWidgets);
+    await tester.tap(find.text('考完了').first);
+    await tester.pumpAndSettle();
+    expect(last, isNotNull);
+    expect(last!.todos.firstWhere((x) => x.id == 777).status, TodoStatus.done);
+  });
 }
