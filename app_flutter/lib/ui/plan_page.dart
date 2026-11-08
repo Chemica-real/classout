@@ -493,6 +493,7 @@ class _PlanPageState extends State<PlanPage> {
                   axis: _axis,
                   axisW: _axisW,
                   days: days,
+                  now: widget.now(),
                   sessions: {
                     for (final d in days) formatDate(d): _sessionsOn(d)
                   },
@@ -1065,6 +1066,7 @@ class _Grid extends StatelessWidget {
   final TimeAxis axis;
   final double axisW;
   final List<DateTime> days;
+  final DateTime now;
   final Map<String, List<CourseSession>> sessions;
   final Map<String, List<PlanBlock>> blocks;
   final Map<String, List<DdlGroup>> ddls;
@@ -1109,6 +1111,7 @@ class _Grid extends StatelessWidget {
     required this.axis,
     required this.axisW,
     required this.days,
+    required this.now,
     required this.sessions,
     required this.blocks,
     required this.ddls,
@@ -1178,6 +1181,7 @@ class _Grid extends StatelessWidget {
                             child: _DayColumn(
                               key: ValueKey('plan-day-${formatDate(d)}'),
                               axis: axis,
+                              now: now,
                               dragId: dragId,
                               dragResize: dragResize,
                               dragDeltaMin: dragDeltaMin,
@@ -1242,6 +1246,7 @@ class _DayColumn extends StatelessWidget {
   final int pinchId;
   final int pinchEndMin;
   final DateTime day;
+  final DateTime now;
   final List<CourseSession> sessions;
   final List<PlanBlock> blocks;
   final List<DdlGroup> ddls;
@@ -1271,6 +1276,7 @@ class _DayColumn extends StatelessWidget {
     required this.pinchId,
     required this.pinchEndMin,
     required this.day,
+    required this.now,
     required this.sessions,
     required this.blocks,
     required this.ddls,
@@ -1313,6 +1319,31 @@ class _DayColumn extends StatelessWidget {
               right: 0,
               child: Container(
                   height: 1, color: Colors.white.withValues(alpha: 0.12)),
+            ),
+          // 当前时间红线：只在今天且落在时间窗内时画
+          if (formatDate(day) == formatDate(now) &&
+              now.hour * 60 + now.minute >= axis.startMin &&
+              now.hour * 60 + now.minute <= axis.endMin)
+            Positioned(
+              top: (now.hour * 60 + now.minute - axis.startMin).toDouble(),
+              left: 0,
+              right: 0,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(height: 1.5, color: const Color(0xFFFF5A5F)),
+                  Positioned(
+                    left: 1,
+                    top: -3,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                          color: Color(0xFFFF5A5F), shape: BoxShape.circle),
+                    ),
+                  ),
+                ],
+              ),
             ),
           // 课表灰带（鸿蒙端 ClassBlock：白 0.10 + 左对齐 12/11 号字）
           for (final s in sessions)
