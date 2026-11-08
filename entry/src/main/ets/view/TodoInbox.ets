@@ -1,7 +1,8 @@
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { storedAbilityContext } from '../util/Ctx';
-import { Course, Todo, TodoCategory, TodoSource, TodoStatus } from '../model/Types';
+import { Course, PlanBlock, Semester, Todo, TodoCategory, TodoSource, TodoStatus,
+  VirtualLesson } from '../model/Types';
 import { TimetableRepo } from '../data/TimetableRepo';
 import { TodoRepo } from '../data/TodoRepo';
 import { addDays, countdownText, formatDate, hhmmToMin, minToHHmm, parseDate, parseDateTime,
@@ -15,6 +16,7 @@ import { CATEGORY_NAME_MAX, CategoryOption, CategoryVerdict, addCustomCategory,
 import { saveCustomCategories, saveNoteExpanded } from '../data/Prefs';
 import { courseColorOf, parsePalette } from '../domain/Palette';
 import { groupActiveTodos, isOverdue, remainText, sortDoneTodos } from '../domain/TodoGroups';
+import { generateForLesson } from '../domain/TodoGenerator';
 import { TODO_COURSE_ALL, filterTodosByCourse, sortPoolTodos } from '../domain/PlanMath';
 import { TODO_SORT_DDL, TODO_SORT_TITLE, loadConfirmTodoDelete, loadTodoSort, saveTodoSort } from '../data/Prefs';
 import { ChipButton } from './ChipButton';
@@ -22,7 +24,7 @@ import { BackHandler, backStack } from '../util/BackStack';
 import { hapticScrollEdge } from '../util/Haptics';
 import { SandShatter } from './SandShatter';
 import { GLASS_BLUR, GLASS_EDGE_SOFT, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_ROW,
-  GLASS_SHADOW_SHEET, GLASS_TINT_ROW, GLASS_TINT_SHEET } from './Glass';
+  GLASS_SHADOW_SHEET, GLASS_TINT_ROW, GLASS_TINT_SHEET, PageBackground } from './Glass';
 import { DRAWER_W, FLOAT_GAP, FLOAT_SIDE, H_ACTIONS } from './Float';
 import { DUR_DRAWER, DUR_ITEM, curveOrLinear, drawerCurve, dur, isMotionOn,
   motionCurve } from './Motion';
@@ -105,6 +107,23 @@ export struct TodoInbox {
   @State activeList: Todo[] = [];
   /** 已完成的待办：放在列表最下方、加灰显示（用户要求"不要让它消失"） */
   @State doneList: Todo[] = [];
+  /** 虚拟课程课时 / 计划块 / 当前学期（课程文件夹区与课时页用） */
+  @State lessons: VirtualLesson[] = [];
+  @State planBlocks: PlanBlock[] = [];
+  @State semester: Semester | undefined = undefined;
+  /** 打开的课程课时页（0 = 关闭） */
+  @State coursePageId: number = 0;
+  /** 正在编辑的课时（0 = 关闭） */
+  @State lessonEditId: number = 0;
+  @State lessonEditName: string = '';
+  @State lessonEditDuration: number = 90;
+  @State lessonEditTouched: boolean = false;
+  @State lessonEditError: string = '';
+  @State lessonDeleteConfirm: boolean = false;
+  /** 正在提交完成的课时 id：防止连点重复生成待办 */
+  @State lessonBusyId: number = 0;
+  /** 打开编辑卡时这一讲原有的时长覆盖（0 = 跟随课程）；没拖滑块就保留 */
+  private lessonOriginalOverride: number = 0;
   /**
    * 时钟滴答（每 30 秒 +1）。只为了让「今天」那些条目的
    * 「还有 x 小时 y 分钟」**实时更新**（用户 2026-10-30 要求）。
@@ -143,6 +162,10 @@ export struct TodoInbox {
   private lastScrollY: number = 0;
   /** 左滑刚结束时，抑制系统补发的卡片 click（否则滑删除会变成打开编辑窗） */
   private swipeGuardAt: number = 0;
+  /** 本次触摸是否发生过明显位移：滑动结束后系统补发的 click 不能当成“点开编辑” */
+  private cardTouchMoved: boolean = false;
+  private cardTouchX: number = 0;
+  private cardTouchY: number = 0;
 
   /**
    * 编辑窗是否开着。
@@ -219,11 +242,28 @@ export struct TodoInbox {
 
   /** 编辑窗开/关 → 通知 Index 调整浮窗层的位置（见 Index.pageModalOpen） */
   private onEditorChanged(): void {
-    this.onModalChange(this.editorVisible);
+    this.syncModalState();
+  }
+
+  /** 待办编辑窗或虚拟课程全屏页任一打开，都让 Index 把底部浮窗压到内容层下面 */
+  private syncModalState(): void {
+    this.onModalChange(this.editorVisible || this.coursePageId > 0);
   }
 
   /** 待办页的返回顺序：先收掉编辑窗里的删除确认 → 再关编辑窗 → 再收掉待确认的删除 */
   private handleBack(): boolean {
+    if (this.lessonDeleteConfirm) {
+      this.lessonDeleteConfirm = false;
+      return true;
+    }
+    if (this.lessonEditId > 0) {
+      this.closeLessonEditor();
+      return true;
+    }
+    if (this.coursePageId > 0) {
+      this.closeCoursePage();
+      return true;
+    }
     if (this.editorVisible) {
       // 删除确认是编辑窗里更上面的一层，先收它
       if (this.editorConfirmDelete) {
@@ -296,6 +336,23 @@ export struct TodoInbox {
     this.pendingList = await TodoRepo.listTodos(ctx, 'status = ?', [TodoStatus.Pending]);
     this.activeList = await TodoRepo.listTodos(ctx, 'status = ?', [TodoStatus.Active]);
     this.doneList = await TodoRepo.listDoneTodos(ctx);
+    this.lessons = await TodoRepo.listLessonsOfVirtualCourses(ctx, this.semesterId);
+    this.planBlocks = await TodoRepo.listAllBlocks(ctx);
+    this.semester = await TimetableRepo.getSemester(ctx);
+    if (this.coursePageId > 0) {
+      let found: boolean = false;
+      for (const c of this.courses) {
+        if (c.id === this.coursePageId) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        this.coursePageId = 0;
+        this.lessonEditId = 0;
+        this.syncModalState();
+      }
+    }
     this.loading = false;
     // 计划页请求打开某条待办：数据到位了才找得到它
     this.openRequestedTodo();
@@ -360,6 +417,11 @@ export struct TodoInbox {
       return '';
     }
     return c.shortName.length > 0 ? c.shortName : c.name;
+  }
+
+  private courseFullName(id: number): string {
+    const c: Course | undefined = this.courseOf(id);
+    return c === undefined ? '虚拟课程' : c.name;
   }
 
   private courseColor(id: number): string {
@@ -803,7 +865,7 @@ export struct TodoInbox {
   }
 
   private openEditIfNotSwiped(t: Todo): void {
-    if (Date.now() - this.swipeGuardAt < 600) {
+    if (this.cardTouchMoved || Date.now() - this.swipeGuardAt < 600) {
       return;
     }
     this.openEdit(t);
@@ -1138,6 +1200,20 @@ export struct TodoInbox {
     .borderRadius(10)
     // 沙粒要落出卡片边界，不能裁在卡片里
     .clip(false)
+    .onTouch((event: TouchEvent): void => {
+      if (event.type === TouchType.Down) {
+        this.cardTouchMoved = false;
+        if (event.touches.length > 0) {
+          this.cardTouchX = event.touches[0].x;
+          this.cardTouchY = event.touches[0].y;
+        }
+      } else if (event.type === TouchType.Move && event.touches.length > 0) {
+        if (Math.abs(event.touches[0].x - this.cardTouchX) > 6
+          || Math.abs(event.touches[0].y - this.cardTouchY) > 6) {
+          this.cardTouchMoved = true;
+        }
+      }
+    })
     .onAreaChange((oldArea: Area, newArea: Area): void => {
       const h: Length | undefined = newArea.height;
       if (typeof h === 'number' && h > 0) {
@@ -1919,6 +1995,609 @@ export struct TodoInbox {
     .padding({ right: FLOAT_SIDE, top: 10, bottom: 10 })
   }
 
+  // ---------------- 虚拟课程文件夹 / 课时页 ----------------
+
+  private virtualCoursesForFilter(): Course[] {
+    const out: Course[] = [];
+    for (const c of this.courses) {
+      if (!c.isVirtual) {
+        continue;
+      }
+      const ls: VirtualLesson[] = this.lessonsOfCourse(c.id);
+      if (ls.length === 0) {
+        continue;
+      }
+      if (this.courseFilter !== TODO_COURSE_ALL && this.courseFilter !== c.id) {
+        continue;
+      }
+      out.push(c);
+    }
+    return out;
+  }
+
+  private lessonsOfCourse(courseId: number): VirtualLesson[] {
+    const out: VirtualLesson[] = [];
+    for (const l of this.lessons) {
+      if (l.courseId === courseId) {
+        out.push(l);
+      }
+    }
+    out.sort((a: VirtualLesson, b: VirtualLesson): number => a.seq - b.seq);
+    return out;
+  }
+
+  private courseDoneCount(courseId: number): number {
+    let n: number = 0;
+    for (const l of this.lessonsOfCourse(courseId)) {
+      if (l.done) {
+        n++;
+      }
+    }
+    return n;
+  }
+
+  private courseAllDone(courseId: number): boolean {
+    const ls: VirtualLesson[] = this.lessonsOfCourse(courseId);
+    return ls.length > 0 && this.courseDoneCount(courseId) === ls.length;
+  }
+
+  private lessonTitle(l: VirtualLesson): string {
+    if (l.title.length > 0) {
+      return l.title;
+    }
+    const c: Course | undefined = this.courseOf(l.courseId);
+    const n: string = c === undefined ? '虚拟课程'
+      : (c.shortName.length > 0 ? c.shortName : c.name);
+    return `${n} 第 ${l.seq} 讲`;
+  }
+
+  private lessonEffectiveDuration(l: VirtualLesson): number {
+    let raw: number = 0;
+    if (l.durationMin !== undefined && l.durationMin > 0) {
+      raw = l.durationMin;
+    } else {
+      const c: Course | undefined = this.courseOf(l.courseId);
+      raw = c === undefined || c.lessonDurationMin === undefined ? 90 : c.lessonDurationMin;
+    }
+    const rounded: number = Math.round(raw / 5) * 5;
+    if (rounded < 15) {
+      return 15;
+    }
+    return rounded > 200 ? 200 : rounded;
+  }
+
+  private lessonBlocks(l: VirtualLesson): PlanBlock[] {
+    const out: PlanBlock[] = [];
+    for (const b of this.planBlocks) {
+      if (b.lessonId === l.id) {
+        out.push(b);
+      }
+    }
+    out.sort((a: PlanBlock, b: PlanBlock): number => {
+      if (a.date !== b.date) {
+        return a.date < b.date ? -1 : 1;
+      }
+      return a.startMin - b.startMin;
+    });
+    return out;
+  }
+
+  private lessonSubtitle(l: VirtualLesson): string {
+    const dur: number = this.lessonEffectiveDuration(l);
+    const blocks: PlanBlock[] = this.lessonBlocks(l);
+    if (l.done) {
+      if (blocks.length > 0) {
+        const b: PlanBlock = blocks[0];
+        return `已完成 · ${b.date.substring(5)} ${minToHHmm(b.startMin)} · ${dur} 分钟`;
+      }
+      return `已完成 · ${dur} 分钟`;
+    }
+    if (blocks.length === 0) {
+      return `未排 · ${dur} 分钟`;
+    }
+    const b: PlanBlock = blocks[0];
+    const more: string = blocks.length > 1 ? ` · ${blocks.length} 块` : '';
+    return `${b.date.substring(5)} ${minToHHmm(b.startMin)} · ${b.endMin - b.startMin} 分钟${more}`;
+  }
+
+  private openCoursePage(courseId: number): void {
+    this.coursePageId = courseId;
+    this.lessonEditId = 0;
+    this.lessonDeleteConfirm = false;
+    this.syncModalState();
+  }
+
+  private closeCoursePage(): void {
+    this.coursePageId = 0;
+    this.lessonEditId = 0;
+    this.lessonDeleteConfirm = false;
+    this.syncModalState();
+  }
+
+  private openLessonEditor(l: VirtualLesson): void {
+    this.lessonEditId = l.id;
+    this.lessonEditName = l.title;
+    this.lessonOriginalOverride = l.durationMin === undefined ? 0 : l.durationMin;
+    this.lessonEditDuration = this.lessonEffectiveDuration(l);
+    this.lessonEditTouched = false;
+    this.lessonEditError = '';
+    this.lessonDeleteConfirm = false;
+  }
+
+  private closeLessonEditor(): void {
+    this.lessonEditId = 0;
+    this.lessonEditError = '';
+    this.lessonDeleteConfirm = false;
+  }
+
+  private saveLessonEditor(): void {
+    this.doSaveLessonEditor().catch((e: Object): void => {
+      hilog.error(DOMAIN, TAG, 'save lesson failed: %{public}s', JSON.stringify(e));
+    });
+  }
+
+  private async doSaveLessonEditor(): Promise<void> {
+    const id: number = this.lessonEditId;
+    if (id <= 0) {
+      return;
+    }
+    const ctx: common.UIAbilityContext = this.context();
+    let target: VirtualLesson | undefined = undefined;
+    for (const l of this.lessons) {
+      if (l.id === id) {
+        target = l;
+      }
+    }
+    if (target === undefined) {
+      this.closeLessonEditor();
+      return;
+    }
+    const name: string = this.lessonEditName.trim();
+    const duration: number = this.lessonEditDuration;
+    const blocks: PlanBlock[] = this.lessonBlocks(target);
+    for (const b of blocks) {
+      if (b.startMin + duration > 1440) {
+        this.lessonEditError = '这个时长放不下已排的块，先把块挪早一点';
+        return;
+      }
+    }
+    const oldDuration: number = this.lessonEffectiveDuration(target);
+    const override: number = this.lessonEditTouched ? duration : this.lessonOriginalOverride;
+    await TodoRepo.updateLessonDetails(ctx, id, name, override);
+    if (duration !== oldDuration) {
+      for (const b of blocks) {
+        b.endMin = b.startMin + duration;
+        await TodoRepo.updateBlock(ctx, b);
+      }
+    }
+    await this.reload();
+    this.closeLessonEditor();
+    this.showToast('课时已保存');
+  }
+
+  private async doDeleteLesson(): Promise<void> {
+    const id: number = this.lessonEditId;
+    if (id <= 0) {
+      return;
+    }
+    const ctx: common.UIAbilityContext = this.context();
+    await TodoRepo.deleteLesson(ctx, id);
+    this.closeLessonEditor();
+    await this.reload();
+    this.showToast('已删除这一讲（后面的讲不重编号）');
+  }
+
+  @Builder
+  VirtualCourseSection() {
+    Column() {
+      Row() {
+        Text('虚拟课程')
+          .fontSize(15)
+          .fontWeight(FontWeight.Medium)
+          .fontColor('#F2F5FA')
+        Text(`${this.virtualCoursesForFilter().length} 门`)
+          .fontSize(12)
+          .fontColor('#7FA8FF')
+          .margin({ left: 6 })
+        Blank()
+        Text('点课程进入课时')
+          .fontSize(11)
+          .fontColor('#8B97AC')
+      }
+      .width('100%')
+      .margin({ top: 18, bottom: 8 })
+
+      ForEach(this.virtualCoursesForFilter(), (c: Course) => {
+        this.VirtualCourseRow(c)
+      }, (c: Course) => `vc-${c.id}-${this.courseDoneCount(c.id)}-${this.lessonsOfCourse(c.id).length}`)
+    }
+    .width('100%')
+    .alignItems(HorizontalAlign.Start)
+  }
+
+  @Builder
+  VirtualCourseRow(c: Course) {
+    Row() {
+      Column()
+        .width(4)
+        .height(30)
+        .borderRadius(2)
+        .backgroundColor(this.courseColor(c.id))
+        .margin({ right: 10 })
+      Text(c.name)
+        .fontSize(14)
+        .fontColor('#F2F5FA')
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .layoutWeight(1)
+      if (this.courseAllDone(c.id)) {
+        Row() {
+          Text('✓')
+            .fontSize(10)
+            .fontColor('#3A2A00')
+            .width(17)
+            .height(17)
+            .textAlign(TextAlign.Center)
+            .backgroundColor('#E8B25C')
+            .borderRadius(9)
+            .shadow({ radius: 5, color: 'rgba(232,178,92,0.55)', offsetX: 0, offsetY: 0 })
+          Text('✓ 已完成')
+            .fontSize(11)
+            .fontColor('#E8B25C')
+            .margin({ left: 4 })
+        }
+        .alignItems(VerticalAlign.Center)
+      } else {
+        Text(`${this.courseDoneCount(c.id)} / ${this.lessonsOfCourse(c.id).length} 讲`)
+          .fontSize(11)
+          .fontColor('#94A0B5')
+      }
+      Text('›')
+        .fontSize(16)
+        .fontColor('#8B97AC')
+        .margin({ left: 8 })
+    }
+    .width('100%')
+    .padding({ left: 12, right: 12, top: 12, bottom: 12 })
+    .glassCard()
+    .margin({ bottom: 8 })
+    .opacity(this.courseAllDone(c.id) ? 0.72 : 1)
+    .onClick((): void => this.openCoursePage(c.id))
+  }
+
+  @Builder
+  CoursePage() {
+    Stack() {
+      // 用和全局同一张背景图，不要一块纯黑底；加一层薄纱保证文字可读
+      PageBackground()
+      Column()
+        .width('100%')
+        .height('100%')
+        .backgroundColor('rgba(8,12,20,0.48)')
+        .hitTestBehavior(HitTestMode.None)
+      Column() {
+        Row() {
+          Text('‹ 返回')
+            .fontSize(13)
+            .fontColor('#7FA8FF')
+            .onClick((): void => this.closeCoursePage())
+          Text(this.coursePageId > 0 ? this.courseFullName(this.coursePageId) : '虚拟课程')
+            .fontSize(17)
+            .fontWeight(FontWeight.Medium)
+            .fontColor('#F2F5FA')
+            .margin({ left: 14 })
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .layoutWeight(1)
+          if (this.coursePageId > 0) {
+            Text(`${this.courseDoneCount(this.coursePageId)} / `
+              + `${this.lessonsOfCourse(this.coursePageId).length} 讲`)
+              .fontSize(11)
+              .fontColor('#94A0B5')
+          }
+        }
+        .width('100%')
+        .padding({ left: 16, right: 16, top: 16, bottom: 10 })
+        .glassCard()
+        .margin({ left: 16, right: 16, top: 12 })
+
+        Scroll() {
+          Column() {
+            ForEach(this.lessonsOfCourse(this.coursePageId), (l: VirtualLesson) => {
+              this.LessonRow(l)
+            }, (l: VirtualLesson) => `lp-${l.id}-${l.done}-${l.title}-${l.durationMin}`)
+            if (this.lessonsOfCourse(this.coursePageId).length === 0) {
+              Text('这门虚拟课程还没有课时。')
+                .fontSize(12)
+                .fontColor('#8B97AC')
+                .width('100%')
+                .padding({ top: 18 })
+            }
+          }
+          .width('100%')
+          .padding({ left: 16, right: 16, bottom: 30 })
+          .alignItems(HorizontalAlign.Start)
+        }
+        .layoutWeight(1)
+        .scrollBar(BarState.Off)
+        .align(Alignment.TopStart)
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor(Color.Transparent)
+
+      if (this.lessonEditId > 0) {
+        this.LessonEditor()
+      }
+    }
+    .width('100%')
+    .height('100%')
+    .zIndex(80)
+    .transition(TransitionEffect.translate({ x: '100%' })
+      .combine(TransitionEffect.OPACITY)
+      .animation({ duration: dur(DUR_DRAWER), curve: curveOrLinear(drawerCurve) }))
+  }
+
+  @Builder
+  LessonRow(l: VirtualLesson) {
+    Row() {
+      Text(l.done ? '✓' : '○')
+        .fontSize(16)
+        .fontColor(l.done ? '#7C8798' : '#FFFFFF')
+        .padding({ right: 10 })
+        .onClick((): void => this.toggleLessonDone(l))
+      Column() {
+        Text(this.lessonTitle(l))
+          .fontSize(14)
+          .fontColor(l.done ? '#7C8798' : '#F2F5FA')
+          .decoration({ type: l.done ? TextDecorationType.LineThrough : TextDecorationType.None,
+            color: '#7C8798' })
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .width('100%')
+        Text(this.lessonSubtitle(l))
+          .fontSize(11)
+          .fontColor(l.done ? '#6F7A8C' : '#94A0B5')
+          .margin({ top: 3 })
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .width('100%')
+      }
+      .layoutWeight(1)
+      .alignItems(HorizontalAlign.Start)
+      .onClick((): void => this.openLessonEditor(l))
+      Text('›')
+        .fontSize(16)
+        .fontColor('#7C8798')
+        .padding({ left: 8 })
+        .onClick((): void => this.openLessonEditor(l))
+    }
+    .width('100%')
+    .padding({ left: 12, right: 12, top: 12, bottom: 12 })
+    .glassCard()
+    .margin({ bottom: 8 })
+    .opacity(l.done ? 0.68 : 1)
+  }
+
+  @Builder
+  LessonEditor() {
+    Row() {
+      Column()
+        .layoutWeight(1)
+        .height('100%')
+        .backgroundColor('rgba(12,18,28,0.52)')
+        .onClick((): void => this.closeLessonEditor())
+      Column() {
+        Row() {
+          Text('编辑课时')
+            .fontSize(18)
+            .fontWeight(FontWeight.Medium)
+            .fontColor('#F2F5FA')
+          Blank()
+          Text('✕')
+            .fontSize(18)
+            .fontColor('#A9B5C9')
+            .onClick((): void => this.closeLessonEditor())
+        }
+        .width('100%')
+        .padding({ bottom: 14 })
+
+        Text('课时名称')
+          .fontSize(12)
+          .fontColor('#94A0B5')
+          .width('100%')
+        TextInput({ text: this.lessonEditName, placeholder: '留空则用课程简称 + 第几讲' })
+          .fontColor('#F2F5FA')
+          .placeholderColor('#8B97AC')
+          .caretColor('#7FA8FF')
+          .margin({ top: 5 })
+          .onChange((v: string): void => {
+            this.lessonEditName = v;
+          })
+
+        Text('这一讲时长')
+          .fontSize(12)
+          .fontColor('#94A0B5')
+          .width('100%')
+          .margin({ top: 16 })
+        Text(`${this.lessonEditDuration} 分钟`)
+          .fontSize(22)
+          .fontWeight(FontWeight.Medium)
+          .fontColor('#F2F5FA')
+          .margin({ top: 4 })
+        Slider({
+          value: this.lessonEditDuration,
+          min: 15,
+          max: 200,
+          step: 5,
+          style: SliderStyle.OutSet
+        })
+          .width('100%')
+          .selectedColor('#2E6BE6')
+          .trackColor('rgba(255,255,255,0.16)')
+          .showTips(true)
+          .onChange((v: number, mode: SliderChangeMode): void => {
+            this.lessonEditDuration = Math.round(v / 5) * 5;
+            this.lessonEditTouched = true;
+          })
+        Text(this.lessonEditTouched ? '保存后成为这一讲的独立时长'
+          : (this.lessonOriginalOverride > 0 ? '保持这一讲原来的独立时长'
+            : '没拖动 = 继续跟随课程默认'))
+          .fontSize(11)
+          .fontColor('#7FA8FF')
+          .width('100%')
+          .margin({ top: 4 })
+
+        if (this.lessonEditError.length > 0) {
+          Text(this.lessonEditError)
+            .fontSize(11)
+            .fontColor('#FF8A8A')
+            .width('100%')
+            .margin({ top: 8 })
+        }
+
+        Blank()
+
+        if (this.lessonDeleteConfirm) {
+          Text('删除这一讲？它在计划里的块会一起删；已生成待办保留，后面的讲不重编号。')
+            .fontSize(11)
+            .fontColor('#FF8A8A')
+            .width('100%')
+            .margin({ bottom: 8 })
+          Row() {
+            Button('取消')
+              .backgroundColor('rgba(255,255,255,0.12)')
+              .fontColor('#C3CDDE')
+              .layoutWeight(1)
+              .onClick((): void => {
+                this.lessonDeleteConfirm = false;
+              })
+            Button('确认删除')
+              .backgroundColor('#D64545')
+              .fontColor('#FFFFFF')
+              .layoutWeight(1)
+              .margin({ left: 8 })
+              .onClick((): void => {
+                this.doDeleteLesson().catch((e: Object): void => {
+                  hilog.error(DOMAIN, TAG, 'delete lesson failed: %{public}s', JSON.stringify(e));
+                });
+              })
+          }
+          .width('100%')
+        } else {
+          Text('删除这一讲')
+            .fontSize(12)
+            .fontColor('#FF8A8A')
+            .width('100%')
+            .padding({ top: 8, bottom: 8 })
+            .onClick((): void => {
+              this.lessonDeleteConfirm = true;
+            })
+        }
+
+        Row() {
+          Button('取消')
+            .backgroundColor('rgba(255,255,255,0.12)')
+            .fontColor('#C3CDDE')
+            .layoutWeight(1)
+            .onClick((): void => this.closeLessonEditor())
+          Button('保存')
+            .backgroundColor('#2E6BE6')
+            .fontColor('#FFFFFF')
+            .layoutWeight(1)
+            .margin({ left: 8 })
+            .onClick((): void => this.saveLessonEditor())
+        }
+        .width('100%')
+        .margin({ top: 14 })
+      }
+      .width(DRAWER_W)
+      .height('100%')
+      .padding({ left: 18, right: 18, top: 14, bottom: 14 })
+      .glassShell()
+      .transition(TransitionEffect.translate({ x: '100%' })
+        .animation({ duration: dur(DUR_DRAWER), curve: curveOrLinear(drawerCurve) }))
+      .alignItems(HorizontalAlign.Start)
+    }
+    .width('100%')
+    .height('100%')
+    .zIndex(90)
+  }
+
+  private showToast(text: string): void {
+    this.getUIContext().getPromptAction().showToast({ message: text, duration: 2200 });
+  }
+
+  private roundUpFive(min: number): number {
+    let m: number = Math.ceil(min / 5) * 5;
+    if (m >= 1440) {
+      m = 1435;
+    }
+    return m;
+  }
+
+  private toggleLessonDone(l: VirtualLesson): void {
+    if (this.lessonBusyId !== 0) {
+      return;
+    }
+    this.lessonBusyId = l.id;
+    this.doToggleLessonDone(l).then((): void => {
+      this.lessonBusyId = 0;
+    }).catch((e: Object): void => {
+      this.lessonBusyId = 0;
+      hilog.error(DOMAIN, TAG, 'toggle lesson failed: %{public}s', JSON.stringify(e));
+    });
+  }
+
+  private async doToggleLessonDone(l: VirtualLesson): Promise<void> {
+    const ctx: common.UIAbilityContext = this.context();
+    const blocks: PlanBlock[] = this.lessonBlocks(l);
+    if (l.done) {
+      await TodoRepo.setLessonDone(ctx, l.id, false, 0);
+      for (const b of blocks) {
+        if (b.done) {
+          b.done = false;
+          await TodoRepo.updateBlock(ctx, b);
+        }
+      }
+      await this.reload();
+      this.showToast('已取消完成；已生成的待办保留');
+      return;
+    }
+    await TodoRepo.setLessonDone(ctx, l.id, true, Date.now());
+    for (const b of blocks) {
+      if (!b.done) {
+        b.done = true;
+        await TodoRepo.updateBlock(ctx, b);
+      }
+    }
+    const dur: number = this.lessonEffectiveDuration(l);
+    let date: string = formatDate(today());
+    let start: number = 0;
+    let end: number = 0;
+    if (blocks.length > 0) {
+      date = blocks[0].date;
+      start = blocks[0].startMin;
+      end = blocks[0].endMin;
+    } else {
+      const d: Date = new Date();
+      start = this.roundUpFive(d.getHours() * 60 + d.getMinutes());
+      if (start + dur > 1440) {
+        start = 1440 - dur;
+      }
+      if (start < 0) {
+        start = 0;
+      }
+      end = start + dur;
+    }
+    let created: number = 0;
+    if (this.semester !== undefined) {
+      created = await generateForLesson(ctx, this.semester, l, date, start, end);
+    }
+    await this.reload();
+    this.showToast(created > 0 ? `已完成，生成 ${created} 条待办待确认` : '课时已完成');
+  }
+
   build() {
     Stack() {
       Column() {
@@ -2162,8 +2841,14 @@ export struct TodoInbox {
                 }
               }
 
+              // ---- 虚拟课程：文件夹式入口（用户 2026-11-01）----
+              if (this.virtualCoursesForFilter().length > 0) {
+                this.VirtualCourseSection()
+              }
+
               if (this.todayTodos().length === 0 && this.overdueTodos().length === 0
-                && this.laterTodos().length === 0) {
+                && this.laterTodos().length === 0
+                && this.virtualCoursesForFilter().length === 0) {
                 Text(this.courseFilter === TODO_COURSE_ALL
                   ? '暂无待办。下课之后，配了模板的课程会自动生成待办到这里。'
                   : `「${this.courseFilterText()}」下暂无待办。`)
@@ -2308,6 +2993,11 @@ export struct TodoInbox {
           })
         // 面板是遮罩的「兄弟」而不是子节点：点面板不会冒泡到遮罩上
         this.EditorPanel()
+      }
+
+      // 虚拟课程课时页：全屏盖住底部导航（Index 因 onModalChange 把浮窗压到下面）
+      if (this.coursePageId > 0) {
+        this.CoursePage()
       }
     }
     .width('100%')

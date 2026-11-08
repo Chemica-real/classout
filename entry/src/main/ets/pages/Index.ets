@@ -122,6 +122,8 @@ struct Index {
   @State sectionTimes: SectionTime[] = [];
   @State week: number = 1;
   @State tab: number = 0;
+  /** 底部菜单的切页冷却：1s 内只接受一次切换，避免连点把页面切崩 */
+  private tabSwitchAt: number = 0;
   /** 计划页正在看的周（由 PlanDayView 发布；只在该 tab 的页头用） */
   @StorageLink('planHeaderWeek') planHeaderWeek: string = '';
   @StorageLink('planHeaderRange') planHeaderRange: string = '';
@@ -1949,6 +1951,16 @@ struct Index {
     .onClick((): void => {
       // ⚠️ 切标签**不做任何过渡**：用户实测反馈"切菜单的动画太丑太鸡肋"。
       // 页面直接换掉最干净 —— 别在这里加淡入/位移/扫光。
+      const now: number = Date.now();
+      // 1s 冷却：连续点菜单时页面重挂载 + 补生成待办一起冲，真机上会把应用切崩。
+      // 同一标签的重复点击不消耗冷却，也不算切换。
+      if (this.tab === index) {
+        return;
+      }
+      if (now - this.tabSwitchAt < 1000) {
+        return;
+      }
+      this.tabSwitchAt = now;
       const was: number = this.tab;
       this.tab = index;
       // 用户 2026-10-16：「每次切换到待办列时，立即补生成下课列表，确保不会有遗漏」。

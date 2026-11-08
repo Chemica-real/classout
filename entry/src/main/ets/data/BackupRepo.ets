@@ -169,6 +169,8 @@ export class BackupRepo {
         courseId: rs.getLong(rs.getColumnIndex('course_id')),
         seq: rs.getLong(rs.getColumnIndex('seq')),
         title: rs.getString(rs.getColumnIndex('title')),
+        durationMin: rs.getColumnIndex('duration_min') >= 0
+          ? rs.getLong(rs.getColumnIndex('duration_min')) : 0,
         done: rs.getLong(rs.getColumnIndex('done')) === 1,
         doneAt: rs.getLong(rs.getColumnIndex('done_at'))
       });
@@ -303,9 +305,11 @@ export class BackupRepo {
     }
     for (const l of b.lessons as VirtualLesson[]) {
       await store.executeSql(
-        `INSERT INTO virtual_lesson (id, course_id, seq, title, done, done_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [l.id, l.courseId, l.seq, l.title, l.done ? 1 : 0, l.doneAt]);
+        `INSERT INTO virtual_lesson (id, course_id, seq, title, duration_min, done, done_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [l.id, l.courseId, l.seq, l.title,
+          l.durationMin === undefined ? 0 : l.durationMin,
+          l.done ? 1 : 0, l.doneAt]);
     }
     for (const p of b.blocks as PlanBlock[]) {
       await store.executeSql(

@@ -68,6 +68,9 @@ export class Db {
       'lesson_duration_min INTEGER NOT NULL DEFAULT 90');
     await Db.ensureColumn(store, 'course', 'lesson_title_template',
       "lesson_title_template TEXT NOT NULL DEFAULT '%c 第 %N 讲'");
+    // 虚拟课时单独时长覆盖（0 = 跟随课程默认）
+    await Db.ensureColumn(store, 'virtual_lesson', 'duration_min',
+      'duration_min INTEGER NOT NULL DEFAULT 0');
     Db.store = store;
     hilog.info(DOMAIN, TAG, '%{public}s', 'database ready');
     return store;

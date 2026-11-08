@@ -403,7 +403,7 @@ export struct CourseManager {
     this.editTemplates = this.templatesOf(c.id);
     this.editLessons = this.lessonsOf(c.id).map((l: VirtualLesson): VirtualLesson => ({
       id: l.id, courseId: l.courseId, seq: l.seq, title: l.title,
-      done: l.done, doneAt: l.doneAt
+      durationMin: l.durationMin, done: l.done, doneAt: l.doneAt
     }));
     this.editLessonCount = this.clampLessonCount(this.lessonsOf(c.id).length);
     this.editLessonNamesOpen = false;
@@ -460,7 +460,7 @@ export struct CourseManager {
       if (!found) {
         this.editLessons.push({
           id: 0, courseId: this.editCourse.id, seq: seq, title: '',
-          done: false, doneAt: 0
+          durationMin: 0, done: false, doneAt: 0
         });
       }
     }

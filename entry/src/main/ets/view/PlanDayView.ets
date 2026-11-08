@@ -1666,6 +1666,10 @@ export struct PlanDayView {
 
   /** 虚拟课程单讲默认时长（课程级，15–200 分钟，5 分钟刻度） */
   private lessonDurationOf(l: VirtualLesson): number {
+    if (l.durationMin !== undefined && l.durationMin > 0) {
+      const cover: number = Math.round(l.durationMin / 5) * 5;
+      return cover < 15 ? 15 : (cover > 200 ? 200 : cover);
+    }
     const c: Course | undefined = this.courseOf(l.courseId);
     const raw: number = c === undefined || c.lessonDurationMin === undefined
       ? LESSON_MIN : c.lessonDurationMin;

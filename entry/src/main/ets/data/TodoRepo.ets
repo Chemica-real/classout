@@ -371,6 +371,7 @@ export class TodoRepo {
       'course_id': courseId,
       'seq': seq,
       'title': title,
+      'duration_min': 0,
       'done': 0,
       'done_at': 0
     };
@@ -411,6 +412,8 @@ export class TodoRepo {
       courseId: rs.getLong(rs.getColumnIndex('course_id')),
       seq: rs.getLong(rs.getColumnIndex('seq')),
       title: rs.getString(rs.getColumnIndex('title')),
+      durationMin: rs.getColumnIndex('duration_min') >= 0
+        ? rs.getLong(rs.getColumnIndex('duration_min')) : 0,
       done: rs.getLong(rs.getColumnIndex('done')) === 1,
       doneAt: rs.getLong(rs.getColumnIndex('done_at'))
     };
@@ -420,6 +423,22 @@ export class TodoRepo {
     title: string): Promise<void> {
     const store: relationalStore.RdbStore = await Db.get(context);
     await store.executeSql('UPDATE virtual_lesson SET title = ? WHERE id = ?', [title, id]);
+  }
+
+  /** 课时编辑卡：名称 + 单讲时长覆盖（0 = 跟随课程默认） */
+  static async updateLessonDetails(context: common.Context, id: number, title: string,
+    durationMin: number): Promise<void> {
+    const store: relationalStore.RdbStore = await Db.get(context);
+    await store.executeSql(
+      'UPDATE virtual_lesson SET title = ?, duration_min = ? WHERE id = ?',
+      [title, durationMin, id]);
+  }
+
+  /** 删除一讲：连带删它的计划块；已生成待办不动，后面的讲不重编号 */
+  static async deleteLesson(context: common.Context, id: number): Promise<void> {
+    const store: relationalStore.RdbStore = await Db.get(context);
+    await store.executeSql('DELETE FROM plan_block WHERE lesson_id = ?', [id]);
+    await store.executeSql('DELETE FROM virtual_lesson WHERE id = ?', [id]);
   }
 
   static async setLessonDone(context: common.Context, id: number, done: boolean,
@@ -452,18 +471,37 @@ export class TodoRepo {
   static async syncLessonCount(context: common.Context, courseId: number,
     count: number): Promise<void> {
     const existing: VirtualLesson[] = await TodoRepo.listLessonsByCourse(context, courseId);
+    if (existing.length === count) {
+      return;
+    }
     if (existing.length < count) {
-      for (let seq = existing.length + 1; seq <= count; seq++) {
-        await TodoRepo.insertLesson(context, courseId, seq, '');
+      // 删过中间课时会留下 seq 空洞：新讲从 max(seq)+1 开始，绝不能用 length+1
+      let maxSeq: number = 0;
+      for (const l of existing) {
+        if (l.seq > maxSeq) {
+          maxSeq = l.seq;
+        }
+      }
+      let add: number = count - existing.length;
+      while (add > 0) {
+        maxSeq++;
+        await TodoRepo.insertLesson(context, courseId, maxSeq, '');
+        add--;
       }
       return;
     }
-    if (existing.length > count) {
-      const store: relationalStore.RdbStore = await Db.get(context);
-      for (const l of existing) {
-        if (l.seq > count && !l.done) {
-          await store.executeSql('DELETE FROM virtual_lesson WHERE id = ?', [l.id]);
-        }
+    // 减少讲数：从最大 seq 的未完成课时开始删；做完的保留，避免丢历史
+    let remain: number = existing.length;
+    const bySeqDesc: VirtualLesson[] = existing.slice();
+    bySeqDesc.sort((a: VirtualLesson, b: VirtualLesson): number => b.seq - a.seq);
+    const store: relationalStore.RdbStore = await Db.get(context);
+    for (const l of bySeqDesc) {
+      if (remain <= count) {
+        break;
+      }
+      if (!l.done) {
+        await store.executeSql('DELETE FROM virtual_lesson WHERE id = ?', [l.id]);
+        remain--;
       }
     }
   }

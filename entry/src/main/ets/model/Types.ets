@@ -271,6 +271,8 @@ export interface VirtualLesson {
   /** 第几讲，从 1 开始 */
   seq: number;
   title: string;
+  /** 单讲时长覆盖（分钟；0/undefined = 跟随课程默认） */
+  durationMin?: number;
   done: boolean;
   doneAt: number;
 }

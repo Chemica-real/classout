@@ -127,6 +127,7 @@ export const SCHEMA_SQL: string[] = [
      course_id INTEGER NOT NULL,
      seq INTEGER NOT NULL,
      title TEXT NOT NULL DEFAULT '',
+     duration_min INTEGER NOT NULL DEFAULT 0,
      done INTEGER NOT NULL DEFAULT 0,
      done_at INTEGER NOT NULL DEFAULT 0
    )`,
