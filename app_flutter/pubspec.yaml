@@ -24,6 +24,7 @@ dependencies:
   flutter_local_notifications: ^22.3.2
   timezone: ^0.11.2
   file_picker: ^13.1.0
+  flutter_svg: ^2.3.2
 
 dev_dependencies:
   flutter_test:
@@ -40,6 +41,8 @@ flutter:
     - assets/demo_backup.json
     # 建库用的权威 DDL（从 ../shared/schema.sql 复制而来，db_test 会校验两边一致）
     - assets/schema.sql
+    # 设置行图标（直接从鸿蒙 entry/src/main/resources/base/media 复制）
+    - assets/icons/
   fonts:
     # 中文字体子集（只含项目里用到的 1440 个字，359 KB）
     # 为什么需要：Flutter 的 web 版用 CanvasKit 渲染，包里没有中文字形时它会去

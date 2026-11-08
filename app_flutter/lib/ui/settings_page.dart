@@ -7,6 +7,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../data/backup.dart';
 import '../data/wallpaper.dart';
@@ -243,51 +244,51 @@ class _SettingsPageState extends State<SettingsPage>
   List<Widget> _settingsHome() {
     return [
       _group('学期与课程', [
-        _row(Icons.school_outlined, '学期设置', _semesterName(),
+        _row(_svg('term'), '学期设置', _semesterName(),
             () => _openCourses('semester')),
-        _row(Icons.menu_book_outlined, '课程管理',
+        _row(_svg('course'), '课程管理',
             '${widget.bundle.courses.length} 门', () => _openCourses('courses')),
-        _row(Icons.palette_outlined, '学科调色盘', '10 色',
+        _row(_svg('palette'), '学科调色盘', '10 色',
             () => _go('palette')),
       ]),
       _group('计划与待办', [
-        _row(Icons.schedule_outlined, '计划页时间范围',
+        _row(_svg('plan'), '计划页时间范围',
             '${minToHHmm(_s.planWindow.startMin)}–${minToHHmm(_s.planWindow.endMin)}',
             () => _go('planWindow')),
-        _row(Icons.block_outlined, '不可排时段',
+        _row(_svg('rest'), '不可排时段',
             _rest.isEmpty ? '未设置' : '${_rest.length} 条', () => _go('rest')),
-        _row(Icons.label_outline, '待办类型',
+        _row(_svg('category'), '待办类型',
             '${builtinCategoryOptions().length + _s.customCategories.length} 个',
             () => _go('categories')),
-        _row(Icons.help_outline, '删除待办前询问',
+        _row(_svg('confirm'), '删除待办前询问',
             _s.confirmTodoDelete ? '开' : '关', () => _go('confirm')),
       ]),
       _group('外观与启动', [
-        _row(Icons.wallpaper_outlined, '背景',
+        _row(_svg('wallpaper'), '背景',
             _s.wallpaperPath.isEmpty ? '默认' : '自定义', () => _go('wallpaper')),
-        _row(Icons.text_fields_outlined, '首页标语',
+        _row(_svg('motto'), '首页标语',
             _s.motto.isEmpty ? '默认' : _s.motto, () => _go('motto')),
-        _row(Icons.animation_outlined, '动画',
+        _row(_svg('motion'), '动画',
             _s.motionEnabled ? '开' : '关', () => _go('motion')),
-        _row(Icons.vibration, '滚动震动',
+        _row(_svg('haptic'), '滚动震动',
             _s.scrollHaptic ? '开' : '关', () => _go('scrollHaptic')),
-        _row(Icons.rocket_launch_outlined, '启动',
+        _row(_svg('launch'), '启动',
             '快速启动${_s.quickStart ? '开' : '关'} · 默认${_tabLabel(_s.defaultTab)}',
             () => _go('launch')),
       ]),
       _group('提醒与同步', [
-        _row(Icons.notifications_none, '学习提醒',
+        _row(_svg('bell'), '学习提醒',
             '提前 ${_s.classLeadMin} 分钟', () => _go('reminder')),
-        _row(Icons.sync_outlined, '日历同步',
+        _row(_svg('sync'), '日历同步',
             '每 ${_s.syncIntervalMin} 分钟', () => _go('sync')),
       ]),
       _group('数据与帮助', [
-        _row(Icons.inventory_2_outlined, '本地备份与恢复', 'JSON',
+        _row(_svg('backup'), '本地备份与恢复', 'JSON',
             () => widget.onOpenBackup?.call()),
-        _row(Icons.explore_outlined, '新手引导', '演练', () => _go('guide')),
-        _row(Icons.history, '更新日志', 'v$appVersion', () => _showChangelog(context)),
-        _row(Icons.info_outline, '关于我们', 'v$appVersion', () => _go('about')),
-        _row(Icons.restore_outlined, '重置应用并重新引导', '', _confirmReset,
+        _row(_svg('guide'), '新手引导', '演练', () => _go('guide')),
+        _row(_svg('history'), '更新日志', 'v$appVersion', () => _showChangelog(context)),
+        _row(_svg('about'), '关于我们', 'v$appVersion', () => _go('about')),
+        _row(_svg('reset', danger: true), '重置应用并重新引导', '', _confirmReset,
             danger: true),
       ]),
     ];
@@ -422,7 +423,15 @@ class _SettingsPageState extends State<SettingsPage>
     );
   }
 
-  Widget _row(IconData icon, String title, String value, VoidCallback onTap,
+  Widget _svg(String name, {bool danger = false}) => SvgPicture.asset(
+        'assets/icons/ic_$name.svg',
+        width: 19,
+        height: 19,
+        colorFilter: ColorFilter.mode(
+            danger ? dangerRed : inkSecondary, BlendMode.srcIn),
+      );
+
+  Widget _row(Widget icon, String title, String value, VoidCallback onTap,
       {bool danger = false}) {
     return InkWell(
       onTap: onTap,
@@ -432,7 +441,7 @@ class _SettingsPageState extends State<SettingsPage>
           padding: const EdgeInsets.symmetric(horizontal: 14),
           child: Row(
             children: [
-              Icon(icon, size: 19, color: danger ? dangerRed : inkSecondary),
+              icon,
               const SizedBox(width: 12),
               Expanded(
                 child: Text(title,
