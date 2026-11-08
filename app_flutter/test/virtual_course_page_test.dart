@@ -90,4 +90,33 @@ void main() {
     expect(last!.lessons.any((x) => x.id == 901), isFalse);
     expect(last!.blocks.any((x) => x.lessonId == 901), isFalse);
   });
+
+  testWidgets('打勾完成：课时置为 done，并按模板生成待办', (tester) async {
+    final base = _withLesson();
+    final bundle = base.copyWith(templates: [
+      TodoTemplate(
+        id: 1,
+        courseId: 99,
+        titleTemplate: '%c 第%N次作业',
+        ddlRule: 'same_day',
+        estimateMin: 60,
+      ),
+    ]);
+    BackupBundle? last;
+    await tester.pumpWidget(MaterialApp(
+      home: VirtualCoursePage(
+        bundle: bundle,
+        course: bundle.courses.last,
+        onChanged: (b) => last = b,
+      ),
+    ));
+    await tester.pumpAndSettle();
+    final beforeTodos = bundle.todos.length;
+    await tester.tap(find.byIcon(Icons.radio_button_unchecked).first);
+    await tester.pumpAndSettle();
+    expect(last, isNotNull);
+    expect(last!.lessons.firstWhere((x) => x.id == 901).done, isTrue);
+    expect(last!.todos.length, beforeTodos + 1);
+    expect(last!.todos.last.courseId, 99);
+  });
 }
