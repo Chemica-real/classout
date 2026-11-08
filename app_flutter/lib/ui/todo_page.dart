@@ -49,6 +49,10 @@ class TodoPage extends StatefulWidget {
   final String wallpaperFocus;
   final bool confirmDelete;
 
+  /// 排序偏好（外壳读 kv；不传 = ddl）
+  final String sortMode;
+  final ValueChanged<String>? onSortChanged;
+
   /// 备注展开状态变了（外壳负责写 kv）
   final void Function(bool on)? onNotePref;
 
@@ -67,6 +71,8 @@ class TodoPage extends StatefulWidget {
     this.wallpaperPath = '',
     this.wallpaperFocus = '0,0,1',
     this.confirmDelete = true,
+    this.sortMode = 'ddl',
+    this.onSortChanged,
   });
 
   @override
@@ -81,7 +87,7 @@ class _TodoPageState extends State<TodoPage> {
   int _courseFilter = 0;
 
   /// 排序：ddl（截止时间）/ title（标题），对应鸿蒙 `todoSort`
-  String _sortMode = 'ddl';
+  late String _sortMode = widget.sortMode == 'title' ? 'title' : 'ddl';
 
   /// 二次确认删除的那一条
   int _pendingDeleteId = 0;
@@ -452,7 +458,10 @@ class _TodoPageState extends State<TodoPage> {
         ),
       ),
     );
-    if (choice != null && mounted) setState(() => _sortMode = choice);
+    if (choice != null && mounted) {
+      setState(() => _sortMode = choice);
+      widget.onSortChanged?.call(choice);
+    }
   }
 
   String _courseName(int id) {

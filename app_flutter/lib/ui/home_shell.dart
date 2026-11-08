@@ -967,6 +967,11 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                                 wallpaperPath: _settings.wallpaperPath,
                                 wallpaperFocus: _settings.wallpaperFocus,
                                 confirmDelete: _settings.confirmTodoDelete,
+                                sortMode: _settings.todoSort,
+                                onSortChanged: (v) {
+                                  _settings.todoSort = v;
+                                  _settings.save(widget.repo);
+                                },
                                 onAddCategory: (name) {
                                   _settings.customCategories = addCustomCategory(
                                       _settings.customCategories, name);

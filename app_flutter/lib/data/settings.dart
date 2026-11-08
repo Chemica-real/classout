@@ -44,6 +44,9 @@ class AppSettings {
   bool quickStart;
   int defaultTab;
 
+  /// 待办排序：ddl / title（鸿蒙 kv `todo_sort`）
+  String todoSort;
+
   AppSettings({
     this.syncIntervalMin = syncIntervalDefault,
     this.planWindow = defaultWindow,
@@ -60,6 +63,7 @@ class AppSettings {
     this.scrollHaptic = true,
     this.quickStart = true,
     this.defaultTab = 0,
+    this.todoSort = 'ddl',
   });
 
   ReminderSettings get reminderSettings => ReminderSettings(
@@ -90,6 +94,7 @@ class AppSettings {
   static const String _kScrollHaptic = 'scrollHaptic';
   static const String _kQuickStart = 'quickStart';
   static const String _kDefaultTab = 'defaultTab';
+  static const String _kTodoSort = 'todo_sort';
 
   static Future<AppSettings> load(ClassOutRepo repo) async {
     final sync =
@@ -112,6 +117,7 @@ class AppSettings {
     final hapticRaw = await repo.getKv(_kScrollHaptic);
     final quickRaw = await repo.getKv(_kQuickStart);
     final tabRaw = await repo.getKv(_kDefaultTab);
+    final sortRaw = await repo.getKv(_kTodoSort);
     return AppSettings(
       briefEnabled: briefEnabledRaw == null || briefEnabledRaw.isEmpty
           ? true
@@ -140,6 +146,7 @@ class AppSettings {
           : hapticRaw == '1',
       quickStart: quickRaw == null || quickRaw.isEmpty ? true : quickRaw == '1',
       defaultTab: int.tryParse(tabRaw ?? '')?.clamp(0, 3) ?? 0,
+      todoSort: sortRaw == 'title' ? 'title' : 'ddl',
     );
   }
 
@@ -176,6 +183,7 @@ class AppSettings {
     await repo.setKv(_kScrollHaptic, scrollHaptic ? '1' : '0');
     await repo.setKv(_kQuickStart, quickStart ? '1' : '0');
     await repo.setKv(_kDefaultTab, '$defaultTab');
+    await repo.setKv(_kTodoSort, todoSort);
   }
 
   /// 'HH:mm' → 分钟；坏值返回 null（与鸿蒙端 loadReminderSettings 一致）
