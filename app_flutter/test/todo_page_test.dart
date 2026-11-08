@@ -534,4 +534,53 @@ void main() {
     expect(last, isNotNull);
     expect(last!.todos.firstWhere((x) => x.id == 777).status, TodoStatus.done);
   });
+
+
+  testWidgets('已完成行：恢复改回 active，删除要二次确认后移除', (tester) async {
+    final demo = _demo();
+    final done = Todo(
+      id: 888,
+      title: '已完成作业',
+      courseId: demo.courses.first.id,
+      category: TodoCategory.homework,
+      status: TodoStatus.done,
+      ddl: '2026-11-08 23:59',
+      doneAt: DateTime(2026, 11, 8, 20).millisecondsSinceEpoch,
+    );
+    final b = demo.copyWith(todos: [done]);
+
+    BackupBundle? last;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: TodoPage(
+          bundle: b,
+          onChanged: (x) => last = x,
+          now: DateTime(2026, 11, 9, 9),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('已完成作业'), findsOneWidget);
+    await tester.tap(find.text('恢复'));
+    await tester.pumpAndSettle();
+    expect(last!.todos.first.status, TodoStatus.active);
+
+    last = null;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: TodoPage(
+          bundle: b,
+          onChanged: (x) => last = x,
+          now: DateTime(2026, 11, 9, 9),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除'));
+    await tester.pumpAndSettle();
+    expect(find.text('确认删除'), findsOneWidget);
+    await tester.tap(find.text('确认删除'));
+    await tester.pumpAndSettle();
+    expect(last!.todos, isEmpty);
+  });
 }
