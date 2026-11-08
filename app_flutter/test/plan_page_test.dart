@@ -288,6 +288,8 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('tray-toggle')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('tray-page-lesson')));
+    await tester.pumpAndSettle();
     expect(find.text('第二讲'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('pool-lesson-1')));
     await tester.pumpAndSettle();
@@ -372,7 +374,7 @@ void main() {
     final h = await _pump(tester);
     await tester.tap(find.byKey(const ValueKey('tray-toggle')));
     await tester.pumpAndSettle();
-    expect(find.text('拖动 / 点选 / ⚡ 一键找空档'), findsOneWidget);
+    expect(find.text('拖动 / 点选'), findsOneWidget);
     expect(find.text('收起 ▾'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('pool-find-5')));
@@ -422,9 +424,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('tray-toggle')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('tray-page-lesson')));
+    await tester.pumpAndSettle();
 
     expect(find.text('90 分钟'), findsOneWidget);
-    expect(find.text('虚拟课程课时（拖进计划，打勾完成会触发生成待办）'), findsOneWidget);
+    expect(find.textContaining('打勾完成生成待办'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('pool-lesson-find-1')));
     await tester.pump();

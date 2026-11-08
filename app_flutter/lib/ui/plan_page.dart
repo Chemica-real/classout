@@ -90,6 +90,9 @@ class _PlanPageState extends State<PlanPage> {
   /// 网格里选中的块（鸿蒙两步模型：第一下选中、第二下开编辑窗）
   int _selectedBlockId = 0;
 
+  /// 待安排当前页：0 待办 / 1 虚拟课程（鸿蒙 POOL_PAGE_*）
+  int _trayPage = 0;
+
   /// 待安排托盘是否展开（鸿蒙端 TraySummonBar ↔ TodoPool）
   /// 托盘展开状态（冷启动从 kv 读回，鸿蒙 `loadTrayOpen`）
   bool _trayOpen = planTrayOpen;
@@ -599,6 +602,8 @@ class _PlanPageState extends State<PlanPage> {
             child: _Tray(
               pool: _pool,
               lessons: _lessonPool,
+              page: _trayPage,
+              onPage: (p) => setState(() => _trayPage = p),
               selectedLessonId: _selectedLessonId,
               courses: {for (final c in widget.bundle.courses) c.id: c},
               selectedId: _selectedTodoId,
@@ -1973,6 +1978,8 @@ class _DdlPanel extends StatelessWidget {
 ///   标题 / 课程胶囊 / 预计 N 分钟 / ⚡ 找空档，选中 = 半透明蓝 + 亮蓝描边。
 class _Tray extends StatelessWidget {
   final List<Todo> pool;
+  final int page;
+  final ValueChanged<int> onPage;
 
   /// 虚拟课程的课时（待排）
   final List<VirtualLesson> lessons;
@@ -1988,6 +1995,8 @@ class _Tray extends StatelessWidget {
 
   const _Tray({
     required this.pool,
+    required this.page,
+    required this.onPage,
     required this.lessons,
     required this.courses,
     required this.selectedId,
@@ -2039,48 +2048,73 @@ class _Tray extends StatelessWidget {
 
   /// 展开后的货架（鸿蒙端 TodoPool）：标题行 + 待办横排 + （有虚拟课时才有的）课时横排
   Widget _expanded(BuildContext context) {
+    final lessonPage = lessons.isNotEmpty && page == 1;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        GestureDetector(
-          key: const ValueKey('tray-toggle'),
-          onTap: onToggle,
-          behavior: HitTestBehavior.opaque,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-            child: Row(
-              children: [
-                const Text('待安排',
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+          child: Row(
+            children: [
+              const Text('待安排',
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: inkPrimary)),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                    lessonPage
+                        ? '拖进计划；打勾完成生成待办'
+                        : (selectedId > 0 ? '已选中，点空白放下' : '拖动 / 点选'),
+                    textAlign: TextAlign.right,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: inkPrimary)),
-                // 鸿蒙：未选中时那句提示是 `LAYOUT.tray = 14`，
-                // 「已选中…」那句是 `LAYOUT.cardSub = 12`；
-                // 窄屏（测试 360vp）放不下时省略号收尾，不溢出
-                Expanded(
-                  child: Text(
-                      selectedId > 0 ? '已选中，点网格空白处放下' : '拖动 / 点选 / ⚡ 一键找空档',
-                      textAlign: TextAlign.right,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: selectedId > 0 ? 12 : 14,
-                          color: selectedId > 0
-                              ? accentBlue
-                              : const Color(0xFF8B97AC))),
-                ),
-                const Padding(
+                        fontSize: 12,
+                        color: lessonPage
+                            ? const Color(0xCCD8C48A)
+                            : (selectedId > 0
+                                ? accentBlue
+                                : const Color(0xFF8B97AC)))),
+              ),
+              GestureDetector(
+                key: const ValueKey('tray-toggle'),
+                onTap: onToggle,
+                behavior: HitTestBehavior.opaque,
+                child: const Padding(
                   padding: EdgeInsets.only(left: 10),
                   child: Text('收起 ▾',
                       style: TextStyle(fontSize: 12, color: Color(0xFFA9B5C9))),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
-        if (pool.isEmpty)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+          child: Row(
+            children: [
+              _pageChip('待办 ${pool.length}', 0,
+                  key: const ValueKey('tray-page-todo')),
+              if (lessons.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                _pageChip('虚拟课程 ${lessons.length}', 1,
+                    key: const ValueKey('tray-page-lesson')),
+              ],
+            ],
+          ),
+        ),
+        if (lessonPage)
+          lessons.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.fromLTRB(12, 0, 12, 10),
+                  child: Text('没有待安排的虚拟课时。',
+                      style: TextStyle(fontSize: 13, color: Color(0xFF8B97AC))),
+                )
+              : _strip([for (final l in lessons) _lessonCard(l)])
+        else if (pool.isEmpty)
           const Padding(
             padding: EdgeInsets.fromLTRB(12, 0, 12, 10),
             child: Text('没有待安排的事项。先去『待办』里确认几条。',
@@ -2088,16 +2122,30 @@ class _Tray extends StatelessWidget {
           )
         else
           _strip([for (final t in pool) _poolCard(t)]),
-        if (lessons.isNotEmpty) ...[
-          const Padding(
-            padding: EdgeInsets.fromLTRB(12, 12, 12, 6),
-            child: Text('虚拟课程课时（拖进计划，打勾完成会触发生成待办）',
-                style: TextStyle(fontSize: 12, color: Color(0xFFE0A94E))),
-          ),
-          _strip([for (final l in lessons) _lessonCard(l)]),
-        ],
         const SizedBox(height: 10),
       ],
+    );
+  }
+
+  Widget _pageChip(String text, int index, {required Key key}) {
+    final selected = page == index;
+    return GestureDetector(
+      key: key,
+      onTap: () => onPage(index),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0x4D2E6BE6) : glassTintRow,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+              color: selected ? accentBlue : glassEdgeSoft,
+              width: selected ? 1.5 : 1),
+        ),
+        child: Text(text,
+            style: TextStyle(
+                fontSize: 12, color: selected ? Colors.white : inkSecondary)),
+      ),
     );
   }
 
