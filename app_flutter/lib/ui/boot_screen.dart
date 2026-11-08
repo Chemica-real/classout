@@ -300,6 +300,7 @@ class _BootScreenState extends State<BootScreen> with TickerProviderStateMixin {
                   fontSize: 38,
                   fontWeight: FontWeight.bold,
                   letterSpacing: 2,
+                  decoration: TextDecoration.none,
                   color: inkPrimary)),
           const SizedBox(height: 14),
           Container(
@@ -320,7 +321,10 @@ class _BootScreenState extends State<BootScreen> with TickerProviderStateMixin {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                    fontSize: 11, letterSpacing: 3, color: Color(0xFF8B97AC))),
+                    fontSize: 11,
+                    letterSpacing: 3,
+                    decoration: TextDecoration.none,
+                    color: Color(0xFF8B97AC))),
           ],
           const SizedBox(height: 34),
           Glass(
@@ -349,6 +353,7 @@ class _BootScreenState extends State<BootScreen> with TickerProviderStateMixin {
                         Text(bootSteps[i],
                             style: TextStyle(
                               fontSize: 12,
+                              decoration: TextDecoration.none,
                               color: i < widget.step
                                   ? const Color(0xFFA9B5C9)
                                   : (i == widget.step
@@ -358,8 +363,10 @@ class _BootScreenState extends State<BootScreen> with TickerProviderStateMixin {
                         const Spacer(),
                         if (i == widget.step)
                           const Text('进行中',
-                              style:
-                                  TextStyle(fontSize: 10, color: accentBlue)),
+                              style: TextStyle(
+                                  fontSize: 10,
+                                  decoration: TextDecoration.none,
+                                  color: accentBlue)),
                       ],
                     ),
                   ),
@@ -367,7 +374,9 @@ class _BootScreenState extends State<BootScreen> with TickerProviderStateMixin {
                 // 打字机那行
                 Text(_typed,
                     style: const TextStyle(
-                        fontSize: 11, color: Color(0xFF8B97AC))),
+                        fontSize: 11,
+                        decoration: TextDecoration.none,
+                        color: Color(0xFF8B97AC))),
                 const SizedBox(height: 18),
                 // ⑤ 开局五点（模仿 Ubuntu 开机）
                 Row(
