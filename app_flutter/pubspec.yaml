@@ -47,3 +47,8 @@ flutter:
     - family: ClassOutCJK
       fonts:
         - asset: assets/fonts/ClassOutCJK.ttf
+    # 从 HarmonyOS SDK 预览器字体目录取的同款 HarmonyOS Sans SC：
+    # 安卓/iOS 原生端用它，中文断行、字重和字宽与鸿蒙端最接近。
+    - family: HarmonyOS Sans SC
+      fonts:
+        - asset: assets/fonts/HarmonyOS_Sans_SC.ttf

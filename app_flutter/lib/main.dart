@@ -31,7 +31,7 @@ class ClassOutApp extends StatelessWidget {
         useMaterial3: true,
         // web 端必须自带中文字体（否则 CanvasKit 会去 fonts.gstatic.com 找兜底字体，
         // 国内网络基本连不上 → 满屏豆腐块）。原生端用系统字体更好，所以只在 web 用。
-        fontFamily: kIsWeb ? 'ClassOutCJK' : null,
+        fontFamily: kIsWeb ? 'ClassOutCJK' : 'HarmonyOS Sans SC',
       ),
       home: const _Boot(),
     );
