@@ -352,6 +352,8 @@ export struct PlanDayView {
   @State shatterBlockId: number = 0;
   /** 最近一次点块的时刻：画布根节点用它区分"点块"与"点空白" */
   private blockTapAt: number = 0;
+  /** 托盘里刚点过东西的时刻：同一次事件的冒泡不能再被网格当成"点空白/点块" */
+  private poolTapAt: number = 0;
   /** 日期栏撤销/重做按钮的可用状态 */
   @State canUndo: boolean = false;
   @State canRedo: boolean = false;
@@ -2213,6 +2215,9 @@ export struct PlanDayView {
   }
 
   private onGridTap(event: ClickEvent): void {
+    if (Date.now() - this.poolTapAt < 300) {
+      return;
+    }
     // 点在哪一列就排到那一天（三日视图）。命中不到列（点在时间轴上）→ 退回中心列。
     // ⚠️ 用户要求"点侧列**不换天**"：这里只影响排到哪天，不改 this.date。
     const tapCol: number = this.viewCols > COLS_DAY
@@ -2251,6 +2256,9 @@ export struct PlanDayView {
    * 这样单击选中没有延迟，也不会有"点了没反应"的观感。
    */
   private onBlockTap(b: PlanBlock): void {
+    if (Date.now() - this.poolTapAt < 300) {
+      return;
+    }
     this.blockTapAt = Date.now();
     // 长按之后被系统补发的那次 onClick：不算点击（用户要求长按 ≠ 点击）
     if (this.longPressHandled) {
@@ -3976,6 +3984,7 @@ export struct PlanDayView {
                     this.showHint('拖到网格上松手放下');
                   })
                   .onClick((): void => {
+                    this.poolTapAt = Date.now();
                     this.selectedTodoId = this.selectedTodoId === t.id ? 0 : t.id;
                     this.showHint(this.selectedTodoId > 0 ? '现在点网格空白处放下它' : '');
                   })
@@ -4092,10 +4101,11 @@ export struct PlanDayView {
     .alignItems(HorizontalAlign.Start)
     .padding({ left: 12, right: 12, top: 10, bottom: 10 })
     // 托盘区域整体拦截点击：避免透过半透明货架点到下面的计划块。
-    // 只有 Block 还不够：没有 click 处理器的空白区域会被外层 Transparent 浮层继续传给网格，
-    // 这里补一个空 onClick，让点在托盘空白处的事件真正停在托盘上。
-    .hitTestBehavior(HitTestMode.Block)
-    .onClick((): void => {})
+    // ⚠️ 不能用 HitTestMode.Block：它会连托盘里的按钮一起挡掉（用户实测点任何按钮都没反应）。
+    // 这里用默认命中 + 一个空 onClick 消费空白区域；子按钮仍然优先命中。
+    .onClick((): void => {
+      this.poolTapAt = Date.now();
+    })
     // 悬浮货架：和导航栏刻意用不同材质（见 Glass.ets 的 GLASS_TINT_SHELF）
     .glassShelf()
     // 展开：从下往上滑出来 / 收起：滑回去（都只动位移与透明度）
