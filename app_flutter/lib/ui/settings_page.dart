@@ -428,7 +428,7 @@ class _SettingsPageState extends State<SettingsPage>
         width: 19,
         height: 19,
         colorFilter: ColorFilter.mode(
-            danger ? dangerRed : inkSecondary, BlendMode.srcIn),
+            danger ? dangerRed : const Color(0xFFA9B5C9), BlendMode.srcIn),
       );
 
   Widget _row(Widget icon, String title, String value, VoidCallback onTap,
