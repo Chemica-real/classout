@@ -772,4 +772,22 @@ void main() {
     await tester.pumpAndSettle();
     expect(markColor(), const Color(0x73D64545));
   });
+
+  testWidgets('拖动时块半透明（鸿蒙 opacity 0.72）', (tester) async {
+    await _pump(tester, initialDay: DateTime(2026, 10, 16));
+    final before = _demo().blocks.firstWhere((b) => b.date == '2026-10-16');
+    final block = find.byKey(ValueKey('plan-block-${before.id}'));
+    await _revealBlock(tester, block);
+    await _selectBlock(tester, block);
+
+    final g = await tester.startGesture(tester.getCenter(block));
+    await tester.pump(const Duration(milliseconds: 600));
+    final op = tester.widget<Opacity>(block).opacity;
+    expect(op, closeTo(0.72, 0.001));
+    await g.moveBy(const Offset(0, 30));
+    await tester.pump();
+    expect(tester.widget<Opacity>(block).opacity, closeTo(0.72, 0.001));
+    await g.up();
+    await tester.pumpAndSettle();
+  });
 }
