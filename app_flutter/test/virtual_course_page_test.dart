@@ -119,4 +119,24 @@ void main() {
     expect(last!.todos.length, beforeTodos + 1);
     expect(last!.todos.last.courseId, 99);
   });
+
+  testWidgets('编辑抽屉：点 X 能关掉，不保存', (tester) async {
+    BackupBundle? last;
+    final bundle = _withLesson();
+    await tester.pumpWidget(MaterialApp(
+      home: VirtualCoursePage(
+        bundle: bundle,
+        course: bundle.courses.last,
+        onChanged: (b) => last = b,
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('第一讲'));
+    await tester.pumpAndSettle();
+    expect(find.text('编辑课时'), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.close));
+    await tester.pumpAndSettle();
+    expect(find.text('编辑课时'), findsNothing);
+    expect(last, isNull, reason: '只是关闭，不应该回写数据');
+  });
 }
