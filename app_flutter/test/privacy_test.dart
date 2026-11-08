@@ -35,6 +35,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('设置').last);
     await tester.pumpAndSettle();
+    final row = find.text('关于我们').first;
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
+    await tester.tap(row);
+    await tester.pumpAndSettle();
 
     final link = find.byKey(const ValueKey('settings-privacy'));
     await tester.ensureVisible(link);

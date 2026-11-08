@@ -45,6 +45,10 @@ class SettingsPage extends StatefulWidget {
   /// 重新走一遍新手演练（沙箱 + 引导条）
   final Future<void> Function()? onStartGuide;
 
+  /// 打开课程管理 / 备份页（设置分组行用）
+  final VoidCallback? onOpenCourses;
+  final VoidCallback? onOpenBackup;
+
   const SettingsPage({
     super.key,
     required this.bundle,
@@ -54,6 +58,8 @@ class SettingsPage extends StatefulWidget {
     this.onResyncReminders,
     this.onTestReminder,
     this.onStartGuide,
+    this.onOpenCourses,
+    this.onOpenBackup,
   });
 
   @override
@@ -67,6 +73,27 @@ class _SettingsPageState extends State<SettingsPage>
 
   /// 「设置」标题条实测高度（悬浮浮窗：内容从它下面滑过）
   double _barH = 56;
+
+  /// '' = 设置主页；其它 = 鸿蒙式子页 key
+  String _sub = '';
+
+  String get _subTitle => const {
+        'semester': '学期设置',
+        'courses': '课程管理',
+        'palette': '学科调色盘',
+        'planWindow': '计划页时间范围',
+        'rest': '不可排时段',
+        'categories': '待办类型',
+        'confirm': '删除待办前询问',
+        'wallpaper': '背景',
+        'motto': '首页标语',
+        'motion': '动画',
+        'reminder': '学习提醒',
+        'sync': '日历同步',
+        'guide': '新手引导',
+        'about': '关于我们',
+        'backup': '本地备份与恢复',
+      }[_sub] ?? '';
 
   // ---- 「提醒」卡的草稿（鸿蒙端 remSettings：点「保存提醒设置」才落库）----
   late bool _briefOn = _s.briefEnabled;
@@ -153,50 +180,19 @@ class _SettingsPageState extends State<SettingsPage>
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        // 内容从悬浮标题条下面滑过；底部给悬浮导航栏让位
         Positioned.fill(
           child: SingleChildScrollView(
-            // 鸿蒙：`top: 12 + topInset + titleH + FLOAT_GAP`（设置页 topInset = 0），
-            // `bottom: 30 + bottomInset`。_barH 是"上缝 + 标题条 + 下缝"的实测高度，
-            // 所以这里等价于 `12 + 标题条高 + 下缝`。
             padding: EdgeInsets.fromLTRB(
                 16, 12 + _barH - floatTop, 16, 30 + tabBarInset - floatGap),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 toastLine(),
-                _WallpaperCard(
-                  path: _s.wallpaperPath,
-                  focus: _s.wallpaperFocus,
-                  onPick: _pickWallpaper,
-                  onReset: _resetWallpaper,
-                  onAdjust: _adjustWallpaper,
-                  onCenter: _centerWallpaper,
-                ),
-                _MottoCard(
-                    settings: _s, onSave: _saveSettings, onToast: showToast),
-                _MotionCard(
-                  enabled: _s.motionEnabled,
-                  onChanged: (v) {
-                    _s.motionEnabled = v;
-                    theme.motionOn = v;
-                    _saveSettings();
-                    showToast(v ? '动画已开启' : '动画已关闭（所有动效直接切换）');
-                  },
-                ),
-                _reminderCard(),
-                _syncCard(),
-                _restCard(),
-                _categoryCard(),
-                _deleteConfirmCard(),
-                _planWindowCard(),
-                _guideCard(),
-                _aboutCard(),
+                if (_sub.isEmpty) ..._settingsHome() else ..._settingsSub(),
               ],
             ),
           ),
         ),
-        // 设置页自己的标题条（鸿蒙端 SettingsPage 内部浮动的那一条）
         Positioned(
           left: 0,
           right: 0,
@@ -210,11 +206,16 @@ class _SettingsPageState extends State<SettingsPage>
             child: Glass(
               margin: const EdgeInsets.fromLTRB(
                   floatSide, floatTop, floatSide, floatGap),
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
               child: Row(
-                children: const [
-                  Text('设置',
-                      style: TextStyle(
+                children: [
+                  if (_sub.isNotEmpty)
+                    IconButton(
+                      onPressed: () => setState(() => _sub = ''),
+                      icon: const Icon(Icons.chevron_left, color: inkPrimary),
+                    ),
+                  Text(_sub.isEmpty ? '设置' : _subTitle,
+                      style: const TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.w500,
                           color: inkPrimary)),
@@ -224,6 +225,177 @@ class _SettingsPageState extends State<SettingsPage>
           ),
         ),
       ],
+    );
+  }
+
+  List<Widget> _settingsHome() {
+    return [
+      _group('学期与课程', [
+        _row(Icons.school_outlined, '学期设置', _semesterName(),
+            () => _openCourses('semester')),
+        _row(Icons.menu_book_outlined, '课程管理',
+            '${widget.bundle.courses.length} 门', () => _openCourses('courses')),
+        _row(Icons.palette_outlined, '学科调色盘', '10 色',
+            () => _openCourses('palette')),
+      ]),
+      _group('计划与待办', [
+        _row(Icons.schedule_outlined, '计划页时间范围',
+            '${minToHHmm(_s.planWindow.startMin)}–${minToHHmm(_s.planWindow.endMin)}',
+            () => _go('planWindow')),
+        _row(Icons.block_outlined, '不可排时段',
+            _rest.isEmpty ? '未设置' : '${_rest.length} 条', () => _go('rest')),
+        _row(Icons.label_outline, '待办类型',
+            '${builtinCategoryOptions().length + _s.customCategories.length} 个',
+            () => _go('categories')),
+        _row(Icons.help_outline, '删除待办前询问',
+            _s.confirmTodoDelete ? '开' : '关', () => _go('confirm')),
+      ]),
+      _group('外观与启动', [
+        _row(Icons.wallpaper_outlined, '背景',
+            _s.wallpaperPath.isEmpty ? '默认' : '自定义', () => _go('wallpaper')),
+        _row(Icons.text_fields_outlined, '首页标语',
+            _s.motto.isEmpty ? '默认' : _s.motto, () => _go('motto')),
+        _row(Icons.animation_outlined, '动画',
+            _s.motionEnabled ? '开' : '关', () => _go('motion')),
+      ]),
+      _group('提醒与同步', [
+        _row(Icons.notifications_none, '学习提醒',
+            '提前 ${_s.classLeadMin} 分钟', () => _go('reminder')),
+        _row(Icons.sync_outlined, '日历同步',
+            '每 ${_s.syncIntervalMin} 分钟', () => _go('sync')),
+      ]),
+      _group('数据与帮助', [
+        _row(Icons.inventory_2_outlined, '本地备份与恢复', 'JSON',
+            () => widget.onOpenBackup?.call()),
+        _row(Icons.explore_outlined, '新手引导', '演练', () => _go('guide')),
+        _row(Icons.history, '更新日志', 'v$appVersion', () => _showChangelog(context)),
+        _row(Icons.info_outline, '关于我们', 'v$appVersion', () => _go('about')),
+      ]),
+    ];
+  }
+
+  List<Widget> _settingsSub() {
+    switch (_sub) {
+      case 'wallpaper':
+        return [
+          _WallpaperCard(
+            path: _s.wallpaperPath,
+            focus: _s.wallpaperFocus,
+            onPick: _pickWallpaper,
+            onReset: _resetWallpaper,
+            onAdjust: _adjustWallpaper,
+            onCenter: _centerWallpaper,
+          )
+        ];
+      case 'motto':
+        return [
+          _MottoCard(settings: _s, onSave: _saveSettings, onToast: showToast)
+        ];
+      case 'motion':
+        return [
+          _MotionCard(
+            enabled: _s.motionEnabled,
+            onChanged: (v) {
+              _s.motionEnabled = v;
+              theme.motionOn = v;
+              _saveSettings();
+              showToast(v ? '动画已开启' : '动画已关闭（所有动效直接切换）');
+            },
+          )
+        ];
+      case 'reminder':
+        return [_reminderCard()];
+      case 'sync':
+        return [_syncCard()];
+      case 'rest':
+        return [_restCard()];
+      case 'categories':
+        return [_categoryCard()];
+      case 'planWindow':
+        return [_planWindowCard()];
+      case 'confirm':
+        return [_deleteConfirmCard()];
+      case 'guide':
+        return [_guideCard()];
+      case 'about':
+        return [_aboutCard()];
+      default:
+        return [];
+    }
+  }
+
+  void _go(String key) => setState(() => _sub = key);
+
+  void _openCourses(String mode) {
+    setState(() => _sub = '');
+    widget.onOpenCourses?.call();
+  }
+
+  String _semesterName() {
+    final sem = widget.bundle.semester;
+    return sem == null ? '' : sem.name;
+  }
+
+  Widget _group(String title, List<Widget> rows) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 4, 4, 6),
+            child: Text(title,
+                style: const TextStyle(fontSize: 12, color: inkTertiary)),
+          ),
+          Container(
+            decoration: BoxDecoration(
+              color: glassTintPanel,
+              borderRadius: BorderRadius.circular(glassRadius),
+              border: Border.all(color: glassEdgeStrong),
+              boxShadow: glassShadowSheet,
+            ),
+            child: Column(
+              children: [
+                for (var i = 0; i < rows.length; i++) ...[
+                  if (i > 0)
+                    Divider(height: 1, color: glassEdgeSoft.withValues(alpha: 0.5)),
+                  rows[i],
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _row(IconData icon, String title, String value, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      child: SizedBox(
+        height: 54,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Row(
+            children: [
+              Icon(icon, size: 19, color: inkSecondary),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(title,
+                    style: const TextStyle(fontSize: 15, color: inkPrimary)),
+              ),
+              if (value.isNotEmpty)
+                Text(value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 11, color: inkTertiary)),
+              const SizedBox(width: 6),
+              const Text('›',
+                  style: TextStyle(fontSize: 18, color: Color(0xFF6F7C91))),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

@@ -45,11 +45,16 @@ Future<void> _tapUnderBar(WidgetTester tester, Finder target) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _tapRow(WidgetTester tester, String label) async {
+  await _tapUnderBar(tester, find.text(label).first);
+}
+
 void main() {
   testWidgets('同步节奏改完写进 kv', (tester) async {
     final repo = MemoryRepo();
     await _pump(tester, repo);
     expect(find.text('设置'), findsWidgets);
+    await _tapRow(tester, '日历同步');
 
     await _tapUnderBar(tester, find.byKey(const ValueKey('sync-15')));
     expect(await repo.getKv('syncIntervalMin'), '15');
@@ -59,6 +64,7 @@ void main() {
     final repo = MemoryRepo();
     await _pump(tester, repo);
 
+    await _tapRow(tester, '计划页时间范围');
     // 默认 07:00–24:00，点"上边界 ›"→ 07:30（鸿蒙端 WindowStepRow）
     await _tapUnderBar(tester, find.text('›').first);
 
@@ -72,6 +78,7 @@ void main() {
     await _pump(tester, repo);
 
     // 鸿蒙端的待办类型卡是"行内输入 + 添加"
+    await _tapRow(tester, '待办类型');
     final input = find.byKey(const ValueKey('cat-input'));
     await _tapUnderBar(tester, input);
     await tester.enterText(input, '社团');
@@ -86,6 +93,7 @@ void main() {
   testWidgets('内置类型不能删（没有删除按钮）', (tester) async {
     final repo = MemoryRepo();
     await _pump(tester, repo);
+    await _tapRow(tester, '待办类型');
     for (final label in ['作业', '自学', '考试', '无']) {
       expect(find.text(label), findsWidgets);
     }
@@ -96,6 +104,7 @@ void main() {
   testWidgets('不可排时段：删一条后写回数据', (tester) async {
     final repo = MemoryRepo();
     await _pump(tester, repo);
+    await _tapRow(tester, '不可排时段');
     expect(find.textContaining('午休'), findsWidgets);
 
     final before = (await repo.load())?.restWindows.length ?? 0;
@@ -115,6 +124,7 @@ void main() {
     ]);
     final repo = MemoryRepo(bundle);
     await _pump(tester, repo);
+    await _tapRow(tester, '不可排时段');
     // 「午休」既是行标签、又是下面新增表单的 hint → 取第一个（行标签在前）
     final sleep = find.text('睡觉').first;
     await tester.ensureVisible(sleep);
@@ -174,6 +184,7 @@ void main() {
     final repo = MemoryRepo();
     await _pump(tester, repo);
 
+    await _tapRow(tester, '学习提醒');
     // 默认简报开、8:00、提前 15 分钟 → 改成关 + 7:00 + 30 分钟
     await _tapUnderBar(tester, find.byKey(const ValueKey('brief-420')));
     await _tapUnderBar(tester, find.byKey(const ValueKey('lead-30')));
@@ -187,6 +198,7 @@ void main() {
   testWidgets('提醒卡：关掉每日简报后「简报时间」整段消失（鸿蒙端 if）', (tester) async {
     final repo = MemoryRepo();
     await _pump(tester, repo);
+    await _tapRow(tester, '学习提醒');
     expect(find.text('简报时间'), findsOneWidget);
     final sw = find.descendant(
         of: find.ancestor(
@@ -200,6 +212,7 @@ void main() {
       (tester) async {
     final repo = MemoryRepo();
     await _pump(tester, repo);
+    await _tapRow(tester, '不可排时段');
     final before = (await repo.load())?.restWindows.length ?? 0;
 
     // 默认草稿 12:00–13:00，把开始时间改成 14:00 就非法（结束 13:00 早于开始）
@@ -217,6 +230,7 @@ void main() {
       (tester) async {
     final repo = MemoryRepo();
     await _pump(tester, repo);
+    await _tapRow(tester, '待办类型');
     final input = find.byKey(const ValueKey('cat-input'));
     await _tapUnderBar(tester, input);
     await tester.enterText(input, '作业');
@@ -229,20 +243,25 @@ void main() {
   testWidgets('关于卡：版本号 / 隐私政策 / MIT 许可（鸿蒙端同字）', (tester) async {
     final repo = MemoryRepo();
     await _pump(tester, repo);
+    await _tapRow(tester, '关于我们');
     final about = find.text('本应用纯离线运行：不联网、不上传、不需要账号，也不收集任何信息。');
     await tester.ensureVisible(about);
     await tester.pumpAndSettle();
     expect(find.text('v$appVersion'), findsOneWidget);
     expect(find.text('隐私政策'), findsOneWidget);
     expect(find.text('MIT 许可'), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.chevron_left).first);
+    await tester.pumpAndSettle();
+    await _tapRow(tester, '新手引导');
     expect(find.text('开始演练'), findsOneWidget);
-    expect(find.text('新手引导'), findsOneWidget);
+    expect(find.text('新手引导'), findsWidgets);
   });
 
   testWidgets('提示条在内容顶部（鸿蒙同款蓝底小字），不是 SnackBar', (tester) async {
     final repo = MemoryRepo();
     await _pump(tester, repo);
 
+    await _tapRow(tester, '动画');
     // 关掉「界面动画」→ 顶部出现一行提示
     final sw = find.descendant(
         of: find.ancestor(

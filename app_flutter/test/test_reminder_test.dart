@@ -26,6 +26,11 @@ Future<FakeNotifier> _openSettings(WidgetTester tester,
   await tester.pumpAndSettle();
   await tester.tap(find.text('设置').last);
   await tester.pumpAndSettle();
+  final row = find.text('学习提醒').first;
+  await tester.ensureVisible(row);
+  await tester.pumpAndSettle();
+  await tester.tap(row);
+  await tester.pumpAndSettle();
   return notifier;
 }
 

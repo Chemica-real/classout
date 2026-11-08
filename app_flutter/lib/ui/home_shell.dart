@@ -907,6 +907,22 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                       onStartGuide: () async {
                         Navigator.of(context).maybePop();
                         await _startGuide();
+                      },
+                      onOpenCourses: () {
+                        showCourseManager(context,
+                            bundle: _bundle!,
+                            onChanged: _apply,
+                            onImport: _import,
+                            report: _runReport,
+                            blacklistCount: _blacklistCount);
+                      },
+                      onOpenBackup: () {
+                        showCourseManager(context,
+                            bundle: _bundle!,
+                            onChanged: _apply,
+                            onImport: _import,
+                            report: _runReport,
+                            blacklistCount: _blacklistCount);
                       })
                   // 课表 / 待办 / 计划：页头都是**悬浮浮窗**，内容从它下面滑过
                   // （计划页自己的日期条由 PlanPage 叠在页头下面）

@@ -138,6 +138,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('设置').last);
     await tester.pumpAndSettle();
+    final row = find.text('学习提醒').first;
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
+    await tester.tap(row);
+    await tester.pumpAndSettle();
 
     // 鸿蒙端没有这个入口：长按「保存提醒设置」才出安卓专属的提醒诊断
     final btn = find.byKey(const ValueKey('save-reminder'));

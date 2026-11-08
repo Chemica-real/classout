@@ -54,6 +54,11 @@ void main() {
       ),
     ));
     await tester.pumpAndSettle();
+    final row = find.text('背景').first;
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
+    await tester.tap(row);
+    await tester.pumpAndSettle();
 
     expect(find.text('调整位置 / 区域'), findsOneWidget);
     final center = find.byKey(const ValueKey('wp-center'));
