@@ -184,6 +184,7 @@ class _VirtualCoursePageState extends State<VirtualCoursePage> {
   Future<void> _edit(VirtualLesson l) async {
     final nameCtl = TextEditingController(text: l.title);
     var duration = _durationOf(l);
+    var durationChanged = false;
     var error = '';
     final saved = await showGeneralDialog<bool>(
       context: context,
@@ -258,8 +259,10 @@ class _VirtualCoursePageState extends State<VirtualCoursePage> {
                   activeColor: const Color(0xFF2E6BE6),
                   inactiveColor: Colors.white.withValues(alpha: 0.16),
                   thumbColor: const Color(0xFF7FA8FF),
-                  onChanged: (v) => setLocal(
-                      () => duration = (v / 5).round() * 5),
+                  onChanged: (v) => setLocal(() {
+                    duration = (v / 5).round() * 5;
+                    durationChanged = true;
+                  }),
                 ),
                 Text(
                   l.durationMin > 0
@@ -324,7 +327,8 @@ class _VirtualCoursePageState extends State<VirtualCoursePage> {
                             return;
                           }
                         }
-                        _saveLesson(l, nameCtl.text.trim(), duration);
+                        _saveLesson(
+                            l, nameCtl.text.trim(), duration, durationChanged);
                         Navigator.pop(ctx, true);
                       },
                       child: const Text('保存'),
@@ -352,7 +356,8 @@ class _VirtualCoursePageState extends State<VirtualCoursePage> {
     if (saved == true) setState(() {});
   }
 
-  void _saveLesson(VirtualLesson l, String name, int duration) {
+  void _saveLesson(
+      VirtualLesson l, String name, int duration, bool durationChanged) {
     final lessons = _b.lessons
         .map((x) => x.id == l.id
             ? VirtualLesson(
@@ -360,25 +365,28 @@ class _VirtualCoursePageState extends State<VirtualCoursePage> {
                 courseId: x.courseId,
                 seq: x.seq,
                 title: name,
-                durationMin: duration,
+                // 没动滑条就保留原来的“跟随/覆盖”状态，不强行写死
+                durationMin: durationChanged ? duration : x.durationMin,
                 done: x.done,
                 doneAt: x.doneAt,
               )
             : x)
         .toList();
-    final blocks = _b.blocks
-        .map((b) => b.lessonId == l.id
-            ? PlanBlock(
-                id: b.id,
-                todoId: b.todoId,
-                lessonId: b.lessonId,
-                date: b.date,
-                startMin: b.startMin,
-                endMin: b.startMin + duration,
-                done: b.done,
-              )
-            : b)
-        .toList();
+    final blocks = durationChanged
+        ? _b.blocks
+            .map((b) => b.lessonId == l.id
+                ? PlanBlock(
+                    id: b.id,
+                    todoId: b.todoId,
+                    lessonId: b.lessonId,
+                    date: b.date,
+                    startMin: b.startMin,
+                    endMin: b.startMin + duration,
+                    done: b.done,
+                  )
+                : b)
+            .toList()
+        : _b.blocks;
     _apply(_copy(lessons: lessons, blocks: blocks));
   }
 
