@@ -11,7 +11,7 @@ import 'package:classout/data/settings.dart';
 import 'package:classout/domain/plan_math.dart';
 import 'package:classout/model/types.dart';
 import 'package:classout/ui/home_shell.dart';
-import 'package:classout/ui/settings_page.dart' show appVersion;
+import 'package:classout/ui/settings_page.dart' show appVersion, SettingsPage;
 
 BackupBundle _demo() =>
     BackupBundle.decode(File('assets/demo_backup.json').readAsStringSync());
@@ -275,5 +275,35 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();
     expect(find.text('动画已关闭（所有动效直接切换）'), findsNothing);
+  });
+
+
+  testWidgets('重置应用：必须二次确认，取消不触发', (tester) async {
+    var resets = 0;
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SettingsPage(
+          bundle: _demo(),
+          onChanged: (_) {},
+          settings: AppSettings(),
+          onSettingsChanged: (_) {},
+          onResetApp: () async => resets++,
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await _tapUnderBar(tester, find.text('重置应用并重新引导'));
+    expect(find.text('重置应用？'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(resets, 0);
+
+    await _tapUnderBar(tester, find.text('重置应用并重新引导'));
+    await tester.tap(find.text('确认重置'));
+    await tester.pumpAndSettle();
+    expect(resets, 1);
   });
 }
