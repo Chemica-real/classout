@@ -219,6 +219,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           'todos=${data?.todos.length} rules=${data?.rules.length}');
       // 动画总开关是"内存态"（鸿蒙端 AppStorage('motionOn')）：读库后立刻生效
       theme.motionOn = settings.motionEnabled;
+      applyCoursePalette(settings.coursePalette);
       // 备注展开状态同理（待办编辑窗与计划块面板共用）
       noteExpanded = await loadNoteExpanded(widget.repo);
       // 计划页「待安排」托盘的展开状态（鸿蒙 `Motion.loadTrayOpen`）
@@ -772,6 +773,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   }
 
   Future<void> _applySettings(AppSettings next) async {
+    applyCoursePalette(next.coursePalette);
     setState(() => _settings = next);
     await next.save(widget.repo);
   }

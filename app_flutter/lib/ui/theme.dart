@@ -33,8 +33,8 @@ const Color accentBlue = Color(0xFF7FA8FF);
 const Color goodGreen = Color(0xFF8FC9A0);
 const Color dangerRed = Color(0xFFFF8080);
 
-/// 课程配色（深底 + 白字），与鸿蒙端 COURSE_COLORS 逐项一致
-const List<Color> courseColors = <Color>[
+/// 课程配色默认值（深底 + 白字），与鸿蒙端 COURSE_COLORS 逐项一致
+const List<Color> defaultCourseColors = <Color>[
   Color(0xFF8A6B1F), // 黄（深金）
   Color(0xFF2F7D4F), // 绿
   Color(0xFF2C5FA8), // 蓝
@@ -47,7 +47,35 @@ const List<Color> courseColors = <Color>[
   Color(0xFF4F7A2F), // 草绿
 ];
 
+/// 可被「学科调色盘」覆盖的全局课程色；默认值见 defaultCourseColors。
+List<Color> courseColors = List<Color>.of(defaultCourseColors);
+
 Color courseColor(int i) => courseColors[i % courseColors.length];
+
+String colorToHex(Color c) {
+  final r = (c.r * 255).round();
+  final g = (c.g * 255).round();
+  final b = (c.b * 255).round();
+  return '#${r.toRadixString(16).padLeft(2, '0')}'
+      '${g.toRadixString(16).padLeft(2, '0')}'
+      '${b.toRadixString(16).padLeft(2, '0')}';
+}
+
+/// 把设置里的每行 `#RRGGBB` 应用到全局色盘；不足/非法项保持默认。
+void applyCoursePalette(String raw) {
+  final parts = raw.split('\n').where((x) => x.trim().isNotEmpty).toList();
+  final next = List<Color>.of(defaultCourseColors);
+  for (var i = 0; i < next.length && i < parts.length; i++) {
+    final h = parts[i].trim().replaceFirst('#', '');
+    final v = int.tryParse(h, radix: 16);
+    if (v != null && h.length == 6) next[i] = Color(0xFF000000 | v);
+  }
+  for (var i = 0; i < next.length; i++) {
+    courseColors[i] = next[i];
+  }
+}
+
+String paletteToStorage() => courseColors.map(colorToHex).join('\n');
 
 /// 常驻环境动画（背景光晕漂移）的总开关。
 /// 测试里由 `test/flutter_test_config.dart` 关掉 —— 无限循环的动画会让 pumpAndSettle 永远不"静止"。

@@ -12,6 +12,7 @@ import 'package:classout/domain/plan_math.dart';
 import 'package:classout/model/types.dart';
 import 'package:classout/ui/home_shell.dart';
 import 'package:classout/ui/settings_page.dart' show appVersion, SettingsPage;
+import 'package:classout/ui/theme.dart' show applyCoursePalette;
 
 BackupBundle _demo() =>
     BackupBundle.decode(File('assets/demo_backup.json').readAsStringSync());
@@ -305,5 +306,33 @@ void main() {
     await tester.tap(find.text('确认重置'));
     await tester.pumpAndSettle();
     expect(resets, 1);
+  });
+
+
+  testWidgets('学科调色盘：改色写进 settings.coursePalette', (tester) async {
+    AppSettings? changed;
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    addTearDown(() => applyCoursePalette(''));
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SettingsPage(
+          bundle: _demo(),
+          onChanged: (_) {},
+          settings: AppSettings(),
+          onSettingsChanged: (x) => changed = x,
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await _tapUnderBar(tester, find.text('学科调色盘'));
+    await _tapUnderBar(tester, find.byKey(const ValueKey('palette-0')));
+    expect(find.text('颜色 1'), findsOneWidget);
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    expect(changed, isNotNull);
+    expect(changed!.coursePalette, contains('#'));
+    expect(changed!.coursePalette.split('\n').length, 10);
   });
 }

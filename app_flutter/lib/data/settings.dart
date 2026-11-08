@@ -47,6 +47,9 @@ class AppSettings {
   /// 待办排序：ddl / title（鸿蒙 kv `todo_sort`）
   String todoSort;
 
+  /// 学科调色盘（每行 #RRGGBB；空 = 默认 10 色）
+  String coursePalette;
+
   AppSettings({
     this.syncIntervalMin = syncIntervalDefault,
     this.planWindow = defaultWindow,
@@ -64,6 +67,7 @@ class AppSettings {
     this.quickStart = true,
     this.defaultTab = 0,
     this.todoSort = 'ddl',
+    this.coursePalette = '',
   });
 
   ReminderSettings get reminderSettings => ReminderSettings(
@@ -95,6 +99,7 @@ class AppSettings {
   static const String _kQuickStart = 'quickStart';
   static const String _kDefaultTab = 'defaultTab';
   static const String _kTodoSort = 'todo_sort';
+  static const String _kPalette = 'palette';
 
   static Future<AppSettings> load(ClassOutRepo repo) async {
     final sync =
@@ -118,6 +123,7 @@ class AppSettings {
     final quickRaw = await repo.getKv(_kQuickStart);
     final tabRaw = await repo.getKv(_kDefaultTab);
     final sortRaw = await repo.getKv(_kTodoSort);
+    final paletteRaw = await repo.getKv(_kPalette);
     return AppSettings(
       briefEnabled: briefEnabledRaw == null || briefEnabledRaw.isEmpty
           ? true
@@ -147,6 +153,7 @@ class AppSettings {
       quickStart: quickRaw == null || quickRaw.isEmpty ? true : quickRaw == '1',
       defaultTab: int.tryParse(tabRaw ?? '')?.clamp(0, 3) ?? 0,
       todoSort: sortRaw == 'title' ? 'title' : 'ddl',
+      coursePalette: paletteRaw ?? '',
     );
   }
 
@@ -184,6 +191,7 @@ class AppSettings {
     await repo.setKv(_kQuickStart, quickStart ? '1' : '0');
     await repo.setKv(_kDefaultTab, '$defaultTab');
     await repo.setKv(_kTodoSort, todoSort);
+    await repo.setKv(_kPalette, coursePalette);
   }
 
   /// 'HH:mm' → 分钟；坏值返回 null（与鸿蒙端 loadReminderSettings 一致）

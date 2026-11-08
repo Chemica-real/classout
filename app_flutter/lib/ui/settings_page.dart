@@ -248,7 +248,7 @@ class _SettingsPageState extends State<SettingsPage>
         _row(Icons.menu_book_outlined, '课程管理',
             '${widget.bundle.courses.length} 门', () => _openCourses('courses')),
         _row(Icons.palette_outlined, '学科调色盘', '10 色',
-            () => _openCourses('palette')),
+            () => _go('palette')),
       ]),
       _group('计划与待办', [
         _row(Icons.schedule_outlined, '计划页时间范围',
@@ -322,6 +322,8 @@ class _SettingsPageState extends State<SettingsPage>
             },
           )
         ];
+      case 'palette':
+        return [_paletteCard()];
       case 'scrollHaptic':
         return [_scrollHapticCard()];
       case 'launch':
@@ -462,6 +464,108 @@ class _SettingsPageState extends State<SettingsPage>
       );
 
   String _tabLabel(int i) => const ['课表', '待办', '计划', '设置'][i.clamp(0, 3)];
+
+  Widget _paletteCard() {
+    return _Card(
+      title: '学科调色盘',
+      description: '10 个颜色会同时用于课表、待办和计划；点一个色块改 Hue / 饱和度 / 明度。',
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        children: [
+          for (var i = 0; i < theme.courseColors.length; i++)
+            GestureDetector(
+              key: ValueKey('palette-$i'),
+              onTap: () => _editPaletteColor(i),
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: theme.courseColors[i],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white.withValues(alpha: .2)),
+                ),
+                alignment: Alignment.center,
+                child: Text('${i + 1}',
+                    style: const TextStyle(
+                        fontSize: 11, color: Colors.white)),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _editPaletteColor(int index) async {
+    var hsv = HSVColor.fromColor(theme.courseColors[index]);
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          backgroundColor: const Color(0xFF141C2B),
+          title: Text('颜色 ${index + 1}',
+              style: const TextStyle(color: inkPrimary)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                height: 48,
+                decoration: BoxDecoration(
+                  color: hsv.toColor(),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              const SizedBox(height: 8),
+              _hsvSlider('色相', hsv.hue, 0, 360, (v) {
+                setLocal(() => hsv = hsv.withHue(v));
+              }),
+              _hsvSlider('饱和度', hsv.saturation, 0, 1, (v) {
+                setLocal(() => hsv = hsv.withSaturation(v));
+              }),
+              _hsvSlider('明度', hsv.value, 0, 1, (v) {
+                setLocal(() => hsv = hsv.withValue(v));
+              }),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('保存', style: TextStyle(color: accentBlue))),
+          ],
+        ),
+      ),
+    );
+    if (saved == true) {
+      theme.courseColors[index] = hsv.toColor();
+      _s.coursePalette = theme.paletteToStorage();
+      _saveSettings();
+      showToast('颜色 ${index + 1} 已更新');
+    }
+  }
+
+  Widget _hsvSlider(String label, double value, double min, double max,
+      ValueChanged<double> onChanged) {
+    return Row(
+      children: [
+        SizedBox(
+            width: 44,
+            child:
+                Text(label, style: const TextStyle(fontSize: 11, color: inkTertiary))),
+        Expanded(
+          child: Slider(
+            value: value,
+            min: min,
+            max: max,
+            activeColor: accentBlue,
+            onChanged: onChanged,
+          ),
+        ),
+      ],
+    );
+  }
 
   Widget _scrollHapticCard() {
     return _Card(
