@@ -47,6 +47,7 @@ class TodoPage extends StatefulWidget {
   /// 虚拟课时页也要沿用同一张壁纸（鸿蒙课时页的 PageBackground）
   final String wallpaperPath;
   final String wallpaperFocus;
+  final bool confirmDelete;
 
   /// 备注展开状态变了（外壳负责写 kv）
   final void Function(bool on)? onNotePref;
@@ -65,6 +66,7 @@ class TodoPage extends StatefulWidget {
     this.now,
     this.wallpaperPath = '',
     this.wallpaperFocus = '0,0,1',
+    this.confirmDelete = true,
   });
 
   @override
@@ -157,7 +159,7 @@ class _TodoPageState extends State<TodoPage> {
                       categoryText: categoryLabel(t.category, _custom),
                       confirming: _pendingDeleteId == t.id,
                       now: widget.now,
-                      onDelete: () => setState(() => _pendingDeleteId = t.id),
+                      onDelete: () => _askDelete(t),
                       onCancelDelete: () =>
                           setState(() => _pendingDeleteId = 0),
                       onDeleteConfirmed: () {
@@ -257,7 +259,7 @@ class _TodoPageState extends State<TodoPage> {
                         t: t,
                         categoryText: categoryLabel(t.category, _custom),
                         confirming: _pendingDeleteId == t.id,
-                        onDelete: () => setState(() => _pendingDeleteId = t.id),
+                        onDelete: () => _askDelete(t),
                         onCancelDelete: () =>
                             setState(() => _pendingDeleteId = 0),
                         onDeleteConfirmed: () {
@@ -458,6 +460,14 @@ class _TodoPageState extends State<TodoPage> {
   int _courseDone(int id) => widget.bundle.lessons
       .where((l) => l.courseId == id && l.done)
       .length;
+
+  void _askDelete(Todo t) {
+    if (!widget.confirmDelete) {
+      widget.onChanged(_without(t.id));
+      return;
+    }
+    setState(() => _pendingDeleteId = t.id);
+  }
 
   Future<void> _openVirtualCourse(Course c) async {
     await Navigator.of(context).push(MaterialPageRoute(

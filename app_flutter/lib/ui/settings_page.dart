@@ -188,6 +188,7 @@ class _SettingsPageState extends State<SettingsPage>
                 _syncCard(),
                 _restCard(),
                 _categoryCard(),
+                _deleteConfirmCard(),
                 _planWindowCard(),
                 _guideCard(),
                 _aboutCard(),
@@ -757,6 +758,31 @@ class _SettingsPageState extends State<SettingsPage>
                   style:
                       const TextStyle(fontSize: 11, color: Color(0xFFFF8A8A))),
             ),
+        ],
+      ),
+    );
+  }
+
+  Widget _deleteConfirmCard() {
+    return _Card(
+      title: '删除待办前询问',
+      description: '开：删除前先在卡片里出现「取消 / 删除」二次确认；关：点删除立即生效。',
+      child: Row(
+        children: [
+          const Expanded(
+            child: Text('删除前询问',
+                style: TextStyle(fontSize: 14, color: inkPrimary)),
+          ),
+          Switch(
+            key: const ValueKey('settings-confirm-delete'),
+            value: _s.confirmTodoDelete,
+            activeThumbColor: const Color(0xFF2E6BE6),
+            onChanged: (v) {
+              _s.confirmTodoDelete = v;
+              _saveSettings();
+              showToast(v ? '删除前会再问一次' : '删除将立即生效');
+            },
+          ),
         ],
       ),
     );

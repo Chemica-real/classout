@@ -34,6 +34,9 @@ class AppSettings {
   /// Android 可选：把课程/截止写进系统日历（默认关）
   bool calendarSyncEnabled;
 
+  /// 删除待办前是否再问一次（鸿蒙 confirmTodoDelete，默认开）
+  bool confirmTodoDelete;
+
   AppSettings({
     this.syncIntervalMin = syncIntervalDefault,
     this.planWindow = defaultWindow,
@@ -46,6 +49,7 @@ class AppSettings {
     this.wallpaperPath = '',
     this.wallpaperFocus = '0,0,1',
     this.calendarSyncEnabled = false,
+    this.confirmTodoDelete = true,
   });
 
   ReminderSettings get reminderSettings => ReminderSettings(
@@ -72,6 +76,7 @@ class AppSettings {
   static const String _kWallpaper = 'wallpaper_path';
   static const String _kWallpaperFocus = 'wallpaper_focus';
   static const String _kCalendarSync = 'calendar_sync_enabled';
+  static const String _kConfirmDelete = 'confirmTodoDelete';
 
   static Future<AppSettings> load(ClassOutRepo repo) async {
     final sync =
@@ -90,6 +95,7 @@ class AppSettings {
     final wallpaper = await repo.getKv(_kWallpaper);
     final wallpaperFocus = await repo.getKv(_kWallpaperFocus);
     final calendarRaw = await repo.getKv(_kCalendarSync);
+    final confirmRaw = await repo.getKv(_kConfirmDelete);
     return AppSettings(
       briefEnabled: briefEnabledRaw == null || briefEnabledRaw.isEmpty
           ? true
@@ -110,6 +116,9 @@ class AppSettings {
           ? '0,0,1'
           : wallpaperFocus,
       calendarSyncEnabled: calendarRaw == '1',
+      confirmTodoDelete: confirmRaw == null || confirmRaw.isEmpty
+          ? true
+          : confirmRaw == '1',
     );
   }
 
@@ -142,6 +151,7 @@ class AppSettings {
     await repo.setKv(_kWallpaper, wallpaperPath);
     await repo.setKv(_kWallpaperFocus, wallpaperFocus);
     await repo.setKv(_kCalendarSync, calendarSyncEnabled ? '1' : '0');
+    await repo.setKv(_kConfirmDelete, confirmTodoDelete ? '1' : '0');
   }
 
   /// 'HH:mm' → 分钟；坏值返回 null（与鸿蒙端 loadReminderSettings 一致）

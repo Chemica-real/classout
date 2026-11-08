@@ -930,6 +930,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                                 customCategories: _settings.customCategories,
                                 wallpaperPath: _settings.wallpaperPath,
                                 wallpaperFocus: _settings.wallpaperFocus,
+                                confirmDelete: _settings.confirmTodoDelete,
                                 onAddCategory: (name) {
                                   _settings.customCategories = addCustomCategory(
                                       _settings.customCategories, name);
