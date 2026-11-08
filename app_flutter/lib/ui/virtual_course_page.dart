@@ -352,8 +352,11 @@ class _VirtualCoursePageState extends State<VirtualCoursePage> {
         child: child,
       ),
     );
+    // 弹层退出动画还在用 controller；等动画结束再释放，否则真机/测试会
+    // 报 “TextEditingController used after being disposed”。
+    await Future<void>.delayed(const Duration(milliseconds: 320));
     nameCtl.dispose();
-    if (saved == true) setState(() {});
+    if (saved == true && mounted) setState(() {});
   }
 
   void _saveLesson(
