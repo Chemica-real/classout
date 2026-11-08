@@ -1579,7 +1579,8 @@ class _Block extends StatelessWidget {
     final h = _paintedH;
     final compact = h < compactThreshold;
     final opacity = dragging ? 0.72 : (block.done ? 0.5 : 0.95);
-    final showBorder = selected || dragging;
+    final isExam = todo?.category == TodoCategory.exam;
+    final showBorder = selected || dragging || isExam;
 
     final content = compact
         // 紧凑排版：单行「课程简称·标题 + 开始时间」，不画完成圆圈
@@ -1688,7 +1689,19 @@ class _Block extends StatelessWidget {
                 color: color,
                 borderRadius: BorderRadius.circular(6),
                 border: showBorder
-                    ? Border.all(color: const Color(0xFFF2F5FA), width: 2)
+                    ? Border.all(
+                        color: selected || dragging
+                            ? const Color(0xFFF2F5FA)
+                            : const Color(0xFFFF5A5A),
+                        width: 2)
+                    : null,
+                boxShadow: isExam && !selected
+                    ? const [
+                        BoxShadow(
+                            color: Color(0x8CFF5A5A),
+                            blurRadius: 7,
+                            offset: Offset.zero)
+                      ]
                     : null,
               ),
               clipBehavior: Clip.hardEdge,
