@@ -230,6 +230,13 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         _loading = false;
         _error = null;
         _bootStep = 1;
+        if (boot) {
+          _tab = settings.defaultTab.clamp(0, 3);
+          if (settings.quickStart && ambientMotion) {
+            _bootVisible = false;
+            _bootReady = true;
+          }
+        }
         final sem = data?.semester;
         if (sem != null) {
           _week = weekOfDate(sem, DateTime.now()).clamp(1, sem.totalWeeks);
@@ -894,6 +901,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
               },
               wallpaperPath: _settings.wallpaperPath,
               wallpaperFocus: _settings.wallpaperFocus,
+              scrollHaptic: _settings.scrollHaptic,
               // 课表 / 待办 / 计划 三页共用同一条页头（鸿蒙端 FloatingBars），
               // 设置页没有它 —— 那些是课表页的导航控件。
               child: _tab == 3

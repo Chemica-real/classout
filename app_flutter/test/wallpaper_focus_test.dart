@@ -57,6 +57,13 @@ void main() {
     final row = find.text('背景').first;
     await tester.ensureVisible(row);
     await tester.pumpAndSettle();
+    final navPos =
+        tester.state<ScrollableState>(find.byType(Scrollable).first).position;
+    for (var i = 0; i < 6; i++) {
+      if (tester.getRect(row).top > 90) break;
+      navPos.jumpTo((navPos.pixels - 60).clamp(0.0, navPos.maxScrollExtent));
+      await tester.pumpAndSettle();
+    }
     await tester.tap(row);
     await tester.pumpAndSettle();
 

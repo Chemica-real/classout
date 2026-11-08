@@ -7,6 +7,7 @@ import 'dart:io';
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'theme.dart';
 import 'wallpaper_view.dart';
@@ -27,6 +28,9 @@ class AppFrame extends StatefulWidget {
   /// 壁纸显示位置/缩放（'dx,dy,zoom'，见 theme.parseWallpaperFocus）
   final String wallpaperFocus;
 
+  /// 滚动到边界的轻震动（鸿蒙 scrollHaptic）
+  final bool scrollHaptic;
+
   const AppFrame({
     super.key,
     required this.tab,
@@ -34,6 +38,7 @@ class AppFrame extends StatefulWidget {
     required this.child,
     this.wallpaperPath = '',
     this.wallpaperFocus = '0,0,1',
+    this.scrollHaptic = true,
   });
 
   @override
@@ -65,9 +70,20 @@ class _AppFrameState extends State<AppFrame>
     super.dispose();
   }
 
+  int _lastHapticAt = 0;
+
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return NotificationListener<OverscrollNotification>(
+      onNotification: (n) {
+        if (!widget.scrollHaptic) return false;
+        final now = DateTime.now().millisecondsSinceEpoch;
+        if (now - _lastHapticAt < 500) return false;
+        _lastHapticAt = now;
+        HapticFeedback.lightImpact();
+        return false;
+      },
+      child: Container(
       decoration: const BoxDecoration(gradient: pageGradient),
       child: ClipRect(
         child: Stack(
@@ -154,6 +170,7 @@ class _AppFrameState extends State<AppFrame>
           ],
         ),
       ),
+    ),
     );
   }
 }

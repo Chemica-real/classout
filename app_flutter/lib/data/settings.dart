@@ -37,6 +37,13 @@ class AppSettings {
   /// 删除待办前是否再问一次（鸿蒙 confirmTodoDelete，默认开）
   bool confirmTodoDelete;
 
+  /// 滚动到顶/底的轻震动（鸿蒙 scrollHaptic，默认开）
+  bool scrollHaptic;
+
+  /// 快速启动（跳过启动过场）与冷启动默认页（鸿蒙 quickStart / defaultTab）
+  bool quickStart;
+  int defaultTab;
+
   AppSettings({
     this.syncIntervalMin = syncIntervalDefault,
     this.planWindow = defaultWindow,
@@ -50,6 +57,9 @@ class AppSettings {
     this.wallpaperFocus = '0,0,1',
     this.calendarSyncEnabled = false,
     this.confirmTodoDelete = true,
+    this.scrollHaptic = true,
+    this.quickStart = true,
+    this.defaultTab = 0,
   });
 
   ReminderSettings get reminderSettings => ReminderSettings(
@@ -77,6 +87,9 @@ class AppSettings {
   static const String _kWallpaperFocus = 'wallpaper_focus';
   static const String _kCalendarSync = 'calendar_sync_enabled';
   static const String _kConfirmDelete = 'confirmTodoDelete';
+  static const String _kScrollHaptic = 'scrollHaptic';
+  static const String _kQuickStart = 'quickStart';
+  static const String _kDefaultTab = 'defaultTab';
 
   static Future<AppSettings> load(ClassOutRepo repo) async {
     final sync =
@@ -96,6 +109,9 @@ class AppSettings {
     final wallpaperFocus = await repo.getKv(_kWallpaperFocus);
     final calendarRaw = await repo.getKv(_kCalendarSync);
     final confirmRaw = await repo.getKv(_kConfirmDelete);
+    final hapticRaw = await repo.getKv(_kScrollHaptic);
+    final quickRaw = await repo.getKv(_kQuickStart);
+    final tabRaw = await repo.getKv(_kDefaultTab);
     return AppSettings(
       briefEnabled: briefEnabledRaw == null || briefEnabledRaw.isEmpty
           ? true
@@ -119,6 +135,11 @@ class AppSettings {
       confirmTodoDelete: confirmRaw == null || confirmRaw.isEmpty
           ? true
           : confirmRaw == '1',
+      scrollHaptic: hapticRaw == null || hapticRaw.isEmpty
+          ? true
+          : hapticRaw == '1',
+      quickStart: quickRaw == null || quickRaw.isEmpty ? true : quickRaw == '1',
+      defaultTab: int.tryParse(tabRaw ?? '')?.clamp(0, 3) ?? 0,
     );
   }
 
@@ -152,6 +173,9 @@ class AppSettings {
     await repo.setKv(_kWallpaperFocus, wallpaperFocus);
     await repo.setKv(_kCalendarSync, calendarSyncEnabled ? '1' : '0');
     await repo.setKv(_kConfirmDelete, confirmTodoDelete ? '1' : '0');
+    await repo.setKv(_kScrollHaptic, scrollHaptic ? '1' : '0');
+    await repo.setKv(_kQuickStart, quickStart ? '1' : '0');
+    await repo.setKv(_kDefaultTab, '$defaultTab');
   }
 
   /// 'HH:mm' → 分钟；坏值返回 null（与鸿蒙端 loadReminderSettings 一致）

@@ -88,6 +88,8 @@ class _SettingsPageState extends State<SettingsPage>
         'wallpaper': '背景',
         'motto': '首页标语',
         'motion': '动画',
+        'scrollHaptic': '滚动震动',
+        'launch': '启动',
         'reminder': '学习提醒',
         'sync': '日历同步',
         'guide': '新手引导',
@@ -257,6 +259,11 @@ class _SettingsPageState extends State<SettingsPage>
             _s.motto.isEmpty ? '默认' : _s.motto, () => _go('motto')),
         _row(Icons.animation_outlined, '动画',
             _s.motionEnabled ? '开' : '关', () => _go('motion')),
+        _row(Icons.vibration, '滚动震动',
+            _s.scrollHaptic ? '开' : '关', () => _go('scrollHaptic')),
+        _row(Icons.rocket_launch_outlined, '启动',
+            '快速启动${_s.quickStart ? '开' : '关'} · 默认${_tabLabel(_s.defaultTab)}',
+            () => _go('launch')),
       ]),
       _group('提醒与同步', [
         _row(Icons.notifications_none, '学习提醒',
@@ -303,6 +310,10 @@ class _SettingsPageState extends State<SettingsPage>
             },
           )
         ];
+      case 'scrollHaptic':
+        return [_scrollHapticCard()];
+      case 'launch':
+        return [_launchCard()];
       case 'reminder':
         return [_reminderCard()];
       case 'sync':
@@ -407,6 +418,81 @@ class _SettingsPageState extends State<SettingsPage>
         runSpacing: 4,
         children: children,
       );
+
+  String _tabLabel(int i) => const ['课表', '待办', '计划', '设置'][i.clamp(0, 3)];
+
+  Widget _scrollHapticCard() {
+    return _Card(
+      title: '滚动震动',
+      description: '滚动到顶/底时轻震一下，关节感更清楚；不需要可以关掉。',
+      child: Row(
+        children: [
+          const Expanded(
+            child: Text('滚动到边界时震动',
+                style: TextStyle(fontSize: 14, color: inkPrimary)),
+          ),
+          Switch(
+            key: const ValueKey('settings-scroll-haptic'),
+            value: _s.scrollHaptic,
+            activeThumbColor: const Color(0xFF2E6BE6),
+            onChanged: (v) {
+              _s.scrollHaptic = v;
+              _saveSettings();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _launchCard() {
+    return _Card(
+      title: '启动',
+      description: '快速启动会跳过启动过场，直接进默认页；关掉后才播完整的加载动画。',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text('快速启动',
+                    style: TextStyle(fontSize: 14, color: inkPrimary)),
+              ),
+              Switch(
+                key: const ValueKey('settings-quick-start'),
+                value: _s.quickStart,
+                activeThumbColor: const Color(0xFF2E6BE6),
+                onChanged: (v) {
+                  _s.quickStart = v;
+                  _saveSettings();
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text('默认进入',
+              style: TextStyle(fontSize: 12, color: Color(0xFF94A0B5))),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (var i = 0; i < 4; i++)
+                _Choice(
+                  key: ValueKey('default-tab-$i'),
+                  text: _tabLabel(i),
+                  selected: _s.defaultTab == i,
+                  onTap: () {
+                    _s.defaultTab = i;
+                    _saveSettings();
+                  },
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _reminderCard() {
     return _Card(
