@@ -105,6 +105,7 @@ Future<void> showCourseManager(
   /// 启动报告（鸿蒙 kv `last_run_report`）与黑名单条数 —— 备份页诊断块用
   String report = '',
   int? blacklistCount,
+  String initialMode = 'list',
 }) {
   return showGeneralDialog<void>(
     context: context,
@@ -123,7 +124,8 @@ Future<void> showCourseManager(
             onChanged: onChanged,
             onImport: onImport,
             report: report,
-            blacklistCount: blacklistCount),
+            blacklistCount: blacklistCount,
+            initialMode: initialMode),
       ),
     ),
     transitionBuilder: (ctx, anim, _, child) {
@@ -148,12 +150,14 @@ class _Manager extends StatefulWidget {
   /// 启动报告 + 黑名单条数（备份页诊断块）
   final String report;
   final int? blacklistCount;
+  final String initialMode;
   const _Manager(
       {required this.bundle,
       required this.onChanged,
       this.onImport,
       this.report = '',
-      this.blacklistCount});
+      this.blacklistCount,
+      this.initialMode = 'list'});
 
   @override
   State<_Manager> createState() => _ManagerState();
@@ -200,7 +204,7 @@ class _ManagerState extends State<_Manager> {
   /// 列表 / 学期设置 / 上课节次时间 / 备份与恢复 都画在同一个全屏页里，
   /// 顶部是一条独立的玻璃 TopBar（左边「关闭」或「‹ 返回」），下面整块是内容 ——
   /// 以前是"外层一张大玻璃卡 + 子页再叠一个弹窗"，真机截图一比就不一样。
-  String _mode = 'list';
+  late String _mode = widget.initialMode;
 
   /// 正在编辑的课程（null = 新增）
   Course? _editing;
