@@ -2180,15 +2180,15 @@ class _Tray extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-          color: selected ? const Color(0x4D2E6BE6) : glassTintRow,
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(
-              color: selected ? accentBlue : glassEdgeSoft,
-              width: selected ? 1.5 : 1),
+          color: selected
+              ? const Color(0xFF2E6BE6)
+              : Colors.white.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(12),
         ),
         child: Text(text,
             style: TextStyle(
-                fontSize: 12, color: selected ? Colors.white : inkSecondary)),
+                fontSize: 12,
+                color: selected ? Colors.white : const Color(0xFFC3CDDE))),
       ),
     );
   }
