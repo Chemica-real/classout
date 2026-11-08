@@ -75,6 +75,10 @@ export class BackupRepo {
           ? rs.getString(rs.getColumnIndex('color_hex')) : '',
         autoTodoEnabled: rs.getLong(rs.getColumnIndex('auto_todo_enabled')) === 1,
         isVirtual: rs.getLong(rs.getColumnIndex('is_virtual')) === 1,
+        lessonDurationMin: rs.getColumnIndex('lesson_duration_min') >= 0
+          ? rs.getLong(rs.getColumnIndex('lesson_duration_min')) : 90,
+        lessonTitleTemplate: rs.getColumnIndex('lesson_title_template') >= 0
+          ? rs.getString(rs.getColumnIndex('lesson_title_template')) : '%c 第 %N 讲',
         note: rs.getString(rs.getColumnIndex('note'))
       });
     }
@@ -255,10 +259,14 @@ export class BackupRepo {
     for (const c of b.courses as Course[]) {
       await store.executeSql(
         `INSERT INTO course (id, semester_id, name, short_name, teacher, location, color_index,
-         color_hex, auto_todo_enabled, is_virtual, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         color_hex, auto_todo_enabled, is_virtual, lesson_duration_min, lesson_title_template,
+         note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [c.id, c.semesterId, c.name, c.shortName, c.teacher, c.location, c.colorIndex,
           c.colorHex === undefined ? '' : c.colorHex,
-          c.autoTodoEnabled ? 1 : 0, c.isVirtual ? 1 : 0, c.note]);
+          c.autoTodoEnabled ? 1 : 0, c.isVirtual ? 1 : 0,
+          c.lessonDurationMin === undefined ? 90 : c.lessonDurationMin,
+          c.lessonTitleTemplate === undefined ? '%c 第 %N 讲' : c.lessonTitleTemplate,
+          c.note]);
     }
     for (const r of b.rules as SessionRule[]) {
       await store.executeSql(

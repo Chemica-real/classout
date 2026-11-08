@@ -44,6 +44,8 @@ export const SCHEMA_SQL: string[] = [
      color_hex TEXT NOT NULL DEFAULT '',
      auto_todo_enabled INTEGER NOT NULL DEFAULT 1,
      is_virtual INTEGER NOT NULL DEFAULT 0,
+     lesson_duration_min INTEGER NOT NULL DEFAULT 90,
+     lesson_title_template TEXT NOT NULL DEFAULT '%c 第 %N 讲',
      note TEXT NOT NULL DEFAULT ''
    )`,
 

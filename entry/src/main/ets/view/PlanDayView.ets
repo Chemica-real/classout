@@ -43,7 +43,8 @@ import { WEEK_CENTER, WEEK_DAYS, WEEK_HEAD_H, WEEK_PAGES, WEEK_TITLE_FONT,
   weekNumberLabel, weekPageDates, weekPageEnd, weekPageFromOffset, weekPageOfDate,
   weekPageOffset, weekPageStart, weekRangeText, weekStartOf, weekTapMinute } from '../domain/WeekView';
 import { DUR_DRAWER, DUR_TRAY, curveOrLinear, drawerCurve, dur, loadTrayOpen, motionCurve,
-  persistTrayOpen } from './Motion';
+  isMotionOn, persistTrayOpen } from './Motion';
+import { SandShatter } from './SandShatter';
 
 // 文件内 @Styles（Glass.ets 顶部说明了为什么不能跨文件 export）
 // 深色版：模糊只留给页头/托盘/编辑窗这些"大面"，托盘卡用小卡材质（不模糊）
@@ -347,6 +348,10 @@ export struct PlanDayView {
    *   双指缩放已选中的块 → 改时长（开始时间不动）
    */
   @State selectedBlockId: number = 0;
+  /** 正在播放沙粒碎裂的块（0 = 没有） */
+  @State shatterBlockId: number = 0;
+  /** 最近一次点块的时刻：画布根节点用它区分"点块"与"点空白" */
+  private blockTapAt: number = 0;
   /** 日期栏撤销/重做按钮的可用状态 */
   @State canUndo: boolean = false;
   @State canRedo: boolean = false;
@@ -1657,6 +1662,18 @@ export struct PlanDayView {
     return undefined;
   }
 
+  /** 虚拟课程单讲默认时长（课程级，15–200 分钟，5 分钟刻度） */
+  private lessonDurationOf(l: VirtualLesson): number {
+    const c: Course | undefined = this.courseOf(l.courseId);
+    const raw: number = c === undefined || c.lessonDurationMin === undefined
+      ? LESSON_MIN : c.lessonDurationMin;
+    const rounded: number = Math.round(raw / 5) * 5;
+    if (rounded < 15) {
+      return 15;
+    }
+    return rounded > 200 ? 200 : rounded;
+  }
+
   private lessonTitle(l: VirtualLesson): string {
     if (l.title.length > 0) {
       return l.title;
@@ -1919,13 +1936,18 @@ export struct PlanDayView {
   }
 
   private blockBorderColor(b: PlanBlock): string {
+    // 选中优先级高于考试红框：选中就显示统一的白色描边
+    if (this.isSelected(b)) {
+      return '#F2F5FA';
+    }
     return this.blockIsExam(b) ? '#FF5A5A' : '#F2F5FA';
   }
 
   private blockWarningShadow(b: PlanBlock): ShadowOptions {
+    const warn: boolean = this.blockIsExam(b) && !this.isSelected(b);
     return {
-      radius: this.blockIsExam(b) ? 7 : 0,
-      color: this.blockIsExam(b) ? 'rgba(255,90,90,0.55)' : 'rgba(0,0,0,0)',
+      radius: warn ? 7 : 0,
+      color: warn ? 'rgba(255,90,90,0.55)' : 'rgba(0,0,0,0)',
       offsetX: 0,
       offsetY: 0
     };
@@ -1994,21 +2016,25 @@ export struct PlanDayView {
       endMin: startMin + duration,
       done: false
     };
-    await TodoRepo.insertBlock(ctx, block);
+    const id: number = await TodoRepo.insertBlock(ctx, block);
     this.showHint(`已安排：${this.lessonTitle(l)}`);
     await this.reload();
+    this.selectedBlockId = id;
+    this.selectedTodoId = 0;
   }
 
   private autoPlaceLesson(l: VirtualLesson): void {
     const weekday: number = weekdayOf(parseDate(this.date));
     const isToday: boolean = this.date === formatDate(today());
     const from: number = isToday ? this.nowMinute() : this.ax().startMin;
-    const slot: number = findFreeSlot(this.ax(), this.busyRanges(), this.restRanges(weekday), LESSON_MIN, from);
+    const duration: number = this.lessonDurationOf(l);
+    const slot: number = findFreeSlot(this.ax(), this.busyRanges(), this.restRanges(weekday),
+      duration, from);
     if (slot < 0) {
       this.showHint('这天（或剩余时间）排不下了，换一天试试');
       return;
     }
-    this.placeLesson(l, slot, normalizeDuration(LESSON_MIN), this.date);
+    this.placeLesson(l, slot, normalizeDuration(duration), this.date);
     this.showHint(`已排到 ${minToHHmm(slot)}`);
   }
 
@@ -2165,6 +2191,27 @@ export struct PlanDayView {
    *         ② 有选中的块 → 取消选中（用户明确要求「单击其他地方取消选中」）；
    *         ③ 都没有 → 给一句提示。
    */
+  /**
+   * 点画布空白：由 PagerPreview 根节点统一接住。
+   * 根节点的 onClick 会在块的 onClick 之后冒泡触发，用 blockTapAt 把"点块"排除，
+   * 避免以前"列级 onClick 把刚选中的块立刻清掉"的 bug 重演。
+   */
+  private onCanvasBlankTap(cd: string, event: ClickEvent): void {
+    if (Date.now() - this.blockTapAt < 150) {
+      return;
+    }
+    if (cd === this.date) {
+      this.activateColumn(cd);
+      this.onGridTap(event);
+      return;
+    }
+    if (this.selectedBlockId > 0) {
+      this.clearBlockSelection();
+      return;
+    }
+    this.placeSelectedOnDate(cd, event);
+  }
+
   private onGridTap(event: ClickEvent): void {
     // 点在哪一列就排到那一天（三日视图）。命中不到列（点在时间轴上）→ 退回中心列。
     // ⚠️ 用户要求"点侧列**不换天**"：这里只影响排到哪天，不改 this.date。
@@ -2204,6 +2251,7 @@ export struct PlanDayView {
    * 这样单击选中没有延迟，也不会有"点了没反应"的观感。
    */
   private onBlockTap(b: PlanBlock): void {
+    this.blockTapAt = Date.now();
     // 长按之后被系统补发的那次 onClick：不算点击（用户要求长按 ≠ 点击）
     if (this.longPressHandled) {
       this.longPressHandled = false;
@@ -2247,7 +2295,7 @@ export struct PlanDayView {
         this.showHint(`${this.mdText(dropDate)} 已经排过这一讲了`);
         return;
       }
-      const range: number[] = dropRange(this.ax(), localY, LESSON_MIN);
+      const range: number[] = dropRange(this.ax(), localY, this.lessonDurationOf(l));
       this.placeLesson(l, range[0], range[1] - range[0], dropDate);
       return;
     }
@@ -2838,6 +2886,22 @@ export struct PlanDayView {
   private async doRemoveTodo(b: PlanBlock): Promise<void> {
     // 删待办不进撤销栈：旧计划快照不能跨过这次删除继续用
     this.clearHistoryForExcluded();
+    if (isMotionOn() && this.shatterBlockId === 0) {
+      this.shatterBlockId = b.id;
+      this.closeEditor();
+      this.selectedBlockId = 0;
+      setTimeout((): void => {
+        this.shatterBlockId = 0;
+        this.doRemoveTodoNow(b).catch((e: Object): void => {
+          hilog.error(DOMAIN, TAG, 'remove todo failed: %{public}s', JSON.stringify(e));
+        });
+      }, 700);
+      return;
+    }
+    await this.doRemoveTodoNow(b);
+  }
+
+  private async doRemoveTodoNow(b: PlanBlock): Promise<void> {
     const ctx: common.UIAbilityContext = this.context();
     const t: Todo | undefined = await TodoRepo.getTodo(ctx, b.todoId);
     if (t !== undefined && t.source === TodoSource.Template && t.generationKey.length > 0) {
@@ -2930,14 +2994,14 @@ export struct PlanDayView {
       endMin: startMin + duration,
       done: false
     };
-    await TodoRepo.insertBlock(ctx, block);
+    const id: number = await TodoRepo.insertBlock(ctx, block);
     // 排了新块 → 待办的总时长跟着变（用户要求：计划页的改动必须落到待办本身）
     await this.syncTodoDuration(todo.id);
-    // 放下之后清掉托盘选中：它这时已经从托盘里消失了（selectPoolTodos 过滤掉了当天已排的），
-    // 再留着选中态会让顶部一直显示"已选中"，下一次点空白还会莫名其妙再排一块。
+    // 放下之后清掉托盘选中，并把选中切到刚放下的那块（用户 2026-11-01）
     this.selectedTodoId = 0;
     this.showHint(`已安排：${todo.title}（${minToHHmm(startMin)}-${minToHHmm(startMin + duration)}）`);
     await this.reload();
+    this.selectedBlockId = id;
   }
 
   private toggleBlockDone(block: PlanBlock): void {
@@ -3041,6 +3105,21 @@ export struct PlanDayView {
 
   private async doRemove(block: PlanBlock): Promise<void> {
     this.beginBlockHistory('移除此块', block);
+    if (isMotionOn() && this.shatterBlockId === 0) {
+      this.shatterBlockId = block.id;
+      this.closeEditor();
+      setTimeout((): void => {
+        this.shatterBlockId = 0;
+        this.doRemoveNow(block).catch((e: Object): void => {
+          hilog.error(DOMAIN, TAG, 'remove block failed: %{public}s', JSON.stringify(e));
+        });
+      }, 700);
+      return;
+    }
+    await this.doRemoveNow(block);
+  }
+
+  private async doRemoveNow(block: PlanBlock): Promise<void> {
     const ctx: common.UIAbilityContext = this.context();
     const todoId: number = block.todoId;
     await TodoRepo.deleteBlock(ctx, block.id);
@@ -3429,7 +3508,7 @@ export struct PlanDayView {
         .padding({ left: 8, right: 6, top: 3 })
         .backgroundColor(this.colorOf(this.blockCourseId(b)))
         // 拖拽中半透明（用户要的"从原来在的地方被抽出来跟着手指"的观感）
-        .opacity(this.isDragging(b) ? 0.72 : (b.done ? 0.5 : 0.95))
+        .opacity(this.shatterBlockId === b.id ? 0 : (this.isDragging(b) ? 0.72 : (b.done ? 0.5 : 0.95)))
         .borderRadius(6)
         // 选中即黑框高亮（用户要的"选中状态加黑框"）
         .border({
@@ -3469,7 +3548,7 @@ export struct PlanDayView {
         .height('100%')
         .padding({ left: 7, right: 5 })
         .backgroundColor(this.colorOf(this.blockCourseId(b)))
-        .opacity(this.isDragging(b) ? 0.72 : (b.done ? 0.5 : 0.95))
+        .opacity(this.shatterBlockId === b.id ? 0 : (this.isDragging(b) ? 0.72 : (b.done ? 0.5 : 0.95)))
         .borderRadius(6)
         .border({
           width: this.blockBorderWidth(b),
@@ -3512,6 +3591,12 @@ export struct PlanDayView {
         this.onBlockTouchCancel();
       }
     })
+    if (this.shatterBlockId === b.id) {
+      SandShatter({ tint: this.colorOf(this.blockCourseId(b)) })
+        .width('100%')
+        .height('100%')
+        .zIndex(30)
+    }
   }
 
   /**
@@ -3956,7 +4041,7 @@ export struct PlanDayView {
                             .fontColor('#F2F5FA')
                             .maxLines(1)
                             .textOverflow({ overflow: TextOverflow.Ellipsis })
-                          Text(`${LESSON_MIN} 分钟`)
+                          Text(`${this.lessonDurationOf(l)} 分钟`)
                             .fontSize(LAYOUT.cardSub)
                             .fontColor('#D8C48A')
                             .margin({ top: 2 })
@@ -4006,6 +4091,8 @@ export struct PlanDayView {
     .width('100%')
     .alignItems(HorizontalAlign.Start)
     .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+    // 托盘区域整体拦截点击：避免透过半透明货架点到下面的计划块
+    .hitTestBehavior(HitTestMode.Block)
     // 悬浮货架：和导航栏刻意用不同材质（见 Glass.ets 的 GLASS_TINT_SHELF）
     .glassShelf()
     // 展开：从下往上滑出来 / 收起：滑回去（都只动位移与透明度）
@@ -4811,10 +4898,12 @@ export struct PlanDayView {
             .width('100%')
             .height(60)
             .border({ width: { bottom: 1 }, color: 'rgba(255,255,255,0.12)' })
+            .hitTestBehavior(HitTestMode.None)
         }, (m: number) => `pph-${cd}-${m}`)
       }
       .width('100%')
       .height(this.gridH())
+      .hitTestBehavior(HitTestMode.None)
 
       // 不可排时段：和当前日同款斜纹 + 标签
       ForEach(this.restsOf(cd), (w: RestWindow) => {
@@ -4884,11 +4973,23 @@ export struct PlanDayView {
       ForEach(bs, (b: PlanBlock) => {
         if (interactive) {
           Stack({ alignContent: Alignment.BottomStart }) {
-            this.PlanBlockBody(b)
+            Column() {
+              this.PlanBlockBody(b)
+            }
+            .width('100%')
+            .height('100%')
+            .opacity(this.shatterBlockId === b.id ? 0 : 1)
+            if (this.shatterBlockId === b.id) {
+              SandShatter({ tint: this.colorOf(this.blockCourseId(b)) })
+                .width('100%')
+                .height('100%')
+                .zIndex(30)
+            }
           }
           .width('100%')
           .height(this.blockH(b))
-          .backgroundColor(this.colorOf(this.blockCourseId(b)))
+          .backgroundColor(this.shatterBlockId === b.id
+            ? Color.Transparent : this.colorOf(this.blockCourseId(b)))
           .borderRadius(6)
           // 三日画布里拖块时本体隐藏、由 CanvasDragBlock 在目标列画半透明块；
           // 单日没有"目标列"，保留 0.72 的跟手半透明。
@@ -5422,23 +5523,13 @@ export struct PlanDayView {
                   Column()
                     .width('100%')
                     .height('100%')
-                    .onClick((event: ClickEvent): void => {
-                      if (cd === this.date) {
-                        this.activateColumn(cd);
-                        this.onGridTap(event);
-                      } else {
-                        if (this.selectedBlockId > 0) {
-                          this.clearBlockSelection();
-                          return;
-                        }
-                        this.placeSelectedOnDate(cd, event);
-                      }
-                    })
+                    .hitTestBehavior(HitTestMode.None)
                   this.PagerPreview(cd, this.canvasSessions[i], this.canvasBlocks[i], true)
                 }
                 .width(this.canvasColW())
                 .height(this.gridH())
                 .clip(true)
+                .onClick((event: ClickEvent): void => this.onCanvasBlankTap(cd, event))
                 .onAreaChange((oldArea: Area, newArea: Area): void => {
                   const y: Length | undefined = newArea.globalPosition.y;
                   if (typeof y === 'number') {

@@ -370,6 +370,8 @@ export async function syncReminders(context: common.UIAbilityContext,
         at: c.at,
         endAt: c.endAt,
         leadMin: c.leadMin,
+        // 已经开始的日程保留，但不设提醒：避免"当前进行的那条"每次同步重复响
+        remind: c.at.getTime() > now.getTime(),
         title: c.title,
         content: c.content
       });

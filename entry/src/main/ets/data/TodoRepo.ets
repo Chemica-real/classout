@@ -416,6 +416,12 @@ export class TodoRepo {
     };
   }
 
+  static async updateLessonTitle(context: common.Context, id: number,
+    title: string): Promise<void> {
+    const store: relationalStore.RdbStore = await Db.get(context);
+    await store.executeSql('UPDATE virtual_lesson SET title = ? WHERE id = ?', [title, id]);
+  }
+
   static async setLessonDone(context: common.Context, id: number, done: boolean,
     ts: number): Promise<void> {
     const store: relationalStore.RdbStore = await Db.get(context);

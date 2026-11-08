@@ -63,6 +63,11 @@ export class Db {
     await Db.ensureColumn(store, 'todo', 'end_at', "end_at TEXT NOT NULL DEFAULT ''");
     // 每门课的自定义颜色（v1.6）：老库里没有这一列
     await Db.ensureColumn(store, 'course', 'color_hex', "color_hex TEXT NOT NULL DEFAULT ''");
+    // 虚拟课程默认单讲时长 / 课时命名模板（v1.9）
+    await Db.ensureColumn(store, 'course', 'lesson_duration_min',
+      'lesson_duration_min INTEGER NOT NULL DEFAULT 90');
+    await Db.ensureColumn(store, 'course', 'lesson_title_template',
+      "lesson_title_template TEXT NOT NULL DEFAULT '%c 第 %N 讲'");
     Db.store = store;
     hilog.info(DOMAIN, TAG, '%{public}s', 'database ready');
     return store;

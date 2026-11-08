@@ -42,6 +42,10 @@ export interface Course {
   autoTodoEnabled: boolean;
   /** 虚拟课程（CS106L 那种不定时上课的），v1.1 起用 */
   isVirtual: boolean;
+  /** 虚拟课程单讲默认时长（分钟，15–200，5 的倍数；非虚拟课程忽略） */
+  lessonDurationMin?: number;
+  /** 虚拟课程课时命名模板：支持 %n 全名、%c 简称、%N 第几讲 */
+  lessonTitleTemplate?: string;
   note: string;
 }
 

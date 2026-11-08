@@ -22,6 +22,12 @@ export interface CalItem {
   endAt: Date;
   /** 提前多少分钟提醒（日历的 reminderTime，0 = 准时） */
   leadMin: number;
+  /**
+   * 是否给这条日历事件设提醒。
+   * 已经在进行中的课程/计划块仍然写进日历（用户能在日历里看到"现在这节"），
+   * 但不再设提醒，避免每次同步都重复响。
+   */
+  remind?: boolean;
   title: string;
   content: string;
 }
@@ -103,8 +109,9 @@ export async function syncCalendarReminders(context: common.UIAbilityContext,
         title: it.title,
         startTime: start,
         endTime: end,
-        // 日历的 reminderTime 单位是分钟：x = 距开始提前 x 分钟提醒（0 = 准时）
-        reminderTime: [lead],
+        // 日历的 reminderTime 单位是分钟：x = 距开始提前 x 分钟提醒（0 = 准时）。
+        // 已经开始的条目给空数组：保留日程、不响铃。
+        reminderTime: it.remind === false ? [] : [lead],
         // MARK 放末尾：日程备注第一行必须是「截止：…」，不能被识别标记顶到前面。
         // 清理时仍然靠 description 里是否含 MARK 来认领。
         description: `${it.content}\n\n${MARK}`

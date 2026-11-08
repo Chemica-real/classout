@@ -20,10 +20,11 @@ import { TODO_SORT_DDL, TODO_SORT_TITLE, loadConfirmTodoDelete, loadTodoSort, sa
 import { ChipButton } from './ChipButton';
 import { BackHandler, backStack } from '../util/BackStack';
 import { hapticScrollEdge } from '../util/Haptics';
+import { SandShatter } from './SandShatter';
 import { GLASS_BLUR, GLASS_EDGE_SOFT, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_ROW,
   GLASS_SHADOW_SHEET, GLASS_TINT_ROW, GLASS_TINT_SHEET } from './Glass';
 import { DRAWER_W, FLOAT_GAP, FLOAT_SIDE, H_ACTIONS } from './Float';
-import { DUR_DRAWER, DUR_ITEM, DUR_SHARD, curveOrLinear, drawerCurve, dur, isMotionOn,
+import { DUR_DRAWER, DUR_ITEM, curveOrLinear, drawerCurve, dur, isMotionOn,
   motionCurve } from './Motion';
 
 // 文件内 @Styles（Glass.ets 顶部说明了为什么不能跨文件 export）
@@ -57,15 +58,6 @@ function glassSheet() {
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'ClassOUT';
-
-/**
- * "碎裂掉出"的碎片参数：4 块，各飞一个方向。
- * dx/dy 是相对原位的位移（vp），rot 是旋转角。刻意做成**不对称** ——
- * 对称飞出去看起来像"开花"，不像"碎"。
- */
-const SHARD_DX: number[] = [-30, 34, -20, 26];
-const SHARD_DY: number[] = [-22, -10, 30, 22];
-const SHARD_ROT: number[] = [-46, 38, 28, -34];
 
 /**
  * 预设的预计时长档位。选择器里排在「自定义」输入框前面。
@@ -105,8 +97,9 @@ export struct TodoInbox {
   onModalChange: (open: boolean) => void = (): void => {};
   /** 正在"碎裂掉出"的那一条（0 = 没有）：先播碎片飞散，播完再真删 */
   @State shatterId: number = 0;
-  /** 碎片是否已经飞出去（驱动碎片自身与卡片本体的位移/透明） */
-  @State shatterFly: boolean = false;
+  /** 被删卡片的实测高度：沙粒层不能依赖百分比高度（Stack 自动高度时可能为 0） */
+  @State sandH: number = 80;
+  private cardHeights: Map<number, number> = new Map<number, number>();
 
   @State pendingList: Todo[] = [];
   @State activeList: Todo[] = [];
@@ -136,10 +129,6 @@ export struct TodoInbox {
   @State deleteX: number = 0;
   @State deleteY: number = 0;
   @State deleteConfirmOpen: boolean = false;
-  @State globalShatterId: number = 0;
-  @State globalShatterX: number = 0;
-  @State globalShatterY: number = 0;
-  @State globalShatterFly: boolean = false;
   /** 各分组是否展开（默认全开；切标签后重置） */
   @State pendingOpen: boolean = true;
   @State examOpen: boolean = true;
@@ -152,6 +141,8 @@ export struct TodoInbox {
   @State scrollContentH: number = 0;
   @State scrollViewH: number = 0;
   private lastScrollY: number = 0;
+  /** 左滑刚结束时，抑制系统补发的卡片 click（否则滑删除会变成打开编辑窗） */
+  private swipeGuardAt: number = 0;
 
   /**
    * 编辑窗是否开着。
@@ -631,32 +622,40 @@ export struct TodoInbox {
    *     ④ 最后才落库（异步）并 reload 校准
    *   动画关掉时跳过 ①②③，直接删。
    */
-  private removeConfirmed(t: Todo): void {
+  /**
+   * 新的沙粒删除：先让卡片本体消失、沙粒从几何图形里落下去，再带动画把这一条摘掉。
+   * 待办页所有删除（待确认 / 左滑 / 编辑窗 / 已完成）都走这里。
+   */
+  private beginSandDelete(t: Todo): void {
     if (!isMotionOn()) {
+      this.optimisticRemove(t.id);
       this.doRemove(t).catch((e: Object): void => {
         hilog.error(DOMAIN, TAG, 'todo remove failed: %{public}s', JSON.stringify(e));
       });
       return;
     }
+    this.deleteConfirmOpen = false;
+    const measured: number | undefined = this.cardHeights.get(t.id);
+    this.sandH = measured === undefined ? 80 : measured;
     this.shatterId = t.id;
-    this.shatterFly = false;
-    // ② 先渲染一帧"没碎"的样子，再动画过去（否则会直接跳到终点）
+    // 让沙粒落 650ms，再带动画地把卡片从列表里摘掉：下面的条目平滑上移
     setTimeout((): void => {
-      this.getUIContext().animateTo(
-        { duration: dur(DUR_SHARD), curve: curveOrLinear(motionCurve) },
-        (): void => { this.shatterFly = true; });
-    }, 16);
-    // ③④ 碎片飞完：带动画地把这条从列表里摘掉，然后落库
-    setTimeout((): void => {
-      this.shatterId = 0;
-      this.shatterFly = false;
       this.getUIContext().animateTo(
         { duration: dur(DUR_ITEM), curve: curveOrLinear(motionCurve) },
         (): void => { this.optimisticRemove(t.id); });
       this.doRemove(t).catch((e: Object): void => {
         hilog.error(DOMAIN, TAG, 'todo remove failed: %{public}s', JSON.stringify(e));
       });
-    }, dur(DUR_SHARD) + 16);
+      setTimeout((): void => {
+        if (this.shatterId === t.id) {
+          this.shatterId = 0;
+        }
+      }, dur(DUR_ITEM) + 30);
+    }, 650);
+  }
+
+  private removeConfirmed(t: Todo): void {
+    this.beginSandDelete(t);
   }
 
   /** 先从内存列表里摘掉（带动画），库里随后再删/再 reload 校准 */
@@ -699,6 +698,11 @@ export struct TodoInbox {
     }
     this.editorConfirmDelete = false;
     this.editorVisible = false;
+    const t: Todo | undefined = this.findTodo(id);
+    if (t !== undefined) {
+      this.beginSandDelete(t);
+      return;
+    }
     this.getUIContext().animateTo(
       { duration: dur(DUR_ITEM), curve: curveOrLinear(motionCurve) },
       (): void => { this.optimisticRemove(id); });
@@ -721,12 +725,7 @@ export struct TodoInbox {
    * 「待确认」卡片另有"碎裂掉出"，见 `removeConfirmed()`。
    */
   private deleteRow(t: Todo): void {
-    this.getUIContext().animateTo(
-      { duration: dur(DUR_ITEM), curve: curveOrLinear(motionCurve) },
-      (): void => { this.optimisticRemove(t.id); });
-    this.doRemove(t).catch((e: Object): void => {
-      hilog.error(DOMAIN, TAG, 'todo remove failed: %{public}s', JSON.stringify(e));
-    });
+    this.beginSandDelete(t);
   }
 
   /**
@@ -801,6 +800,13 @@ export struct TodoInbox {
     this.editDdl = `${day} 09:00`;
     this.editExamEnd = `${day} 11:00`;
     this.editEstimate = 120;
+  }
+
+  private openEditIfNotSwiped(t: Todo): void {
+    if (Date.now() - this.swipeGuardAt < 600) {
+      return;
+    }
+    this.openEdit(t);
   }
 
   private openEdit(t: Todo): void {
@@ -1092,6 +1098,7 @@ export struct TodoInbox {
       }
       .width('100%')
       .translate({ x: this.swipeId === t.id ? this.swipeDx : 0 })
+      .opacity(this.shatterId === t.id ? 0 : 1)
       // parallelGesture：横向滑动删待办不能抢走外层 Scroll 的纵向滚动。
       // 之前用 gesture()，从卡片上往下滑时 Scroll 只回弹 6vp，列表根本不动。
       .parallelGesture(
@@ -1099,6 +1106,8 @@ export struct TodoInbox {
           .onActionStart((): void => {
             this.swipeId = t.id;
             this.swipeDx = 0;
+            // 从按下滑动开始就压住 click：手势结束时系统可能补发一次 onClick
+            this.swipeGuardAt = Date.now();
           })
           .onActionUpdate((event: GestureEvent): void => {
             const dx: number = event.offsetX;
@@ -1115,6 +1124,7 @@ export struct TodoInbox {
             const y: number = event.fingerList.length > 0 ? event.fingerList[0].globalY : 1200;
             this.swipeId = 0;
             this.swipeDx = 0;
+            this.swipeGuardAt = Date.now();
             if (dx < -60) {
               this.requestDelete(t, kind, x, y);
             }
@@ -1126,7 +1136,21 @@ export struct TodoInbox {
     .backgroundColor(this.swipeId === t.id && this.swipeDx < 0
       ? 'rgba(214,69,69,0.86)' : Color.Transparent)
     .borderRadius(10)
-    .clip(true)
+    // 沙粒要落出卡片边界，不能裁在卡片里
+    .clip(false)
+    .onAreaChange((oldArea: Area, newArea: Area): void => {
+      const h: Length | undefined = newArea.height;
+      if (typeof h === 'number' && h > 0) {
+        this.cardHeights.set(t.id, h);
+      }
+    })
+    if (this.shatterId === t.id) {
+      SandShatter({ tint: '#7FA8FF' })
+        .width('100%')
+        .height(this.sandH)
+        .position({ x: 0, y: 0 })
+        .zIndex(20)
+    }
   }
 
   private requestDelete(t: Todo, kind: string, x: number, y: number): void {
@@ -1155,37 +1179,8 @@ export struct TodoInbox {
   }
 
   private performDelete(t: Todo, kind: string, x: number, y: number): void {
-    // 待确认卡本身已有 4 块碎片；其它类型走页面级碎片层
-    if (kind === 'pending') {
-      this.removeConfirmed(t);
-      return;
-    }
-    if (!isMotionOn()) {
-      this.optimisticRemove(t.id);
-      this.doRemove(t).catch((e: Object): void => {
-        hilog.error(DOMAIN, TAG, 'todo remove failed: %{public}s', JSON.stringify(e));
-      });
-      return;
-    }
-    this.globalShatterId = t.id;
-    this.globalShatterX = x;
-    this.globalShatterY = y;
-    this.globalShatterFly = false;
-    setTimeout((): void => {
-      this.getUIContext().animateTo(
-        { duration: dur(DUR_SHARD), curve: curveOrLinear(motionCurve) },
-        (): void => { this.globalShatterFly = true; });
-    }, 16);
-    setTimeout((): void => {
-      this.globalShatterId = 0;
-      this.globalShatterFly = false;
-      this.getUIContext().animateTo(
-        { duration: dur(DUR_ITEM), curve: curveOrLinear(motionCurve) },
-        (): void => { this.optimisticRemove(t.id); });
-      this.doRemove(t).catch((e: Object): void => {
-        hilog.error(DOMAIN, TAG, 'todo remove failed: %{public}s', JSON.stringify(e));
-      });
-    }, dur(DUR_SHARD) + 16);
+    // x/y 是旧版碎片层的参数；现在沙粒按卡片自身几何生成，不再需要
+    this.beginSandDelete(t);
   }
 
   @Builder
@@ -1293,30 +1288,6 @@ export struct TodoInbox {
     .glassCard()
     .border({ width: 1, color: 'rgba(255,255,255,0.14)' })
     // 碎裂时本体缩掉淡出（碎片在外面飞）
-    .opacity(this.shatterId === t.id && this.shatterFly ? 0 : 1)
-    .scale({
-      x: this.shatterId === t.id && this.shatterFly ? 0.86 : 1,
-      y: this.shatterId === t.id && this.shatterFly ? 0.86 : 1
-    })
-
-    // 碎片：只在"这一条正在碎"的时候挂出来，飞完就连节点一起没了
-    if (this.shatterId === t.id) {
-      ForEach([0, 1, 2, 3], (i: number) => {
-        Column()
-          .width(16)
-          .height(16)
-          .borderRadius(4)
-          .backgroundColor(i % 2 === 0 ? 'rgba(255,255,255,0.30)' : 'rgba(127,168,255,0.55)')
-          .position({ x: 26 + i * 56, y: 22 + (i % 2) * 34 })
-          .translate({
-            x: this.shatterFly ? SHARD_DX[i] : 0,
-            y: this.shatterFly ? SHARD_DY[i] : 0
-          })
-          .rotate({ angle: this.shatterFly ? SHARD_ROT[i] : 0 })
-          .opacity(this.shatterFly ? 0 : 1)
-          .hitTestBehavior(HitTestMode.None)
-      }, (i: number) => `shard-${t.id}-${i}`)
-    }
     }
     .width('100%')
     // 出现/消失都走同一套过渡（新条滑下来、被移走的滑走）
@@ -1377,7 +1348,7 @@ export struct TodoInbox {
     .padding(12)
     .glassCard()
     .margin({ bottom: 8 })
-    .onClick((): void => this.openEdit(t))
+    .onClick((): void => this.openEditIfNotSwiped(t))
   }
 
   /**
@@ -1511,7 +1482,7 @@ export struct TodoInbox {
     .borderRadius(10)
     .border({ width: 1, color: 'rgba(214,69,69,0.30)' })
     .margin({ bottom: 8 })
-    .onClick((): void => this.openEdit(t))
+    .onClick((): void => this.openEditIfNotSwiped(t))
   }
 
   @Builder
@@ -2318,28 +2289,6 @@ export struct TodoInbox {
         .padding({ left: FLOAT_SIDE, right: FLOAT_SIDE, bottom: this.bottomInset + FLOAT_GAP })
         .justifyContent(FlexAlign.End)
         .hitTestBehavior(HitTestMode.Transparent)
-      }
-
-      // 页面级碎裂层：非「待确认」类型删除时，在松手位置炸开
-      if (this.globalShatterId > 0) {
-        ForEach([0, 1, 2, 3], (i: number) => {
-          Column()
-            .width(16)
-            .height(16)
-            .borderRadius(4)
-            .backgroundColor(i % 2 === 0 ? 'rgba(255,255,255,0.30)' : 'rgba(127,168,255,0.55)')
-            .position({
-              x: this.globalShatterX + (i % 2 === 0 ? -18 : 18),
-              y: this.globalShatterY + (i < 2 ? -14 : 14)
-            })
-            .translate({
-              x: this.globalShatterFly ? SHARD_DX[i] : 0,
-              y: this.globalShatterFly ? SHARD_DY[i] : 0
-            })
-            .rotate({ angle: this.globalShatterFly ? SHARD_ROT[i] : 0 })
-            .opacity(this.globalShatterFly ? 0 : 1)
-            .hitTestBehavior(HitTestMode.None)
-        }, (i: number) => `gs-${this.globalShatterId}-${i}`)
       }
 
       if (this.deleteConfirmOpen) {

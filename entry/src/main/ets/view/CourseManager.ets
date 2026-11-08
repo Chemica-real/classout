@@ -18,6 +18,10 @@ import { CourseColorPicker } from './ColorPicker';
 import { courseColorOf, DEFAULT_PALETTE, normalizeHex, parsePalette } from '../domain/Palette';
 import { pickDate } from '../util/DateTimePicker';
 import { BackHandler, backStack } from '../util/BackStack';
+import { allCategoryOptions, CategoryOption, parseCustomCategories } from '../domain/Categories';
+import { TODO_CATEGORIES_KEY } from '../data/Prefs';
+import { LESSON_TITLE_DEFAULT, LESSON_TITLE_VARS, renderLessonTitle,
+  validateLessonTitleTemplate } from '../domain/LessonNaming';
 import { GLASS_BLUR, GLASS_EDGE_SOFT, GLASS_EDGE_STRONG, GLASS_RADIUS, GLASS_SHADOW_ROW,
   GLASS_SHADOW_SHEET, GLASS_TINT_PANEL, GLASS_TINT_ROW, GLASS_TINT_SHEET } from './Glass';
 
@@ -60,9 +64,13 @@ const DD_LABELS: string[] = [
 ];
 const DD_RULES: string[] = ['next_session', 'weekday', 'week_end', 'same_day', 'days', 'none'];
 
-/** 虚拟课程讲数的可调范围（用户要求：滑条 1–50） */
+/** 虚拟课程讲数：滚轮 1–200（用户要求，2026-11-01） */
 const LESSON_COUNT_MIN: number = 1;
-const LESSON_COUNT_MAX: number = 50;
+const LESSON_COUNT_MAX: number = 200;
+/** 单讲默认时长：15–200 分钟，5 分钟刻度 */
+const LESSON_DURATION_MIN: number = 15;
+const LESSON_DURATION_MAX: number = 200;
+const LESSON_DURATION_STEP: number = 5;
 
 /**
  * 模板变量按钮上的中文标签，**下标必须和 `Validate.TEMPLATE_VARS` 一一对应**。
@@ -83,6 +91,8 @@ function blankCourse(semesterId: number): Course {
     colorHex: '',
     autoTodoEnabled: true,
     isVirtual: false,
+    lessonDurationMin: 90,
+    lessonTitleTemplate: LESSON_TITLE_DEFAULT,
     note: ''
   };
 }
@@ -134,6 +144,9 @@ export struct CourseManager {
   @State editSections: SectionTime[] = [];
   /** 当前编辑课程的课时数（虚拟课程用） */
   @State editLessonCount: number = 0;
+  /** 正在编辑的课时草稿（名称逐讲可改） */
+  @State editLessons: VirtualLesson[] = [];
+  @State editLessonNamesOpen: boolean = false;
   /** 本学期所有虚拟课程的课时 */
   @State allLessons: VirtualLesson[] = [];
   @State diagText: string = '';
@@ -388,8 +401,12 @@ export struct CourseManager {
     };
     this.editRules = this.rulesOf(c.id);
     this.editTemplates = this.templatesOf(c.id);
-    // 夹进滑条范围：滑条是 1–50（用户要求），值越界会让滑块和文字对不上
+    this.editLessons = this.lessonsOf(c.id).map((l: VirtualLesson): VirtualLesson => ({
+      id: l.id, courseId: l.courseId, seq: l.seq, title: l.title,
+      done: l.done, doneAt: l.doneAt
+    }));
     this.editLessonCount = this.clampLessonCount(this.lessonsOf(c.id).length);
+    this.editLessonNamesOpen = false;
     this.mode = 'course';
   }
 
@@ -400,11 +417,127 @@ export struct CourseManager {
     return n > LESSON_COUNT_MAX ? LESSON_COUNT_MAX : n;
   }
 
+  private clampLessonDuration(n: number): number {
+    const raw: number = Math.round(n / LESSON_DURATION_STEP) * LESSON_DURATION_STEP;
+    if (raw < LESSON_DURATION_MIN) {
+      return LESSON_DURATION_MIN;
+    }
+    return raw > LESSON_DURATION_MAX ? LESSON_DURATION_MAX : raw;
+  }
+
+  private lessonCountRange(): string[] {
+    const out: string[] = [];
+    for (let i = LESSON_COUNT_MIN; i <= LESSON_COUNT_MAX; i++) {
+      out.push(`${i}`);
+    }
+    return out;
+  }
+
+  private lessonDurationRange(): string[] {
+    const out: string[] = [];
+    for (let i = LESSON_DURATION_MIN; i <= LESSON_DURATION_MAX; i += LESSON_DURATION_STEP) {
+      out.push(`${i}`);
+    }
+    return out;
+  }
+
+  private lessonDurationIndex(): number {
+    const d: number = this.clampLessonDuration(
+      this.editCourse.lessonDurationMin === undefined ? 90 : this.editCourse.lessonDurationMin);
+    return (d - LESSON_DURATION_MIN) / LESSON_DURATION_STEP;
+  }
+
+  private ensureLessonDrafts(): void {
+    const count: number = this.editLessonCount;
+    for (let seq = 1; seq <= count; seq++) {
+      let found: boolean = false;
+      for (const l of this.editLessons) {
+        if (l.seq === seq) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        this.editLessons.push({
+          id: 0, courseId: this.editCourse.id, seq: seq, title: '',
+          done: false, doneAt: 0
+        });
+      }
+    }
+  }
+
+  private lessonDraft(seq: number): VirtualLesson | undefined {
+    for (const l of this.editLessons) {
+      if (l.seq === seq) {
+        return l;
+      }
+    }
+    return undefined;
+  }
+
+  private lessonTemplateText(): string {
+    const t: string | undefined = this.editCourse.lessonTitleTemplate;
+    return t === undefined || t.trim().length === 0 ? LESSON_TITLE_DEFAULT : t;
+  }
+
+  private visibleLessonDrafts(): VirtualLesson[] {
+    const out: VirtualLesson[] = [];
+    for (const l of this.editLessons) {
+      if (l.seq <= this.editLessonCount) {
+        out.push(l);
+      }
+    }
+    out.sort((a: VirtualLesson, b: VirtualLesson): number => a.seq - b.seq);
+    return out;
+  }
+
+  private lessonTitlePreview(seq: number): string {
+    const name: string = this.editCourse.name.trim();
+    const short: string = this.editCourse.shortName.trim();
+    return renderLessonTitle(this.lessonTemplateText(), name, short, seq);
+  }
+
+  private insertLessonVar(code: string): void {
+    const cur: string = this.lessonTemplateText();
+    this.editCourse.lessonTitleTemplate = `${cur}%${code}`;
+  }
+
+  private batchGenerateLessonNames(): void {
+    this.ensureLessonDrafts();
+    const name: string = this.editCourse.name.trim();
+    const short: string = this.editCourse.shortName.trim();
+    const tpl: string = this.lessonTemplateText();
+    for (const l of this.editLessons) {
+      if (l.seq <= this.editLessonCount) {
+        l.title = renderLessonTitle(tpl, name, short, l.seq);
+      }
+    }
+    this.toast = '已按模板生成课时名称，保存课程后生效';
+  }
+
+  private async applyLessonTitles(ctx: common.UIAbilityContext, courseId: number): Promise<void> {
+    const lessons: VirtualLesson[] = await TodoRepo.listLessonsByCourse(ctx, courseId);
+    const name: string = this.editCourse.name.trim();
+    const short: string = this.editCourse.shortName.trim();
+    const tpl: string = this.lessonTemplateText();
+    for (const l of lessons) {
+      const draft: VirtualLesson | undefined = this.lessonDraft(l.seq);
+      const custom: string = draft === undefined ? '' : draft.title.trim();
+      const want: string = custom.length > 0
+        ? custom : renderLessonTitle(tpl, name, short, l.seq);
+      if (want !== l.title) {
+        await TodoRepo.updateLessonTitle(ctx, l.id, want);
+      }
+    }
+  }
+
   private openNewCourse(): void {
     this.editCourse = blankCourse(this.semesterId);
     this.editRules = [];
     this.editTemplates = [];
     this.editLessonCount = 0;
+    this.editLessons = [];
+    this.editLessonNamesOpen = false;
     this.mode = 'course';
   }
 
@@ -430,6 +563,7 @@ export struct CourseManager {
     }
     if (this.editCourse.isVirtual) {
       await TodoRepo.syncLessonCount(ctx, this.editCourse.id, this.editLessonCount);
+      await this.applyLessonTitles(ctx, this.editCourse.id);
     }
     this.toast = this.editCourse.isVirtual
       ? `已保存（虚拟课程，${this.editLessonCount} 讲）`
@@ -704,6 +838,11 @@ export struct CourseManager {
     };
     // week=6 / n=2 只是样例值，让 %W / %N 也有东西可看
     return `预览：${renderTitle(this.tplDraft.titleTemplate, sample, 6, 2)}`;
+  }
+
+  private templateCategoryOptions(): CategoryOption[] {
+    const raw: string | undefined = AppStorage.get<string>(TODO_CATEGORIES_KEY);
+    return allCategoryOptions(parseCustomCategories(raw === undefined ? '' : raw));
   }
 
   private deleteTemplate(t: TodoTemplate): void {
@@ -1275,7 +1414,7 @@ export struct CourseManager {
             })
 
           this.FieldLabel('教师')
-          TextInput({ text: this.editCourse.teacher, placeholder: '王老师' })
+          TextInput({ text: this.editCourse.teacher, placeholder: '' })
             .fontColor('#F2F5FA')
             .placeholderColor('#8B97AC')
             .caretColor('#7FA8FF')
@@ -1284,7 +1423,7 @@ export struct CourseManager {
             })
 
           this.FieldLabel('默认地点')
-          TextInput({ text: this.editCourse.location, placeholder: '教学楼 101' })
+          TextInput({ text: this.editCourse.location, placeholder: '' })
             .fontColor('#F2F5FA')
             .placeholderColor('#8B97AC')
             .caretColor('#7FA8FF')
@@ -1388,8 +1527,18 @@ export struct CourseManager {
             Toggle({ type: ToggleType.Switch, isOn: this.editCourse.isVirtual })
               .onChange((on: boolean): void => {
                 this.editCourse.isVirtual = on;
-                if (on && this.editLessonCount === 0) {
-                  this.editLessonCount = 14;
+                if (on) {
+                  if (this.editCourse.lessonDurationMin === undefined) {
+                    this.editCourse.lessonDurationMin = 90;
+                  }
+                  if (this.editCourse.lessonTitleTemplate === undefined
+                    || this.editCourse.lessonTitleTemplate.length === 0) {
+                    this.editCourse.lessonTitleTemplate = LESSON_TITLE_DEFAULT;
+                  }
+                  if (this.editLessonCount === 0) {
+                    this.editLessonCount = 14;
+                  }
+                  this.ensureLessonDrafts();
                 }
               })
           }
@@ -1401,38 +1550,127 @@ export struct CourseManager {
               .fontSize(12)
               .fontColor('#94A0B5')
               .width('100%')
-              .margin({ top: 8, bottom: 6 })
-            // 用户要求：「虚拟课程讲数只需要滑条选择（1～50）即可（不用设计那么多按钮）」。
-            // 原来的 4/6/8…32 一排胶囊换成一个 1–50 的滑条，`showTips` 拖动时显示当前值。
-            Slider({
-              value: this.editLessonCount,
-              min: LESSON_COUNT_MIN,
-              max: LESSON_COUNT_MAX,
-              step: 1,
-              style: SliderStyle.OutSet
+              .margin({ top: 8, bottom: 2 })
+            TextPicker({
+              range: this.lessonCountRange(),
+              selected: this.clampLessonCount(this.editLessonCount) - 1
             })
               .width('100%')
-              .selectedColor('#2E6BE6')
-              .trackColor('rgba(255,255,255,0.16)')
-              .showTips(true)
-              .onChange((v: number, mode: SliderChangeMode): void => {
-                // 取整即可（step=1 时 v 已经是整数，这里只是兜底）
-                this.editLessonCount = Math.round(v);
+              .height(150)
+              .onChange((value: string | string[], index: number | number[]): void => {
+                const i: number = typeof index === 'number' ? index : index[0];
+                this.editLessonCount = this.clampLessonCount(i + 1);
+                this.ensureLessonDrafts();
               })
-            Row() {
-              Text(`${LESSON_COUNT_MIN}`)
-                .fontSize(10)
-                .fontColor('#8B97AC')
-              Blank()
-              Text(`${this.editLessonCount} 讲`)
-                .fontSize(12)
-                .fontColor('#7FA8FF')
-              Blank()
-              Text(`${LESSON_COUNT_MAX}`)
-                .fontSize(10)
-                .fontColor('#8B97AC')
+
+            Text(`单课时长（当前 ${this.editCourse.lessonDurationMin === undefined
+              ? 90 : this.editCourse.lessonDurationMin} 分钟；之后可在计划页双指只改某一节）`)
+              .fontSize(12)
+              .fontColor('#94A0B5')
+              .width('100%')
+              .margin({ top: 6, bottom: 2 })
+            TextPicker({
+              range: this.lessonDurationRange(),
+              selected: this.lessonDurationIndex()
+            })
+              .width('100%')
+              .height(130)
+              .onChange((value: string | string[], index: number | number[]): void => {
+                const i: number = typeof index === 'number' ? index : index[0];
+                this.editCourse.lessonDurationMin =
+                  this.clampLessonDuration(LESSON_DURATION_MIN + i * LESSON_DURATION_STEP);
+              })
+
+            Text('课时命名模板（支持 %n 全名、%c 简称、%N 第几讲）')
+              .fontSize(12)
+              .fontColor('#94A0B5')
+              .width('100%')
+              .margin({ top: 8, bottom: 4 })
+            TextInput({
+              text: this.editCourse.lessonTitleTemplate === undefined
+                ? LESSON_TITLE_DEFAULT : this.editCourse.lessonTitleTemplate,
+              placeholder: LESSON_TITLE_DEFAULT
+            })
+              .fontColor('#F2F5FA')
+              .placeholderColor('#8B97AC')
+              .caretColor('#7FA8FF')
+              .onChange((v: string): void => {
+                this.editCourse.lessonTitleTemplate = v;
+              })
+            Flex({ wrap: FlexWrap.Wrap }) {
+              ForEach(LESSON_TITLE_VARS, (code: string) => {
+                ChipButton({
+                  text: code === 'n' ? '%n 全名' : (code === 'c' ? '%c 简称' : '%N 第几讲'),
+                  selected: false,
+                  fontSize: 11,
+                  onTap: (): void => this.insertLessonVar(code)
+                })
+              }, (code: string) => `lv-${code}`)
             }
             .width('100%')
+            .margin({ top: 6 })
+            Text(`预览：${this.lessonTitlePreview(1)} / ${this.lessonTitlePreview(2)}`)
+              .fontSize(11)
+              .fontColor('#7BD69A')
+              .width('100%')
+              .margin({ top: 4 })
+            Row() {
+              Button('按模板批量生成')
+                .fontSize(11)
+                .backgroundColor('rgba(46,107,230,0.20)')
+                .fontColor('#9CC0FF')
+                .height(30)
+                .onClick((): void => this.batchGenerateLessonNames())
+              Button(this.editLessonNamesOpen ? '收起课时名称' : '逐讲编辑名称')
+                .fontSize(11)
+                .backgroundColor('rgba(255,255,255,0.10)')
+                .fontColor('#C3CDDE')
+                .height(30)
+                .margin({ left: 8 })
+                .onClick((): void => {
+                  this.editLessonNamesOpen = !this.editLessonNamesOpen;
+                  if (this.editLessonNamesOpen) {
+                    this.ensureLessonDrafts();
+                  }
+                })
+            }
+            .width('100%')
+            .margin({ top: 8 })
+
+            if (this.editLessonNamesOpen) {
+              Column() {
+                Scroll() {
+                  Column() {
+                    ForEach(this.visibleLessonDrafts(), (l: VirtualLesson) => {
+                      Row() {
+                        Text(`第 ${l.seq} 讲`)
+                          .fontSize(11)
+                          .fontColor('#8B97AC')
+                          .width(58)
+                        TextInput({ text: l.title, placeholder: this.lessonTitlePreview(l.seq) })
+                          .fontSize(12)
+                          .fontColor('#F2F5FA')
+                          .placeholderColor('#5F6B80')
+                          .layoutWeight(1)
+                          .onChange((v: string): void => {
+                            l.title = v;
+                          })
+                      }
+                      .width('100%')
+                      .margin({ bottom: 4 })
+                    }, (l: VirtualLesson) => `ln-${l.seq}-${l.title}`)
+                  }
+                  .width('100%')
+                }
+                .height(240)
+                .scrollable(ScrollDirection.Vertical)
+                .scrollBar(BarState.Off)
+                .width('100%')
+              }
+              .width('100%')
+              .margin({ top: 6 })
+            }
+
             Text('课时排进计划、打勾完成之后，会像真课下课一样按下面的模板生成待办。')
               .fontSize(11)
               .fontColor('#7BD69A')
@@ -2306,6 +2544,21 @@ export struct CourseManager {
           }
           .width('100%')
         }
+
+        this.FieldLabel('待办类别')
+        Flex({ wrap: FlexWrap.Wrap }) {
+          ForEach(this.templateCategoryOptions(), (opt: CategoryOption) => {
+            ChipButton({
+              text: opt.label,
+              selected: this.tplDraft.category === opt.key,
+              fontSize: 11,
+              onTap: (): void => {
+                this.tplDraft.category = opt.key;
+              }
+            })
+          }, (opt: CategoryOption) => `tc-${opt.key}`)
+        }
+        .width('100%')
 
         this.FieldLabel('预计耗时（排计划时用来算块长）')
         Flex({ wrap: FlexWrap.Wrap }) {

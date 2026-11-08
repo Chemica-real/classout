@@ -22,6 +22,7 @@ import { PrivacySection, privacySections, privacyUpdatedAt } from './Privacy';
 import { ChangelogEntry, changelogBetween, changelogEntries } from './Changelog';
 import { PlanHistoryEntry, PlanHistoryStore, clonePlanBlock, planDataSignature,
   samePlanBlockSet } from './PlanHistory';
+import { renderLessonTitle, validateLessonTitleTemplate } from './LessonNaming';
 import { SYNC_INTERVAL_CHOICES, SYNC_INTERVAL_DEFAULT, SYNC_INTERVAL_MAX, SYNC_INTERVAL_MIN,
   isSyncBoundary, normalizeSyncInterval, shouldRestartAfterIdle } from './SyncCadence';
 import { maskAll, maskFromText, maskToText, maskHas, resizeMask } from './WeekMask';
@@ -1608,6 +1609,16 @@ check('prev 在第 1 步上不动', `${prevGuideStep(0)}`, '0');
 check('prev 正常回退', `${prevGuideStep(3)}`, '2');
 check('isLast 只在最后一步为真',
   `${!isLastGuideStep(0) && isLastGuideStep(guideStepCount() - 1)}`, 'true');
+
+// ---------- 虚拟课时命名 ----------
+console.log('【虚拟课时命名】');
+check('命名模板替换 %n/%c/%N',
+  renderLessonTitle('%n-%c-%N', 'CS106L', 'CS106L', 3), 'CS106L-CS106L-3');
+check('简称空时退回全名',
+  renderLessonTitle('%c 第 %N 讲', '高等数学', '', 2), '高等数学 第 2 讲');
+check('未知变量原样保留', renderLessonTitle('%n %x', '课', '课', 1), '课 %x');
+check('空模板退回默认名', renderLessonTitle('', '课', '课', 5), '课 第 5 讲');
+check('命名模板超长报错', validateLessonTitleTemplate('x'.repeat(41)).length > 0 ? 'yes' : 'no', 'yes');
 
 // ---------- 计划撤销/重做栈 ----------
 console.log('【计划撤销/重做】');
