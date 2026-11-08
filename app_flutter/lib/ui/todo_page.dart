@@ -199,7 +199,7 @@ class _TodoPageState extends State<TodoPage> {
                   countColor: _rowMeta,
                   top: hasTop ? 14 : 0,
                 ),
-                if (s.tasks.isEmpty)
+                if (s.tasks.isEmpty && _virtualCourses().isEmpty)
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 10),
                     child: Text(
