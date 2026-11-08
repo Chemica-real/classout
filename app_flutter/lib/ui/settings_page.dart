@@ -20,12 +20,14 @@ import '../domain/validate.dart';
 import '../model/types.dart';
 import 'app_frame.dart';
 import 'inline_toast.dart';
+import '../data/calendar_sync.dart';
+import '../domain/changelog.dart';
 import 'privacy_page.dart';
 import 'wallpaper_adjust.dart';
 import 'palette.dart';
 import 'theme.dart' as theme;
 
-const String appVersion = '0.2.0';
+const String appVersion = '1.10.0';
 
 class SettingsPage extends StatefulWidget {
   final BackupBundle bundle;
@@ -402,9 +404,61 @@ class _SettingsPageState extends State<SettingsPage>
             child: Text('页头「⟳ 立即与日历同步」可以随时手动同步一次。',
                 style: TextStyle(fontSize: 11, color: Color(0xFF8B97AC))),
           ),
+          Padding(
+            padding: const EdgeInsets.only(top: 14),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('写入系统日历（可选）',
+                          style: TextStyle(fontSize: 14, color: inkPrimary)),
+                      Padding(
+                        padding: EdgeInsets.only(top: 2),
+                        child: Text('默认关闭；开启后写入未来 4 周课程和未完成截止，只删 ClassOUT 自己写的事件',
+                            style: TextStyle(
+                                fontSize: 11, color: Color(0xFF94A0B5))),
+                      ),
+                    ],
+                  ),
+                ),
+                Switch(
+                  key: const ValueKey('settings-calendar-sync'),
+                  value: _s.calendarSyncEnabled,
+                  activeThumbColor: const Color(0xFF2E6BE6),
+                  onChanged: (v) => _toggleCalendarSync(v),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
+  }
+
+  Future<void> _toggleCalendarSync(bool on) async {
+    if (on) {
+      final ok = await CalendarSync.ensurePermission();
+      if (!ok) {
+        if (mounted) showToast('没有日历权限，未开启');
+        return;
+      }
+      final events = buildCalendarEvents(widget.bundle, DateTime.now());
+      final n = await CalendarSync.sync(events);
+      if (n < 0) {
+        if (mounted) showToast('没有找到可写的系统日历');
+        return;
+      }
+      _s.calendarSyncEnabled = true;
+      _saveSettings();
+      if (mounted) showToast('已写入 $n 条到系统日历');
+    } else {
+      await CalendarSync.clear();
+      _s.calendarSyncEnabled = false;
+      _saveSettings();
+      if (mounted) showToast('已停止写入系统日历');
+    }
   }
 
   String _weekdayText(int wd) => wd == 0 ? '每天' : '周${weekdayCn[wd - 1]}';
@@ -819,6 +873,64 @@ class _SettingsPageState extends State<SettingsPage>
     );
   }
 
+  void _showChangelog(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.72,
+        maxChildSize: 0.9,
+        minChildSize: 0.4,
+        builder: (ctx, scroll) => Container(
+          decoration: const BoxDecoration(
+            color: Color(0xF20E1420),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+          ),
+          child: ListView(
+            controller: scroll,
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+            children: [
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text('更新日志',
+                        style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFFF2F5FA))),
+                  ),
+                  IconButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      icon: const Icon(Icons.close, color: Color(0xFF9BA7BD))),
+                ],
+              ),
+              for (final e in changelogEntries) ...[
+                Padding(
+                  padding: const EdgeInsets.only(top: 12, bottom: 4),
+                  child: Text('v${e.version}',
+                      style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF7FA8FF))),
+                ),
+                for (final item in e.items)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text('· $item',
+                        style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFFC3CDDE),
+                            height: 1.5)),
+                  ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _aboutCard() {
     return _Card(
       title: '关于',
@@ -855,6 +967,16 @@ class _SettingsPageState extends State<SettingsPage>
                 const Text('MIT 许可',
                     style: TextStyle(fontSize: 12, color: Color(0xFF8B97AC))),
               ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: GestureDetector(
+              key: const ValueKey('settings-changelog'),
+              onTap: () => _showChangelog(context),
+              behavior: HitTestBehavior.opaque,
+              child: const Text('更新日志',
+                  style: TextStyle(fontSize: 13, color: Color(0xFF7FA8FF))),
             ),
           ),
         ],

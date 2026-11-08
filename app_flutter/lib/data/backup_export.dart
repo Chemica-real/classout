@@ -45,6 +45,7 @@ Map<String, dynamic> _course(Course c) => {
       'colorIndex': c.colorIndex,
       'autoTodoEnabled': c.autoTodoEnabled ? 1 : 0,
       'isVirtual': c.isVirtual ? 1 : 0,
+      'lessonDurationMin': c.lessonDurationMin,
       'note': c.note,
     };
 
@@ -89,6 +90,7 @@ Map<String, dynamic> _lesson(VirtualLesson l) => {
       'courseId': l.courseId,
       'seq': l.seq,
       'title': l.title,
+      'durationMin': l.durationMin,
       'done': l.done ? 1 : 0,
       'doneAt': l.doneAt,
     };

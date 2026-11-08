@@ -31,6 +31,9 @@ class AppSettings {
   /// dx/dy 是相对屏幕宽高的平移比例（-1..1），zoom 1..3）
   String wallpaperFocus;
 
+  /// Android 可选：把课程/截止写进系统日历（默认关）
+  bool calendarSyncEnabled;
+
   AppSettings({
     this.syncIntervalMin = syncIntervalDefault,
     this.planWindow = defaultWindow,
@@ -42,6 +45,7 @@ class AppSettings {
     this.motionEnabled = true,
     this.wallpaperPath = '',
     this.wallpaperFocus = '0,0,1',
+    this.calendarSyncEnabled = false,
   });
 
   ReminderSettings get reminderSettings => ReminderSettings(
@@ -67,6 +71,7 @@ class AppSettings {
   static const String _kMotion = 'motionOn';
   static const String _kWallpaper = 'wallpaper_path';
   static const String _kWallpaperFocus = 'wallpaper_focus';
+  static const String _kCalendarSync = 'calendar_sync_enabled';
 
   static Future<AppSettings> load(ClassOutRepo repo) async {
     final sync =
@@ -84,6 +89,7 @@ class AppSettings {
     final motionRaw = await repo.getKv(_kMotion);
     final wallpaper = await repo.getKv(_kWallpaper);
     final wallpaperFocus = await repo.getKv(_kWallpaperFocus);
+    final calendarRaw = await repo.getKv(_kCalendarSync);
     return AppSettings(
       briefEnabled: briefEnabledRaw == null || briefEnabledRaw.isEmpty
           ? true
@@ -103,6 +109,7 @@ class AppSettings {
       wallpaperFocus: wallpaperFocus == null || wallpaperFocus.isEmpty
           ? '0,0,1'
           : wallpaperFocus,
+      calendarSyncEnabled: calendarRaw == '1',
     );
   }
 
@@ -134,6 +141,7 @@ class AppSettings {
     await repo.setKv(_kMotion, motionEnabled ? '1' : '0');
     await repo.setKv(_kWallpaper, wallpaperPath);
     await repo.setKv(_kWallpaperFocus, wallpaperFocus);
+    await repo.setKv(_kCalendarSync, calendarSyncEnabled ? '1' : '0');
   }
 
   /// 'HH:mm' → 分钟；坏值返回 null（与鸿蒙端 loadReminderSettings 一致）

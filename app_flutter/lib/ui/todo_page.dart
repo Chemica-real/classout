@@ -20,6 +20,7 @@ import '../model/types.dart';
 import 'app_frame.dart';
 import 'theme.dart';
 import 'todo_editor.dart';
+import 'virtual_course_page.dart';
 
 const Color _rowHint = Color(0xFF8B97AC);
 const Color _rowMeta = Color(0xFF94A0B5);
@@ -181,6 +182,25 @@ class _TodoPageState extends State<TodoPage> {
                     onOpen: () => _openEditor(context, existing: t),
                   ),
 
+                // ---- 虚拟课程文件夹（鸿蒙 1.10.0：以后与已完成之间）----
+                if (_virtualCourses().isNotEmpty) ...[
+                  _SectionHeader(
+                    title: '虚拟课程',
+                    count: '${_virtualCourses().length} 门',
+                    countColor: accentBlue,
+                    hint: '点课程进入课时',
+                    top: 14,
+                  ),
+                  for (final c in _virtualCourses())
+                    _VirtualCourseRow(
+                      key: ValueKey('virtual-${c.id}-${_courseDone(c.id)}'),
+                      course: c,
+                      done: _courseDone(c.id),
+                      total: _courseTotal(c.id),
+                      onTap: () => _openVirtualCourse(c),
+                    ),
+                ],
+
                 // ---- 已完成 ----
                 if (s.done.isNotEmpty) ...[
                   _DoneHeader(
@@ -336,6 +356,32 @@ class _TodoPageState extends State<TodoPage> {
         templates: widget.bundle.templates,
         lessons: widget.bundle.lessons,
       );
+
+  List<Course> _virtualCourses() {
+    final out = widget.bundle.courses.where((c) {
+      if (!c.isVirtual) return false;
+      return widget.bundle.lessons.any((l) => l.courseId == c.id);
+    }).toList();
+    out.sort((a, b) => a.id - b.id);
+    return out;
+  }
+
+  int _courseTotal(int id) =>
+      widget.bundle.lessons.where((l) => l.courseId == id).length;
+
+  int _courseDone(int id) => widget.bundle.lessons
+      .where((l) => l.courseId == id && l.done)
+      .length;
+
+  Future<void> _openVirtualCourse(Course c) async {
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => VirtualCoursePage(
+        bundle: widget.bundle,
+        course: c,
+        onChanged: widget.onChanged,
+      ),
+    ));
+  }
 
   Future<void> _openEditor(BuildContext context,
       {Todo? existing, bool asExam = false}) async {
@@ -1130,6 +1176,70 @@ class _TrayButton extends StatelessWidget {
         child: Text(text,
             style: TextStyle(
                 fontSize: 14, fontWeight: FontWeight.w500, color: color)),
+      ),
+    );
+  }
+}
+
+
+class _VirtualCourseRow extends StatelessWidget {
+  final Course course;
+  final int done;
+  final int total;
+  final VoidCallback onTap;
+
+  const _VirtualCourseRow({
+    super.key,
+    required this.course,
+    required this.done,
+    required this.total,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final allDone = total > 0 && done == total;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          decoration: BoxDecoration(
+            color: glassTintRow,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: glassEdgeSoft),
+            boxShadow: glassShadowRow,
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 4,
+                height: 26,
+                decoration: BoxDecoration(
+                  color: courseColor(course.colorIndex),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(course.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 15, color: inkPrimary)),
+              ),
+              if (allDone)
+                const Text('✓ 已完成',
+                    style: TextStyle(fontSize: 12, color: Color(0xFFE0A94E)))
+              else
+                Text('$done / $total 讲',
+                    style: const TextStyle(fontSize: 12, color: inkSecondary)),
+              const SizedBox(width: 4),
+              const Icon(Icons.chevron_right, size: 18, color: inkTertiary),
+            ],
+          ),
+        ),
       ),
     );
   }

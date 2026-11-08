@@ -11,6 +11,7 @@ import '../data/blacklist.dart';
 import '../data/run_report.dart';
 import '../data/tray_pref.dart';
 import '../data/backup_export.dart';
+import '../data/calendar_sync.dart';
 import '../data/note_pref.dart';
 import '../data/repo.dart';
 import '../data/settings.dart';
@@ -78,6 +79,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   String _runReport = '';
   int? _blacklistCount;
   int _tab = 0;
+  // 底部菜单 1s 冷却：和鸿蒙 1.10.0 同步，避免连续切页把页面重挂载切崩
+  DateTime? _lastTabAt;
   bool _syncing = false;
 
   /// 启动清单走到第几步（0..4），见 boot_screen.dart 的 bootSteps
@@ -733,6 +736,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     // 让「正在与日历同步」至少露一下脸（真机上重排可能几毫秒就完事）
     await Future<void>.delayed(const Duration(milliseconds: 700));
     await _resyncReminders();
+    final b = _bundle;
+    if (_settings.calendarSyncEnabled && b != null) {
+      await CalendarSync.sync(buildCalendarEvents(b, DateTime.now()));
+    }
     if (!mounted) return;
     setState(() => _syncing = false);
     // 鸿蒙 `doCalendarSync` 只把结果写 hilog，界面只有页头那条「正在与日历同步」；
@@ -871,6 +878,13 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             child: AppFrame(
               tab: _tab,
               onTab: (i) {
+                if (i == _tab) return;
+                final now = DateTime.now();
+                if (_lastTabAt != null &&
+                    now.difference(_lastTabAt!).inMilliseconds < 1000) {
+                  return;
+                }
+                _lastTabAt = now;
                 final was = _tab;
                 setState(() => _tab = i);
                 // 用户 2026-10-16：「每次切换到待办列时，立即补生成下课列表」

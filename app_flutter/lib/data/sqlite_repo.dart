@@ -19,6 +19,11 @@ class SqliteRepo implements ClassOutRepo {
     for (final stmt in splitSchema(schemaSql)) {
       raw.execute(stmt);
     }
+    // 旧库升级：0.2.0 时期没有这两列，CREATE IF NOT EXISTS 不会补
+    _ensureColumn(raw, 'course', 'lesson_duration_min',
+        'INTEGER NOT NULL DEFAULT 90');
+    _ensureColumn(raw, 'virtual_lesson', 'duration_min',
+        'INTEGER NOT NULL DEFAULT 0');
     return SqliteRepo._(raw);
   }
 
@@ -80,6 +85,7 @@ class SqliteRepo implements ClassOutRepo {
           'color_index': c.colorIndex,
           'auto_todo_enabled': c.autoTodoEnabled ? 1 : 0,
           'is_virtual': c.isVirtual ? 1 : 0,
+          'lesson_duration_min': c.lessonDurationMin,
           'note': c.note,
         });
       }
@@ -135,6 +141,7 @@ class SqliteRepo implements ClassOutRepo {
           'course_id': l.courseId,
           'seq': l.seq,
           'title': l.title,
+          'duration_min': l.durationMin,
           'done': l.done ? 1 : 0,
           'done_at': l.doneAt,
         });
@@ -245,6 +252,15 @@ class SqliteRepo implements ClassOutRepo {
     db.execute(
         'INSERT INTO $table ($cols) VALUES ($marks)', values.values.toList());
   }
+}
+
+/// 老库补列（PRAGMA 查一次，缺了才 ALTER）
+void _ensureColumn(Database db, String table, String column, String ddl) {
+  final rows = db.select('PRAGMA table_info($table)');
+  for (final r in rows) {
+    if ('${r['name']}' == column) return;
+  }
+  db.execute('ALTER TABLE $table ADD COLUMN $column $ddl');
 }
 
 /// 'new_start_section' → 'newStartSection'

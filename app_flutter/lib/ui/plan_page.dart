@@ -13,6 +13,7 @@ import '../data/backup.dart';
 import '../data/tray_pref.dart';
 import '../domain/dates.dart';
 import '../domain/plan_math.dart';
+import '../domain/validate.dart';
 import '../domain/timetable.dart';
 import '../model/types.dart';
 import 'app_frame.dart';
@@ -102,6 +103,12 @@ class _PlanPageState extends State<PlanPage> {
   /// 瞬时提示（鸿蒙端 showHint）：不占布局、1.8 秒自动消失
   String _hint = '';
   Timer? _hintTimer;
+
+  /// 双指缩放时屏幕正中那个「±NN min」提示（'' = 不显示）
+  String _pinchLabel = '';
+
+  /// 按下双指那一刻的结束分钟（缩放基准，手指抖动不累积误差）
+  int _pinchBaseEnd = 0;
 
   /// 双指缩放预览：正在缩的块 id 与预览结束分钟（0 = 没在缩）
   int _pinchId = 0;
@@ -619,6 +626,27 @@ class _PlanPageState extends State<PlanPage> {
             ),
           ),
         ),
+        // 双指缩放：屏幕正中的深色 ±NN min 提示（鸿蒙 `pinchLabel`，30 号粗体）
+        if (_pinchLabel.isNotEmpty)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 24, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xE00C121C), // rgba(12,18,28,0.88)
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Text(_pinchLabel,
+                      style: const TextStyle(
+                          fontSize: 30,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white)),
+                ),
+              ),
+            ),
+          ),
         // 瞬时提示：悬浮在网格上方，不参与布局（鸿蒙端 showHint 的深色小胶囊）
         if (_hint.isNotEmpty)
           Positioned(
@@ -775,7 +803,9 @@ class _PlanPageState extends State<PlanPage> {
   void _pinchStart(PlanBlock b) {
     setState(() {
       _pinchId = b.id;
+      _pinchBaseEnd = b.endMin;
       _pinchEndMin = b.endMin;
+      _pinchLabel = pinchDeltaLabel(0);
     });
   }
 
@@ -783,7 +813,10 @@ class _PlanPageState extends State<PlanPage> {
     if (_pinchId != b.id) return;
     final base = b.endMin - b.startMin;
     final dur = (base * scale).round().clamp(15, _axis.endMin - b.startMin);
-    setState(() => _pinchEndMin = b.startMin + dur);
+    setState(() {
+      _pinchEndMin = b.startMin + dur;
+      _pinchLabel = pinchDeltaLabel(_pinchEndMin - _pinchBaseEnd);
+    });
   }
 
   void _pinchEnd(PlanBlock b) {
@@ -792,8 +825,11 @@ class _PlanPageState extends State<PlanPage> {
     setState(() {
       _pinchId = 0;
       _pinchEndMin = 0;
+      _pinchLabel = '';
     });
     if (id == 0 || end == 0 || end == b.endMin) return;
+    // 鸿蒙 `endPinch`：松手后弹「时长改为 N 分钟」
+    _showHint('时长改为 ${end - b.startMin} 分钟');
     widget.onChanged(_withBlocks(widget.bundle.blocks
         .map((x) => x.id == b.id
             ? PlanBlock(

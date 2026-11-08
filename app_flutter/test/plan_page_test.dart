@@ -236,9 +236,13 @@ void main() {
     await g1.moveBy(const Offset(-30, 0));
     await g2.moveBy(const Offset(30, 0));
     await tester.pump();
+    // 缩放中：屏幕正中有「±NN min」提示（鸿蒙 pinchLabel，30 号粗体深色胶囊）
+    expect(find.textContaining('+'), findsWidgets);
     await g1.up();
     await g2.up();
     await tester.pumpAndSettle();
+    // 松手后：鸿蒙 `endPinch` 的「时长改为 N 分钟」
+    expect(find.textContaining('时长改为'), findsOneWidget);
 
     final after = _byIdBlock(h.last!, before.id);
     expect(after.startMin, before.startMin, reason: '缩放不动开始时间');

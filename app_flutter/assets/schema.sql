@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS course (
      color_index INTEGER NOT NULL DEFAULT 0,
      auto_todo_enabled INTEGER NOT NULL DEFAULT 1,
      is_virtual INTEGER NOT NULL DEFAULT 0,
+     lesson_duration_min INTEGER NOT NULL DEFAULT 90,
      note TEXT NOT NULL DEFAULT ''
    );
 
@@ -114,6 +115,7 @@ CREATE TABLE IF NOT EXISTS virtual_lesson (
      course_id INTEGER NOT NULL,
      seq INTEGER NOT NULL,
      title TEXT NOT NULL DEFAULT '',
+     duration_min INTEGER NOT NULL DEFAULT 0,
      done INTEGER NOT NULL DEFAULT 0,
      done_at INTEGER NOT NULL DEFAULT 0
    );

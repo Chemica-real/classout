@@ -423,4 +423,51 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('展开 ▾'), findsOneWidget);
   });
+
+
+  testWidgets('虚拟课程文件夹：点进课时页，显示时长与原名', (tester) async {
+    final base = _demo();
+    final semId = base.semester?.id ?? 0;
+    final virtual = Course(
+      id: 9001,
+      semesterId: semId,
+      name: '测试虚拟课程',
+      shortName: '测虚',
+      isVirtual: true,
+      lessonDurationMin: 90,
+    );
+    final bundle = base.copyWith(
+      courses: [...base.courses, virtual],
+      lessons: [
+        VirtualLesson(
+          id: 9101,
+          courseId: 9001,
+          seq: 1,
+          title: '第一讲：像素测试',
+          durationMin: 30,
+        ),
+      ],
+    );
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: StatefulBuilder(
+          builder: (context, setState) => TodoPage(
+            bundle: bundle,
+            onChanged: (next) => setState(() {}),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('虚拟课程'), findsOneWidget);
+    expect(find.text('0 / 1 讲'), findsOneWidget);
+    await tester.ensureVisible(find.text('测试虚拟课程'));
+    await tester.tap(find.text('测试虚拟课程'));
+    await tester.pumpAndSettle();
+    expect(find.text('第一讲：像素测试'), findsOneWidget);
+    expect(find.textContaining('30 分钟'), findsOneWidget);
+  });
 }

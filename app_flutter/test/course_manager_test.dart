@@ -178,7 +178,7 @@ void main() {
     expect(find.textContaining('共多少讲（当前 1）'), findsOneWidget);
 
     // 滑条拉到 2 讲（直接调 onChanged，避免像素换算带来的不确定性）
-    tester.widget<Slider>(find.byType(Slider).last).onChanged!(2);
+    tester.widget<Slider>(find.byKey(const ValueKey('lesson-count-slider'))).onChanged!(2);
     await tester.pumpAndSettle();
     await _tapVisible(tester, find.byKey(const ValueKey('course-save')));
 
@@ -189,7 +189,7 @@ void main() {
 
     // 再降回 1 讲：未完成的那一讲被删掉
     await _tapVisible(tester, find.byKey(const ValueKey('course-4')));
-    tester.widget<Slider>(find.byType(Slider).last).onChanged!(1);
+    tester.widget<Slider>(find.byKey(const ValueKey('lesson-count-slider'))).onChanged!(1);
     await tester.pumpAndSettle();
     await _tapVisible(tester, find.byKey(const ValueKey('course-save')));
     saved = (await repo.load())!;

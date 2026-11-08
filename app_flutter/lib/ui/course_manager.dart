@@ -560,7 +560,8 @@ class _ManagerState extends State<_Manager> {
                   padding: const EdgeInsets.only(top: 4),
                   child: Text(
                       '虚拟课程 · ${lessons.length} 讲，'
-                      '已完成 ${lessons.where((l) => l.done).length}',
+                      '已完成 ${lessons.where((l) => l.done).length} · '
+                      '默认 ${c.lessonDurationMin} 分钟',
                       style: const TextStyle(
                           fontSize: 11, color: Color(0xFFE0A94E))),
                 ),
@@ -710,6 +711,9 @@ class _CourseEditorState extends State<_CourseEditor> {
   late bool _auto = widget.existing?.autoTodoEnabled ?? true;
   late bool _virtual = widget.existing?.isVirtual ?? false;
 
+  /// 虚拟课程每讲默认时长（15–200，5 分钟刻度；课时可以单独覆盖）
+  late int _lessonDuration = widget.existing?.lessonDurationMin ?? 90;
+
   /// 虚拟课程的课时数（鸿蒙 1–50 的滑条；保存时按这个数增删 lesson）
   late int _lessonCount = widget.b.lessons
       .where((l) => l.courseId == (widget.existing?.id ?? 0))
@@ -760,6 +764,7 @@ class _CourseEditorState extends State<_CourseEditor> {
       colorIndex: _color,
       autoTodoEnabled: _auto,
       isVirtual: _virtual,
+      lessonDurationMin: _lessonDuration,
       note: existing?.note ?? '',
     );
     final courses = _id > 0
@@ -795,6 +800,7 @@ class _CourseEditorState extends State<_CourseEditor> {
             courseId: cid,
             seq: seq,
             title: '第 $seq 讲',
+            durationMin: 0,
           ),
         ];
       }
@@ -906,6 +912,7 @@ class _CourseEditorState extends State<_CourseEditor> {
                               const RoundSliderOverlayShape(overlayRadius: 16),
                         ),
                         child: Slider(
+                          key: const ValueKey('lesson-count-slider'),
                           value: _lessonCount.toDouble(),
                           min: 1,
                           max: 50,
@@ -931,6 +938,26 @@ class _CourseEditorState extends State<_CourseEditor> {
                               style: TextStyle(
                                   fontSize: 10, color: Color(0xFF8B97AC))),
                         ],
+                      ),
+                      Text('每讲默认时长（当前 $_lessonDuration 分钟）',
+                          style: const TextStyle(
+                              fontSize: 12, color: Color(0xFF94A0B5))),
+                      Slider(
+                        key: const ValueKey('lesson-duration-slider'),
+                        value: _lessonDuration.toDouble(),
+                        min: 15,
+                        max: 200,
+                        divisions: 37,
+                        activeColor: const Color(0xFF2E6BE6),
+                        inactiveColor: Colors.white.withValues(alpha: 0.16),
+                        onChanged: (v) => setState(
+                            () => _lessonDuration = (v / 5).round() * 5),
+                      ),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Text('$_lessonDuration 分钟',
+                            style: const TextStyle(
+                                fontSize: 12, color: Color(0xFF7FA8FF))),
                       ),
                       const Text(
                           '课时排进计划、打勾完成之后，会像真课下课一样按下面的模板生成待办。',

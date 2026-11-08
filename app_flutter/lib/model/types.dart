@@ -209,6 +209,7 @@ class Course {
   int colorIndex;
   bool autoTodoEnabled;
   bool isVirtual;
+  int lessonDurationMin;
   String note;
 
   Course({
@@ -221,6 +222,7 @@ class Course {
     this.colorIndex = 0,
     this.autoTodoEnabled = true,
     this.isVirtual = false,
+    this.lessonDurationMin = 90,
     this.note = '',
   });
 
@@ -234,6 +236,7 @@ class Course {
         colorIndex: _int(j['colorIndex']),
         autoTodoEnabled: _int(j['autoTodoEnabled'], 1) != 0,
         isVirtual: _int(j['isVirtual']) != 0,
+        lessonDurationMin: _int(j['lessonDurationMin'], 90),
         note: _str(j['note']),
       );
 
@@ -375,6 +378,8 @@ class VirtualLesson {
   /// 第几讲，从 1 开始
   int seq;
   String title;
+  /// 0 = 跟随课程默认；15–200，5 分钟刻度
+  int durationMin;
   bool done;
   int doneAt;
 
@@ -383,6 +388,7 @@ class VirtualLesson {
     this.courseId = 0,
     this.seq = 1,
     this.title = '',
+    this.durationMin = 0,
     this.done = false,
     this.doneAt = 0,
   });
@@ -392,6 +398,7 @@ class VirtualLesson {
         courseId: _int(j['courseId']),
         seq: _int(j['seq'], 1),
         title: _str(j['title']),
+        durationMin: _int(j['durationMin']),
         done: _int(j['done']) != 0,
         doneAt: _int(j['doneAt']),
       );
@@ -401,6 +408,7 @@ class VirtualLesson {
         'courseId': courseId,
         'seq': seq,
         'title': title,
+        'durationMin': durationMin,
         'done': done ? 1 : 0,
         'doneAt': doneAt,
       };
