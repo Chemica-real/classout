@@ -69,6 +69,9 @@ class _TodoPageState extends State<TodoPage> {
   /// 「已完成」默认展开（就是要让人看见"它没丢"）
   bool _doneOpen = true;
 
+  /// 课程筛选：0 = 全部课程；否则只看该课程（鸿蒙 TodoInbox.courseFilter）
+  int _courseFilter = 0;
+
   /// 二次确认删除的那一条
   int _pendingDeleteId = 0;
 
@@ -80,7 +83,10 @@ class _TodoPageState extends State<TodoPage> {
   @override
   Widget build(BuildContext context) {
     final bundle = widget.bundle;
-    final s = splitTodos(bundle.todos);
+    final visibleTodos = _courseFilter == 0
+        ? bundle.todos
+        : bundle.todos.where((t) => t.courseId == _courseFilter).toList();
+    final s = splitTodos(visibleTodos);
     final courses = {for (final c in bundle.courses) c.id: c};
     final hasTop = s.pending.isNotEmpty || s.exams.isNotEmpty;
 
@@ -99,6 +105,36 @@ class _TodoPageState extends State<TodoPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // ---- 课程筛选（鸿蒙 TodoInbox 页头那条）----
+                GestureDetector(
+                  key: const ValueKey('todo-course-filter'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _pickCourseFilter,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: glassTintRow,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: glassEdgeSoft),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.filter_alt_outlined,
+                            size: 15, color: inkTertiary),
+                        const SizedBox(width: 6),
+                        Text(_courseFilter == 0 ? '全部课程' : _courseName(_courseFilter),
+                            style: const TextStyle(
+                                fontSize: 12, color: inkSecondary)),
+                        const Spacer(),
+                        const Icon(Icons.expand_more,
+                            size: 16, color: inkTertiary),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+
                 // ---- 待确认 ----
                 if (s.pending.isNotEmpty) ...[
                   _SectionHeader(
@@ -357,9 +393,53 @@ class _TodoPageState extends State<TodoPage> {
         lessons: widget.bundle.lessons,
       );
 
+  String _courseName(int id) {
+    for (final c in widget.bundle.courses) {
+      if (c.id == id) return c.name;
+    }
+    return '全部课程';
+  }
+
+  Future<void> _pickCourseFilter() async {
+    final choice = await showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: const Color(0xFF0E1420),
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            ListTile(
+              title: const Text('全部课程', style: TextStyle(color: inkPrimary)),
+              trailing: _courseFilter == 0
+                  ? const Icon(Icons.check, color: accentBlue)
+                  : null,
+              onTap: () => Navigator.pop(ctx, 0),
+            ),
+            for (final c in widget.bundle.courses)
+              ListTile(
+                title: Text(c.name,
+                    style: const TextStyle(color: inkPrimary)),
+                leading: Container(
+                  width: 4,
+                  height: 20,
+                  color: courseColor(c.colorIndex),
+                ),
+                trailing: _courseFilter == c.id
+                    ? const Icon(Icons.check, color: accentBlue)
+                    : null,
+                onTap: () => Navigator.pop(ctx, c.id),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (choice != null && mounted) setState(() => _courseFilter = choice);
+  }
+
   List<Course> _virtualCourses() {
     final out = widget.bundle.courses.where((c) {
       if (!c.isVirtual) return false;
+      if (_courseFilter != 0 && c.id != _courseFilter) return false;
       return widget.bundle.lessons.any((l) => l.courseId == c.id);
     }).toList();
     out.sort((a, b) => a.id - b.id);
