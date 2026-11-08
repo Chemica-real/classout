@@ -925,13 +925,14 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                         Navigator.of(context).maybePop();
                         await _startGuide();
                       },
-                      onOpenCourses: () {
+                      onOpenCoursesMode: (mode) {
                         showCourseManager(context,
                             bundle: _bundle!,
                             onChanged: _apply,
                             onImport: _import,
                             report: _runReport,
-                            blacklistCount: _blacklistCount);
+                            blacklistCount: _blacklistCount,
+                            initialMode: mode == 'semester' ? 'semester' : 'list');
                       },
                       onOpenBackup: () {
                         showCourseManager(context,

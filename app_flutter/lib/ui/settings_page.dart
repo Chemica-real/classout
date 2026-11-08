@@ -47,6 +47,7 @@ class SettingsPage extends StatefulWidget {
 
   /// 打开课程管理 / 备份页（设置分组行用）
   final VoidCallback? onOpenCourses;
+  final void Function(String mode)? onOpenCoursesMode;
   final VoidCallback? onOpenBackup;
   final Future<void> Function()? onResetApp;
 
@@ -60,6 +61,7 @@ class SettingsPage extends StatefulWidget {
     this.onTestReminder,
     this.onStartGuide,
     this.onOpenCourses,
+    this.onOpenCoursesMode,
     this.onOpenBackup,
     this.onResetApp,
   });
@@ -367,7 +369,11 @@ class _SettingsPageState extends State<SettingsPage>
 
   void _openCourses(String mode) {
     setState(() => _sub = '');
-    widget.onOpenCourses?.call();
+    if (widget.onOpenCoursesMode != null) {
+      widget.onOpenCoursesMode!(mode);
+    } else {
+      widget.onOpenCourses?.call();
+    }
   }
 
   String _semesterName() {
