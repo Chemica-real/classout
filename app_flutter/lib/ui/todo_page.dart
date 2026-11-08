@@ -80,6 +80,9 @@ class _TodoPageState extends State<TodoPage> {
   /// 课程筛选：0 = 全部课程；否则只看该课程（鸿蒙 TodoInbox.courseFilter）
   int _courseFilter = 0;
 
+  /// 排序：ddl（截止时间）/ title（标题），对应鸿蒙 `todoSort`
+  String _sortMode = 'ddl';
+
   /// 二次确认删除的那一条
   int _pendingDeleteId = 0;
 
@@ -94,7 +97,11 @@ class _TodoPageState extends State<TodoPage> {
     final visibleTodos = _courseFilter == 0
         ? bundle.todos
         : bundle.todos.where((t) => t.courseId == _courseFilter).toList();
-    final s = splitTodos(visibleTodos);
+    var s = splitTodos(visibleTodos);
+    if (_sortMode == 'title') {
+      s = TodoSections(
+        _byTitle(s.pending), _byTitle(s.exams), _byTitle(s.tasks), s.done);
+    }
     final courses = {for (final c in bundle.courses) c.id: c};
     final hasTop = s.pending.isNotEmpty || s.exams.isNotEmpty;
 
@@ -113,33 +120,21 @@ class _TodoPageState extends State<TodoPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ---- 课程筛选（鸿蒙 TodoInbox 页头那条）----
-                GestureDetector(
+                // ---- 课程 / 排序（鸿蒙 TodoInbox 页头那两行）----
+                _filterRow(
                   key: const ValueKey('todo-course-filter'),
-                  behavior: HitTestBehavior.opaque,
+                  label: '课程',
+                  value: _courseFilter == 0
+                      ? '全部课程'
+                      : _courseName(_courseFilter),
                   onTap: _pickCourseFilter,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: glassTintRow,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: glassEdgeSoft),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.filter_alt_outlined,
-                            size: 15, color: inkTertiary),
-                        const SizedBox(width: 6),
-                        Text(_courseFilter == 0 ? '全部课程' : _courseName(_courseFilter),
-                            style: const TextStyle(
-                                fontSize: 12, color: inkSecondary)),
-                        const Spacer(),
-                        const Icon(Icons.expand_more,
-                            size: 16, color: inkTertiary),
-                      ],
-                    ),
-                  ),
+                ),
+                const SizedBox(height: 6),
+                _filterRow(
+                  key: const ValueKey('todo-sort'),
+                  label: '排序',
+                  value: _sortMode == 'title' ? '标题' : '截止时间',
+                  onTap: _pickSort,
                 ),
                 const SizedBox(height: 10),
 
@@ -400,6 +395,65 @@ class _TodoPageState extends State<TodoPage> {
         templates: widget.bundle.templates,
         lessons: widget.bundle.lessons,
       );
+
+  List<Todo> _byTitle(List<Todo> list) {
+    final out = List<Todo>.from(list);
+    out.sort((a, b) => a.title.compareTo(b.title));
+    return out;
+  }
+
+  Widget _filterRow({
+    required Key key,
+    required String label,
+    required String value,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      key: key,
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: SizedBox(
+        height: 30,
+        child: Row(
+          children: [
+            SizedBox(
+              width: 34,
+              child: Text(label,
+                  style: const TextStyle(fontSize: 12, color: inkTertiary)),
+            ),
+            Expanded(
+              child: Text(value,
+                  style: const TextStyle(fontSize: 13, color: inkSecondary)),
+            ),
+            const Icon(Icons.expand_more, size: 16, color: inkTertiary),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickSort() async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: const Color(0xFF0E1420),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final e in [['ddl', '截止时间'], ['title', '标题']])
+              ListTile(
+                title: Text(e[1], style: const TextStyle(color: inkPrimary)),
+                trailing: _sortMode == e[0]
+                    ? const Icon(Icons.check, color: accentBlue)
+                    : null,
+                onTap: () => Navigator.pop(ctx, e[0]),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (choice != null && mounted) setState(() => _sortMode = choice);
+  }
 
   String _courseName(int id) {
     for (final c in widget.bundle.courses) {
