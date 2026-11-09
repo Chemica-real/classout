@@ -2425,17 +2425,37 @@ class _Tray extends StatelessWidget {
                   key: const ValueKey('tray-page-todo')),
               if (lessons.isNotEmpty) ...[
                 const SizedBox(width: 8),
-                _pageChip('虚拟课程 ${lessons.length}', 1,
+                _pageChip('虚拟 ${lessons.length}', 1,
                     key: const ValueKey('tray-page-lesson')),
               ],
+              const SizedBox(width: 8),
+              // 鸿蒙把筛选收在「收起」下方同一行右侧：两枚小胶囊，省掉两整行高度
+              Expanded(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    if (!lessonPage)
+                      Flexible(
+                        child: _filterChip(
+                          key: const ValueKey('pool-tag-filter'),
+                          text: _tagText,
+                          onTap: onPickTag,
+                        ),
+                      ),
+                    if (!lessonPage) const SizedBox(width: 6),
+                    Flexible(
+                      child: _filterChip(
+                        key: const ValueKey('pool-course-filter'),
+                        text: _courseText,
+                        onTap: onPickCourse,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
-        if (!lessonPage)
-          _filterRow('标签', _tagText, onPickTag,
-              key: const ValueKey('pool-tag-filter')),
-        _filterRow('课程', _courseText, onPickCourse,
-            key: const ValueKey('pool-course-filter')),
         if (lessonPage)
           lessons.isEmpty
               ? const Padding(
@@ -2473,29 +2493,35 @@ class _Tray extends StatelessWidget {
     return '全部课程';
   }
 
-  Widget _filterRow(String label, String value, VoidCallback onTap,
-      {required Key key}) {
+  Widget _filterChip({
+    required Key key,
+    required String text,
+    required VoidCallback onTap,
+  }) {
     return GestureDetector(
       key: key,
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
-      child: SizedBox(
-        height: 30,
+      child: Container(
+        height: 24,
+        padding: const EdgeInsets.only(left: 8, right: 3),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+        ),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            SizedBox(
-              width: 34,
-              child: Text(label,
+            Flexible(
+              child: Text(text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                      fontSize: 12, color: Color(0xFF8B97AC))),
-            ),
-            Expanded(
-              child: Text(value,
-                  style: const TextStyle(
-                      fontSize: 13, color: Color(0xFFC3CDDE))),
+                      fontSize: 11, color: Color(0xFFC3CDDE))),
             ),
             const Icon(Icons.expand_more,
-                size: 16, color: Color(0xFF8B97AC)),
+                size: 12, color: Color(0xFF8B97AC)),
           ],
         ),
       ),
