@@ -20,7 +20,7 @@ void main() {
     expect(events.every((e) => e.endMs > e.startMs), isTrue);
   });
 
-  test('已完成待办不写截止事件，未完成待办会写', () {
+  test('待办不再写截止事件（鸿蒙 1.10 已移除）', () {
     final b = _demo();
     final now = DateTime(2026, 11, 9, 8);
     final done = Todo(
@@ -40,7 +40,8 @@ void main() {
     final events = buildCalendarEvents(
         b.copyWith(todos: [done, active]), now);
     expect(events.any((e) => e.title.contains('已完成')), isFalse);
-    expect(events.any((e) => e.title == '截止：未完成'), isTrue);
+    expect(events.any((e) => e.title == '截止：未完成'), isFalse);
+    expect(events.every((e) => !e.title.startsWith('截止：')), isTrue);
   });
 
   test('没有学期时不生成任何日历事件', () {

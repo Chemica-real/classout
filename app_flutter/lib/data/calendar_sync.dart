@@ -8,7 +8,6 @@ import 'package:flutter/services.dart';
 
 import '../domain/dates.dart' show parseDate;
 import '../domain/timetable.dart' show computeWeekSessions, weekOfDate;
-import '../model/types.dart';
 import 'backup.dart';
 
 class CalendarEvent {
@@ -68,9 +67,8 @@ class CalendarSync {
   }
 }
 
-/// 从完整备份生成未来 4 周的课程事件 + 未完成待办的截止事件。
-/// 不写计划块，避免和待办截止事件重复；虚拟课程的计划块若已排，会以块的形式在
-/// 鸿蒙端同步，这里先保持“课程 + 截止”两条主线。
+/// 从完整备份生成未来 4 周的课程事件（鸿蒙 1.10 起不再写待办截止事件）。
+/// 只写课程；计划块和待办截止都不写入，避免系统日历里出现重复条目。
 List<CalendarEvent> buildCalendarEvents(BackupBundle b, DateTime now,
     {int leadMin = 15}) {
   final out = <CalendarEvent>[];
@@ -104,18 +102,5 @@ List<CalendarEvent> buildCalendarEvents(BackupBundle b, DateTime now,
     }
   }
 
-  for (final t in b.todos) {
-    if (t.status == TodoStatus.done || t.ddl.length < 16) continue;
-    final d = DateTime.tryParse(t.ddl.replaceFirst(' ', 'T'));
-    if (d == null || d.isBefore(start) || d.isAfter(end)) continue;
-    final key = '截止|${t.id}|${t.ddl}';
-    if (!seen.add(key)) continue;
-    out.add(CalendarEvent(
-      title: '截止：${t.title}',
-      description: 'ClassOUT · 待办截止',
-      startMs: d.subtract(const Duration(minutes: 15)).millisecondsSinceEpoch,
-      endMs: d.millisecondsSinceEpoch,
-    ));
-  }
   return out;
 }

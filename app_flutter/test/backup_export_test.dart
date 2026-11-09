@@ -191,4 +191,14 @@ void main() {
     expect(lines, contains('virtual_lesson: 0'));
     expect(lines, contains('plan_block: 3'));
   });
+
+  test('课程自定义颜色与课时命名模板能往返', () {
+    final b = _demo();
+    b.courses.first
+      ..colorHex = '#12AB34'
+      ..lessonTitleTemplate = '%n · 第 %N 讲';
+    final after = BackupBundle.decode(backupToJson(b));
+    expect(after.courses.first.colorHex, '#12AB34');
+    expect(after.courses.first.lessonTitleTemplate, '%n · 第 %N 讲');
+  });
 }
