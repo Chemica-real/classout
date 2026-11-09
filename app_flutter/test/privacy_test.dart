@@ -16,14 +16,14 @@ BackupBundle _demo() =>
 void main() {
   test('隐私章节齐全、每节都有标题和正文', () {
     final sections = privacySections();
-    expect(sections.length, 9);
+    expect(sections.length, 10);
     for (final s in sections) {
       expect(s.heading.trim(), isNotEmpty);
       expect(s.body.trim(), isNotEmpty);
     }
     // 上架材料里必须有的两句
     expect(sections.first.body, contains('不收集'));
-    expect(privacyUpdatedAt(), '2026-10-16');
+    expect(privacyUpdatedAt(), '2026-10-27');
   });
 
   testWidgets('设置 → 关于 → 隐私政策 能打开并显示全文', (tester) async {

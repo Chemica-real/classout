@@ -15,6 +15,7 @@ import 'data/backup.dart';
 import 'data/repo.dart';
 import 'data/repo_factory.dart';
 import 'ui/home_shell.dart';
+import 'ui/privacy_gate.dart';
 
 void main() => runApp(const ClassOutApp());
 
@@ -33,7 +34,7 @@ class ClassOutApp extends StatelessWidget {
         // 国内网络基本连不上 → 满屏豆腐块）。原生端用系统字体更好，所以只在 web 用。
         fontFamily: kIsWeb ? 'ClassOutCJK' : 'HarmonyOS Sans SC',
       ),
-      home: const _Boot(),
+      home: const PrivacyGate(child: _Boot()),
     );
   }
 }

@@ -9,7 +9,7 @@ class PrivacySection {
   const PrivacySection(this.heading, this.body);
 }
 
-String privacyUpdatedAt() => '2026-10-16';
+String privacyUpdatedAt() => '2026-10-27';
 
 List<PrivacySection> privacySections() => const [
       PrivacySection(
@@ -47,6 +47,18 @@ List<PrivacySection> privacySections() => const [
             '· 已写进系统日历的提醒，可以在系统日历里自行删除。',
       ),
       PrivacySection('未成年人', '本应用不收集任何个人信息，因此也不存在针对未成年人的信息收集。'),
-      PrivacySection('联系方式', '对本政策有疑问，可联系：<在这里填你的邮箱>'),
+      PrivacySection(
+        '开发者与联系方式',
+        '开发者：何麒（与应用市场开发者名称一致）\n对本政策有疑问，可联系：harvapps@qq.com',
+      ),
+      PrivacySection(
+        '撤回同意与投诉',
+        '· 撤回同意：在手机的「设置 → 应用 → ClassOUT → 存储」里清除应用数据，或直接卸载应用；'
+            '下次打开会重新展示本政策并征求同意。撤回后应用不再处理任何数据。\n'
+            '· 查阅 / 复制 / 导出：管理课程 → 备份与恢复 → 导出备份，可拿到包含全部数据的 JSON 文件。\n'
+            '· 删除：见「你的控制权」；卸载应用即删除全部数据。\n'
+            '· 投诉与举报：对本政策或数据处理有疑问、投诉或举报，可发邮件到 harvapps@qq.com，'
+            '我们会在 15 个工作日内回复。',
+      ),
       PrivacySection('变更', '本政策如有更新，会同时更新本页与应用市场的说明。'),
     ];
