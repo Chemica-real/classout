@@ -106,6 +106,7 @@ Future<void> showCourseManager(
   String report = '',
   int? blacklistCount,
   String initialMode = 'list',
+  Future<void> Function(BackupBundle bundle)? onRestore,
 }) {
   return showGeneralDialog<void>(
     context: context,
@@ -125,7 +126,8 @@ Future<void> showCourseManager(
             onImport: onImport,
             report: report,
             blacklistCount: blacklistCount,
-            initialMode: initialMode),
+            initialMode: initialMode,
+            onRestore: onRestore),
       ),
     ),
     transitionBuilder: (ctx, anim, _, child) {
@@ -151,13 +153,15 @@ class _Manager extends StatefulWidget {
   final String report;
   final int? blacklistCount;
   final String initialMode;
+  final Future<void> Function(BackupBundle bundle)? onRestore;
   const _Manager(
       {required this.bundle,
       required this.onChanged,
       this.onImport,
       this.report = '',
       this.blacklistCount,
-      this.initialMode = 'list'});
+      this.initialMode = 'list',
+      this.onRestore});
 
   @override
   State<_Manager> createState() => _ManagerState();
@@ -322,6 +326,7 @@ class _ManagerState extends State<_Manager> {
           b: _b,
           onChanged: _apply,
           onImport: widget.onImport,
+          onRestore: widget.onRestore,
           report: widget.report,
           blacklistCount: widget.blacklistCount,
         );
@@ -2305,10 +2310,12 @@ class _BackupSheet extends StatefulWidget {
   final Future<BackupBundle?> Function()? onImport;
   final String report;
   final int? blacklistCount;
+  final Future<void> Function(BackupBundle bundle)? onRestore;
   const _BackupSheet(
       {required this.b,
       required this.onChanged,
       this.onImport,
+      this.onRestore,
       this.report = '',
       this.blacklistCount});
 
@@ -2391,7 +2398,11 @@ class _BackupSheetState extends State<_BackupSheet> {
       _restored = bundle;
       _note = '已从备份恢复：\n${backupSummary(bundle)}';
     });
-    widget.onChanged(bundle);
+    if (widget.onRestore != null) {
+      await widget.onRestore!(bundle);
+    } else {
+      widget.onChanged(bundle);
+    }
   }
 
   /// 鸿蒙 `BackupView` 同样是整页场景（顶栏由外壳画）

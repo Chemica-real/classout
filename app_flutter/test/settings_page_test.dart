@@ -7,11 +7,12 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:classout/data/backup.dart';
 import 'package:classout/data/repo.dart';
+import 'package:classout/data/backup_export.dart';
 import 'package:classout/data/settings.dart';
 import 'package:classout/domain/plan_math.dart';
 import 'package:classout/model/types.dart';
 import 'package:classout/ui/home_shell.dart';
-import 'package:classout/ui/settings_page.dart' show appVersion, SettingsPage;
+import 'package:classout/ui/settings_page.dart' show appVersion, SettingsPage, ResetBackup;
 import 'package:classout/ui/theme.dart' show applyCoursePalette;
 
 BackupBundle _demo() =>
@@ -281,6 +282,14 @@ void main() {
 
   testWidgets('重置应用：必须二次确认，取消不触发', (tester) async {
     var resets = 0;
+    final dir = Directory.systemTemp.createTempSync('reset-test');
+    backupDirOverride = dir;
+    addTearDown(() {
+      backupDirOverride = null;
+      try {
+        dir.deleteSync(recursive: true);
+      } catch (_) {}
+    });
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 3.0;
     addTearDown(tester.view.reset);
@@ -292,6 +301,8 @@ void main() {
           settings: AppSettings(),
           onSettingsChanged: (_) {},
           onResetApp: () async => resets++,
+          backupBeforeReset: () async =>
+              const ResetBackup('/tmp/classout-backup.json', 123),
         ),
       ),
     ));
@@ -303,6 +314,12 @@ void main() {
     expect(resets, 0);
 
     await _tapUnderBar(tester, find.text('重置应用并重新引导'));
+    await tester.tap(find.widgetWithText(TextButton, '继续'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pumpAndSettle();
+    expect(find.text('确认重置？'), findsOneWidget);
+    expect(find.textContaining('已自动备份'), findsOneWidget);
     await tester.tap(find.text('确认重置'));
     await tester.pumpAndSettle();
     expect(resets, 1);

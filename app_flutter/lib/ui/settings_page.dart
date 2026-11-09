@@ -5,11 +5,13 @@
 //  - **数据类**（不可排时段 rest_window 表）→ 跟 bundle 一起整份写回。
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../data/backup.dart';
+import '../data/backup_export.dart';
 import '../data/wallpaper.dart';
 import '../data/settings.dart';
 import '../domain/categories.dart';
@@ -29,6 +31,13 @@ import 'palette.dart';
 import 'theme.dart' as theme;
 
 const String appVersion = '1.10.0';
+
+/// 重置前自动备份的结果（路径 + UTF-8 字节数）；测试可注入。
+class ResetBackup {
+  final String path;
+  final int bytes;
+  const ResetBackup(this.path, this.bytes);
+}
 
 class SettingsPage extends StatefulWidget {
   final BackupBundle bundle;
@@ -51,6 +60,7 @@ class SettingsPage extends StatefulWidget {
   final void Function(String mode)? onOpenCoursesMode;
   final VoidCallback? onOpenBackup;
   final Future<void> Function()? onResetApp;
+  final Future<ResetBackup> Function()? backupBeforeReset;
 
   const SettingsPage({
     super.key,
@@ -65,6 +75,7 @@ class SettingsPage extends StatefulWidget {
     this.onOpenCoursesMode,
     this.onOpenBackup,
     this.onResetApp,
+    this.backupBeforeReset,
   });
 
   @override
@@ -351,15 +362,66 @@ class _SettingsPageState extends State<SettingsPage>
   }
 
   Future<void> _confirmReset() async {
-    final ok = await showDialog<bool>(
+    final proceed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF141C2B),
         title: const Text('重置应用？', style: TextStyle(color: inkPrimary)),
         content: const Text(
-            '会先自动导出一份 JSON 备份，然后清空课表、待办、计划、设置和自定义背景，'
-            '再回到新手引导。备份文件仍可在「本地备份与恢复」里找到。',
+            '会先自动导出一份 JSON 备份，然后清空课表、待办、计划、设置和自定义背景。'
+            '备份完成前不会动任何数据。',
             style: TextStyle(color: inkSecondary)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('继续', style: TextStyle(color: accentBlue))),
+        ],
+      ),
+    );
+    if (proceed != true) return;
+
+    String path;
+    int bytes;
+    try {
+      if (widget.backupBeforeReset != null) {
+        final backup = await widget.backupBeforeReset!();
+        path = backup.path;
+        bytes = backup.bytes;
+      } else {
+        final json = backupToJson(widget.bundle);
+        path = await writeBackupFile(json);
+        bytes = utf8.encode(json).length;
+      }
+    } catch (e) {
+      if (mounted) showToast('自动备份失败，未重置');
+      return;
+    }
+    if (!mounted) return;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF141C2B),
+        title: const Text('确认重置？', style: TextStyle(color: inkPrimary)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('已自动备份（$bytes 字节）',
+                style: const TextStyle(color: Color(0xFF7BD69A))),
+            const SizedBox(height: 4),
+            Text(path,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 11, color: inkTertiary)),
+            const SizedBox(height: 10),
+            const Text('确认清空全部数据并重新开始？',
+                style: TextStyle(color: inkSecondary)),
+          ],
+        ),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -371,7 +433,11 @@ class _SettingsPageState extends State<SettingsPage>
       ),
     );
     if (ok != true) return;
-    await widget.onResetApp?.call();
+    try {
+      await widget.onResetApp?.call();
+    } catch (_) {
+      if (mounted) showToast('重置失败，数据未清空');
+    }
   }
 
   void _go(String key) => setState(() => _sub = key);

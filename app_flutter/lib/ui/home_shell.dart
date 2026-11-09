@@ -754,16 +754,15 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     // 原来这里还弹一条完成 SnackBar，是与鸿蒙多出来的东西（§112 同款问题）。
   }
 
+  Future<void> _restoreBundle(BackupBundle bundle) async {
+    await widget.repo.replaceAll(bundle);
+    // 恢复=整份替换：旧黑名单必须一起清，否则自动待办会被静默吞掉。
+    await widget.repo.removeKv(todoBlacklistKv);
+    _blacklistCount = 0;
+    await _reload();
+  }
+
   Future<void> _resetApp() async {
-    // 鸿蒙 resetApp：先自动导出一份 JSON 再清空；安卓沿用同一个固定备份文件。
-    final current = _bundle;
-    if (current != null) {
-      try {
-        await writeBackupFile(backupToJson(current));
-      } catch (e) {
-        debugPrint('[ClassOUT] reset backup failed: $e');
-      }
-    }
     final kv = await widget.repo.dumpKv();
     for (final k in kv.keys) {
       await widget.repo.removeKv(k);
@@ -952,7 +951,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                             onImport: _import,
                             report: _runReport,
                             blacklistCount: _blacklistCount,
-                            initialMode: 'backup');
+                            initialMode: 'backup',
+                            onRestore: _restoreBundle);
                       },
                       onResetApp: _resetApp)
                   // 课表 / 待办 / 计划：页头都是**悬浮浮窗**，内容从它下面滑过
