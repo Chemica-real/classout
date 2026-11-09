@@ -216,7 +216,7 @@ class _SettingsPageState extends State<SettingsPage>
                   ..._settingsHome()
                 else
                   _SubpageScope(
-                    hideTitles: true,
+                    hideTitles: false,
                     child: Column(children: _settingsSub()),
                   ),
               ],

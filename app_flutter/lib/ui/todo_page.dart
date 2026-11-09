@@ -88,8 +88,8 @@ class _TodoPageState extends State<TodoPage> {
   bool _overdueOpen = true;
   bool _laterOpen = true;
 
-  /// 课程筛选：0 = 全部课程；否则只看该课程（鸿蒙 TodoInbox.courseFilter）
-  int _courseFilter = 0;
+  /// 课程筛选：-1 = 全部课程，0 = 无课程，>0 = 该课程
+  int _courseFilter = -1;
 
   /// 排序：ddl（截止时间）/ title（标题），对应鸿蒙 `todoSort`
   late String _sortMode = widget.sortMode == 'title' ? 'title' : 'ddl';
@@ -105,7 +105,7 @@ class _TodoPageState extends State<TodoPage> {
   @override
   Widget build(BuildContext context) {
     final bundle = widget.bundle;
-    final visibleTodos = _courseFilter == 0
+    final visibleTodos = _courseFilter < 0
         ? bundle.todos
         : bundle.todos.where((t) => t.courseId == _courseFilter).toList();
     var s = splitTodos(visibleTodos);
@@ -134,7 +134,7 @@ class _TodoPageState extends State<TodoPage> {
                   key: const ValueKey('todo-course-filter'),
                   label: '课程',
                   value:
-                      _courseFilter == 0 ? '全部课程' : _courseName(_courseFilter),
+                      _courseFilter < 0 ? '全部课程' : _courseName(_courseFilter),
                   onTap: _pickCourseFilter,
                 ),
                 const SizedBox(height: 6),
@@ -285,6 +285,7 @@ class _TodoPageState extends State<TodoPage> {
                       _DoneRow(
                         key: ValueKey('done-${t.id}'),
                         t: t,
+                        course: courses[t.courseId],
                         categoryText: categoryLabel(t.category, _custom),
                         confirming: _pendingDeleteId == t.id,
                         onDelete: () => _askDelete(t),
@@ -511,6 +512,7 @@ class _TodoPageState extends State<TodoPage> {
       );
 
   String _courseName(int id) {
+    if (id == 0) return '无课程';
     for (final c in widget.bundle.courses) {
       if (c.id == id) return c.name;
     }
@@ -527,6 +529,13 @@ class _TodoPageState extends State<TodoPage> {
           children: [
             ListTile(
               title: const Text('全部课程', style: TextStyle(color: inkPrimary)),
+              trailing: _courseFilter < 0
+                  ? const Icon(Icons.check, color: accentBlue)
+                  : null,
+              onTap: () => Navigator.pop(ctx, -1),
+            ),
+            ListTile(
+              title: const Text('无课程', style: TextStyle(color: inkPrimary)),
               trailing: _courseFilter == 0
                   ? const Icon(Icons.check, color: accentBlue)
                   : null,
@@ -555,7 +564,7 @@ class _TodoPageState extends State<TodoPage> {
   List<Course> _virtualCourses() {
     final out = widget.bundle.courses.where((c) {
       if (!c.isVirtual) return false;
-      if (_courseFilter != 0 && c.id != _courseFilter) return false;
+      if (_courseFilter >= 0 && c.id != _courseFilter) return false;
       return widget.bundle.lessons.any((l) => l.courseId == c.id);
     }).toList();
     out.sort((a, b) => a.id - b.id);
@@ -1321,12 +1330,20 @@ class _ExamCard extends StatelessWidget {
                   ),
                   Padding(
                     padding: const EdgeInsets.only(top: 3),
-                    child: Text(
-                        '${examTimeText(t)}${t.note.isNotEmpty ? ' · ${t.note}' : ''}',
+                    child: Text(examTimeText(t),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontSize: 11, color: _rowMeta)),
                   ),
+                  if (t.note.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 3),
+                      child: Text(t.note,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style:
+                              const TextStyle(fontSize: 11, color: _rowMeta)),
+                    ),
                 ],
               ),
             ),
@@ -1341,8 +1358,17 @@ class _ExamCard extends StatelessWidget {
                   child: GestureDetector(
                     onTap: onDone,
                     behavior: HitTestBehavior.opaque,
-                    child: const Text('考完了',
-                        style: TextStyle(fontSize: 11, color: accentBlue)),
+                    child: Container(
+                      height: 26,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF2E6BE6),
+                        borderRadius: BorderRadius.circular(13),
+                      ),
+                      alignment: Alignment.center,
+                      child: const Text('考完了',
+                          style: TextStyle(fontSize: 11, color: Colors.white)),
+                    ),
                   ),
                 ),
               ],
@@ -1357,6 +1383,7 @@ class _ExamCard extends StatelessWidget {
 class _DoneRow extends StatelessWidget {
   final Todo t;
   final String categoryText;
+  final Course? course;
   final bool confirming;
   final VoidCallback onDelete;
   final VoidCallback onCancelDelete;
@@ -1368,6 +1395,7 @@ class _DoneRow extends StatelessWidget {
     super.key,
     required this.t,
     required this.categoryText,
+    this.course,
     required this.confirming,
     required this.onDelete,
     required this.onCancelDelete,
@@ -1401,6 +1429,14 @@ class _DoneRow extends StatelessWidget {
                 children: [
                   Row(
                     children: [
+                      if (course != null)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 5),
+                          child: Opacity(
+                            opacity: 0.75,
+                            child: _CourseChip(course: course!, fontSize: 10),
+                          ),
+                        ),
                       if (categoryText.isNotEmpty) _CategoryChip(categoryText),
                       Expanded(
                         child: Text(t.title,

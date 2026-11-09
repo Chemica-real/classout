@@ -399,6 +399,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         sem: bundle.semester,
         week: _week,
         adjustCount: _adjustCount(bundle),
+        showWeekNav: _tab != 2,
         onPrev: () => setState(() => _week = (_week - 1).clamp(1, _totalWeeks)),
         onNext: () => setState(() => _week = (_week + 1).clamp(1, _totalWeeks)),
         onToday: () => setState(() => _week =

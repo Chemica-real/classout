@@ -19,6 +19,7 @@ class CourseHeader extends StatelessWidget {
   final Semester? sem;
   final int week;
   final int adjustCount;
+  final bool showWeekNav;
   final VoidCallback onPrev;
   final VoidCallback onNext;
   final VoidCallback onToday;
@@ -32,6 +33,7 @@ class CourseHeader extends StatelessWidget {
     required this.sem,
     required this.week,
     this.adjustCount = 0,
+    this.showWeekNav = true,
     required this.onPrev,
     required this.onNext,
     required this.onToday,
@@ -88,24 +90,32 @@ class CourseHeader extends StatelessWidget {
                     ],
                   ),
                 ),
-                _Tap(
-                  onTap: onPrev,
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  child: const Text('‹',
-                      style: TextStyle(fontSize: 22, color: accentBlue)),
-                ),
-                Text('第 $week 周',
-                    style: const TextStyle(
-                        fontSize: 14,
-                        height: 1.2,
-                        fontWeight: FontWeight.w500,
-                        color: inkPrimary)),
-                _Tap(
-                  onTap: onNext,
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  child: const Text('›',
-                      style: TextStyle(fontSize: 22, color: accentBlue)),
-                ),
+                if (showWeekNav) ...[
+                  _Tap(
+                    onTap: onPrev,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    child: const Text('‹',
+                        style: TextStyle(fontSize: 22, color: accentBlue)),
+                  ),
+                  Text('第 $week 周',
+                      style: const TextStyle(
+                          fontSize: 14,
+                          height: 1.2,
+                          fontWeight: FontWeight.w500,
+                          color: inkPrimary)),
+                  _Tap(
+                    onTap: onNext,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    child: const Text('›',
+                        style: TextStyle(fontSize: 22, color: accentBlue)),
+                  ),
+                ] else
+                  Text('第 $week 周',
+                      style: const TextStyle(
+                          fontSize: 14,
+                          height: 1.2,
+                          fontWeight: FontWeight.w500,
+                          color: inkPrimary)),
               ],
             ),
             const SizedBox(height: 8),

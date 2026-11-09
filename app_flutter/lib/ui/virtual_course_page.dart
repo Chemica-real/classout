@@ -477,82 +477,93 @@ class _VirtualCoursePageState extends State<VirtualCoursePage> {
                     ),
                   ),
                   Expanded(
-                    child: ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                      itemCount: lessons.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 8),
-                      itemBuilder: (_, i) {
-                        final l = lessons[i];
-                        final blocks = _blocksOf(l);
-                        final schedule = blocks.isEmpty
-                            ? '未排'
-                            : '${blocks.first.date.substring(5)} ${_hhmm(blocks.first.startMin)}';
-                        return GestureDetector(
-                          onTap: () => _edit(l),
-                          child: Opacity(
-                            opacity: l.done ? 0.68 : 1,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 12),
-                              decoration: BoxDecoration(
-                                color: glassTintRow,
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: glassEdgeSoft),
-                                boxShadow: glassShadowRow,
-                              ),
-                              child: Row(
-                                children: [
-                                  InkWell(
-                                    onTap: () => _toggle(l),
-                                    customBorder: const CircleBorder(),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(4),
-                                      child: Icon(
-                                        l.done
-                                            ? Icons.check
-                                            : Icons.radio_button_unchecked,
-                                        size: 20,
-                                        color:
-                                            l.done ? inkTertiary : inkPrimary,
-                                      ),
+                    child: lessons.isEmpty
+                        ? const Center(
+                            child: Text('这门虚拟课程还没有课时。',
+                                style: TextStyle(
+                                    fontSize: 13, color: inkTertiary)),
+                          )
+                        : ListView.separated(
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                            itemCount: lessons.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 8),
+                            itemBuilder: (_, i) {
+                              final l = lessons[i];
+                              final blocks = _blocksOf(l);
+                              final schedule = blocks.isEmpty
+                                  ? '未排'
+                                  : '${blocks.first.date.substring(5)} ${_hhmm(blocks.first.startMin)}';
+                              return GestureDetector(
+                                onTap: () => _edit(l),
+                                child: Opacity(
+                                  opacity: l.done ? 0.68 : 1,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 12, vertical: 12),
+                                    decoration: BoxDecoration(
+                                      color: glassTintRow,
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(color: glassEdgeSoft),
+                                      boxShadow: glassShadowRow,
                                     ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+                                    child: Row(
                                       children: [
-                                        Text(
-                                          lessonTitleOf(l, _b.courses),
-                                          style: TextStyle(
-                                            fontSize: 15,
-                                            color: l.done
-                                                ? inkTertiary
-                                                : inkPrimary,
-                                            decoration: l.done
-                                                ? TextDecoration.lineThrough
-                                                : null,
+                                        InkWell(
+                                          onTap: () => _toggle(l),
+                                          customBorder: const CircleBorder(),
+                                          child: Padding(
+                                            padding: const EdgeInsets.all(4),
+                                            child: Icon(
+                                              l.done
+                                                  ? Icons.check
+                                                  : Icons
+                                                      .radio_button_unchecked,
+                                              size: 20,
+                                              color: l.done
+                                                  ? inkTertiary
+                                                  : inkPrimary,
+                                            ),
                                           ),
                                         ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          '$schedule · ${_durationOf(l)} 分钟',
-                                          style: const TextStyle(
-                                              fontSize: 11, color: inkTertiary),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                lessonTitleOf(l, _b.courses),
+                                                style: TextStyle(
+                                                  fontSize: 15,
+                                                  color: l.done
+                                                      ? inkTertiary
+                                                      : inkPrimary,
+                                                  decoration: l.done
+                                                      ? TextDecoration
+                                                          .lineThrough
+                                                      : null,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                '$schedule · ${_durationOf(l)} 分钟',
+                                                style: const TextStyle(
+                                                    fontSize: 11,
+                                                    color: inkTertiary),
+                                              ),
+                                            ],
+                                          ),
                                         ),
+                                        const Icon(Icons.chevron_right,
+                                            size: 18, color: inkTertiary),
                                       ],
                                     ),
                                   ),
-                                  const Icon(Icons.chevron_right,
-                                      size: 18, color: inkTertiary),
-                                ],
-                              ),
-                            ),
+                                ),
+                              );
+                            },
                           ),
-                        );
-                      },
-                    ),
                   ),
                 ],
               ),
