@@ -35,6 +35,7 @@ import 'import_dialog.dart';
 import 'palette.dart';
 import 'plan_page.dart';
 import 'settings_page.dart';
+import '../domain/changelog.dart';
 import 'boot_screen.dart';
 import 'course_header.dart';
 import 'guide_bar.dart';
@@ -92,6 +93,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
   /// 过场层是否还在（true = 显示加载页/小球）
   bool _bootVisible = true;
+  bool _changelogChecked = false;
 
   /// 悬浮页头的实测高度（课表/待办页据此在滚动内容顶部留白）
   double _headerH = 134;
@@ -263,6 +265,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         _bootStep = 4;
         _bootReady = true;
       });
+      _maybeShowChangelog();
     } catch (e) {
       debugPrint('[ClassOUT] load error: $e');
       if (!mounted) return;
@@ -770,6 +773,54 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     }
     await widget.repo.replaceAll(buildFirstRunBundle());
     await _reload(boot: true);
+  }
+
+  Future<void> _maybeShowChangelog() async {
+    if (_changelogChecked) return;
+    _changelogChecked = true;
+    final key = 'last_seen_version';
+    final last = await widget.repo.getKv(key);
+    await widget.repo.setKv(key, appVersion);
+    if (last == null || last.isEmpty || last == appVersion) return;
+    if (!mounted) return;
+    // 启动过场还没结束时不要压在上面；等过场卸载后再弹。
+    if (_bootVisible) {
+      await Future<void>.delayed(const Duration(milliseconds: 900));
+    }
+    if (!mounted) return;
+    final entry = changelogEntries.isNotEmpty ? changelogEntries.first : null;
+    if (entry == null) return;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF141C2B),
+        title: Text('更新日志 · v${entry.version}',
+            style: const TextStyle(color: inkPrimary)),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final item in entry.items)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text('· $item',
+                      style: const TextStyle(
+                          fontSize: 12,
+                          height: 1.5,
+                          color: Color(0xFF9BA7BD))),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('开始使用',
+                  style: TextStyle(color: Color(0xFF7FA8FF)))),
+        ],
+      ),
+    );
   }
 
   Future<void> _applySettings(AppSettings next) async {
