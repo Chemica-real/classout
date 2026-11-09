@@ -1094,6 +1094,7 @@ class _PlanPageState extends State<PlanPage> {
                 return false;
               },
               child: PageView.builder(
+                key: const PageStorageKey('plan-week-pager'),
                 controller: _weekPager,
                 pageSnapping: false,
                 physics: _dragId != 0
@@ -1145,6 +1146,7 @@ class _PlanPageState extends State<PlanPage> {
                 return false;
               },
               child: PageView.builder(
+                key: const PageStorageKey('plan-day-pager'),
                 controller: _pager,
                 // 鸿蒙是「连续画布 + 惯性停止后吸附」：PageView 默认的
                 // pageSnapping 会把一次甩动硬限制成一页；这里关掉它，
@@ -1224,11 +1226,14 @@ class _PlanPageState extends State<PlanPage> {
                 today: widget.now(),
                 threeDay: _threeDay,
                 weekView: _weekView,
-                onWeek: () => setState(() {
-                  _weekView = true;
-                  _threeDay = false;
-                  _selectedBlockId = 0;
-                }),
+                onWeek: () {
+                  setState(() {
+                    _weekView = true;
+                    _threeDay = false;
+                    _selectedBlockId = 0;
+                  });
+                  _weekPagerToDay(animate: false);
+                },
                 // 鸿蒙 DayBarFloat 的 ‹ › 永远只挪 1 天（三日视图也一样，不是"三日一跳"）
                 onPrev: () => _shift(-1),
                 onNext: () => _shift(1),
