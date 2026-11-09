@@ -28,6 +28,9 @@ const Color _rowNote = Color(0xFF7C8798);
 const Color _chipInk = Color(0xFFEAF0FA);
 const Color _chipCategory = Color(0xFFC3CDDE);
 const Color _examInk = Color(0xFFFF8A8A);
+
+/// 逾期不用警报红，改低饱和的暖玫瑰色；读得出「晚了」，但不刺眼。
+const Color _overdueInk = Color(0xFFD6A39B);
 const Color _examBg = Color(0x1FD64545); // rgba(214,69,69,0.12)
 const Color _examEdge = Color(0x4DD64545); // rgba(214,69,69,0.30)
 
@@ -224,7 +227,7 @@ class _TodoPageState extends State<TodoPage> {
                   _SectionHeader(
                     title: '已逾期',
                     count: '${groups.overdue.length} 条',
-                    countColor: _examInk,
+                    countColor: _overdueInk,
                     top: 14,
                     open: _overdueOpen,
                     onToggle: () =>
