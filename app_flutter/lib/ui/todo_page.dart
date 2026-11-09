@@ -1186,11 +1186,17 @@ class _ActiveRowState extends State<_ActiveRow>
               alignment: Alignment.centerRight,
               padding: const EdgeInsets.only(right: 16),
               decoration: BoxDecoration(
-                color: const Color(0xCCD64545),
+                color: _dx < 0
+                    ? const Color(0xCCD64545)
+                    : Colors.transparent,
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Text('删除',
-                  style: TextStyle(fontSize: 13, color: Colors.white)),
+              child: Text('删除',
+                  style: TextStyle(
+                      fontSize: 13,
+                      color: _dx < 0
+                          ? Colors.white
+                          : Colors.transparent)),
             ),
           ),
           Transform.translate(
@@ -1257,8 +1263,9 @@ class _ActiveRowState extends State<_ActiveRow>
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                     fontSize: 11,
-                                    color:
-                                        widget.overdue ? _examInk : _rowMeta)),
+                                    color: widget.overdue
+                                        ? _overdueInk
+                                        : _rowMeta)),
                           ),
                           if (t.note.isNotEmpty)
                             Padding(
