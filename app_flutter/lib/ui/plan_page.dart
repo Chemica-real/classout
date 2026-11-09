@@ -120,6 +120,7 @@ class _PlanPageState extends State<PlanPage> {
   /// 瞬时提示（鸿蒙端 showHint）：不占布局、1.8 秒自动消失
   String _hint = '';
   Timer? _hintTimer;
+  Timer? _nowTicker;
 
   /// 双指缩放时屏幕正中那个「±NN min」提示（'' = 不显示）
   String _pinchLabel = '';
@@ -160,6 +161,7 @@ class _PlanPageState extends State<PlanPage> {
   @override
   void dispose() {
     _hintTimer?.cancel();
+    _nowTicker?.cancel();
     _scroll.dispose();
     super.dispose();
   }
@@ -285,6 +287,11 @@ class _PlanPageState extends State<PlanPage> {
     _day = widget.initialDay ??
         DateTime(widget.now().year, widget.now().month, widget.now().day);
     _threeDay = widget.initialThreeDay;
+    if (ambientMotion) {
+      _nowTicker = Timer.periodic(const Duration(seconds: 15), (_) {
+        if (mounted) setState(() {});
+      });
+    }
   }
 
   Semester get _sem => widget.bundle.semester!;

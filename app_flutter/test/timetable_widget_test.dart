@@ -85,4 +85,25 @@ void main() {
     final next = (start + 1).clamp(1, sem.totalWeeks);
     expect(find.text('第 $next 周'), findsOneWidget);
   });
+
+  testWidgets('今天的课表列画出现在时间红线', (tester) async {
+    final bundle = buildDemoSandbox(now: DateTime(2026, 10, 16, 9, 30));
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    final sem = bundle.semester!;
+    final w = weekOfDate(sem, DateTime(2026, 10, 16));
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: TimetablePage(
+                bundle: bundle,
+                week: w,
+                now: DateTime(2026, 10, 16, 9, 30)))));
+    await tester.pumpAndSettle();
+    final line = find.byWidgetPredicate((x) =>
+        x is Container &&
+        x.decoration is BoxDecoration &&
+        (x.decoration as BoxDecoration).color == const Color(0xFFFF5A5F));
+    expect(line, findsWidgets);
+  });
 }

@@ -7,6 +7,7 @@
 //
 // 数值全部来自 theme.dart（= 鸿蒙端 Glass.ets / Index.ets 的原始常量）。
 
+import 'dart:async';
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
@@ -58,7 +59,26 @@ class TimetablePage extends StatefulWidget {
 }
 
 class _TimetablePageState extends State<TimetablePage> {
+  Timer? _ticker;
+
   DateTime get _now => widget.now ?? DateTime.now();
+
+  @override
+  void initState() {
+    super.initState();
+    // 只在真机（有动画的环境）刷新；测试注入固定 now，不能留周期定时器。
+    if (ambientMotion) {
+      _ticker = Timer.periodic(const Duration(seconds: 15), (_) {
+        if (mounted) setState(() {});
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
 
   Semester get _sem => widget.bundle.semester!;
 
@@ -224,12 +244,31 @@ class _Grid extends StatelessWidget {
     required this.onOpenSession,
   });
 
+  /// 当前时间在今天那一列的 y；不在任何一节课内返回 null。
+  double? _nowTop(List<SectionTime> times, DateTime now) {
+    if (times.isEmpty) return null;
+    final min = now.hour * 60 + now.minute;
+    if (min < times.first.startMin || min > times.last.endMin) return null;
+    var top = 0.0;
+    for (final st in times) {
+      if (min < st.startMin) return top; // 课间：停在上一节底边
+      if (min <= st.endMin) {
+        final span = st.endMin - st.startMin;
+        if (span <= 0) return top;
+        return top + (min - st.startMin) / span * _sectionH(st);
+      }
+      top += _sectionH(st);
+    }
+    return top;
+  }
+
   @override
   Widget build(BuildContext context) {
     final days = showWeekend ? 7 : 5;
     final totalH = times.fold<double>(0, (a, st) => a + _sectionH(st));
     final todayWeek = weekOfDate(sem, now);
     final todayWd = weekdayOf(now);
+    final nowTop = _nowTop(times, now);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(gridPad, 0, gridPad, floatGap),
@@ -320,6 +359,31 @@ class _Grid extends StatelessWidget {
                           onTap: onOpenSession == null
                               ? null
                               : () => onOpenSession!(s),
+                        ),
+                      ),
+                    if (todayWeek == week && todayWd == d && nowTop != null)
+                      Positioned(
+                        top: nowTop,
+                        left: 0,
+                        right: 0,
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Container(
+                                height: 1.5,
+                                color: const Color(0xFFFF5A5F)),
+                            Positioned(
+                              left: 1,
+                              top: -3,
+                              child: Container(
+                                width: 8,
+                                height: 8,
+                                decoration: const BoxDecoration(
+                                    color: Color(0xFFFF5A5F),
+                                    shape: BoxShape.circle),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                   ],
