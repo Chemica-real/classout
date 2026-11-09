@@ -170,15 +170,16 @@ void main() {
     expect(before.courses.length - 1, saved.courses.length);
   });
 
-  testWidgets('虚拟课程：讲数用 1–50 滑条整批同步；删课程时课时一起清掉', (tester) async {
+  testWidgets('虚拟课程：讲数用 1–200 滚轮整批同步；删课程时课时一起清掉', (tester) async {
     final repo = await _pump(tester);
     await _tapVisible(tester, find.byKey(const ValueKey('course-4')));
     // 打开「虚拟课程」开关（编辑抽屉里第二个 Switch）
     await _tapVisible(tester, find.byType(Switch).last);
     expect(find.textContaining('共多少讲（当前 1）'), findsOneWidget);
 
-    // 滑条拉到 2 讲（直接调 onChanged，避免像素换算带来的不确定性）
-    tester.widget<Slider>(find.byKey(const ValueKey('lesson-count-slider'))).onChanged!(2);
+    // 滚轮向上拨一格 → 2 讲
+    await tester.drag(
+        find.byKey(const ValueKey('lesson-count-wheel')), const Offset(0, -40));
     await tester.pumpAndSettle();
     await _tapVisible(tester, find.byKey(const ValueKey('course-save')));
 
@@ -189,7 +190,8 @@ void main() {
 
     // 再降回 1 讲：未完成的那一讲被删掉
     await _tapVisible(tester, find.byKey(const ValueKey('course-4')));
-    tester.widget<Slider>(find.byKey(const ValueKey('lesson-count-slider'))).onChanged!(1);
+    await tester.drag(
+        find.byKey(const ValueKey('lesson-count-wheel')), const Offset(0, 40));
     await tester.pumpAndSettle();
     await _tapVisible(tester, find.byKey(const ValueKey('course-save')));
     saved = (await repo.load())!;

@@ -1106,66 +1106,25 @@ class _CourseEditorState extends State<_CourseEditor> {
                       sub: '比如 CS106L：没有固定上课时间，是一串等着被排进计划的课时',
                     ),
                     if (_virtual) ...[
-                      // 鸿蒙 1.10：讲数 1–200（滚轮；这里先保持滑条，下一步换滚轮）
+                      // 鸿蒙 1.10：讲数 1–200 的滚轮
                       Text('共多少讲（当前 $_lessonCount）',
                           style: const TextStyle(
                               fontSize: 12, color: Color(0xFF94A0B5))),
-                      const SizedBox(height: 6),
-                      SliderTheme(
-                        data: SliderTheme.of(context).copyWith(
-                          trackHeight: 4,
-                          thumbShape:
-                              const RoundSliderThumbShape(enabledThumbRadius: 9),
-                          overlayShape:
-                              const RoundSliderOverlayShape(overlayRadius: 16),
-                        ),
-                        child: Slider(
-                          key: const ValueKey('lesson-count-slider'),
-                          value: _lessonCount.toDouble(),
-                          min: 1,
-                          max: 200,
-                          divisions: 199,
-                          activeColor: const Color(0xFF2E6BE6),
-                          inactiveColor:
-                              Colors.white.withValues(alpha: 0.16),
-                          onChanged: (v) =>
-                              setState(() => _lessonCount = v.round()),
-                        ),
-                      ),
-                      Row(
-                        children: [
-                          const Text('1',
-                              style: TextStyle(
-                                  fontSize: 10, color: Color(0xFF8B97AC))),
-                          const Spacer(),
-                          Text('$_lessonCount 讲',
-                              style: const TextStyle(
-                                  fontSize: 12, color: Color(0xFF7FA8FF))),
-                          const Spacer(),
-                          const Text('200',
-                              style: TextStyle(
-                                  fontSize: 10, color: Color(0xFF8B97AC))),
-                        ],
+                      _NumberWheel(
+                        key: const ValueKey('lesson-count-wheel'),
+                        values: [for (var i = 1; i <= 200; i++) i],
+                        value: _lessonCount,
+                        onChanged: (v) => setState(() => _lessonCount = v),
                       ),
                       Text('每讲默认时长（当前 $_lessonDuration 分钟）',
                           style: const TextStyle(
                               fontSize: 12, color: Color(0xFF94A0B5))),
-                      Slider(
-                        key: const ValueKey('lesson-duration-slider'),
-                        value: _lessonDuration.toDouble(),
-                        min: 15,
-                        max: 200,
-                        divisions: 37,
-                        activeColor: const Color(0xFF2E6BE6),
-                        inactiveColor: Colors.white.withValues(alpha: 0.16),
-                        onChanged: (v) => setState(
-                            () => _lessonDuration = (v / 5).round() * 5),
-                      ),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: Text('$_lessonDuration 分钟',
-                            style: const TextStyle(
-                                fontSize: 12, color: Color(0xFF7FA8FF))),
+                      _NumberWheel(
+                        key: const ValueKey('lesson-duration-wheel'),
+                        values: [for (var i = 15; i <= 200; i += 5) i],
+                        value: _lessonDuration,
+                        onChanged: (v) =>
+                            setState(() => _lessonDuration = v),
                       ),
                       const SizedBox(height: 8),
                       const Text('课时命名模板（%n 全名 / %c 简称 / %N 第几讲）',
@@ -1216,6 +1175,37 @@ class _CourseEditorState extends State<_CourseEditor> {
                         '${renderLessonTitle(_lessonTitleTemplate, name, _short.text.trim(), 2)}',
                         style: const TextStyle(
                             fontSize: 11, color: Color(0xFF7BD69A)),
+                      ),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: () {
+                            setState(() {
+                              _b = _with(
+                                _b,
+                                lessons: _b.lessons.map((l) {
+                                  if (l.courseId != _id) return l;
+                                  return VirtualLesson(
+                                    id: l.id,
+                                    courseId: l.courseId,
+                                    seq: l.seq,
+                                    title: renderLessonTitle(
+                                        _lessonTitleTemplate,
+                                        name,
+                                        _short.text.trim(),
+                                        l.seq),
+                                    durationMin: l.durationMin,
+                                    done: l.done,
+                                    doneAt: l.doneAt,
+                                  );
+                                }).toList(),
+                              );
+                            });
+                          },
+                          child: const Text('按模板批量生成',
+                              style: TextStyle(
+                                  fontSize: 11, color: Color(0xFF9CC0FF))),
+                        ),
                       ),
                       const Text(
                           '课时排进计划、打勾完成之后，会像真课下课一样按下面的模板生成待办。',
@@ -2883,6 +2873,75 @@ class _MiniChip extends StatelessWidget {
             style: TextStyle(
                 fontSize: 12,
                 color: selected ? Colors.white : const Color(0xFFC3CDDE))),
+      ),
+    );
+  }
+}
+
+
+/// 简单滚轮选择器（鸿蒙 TextPicker 的近似）：中间蓝色选中，其余渐隐。
+class _NumberWheel extends StatefulWidget {
+  final List<int> values;
+  final int value;
+  final ValueChanged<int> onChanged;
+  const _NumberWheel({
+    super.key,
+    required this.values,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  State<_NumberWheel> createState() => _NumberWheelState();
+}
+
+class _NumberWheelState extends State<_NumberWheel> {
+  late final FixedExtentScrollController _ctl = FixedExtentScrollController(
+      initialItem: widget.values.indexOf(widget.value).clamp(0, widget.values.length - 1));
+
+  @override
+  void didUpdateWidget(_NumberWheel old) {
+    super.didUpdateWidget(old);
+    if (old.value != widget.value) {
+      final i = widget.values.indexOf(widget.value);
+      if (i >= 0 && _ctl.hasClients && _ctl.selectedItem != i) {
+        _ctl.jumpToItem(i);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 112,
+      child: ListWheelScrollView.useDelegate(
+        controller: _ctl,
+        itemExtent: 28,
+        physics: const FixedExtentScrollPhysics(),
+        perspective: 0.002,
+        diameterRatio: 1.5,
+        onSelectedItemChanged: (i) => widget.onChanged(widget.values[i]),
+        childDelegate: ListWheelChildBuilderDelegate(
+          childCount: widget.values.length,
+          builder: (ctx, i) {
+            final selected = widget.values[i] == widget.value;
+            return Center(
+              child: Text('${widget.values[i]}',
+                  style: TextStyle(
+                      fontSize: selected ? 16 : 13,
+                      fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                      color: selected
+                          ? const Color(0xFF7FA8FF)
+                          : const Color(0xFF8B97AC))),
+            );
+          },
+        ),
       ),
     );
   }
