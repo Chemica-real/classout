@@ -82,6 +82,11 @@ class TodoPage extends StatefulWidget {
 class _TodoPageState extends State<TodoPage> {
   /// 「已完成」默认展开（就是要让人看见"它没丢"）
   bool _doneOpen = true;
+  bool _pendingOpen = true;
+  bool _examOpen = true;
+  bool _todayOpen = true;
+  bool _overdueOpen = true;
+  bool _laterOpen = true;
 
   /// 课程筛选：0 = 全部课程；否则只看该课程（鸿蒙 TodoInbox.courseFilter）
   int _courseFilter = 0;
@@ -106,7 +111,7 @@ class _TodoPageState extends State<TodoPage> {
     var s = splitTodos(visibleTodos);
     if (_sortMode == 'title') {
       s = TodoSections(
-        _byTitle(s.pending), _byTitle(s.exams), _byTitle(s.tasks), s.done);
+          _byTitle(s.pending), _byTitle(s.exams), _byTitle(s.tasks), s.done);
     }
     final groups = groupActiveTodos(s.tasks, now: widget.now);
     final courses = {for (final c in bundle.courses) c.id: c};
@@ -119,11 +124,8 @@ class _TodoPageState extends State<TodoPage> {
         // 下 `20 + bottomInset + actionsH + FLOAT_GAP`。
         Positioned.fill(
           child: SingleChildScrollView(
-            padding: EdgeInsets.fromLTRB(
-                16,
-                12 + widget.topInset + floatGap,
-                16,
-                20 + tabBarInset + _actionsH),
+            padding: EdgeInsets.fromLTRB(16, 12 + widget.topInset + floatGap,
+                16, 20 + tabBarInset + _actionsH),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -131,9 +133,8 @@ class _TodoPageState extends State<TodoPage> {
                 _filterRow(
                   key: const ValueKey('todo-course-filter'),
                   label: '课程',
-                  value: _courseFilter == 0
-                      ? '全部课程'
-                      : _courseName(_courseFilter),
+                  value:
+                      _courseFilter == 0 ? '全部课程' : _courseName(_courseFilter),
                   onTap: _pickCourseFilter,
                 ),
                 const SizedBox(height: 6),
@@ -152,28 +153,32 @@ class _TodoPageState extends State<TodoPage> {
                     count: '${s.pending.length} 条',
                     countColor: accentBlue,
                     hint: '下课自动生成，确认后才生效',
+                    open: _pendingOpen,
+                    onToggle: () =>
+                        setState(() => _pendingOpen = !_pendingOpen),
                   ),
-                  for (final t in s.pending)
-                    _PendingCard(
-                      key: ValueKey('pending-${t.id}'),
-                      t: t,
-                      course: courses[t.courseId],
-                      categoryText: categoryLabel(t.category, _custom),
-                      confirming: _pendingDeleteId == t.id,
-                      now: widget.now,
-                      onDelete: () => _askDelete(t),
-                      onCancelDelete: () =>
-                          setState(() => _pendingDeleteId = 0),
-                      onDeleteConfirmed: () {
-                        setState(() => _pendingDeleteId = 0);
-                        widget.onChanged(_without(t.id));
-                      },
-                      onEdit: () => _openEditor(context, existing: t),
-                      onConfirm: () => widget.onChanged(_mutate(t.id, (x) {
-                        x.status = TodoStatus.active;
-                        x.confirmedAt = DateTime.now().millisecondsSinceEpoch;
-                      })),
-                    ),
+                  if (_pendingOpen)
+                    for (final t in s.pending)
+                      _PendingCard(
+                        key: ValueKey('pending-${t.id}'),
+                        t: t,
+                        course: courses[t.courseId],
+                        categoryText: categoryLabel(t.category, _custom),
+                        confirming: _pendingDeleteId == t.id,
+                        now: widget.now,
+                        onDelete: () => _askDelete(t),
+                        onCancelDelete: () =>
+                            setState(() => _pendingDeleteId = 0),
+                        onDeleteConfirmed: () {
+                          setState(() => _pendingDeleteId = 0);
+                          widget.onChanged(_without(t.id));
+                        },
+                        onEdit: () => _openEditor(context, existing: t),
+                        onConfirm: () => widget.onChanged(_mutate(t.id, (x) {
+                          x.status = TodoStatus.active;
+                          x.confirmedAt = DateTime.now().millisecondsSinceEpoch;
+                        })),
+                      ),
                 ],
 
                 // ---- 即将考试 ----
@@ -184,19 +189,22 @@ class _TodoPageState extends State<TodoPage> {
                     countColor: _examInk,
                     hint: '点一下可改考场',
                     top: s.pending.isNotEmpty ? 14 : 0,
+                    open: _examOpen,
+                    onToggle: () => setState(() => _examOpen = !_examOpen),
                   ),
-                  for (final t in s.exams)
-                    _ExamCard(
-                      key: ValueKey('exam-${t.id}'),
-                      t: t,
-                      course: courses[t.courseId],
-                      countdown: countdownOf(t, now: widget.now),
-                      onOpen: () => _openEditor(context, existing: t),
-                      onDone: () => widget.onChanged(_mutate(t.id, (x) {
-                        x.status = TodoStatus.done;
-                        x.doneAt = DateTime.now().millisecondsSinceEpoch;
-                      })),
-                    ),
+                  if (_examOpen)
+                    for (final t in s.exams)
+                      _ExamCard(
+                        key: ValueKey('exam-${t.id}'),
+                        t: t,
+                        course: courses[t.courseId],
+                        countdown: countdownOf(t, now: widget.now),
+                        onOpen: () => _openEditor(context, existing: t),
+                        onDone: () => widget.onChanged(_mutate(t.id, (x) {
+                          x.status = TodoStatus.done;
+                          x.doneAt = DateTime.now().millisecondsSinceEpoch;
+                        })),
+                      ),
                 ],
 
                 // ---- 今天 / 已逾期 / 以后（鸿蒙 TodoGroups）----
@@ -206,8 +214,11 @@ class _TodoPageState extends State<TodoPage> {
                     count: '${groups.today.length} 条',
                     countColor: _rowMeta,
                     top: hasTop ? 14 : 0,
+                    open: _todayOpen,
+                    onToggle: () => setState(() => _todayOpen = !_todayOpen),
                   ),
-                  for (final t in groups.today) _active(t),
+                  if (_todayOpen)
+                    for (final t in groups.today) _active(t),
                 ],
                 if (groups.overdue.isNotEmpty) ...[
                   _SectionHeader(
@@ -215,8 +226,12 @@ class _TodoPageState extends State<TodoPage> {
                     count: '${groups.overdue.length} 条',
                     countColor: _examInk,
                     top: 14,
+                    open: _overdueOpen,
+                    onToggle: () =>
+                        setState(() => _overdueOpen = !_overdueOpen),
                   ),
-                  for (final t in groups.overdue) _active(t, overdue: true),
+                  if (_overdueOpen)
+                    for (final t in groups.overdue) _active(t, overdue: true),
                 ],
                 if (groups.later.isNotEmpty) ...[
                   _SectionHeader(
@@ -224,8 +239,11 @@ class _TodoPageState extends State<TodoPage> {
                     count: '${groups.later.length} 条',
                     countColor: _rowMeta,
                     top: 14,
+                    open: _laterOpen,
+                    onToggle: () => setState(() => _laterOpen = !_laterOpen),
                   ),
-                  for (final t in groups.later) _active(t),
+                  if (_laterOpen)
+                    for (final t in groups.later) _active(t),
                 ],
                 if (groups.isEmpty && _virtualCourses().isEmpty)
                   const Padding(
@@ -301,31 +319,32 @@ class _TodoPageState extends State<TodoPage> {
                 }
               },
               child: Glass(
-            sheet: true,
-            padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
-            child: Row(
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: _TrayButton(
-                    text: '+ 新建待办',
-                    background: const Color(0xFF2E6BE6),
-                    color: Colors.white,
-                    onTap: () => _openEditor(context),
-                  ),
+                sheet: true,
+                padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: _TrayButton(
+                        text: '+ 新建待办',
+                        background: const Color(0xFF2E6BE6),
+                        color: Colors.white,
+                        onTap: () => _openEditor(context),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 1,
+                      child: _TrayButton(
+                        text: '+ 考试',
+                        background:
+                            const Color(0x33B26B00), // rgba(178,107,0,0.20)
+                        color: const Color(0xFFE8B25C),
+                        onTap: () => _openEditor(context, asExam: true),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  flex: 1,
-                  child: _TrayButton(
-                    text: '+ 考试',
-                    background: const Color(0x33B26B00), // rgba(178,107,0,0.20)
-                    color: const Color(0xFFE8B25C),
-                    onTap: () => _openEditor(context, asExam: true),
-                  ),
-                ),
-              ],
-            ),
               ),
             ),
           ),
@@ -377,13 +396,12 @@ class _TodoPageState extends State<TodoPage> {
     if (t.category != TodoCategory.exam || t.id <= 0) return b;
     final rest = b.blocks.where((x) => x.todoId != t.id).toList();
     final s = t.ddl.length >= 16 ? hhmmToMin(t.ddl.substring(11, 16)) : null;
-    final e = t.endAt.length >= 16 ? hhmmToMin(t.endAt.substring(11, 16)) : null;
+    final e =
+        t.endAt.length >= 16 ? hhmmToMin(t.endAt.substring(11, 16)) : null;
     if (s == null || e == null || e <= s) {
-      return _copyWith(
-          todos: b.todos, blocks: rest);
+      return _copyWith(todos: b.todos, blocks: rest);
     }
-    final nextId =
-        b.blocks.fold<int>(0, (m, x) => x.id > m ? x.id : m) + 1;
+    final nextId = b.blocks.fold<int>(0, (m, x) => x.id > m ? x.id : m) + 1;
     return _copyWith(todos: b.todos, blocks: [
       ...rest,
       PlanBlock(
@@ -395,7 +413,8 @@ class _TodoPageState extends State<TodoPage> {
     ]);
   }
 
-  BackupBundle _copyWith({List<Todo>? todos, List<PlanBlock>? blocks}) => BackupBundle(
+  BackupBundle _copyWith({List<Todo>? todos, List<PlanBlock>? blocks}) =>
+      BackupBundle(
         app: widget.bundle.app,
         version: widget.bundle.version,
         exportedAt: widget.bundle.exportedAt,
@@ -455,7 +474,10 @@ class _TodoPageState extends State<TodoPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            for (final e in [['ddl', '截止时间'], ['title', '标题']])
+            for (final e in [
+              ['ddl', '截止时间'],
+              ['title', '标题']
+            ])
               ListTile(
                 title: Text(e[1], style: const TextStyle(color: inkPrimary)),
                 trailing: _sortMode == e[0]
@@ -485,6 +507,7 @@ class _TodoPageState extends State<TodoPage> {
           x.doneAt = DateTime.now().millisecondsSinceEpoch;
         })),
         onOpen: () => _openEditor(context, existing: t),
+        onDelete: () => _swipeDelete(t),
       );
 
   String _courseName(int id) {
@@ -511,8 +534,7 @@ class _TodoPageState extends State<TodoPage> {
             ),
             for (final c in widget.bundle.courses)
               ListTile(
-                title: Text(c.name,
-                    style: const TextStyle(color: inkPrimary)),
+                title: Text(c.name, style: const TextStyle(color: inkPrimary)),
                 leading: Container(
                   width: 4,
                   height: 20,
@@ -543,9 +565,33 @@ class _TodoPageState extends State<TodoPage> {
   int _courseTotal(int id) =>
       widget.bundle.lessons.where((l) => l.courseId == id).length;
 
-  int _courseDone(int id) => widget.bundle.lessons
-      .where((l) => l.courseId == id && l.done)
-      .length;
+  int _courseDone(int id) =>
+      widget.bundle.lessons.where((l) => l.courseId == id && l.done).length;
+
+  Future<void> _swipeDelete(Todo t) async {
+    if (!widget.confirmDelete) {
+      widget.onChanged(_without(t.id));
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF141C2B),
+        title: const Text('删除这条待办？', style: TextStyle(color: inkPrimary)),
+        content:
+            const Text('删除后不可恢复。', style: TextStyle(color: Color(0xFF9BA7BD))),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('删除', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+    if (ok == true && mounted) widget.onChanged(_without(t.id));
+  }
 
   void _askDelete(Todo t) {
     if (!widget.confirmDelete) {
@@ -608,6 +654,8 @@ class _SectionHeader extends StatelessWidget {
   final Color countColor;
   final String? hint;
   final double top;
+  final bool? open;
+  final VoidCallback? onToggle;
 
   const _SectionHeader({
     required this.title,
@@ -615,28 +663,40 @@ class _SectionHeader extends StatelessWidget {
     required this.countColor,
     this.hint,
     this.top = 0,
+    this.open,
+    this.onToggle,
   });
 
   @override
   Widget build(BuildContext context) {
+    final row = Row(
+      crossAxisAlignment: CrossAxisAlignment.baseline,
+      textBaseline: TextBaseline.alphabetic,
+      children: [
+        Text(title,
+            style: const TextStyle(
+                fontSize: 15, fontWeight: FontWeight.w500, color: inkPrimary)),
+        const SizedBox(width: 6),
+        Text(count, style: TextStyle(fontSize: 12, color: countColor)),
+        const Spacer(),
+        if (hint != null)
+          Text(hint!, style: const TextStyle(fontSize: 11, color: _rowHint)),
+        if (open != null) ...[
+          const SizedBox(width: 8),
+          Text(open! ? '收起 ▴' : '展开 ▾',
+              style: const TextStyle(fontSize: 11, color: _rowHint)),
+        ],
+      ],
+    );
     return Padding(
       padding: EdgeInsets.only(top: top, bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.baseline,
-        textBaseline: TextBaseline.alphabetic,
-        children: [
-          Text(title,
-              style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                  color: inkPrimary)),
-          const SizedBox(width: 6),
-          Text(count, style: TextStyle(fontSize: 12, color: countColor)),
-          const Spacer(),
-          if (hint != null)
-            Text(hint!, style: const TextStyle(fontSize: 11, color: _rowHint)),
-        ],
-      ),
+      child: onToggle == null
+          ? row
+          : GestureDetector(
+              onTap: onToggle,
+              behavior: HitTestBehavior.opaque,
+              child: row,
+            ),
     );
   }
 }
@@ -856,6 +916,7 @@ class _PendingCardState extends State<_PendingCard>
     with TickerProviderStateMixin {
   /// 注入的时钟（null = 真实今天）
   DateTime? get now => widget.now;
+
   /// 「删除时碎裂掉出」（鸿蒙 `removeConfirmed`）：**先碎裂、再收掉高度、最后才真删**
   late final AnimationController _shake =
       AnimationController(vsync: this, duration: dur(durShard));
@@ -867,9 +928,7 @@ class _PendingCardState extends State<_PendingCard>
 
   /// 进场：鸿蒙 `transition` 在新建卡片时也会跑一遍
   late final AnimationController _appear = AnimationController(
-      vsync: this,
-      duration: dur(durItem),
-      value: motionOn ? 0 : 1)
+      vsync: this, duration: dur(durItem), value: motionOn ? 0 : 1)
     ..forward();
 
   bool _shatter = false;
@@ -955,9 +1014,7 @@ class _PendingCardState extends State<_PendingCard>
                 ),
                 if (widget.confirming) ...[
                   _SmallButton(
-                      text: '确认删除',
-                      color: dangerRed,
-                      onTap: _confirmDelete),
+                      text: '确认删除', color: dangerRed, onTap: _confirmDelete),
                   _SmallButton(
                       text: '取消',
                       color: const Color(0xFFA9B5C9),
@@ -969,8 +1026,7 @@ class _PendingCardState extends State<_PendingCard>
                       text: '编辑',
                       color: const Color(0xFFA9B5C9),
                       onTap: widget.onEdit),
-                  _SmallButton(
-                      text: '确认', color: accentBlue, onTap: _confirm),
+                  _SmallButton(text: '确认', color: accentBlue, onTap: _confirm),
                 ],
               ],
             ),
@@ -982,8 +1038,8 @@ class _PendingCardState extends State<_PendingCard>
     if (_collapsing) {
       // 高度收起来：下面的卡片跟着往上滑（等价于鸿蒙"带动画地从列表里摘掉"）
       return SizeTransition(
-        sizeFactor: Tween<double>(begin: 1, end: 0)
-            .animate(CurvedAnimation(parent: _collapse, curve: Curves.easeOutCubic)),
+        sizeFactor: Tween<double>(begin: 1, end: 0).animate(
+            CurvedAnimation(parent: _collapse, curve: Curves.easeOutCubic)),
         alignment: Alignment.topCenter,
         child: FadeTransition(
           opacity: Tween<double>(begin: 1, end: 0).animate(_collapse),
@@ -1048,6 +1104,7 @@ class _ActiveRow extends StatefulWidget {
   final String categoryText;
   final VoidCallback onComplete;
   final VoidCallback onOpen;
+  final VoidCallback? onDelete;
 
   /// 注入的时钟（null = 真实今天）
   final DateTime? now;
@@ -1060,6 +1117,7 @@ class _ActiveRow extends StatefulWidget {
     required this.categoryText,
     required this.onComplete,
     required this.onOpen,
+    this.onDelete,
     this.now,
     this.overdue = false,
   });
@@ -1072,13 +1130,12 @@ class _ActiveRowState extends State<_ActiveRow>
     with SingleTickerProviderStateMixin {
   /// 出现/消失：鸿蒙 `transition(OPACITY + translate y -10, DUR_ITEM)`
   late final AnimationController _c = AnimationController(
-      vsync: this,
-      duration: dur(durItem),
-      value: motionOn ? 0 : 1)
+      vsync: this, duration: dur(durItem), value: motionOn ? 0 : 1)
     ..forward();
 
   /// 点「○」= 完成：先淡出上滑，再真正改状态（鸿蒙删项时也走 transition）
   bool _leaving = false;
+  double _dx = 0;
   Future<void> _complete() async {
     if (_leaving) return;
     _leaving = true;
@@ -1096,8 +1153,7 @@ class _ActiveRowState extends State<_ActiveRow>
     final base = ddlText(t.ddl, now: widget.now);
     if (!widget.overdue &&
         t.ddl.length >= 16 &&
-        t.ddl.substring(0, 10) ==
-            formatDate(widget.now ?? DateTime.now())) {
+        t.ddl.substring(0, 10) == formatDate(widget.now ?? DateTime.now())) {
       final remain = remainText(t, now: widget.now);
       if (remain.isNotEmpty) return '$remain · $base · 预计 ${t.estimateMin} 分钟';
     }
@@ -1111,66 +1167,105 @@ class _ActiveRowState extends State<_ActiveRow>
     final categoryText = widget.categoryText;
     return _ItemFx(
       a: _c,
-      child: GestureDetector(
-      onTap: widget.onOpen,
-      behavior: HitTestBehavior.opaque,
-      child: _RowCard(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            GestureDetector(
-              onTap: _complete,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: Container(
+              alignment: Alignment.centerRight,
+              padding: const EdgeInsets.only(right: 16),
+              decoration: BoxDecoration(
+                color: const Color(0xCCD64545),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Text('删除',
+                  style: TextStyle(fontSize: 13, color: Colors.white)),
+            ),
+          ),
+          Transform.translate(
+            offset: Offset(_dx, 0),
+            child: GestureDetector(
+              onTap: () {
+                if (_dx != 0) {
+                  setState(() => _dx = 0);
+                  return;
+                }
+                widget.onOpen();
+              },
+              onHorizontalDragUpdate: (e) {
+                setState(() => _dx = (_dx + e.delta.dx).clamp(-110.0, 0.0));
+              },
+              onHorizontalDragEnd: (_) {
+                if (_dx < -60) {
+                  setState(() => _dx = 0);
+                  widget.onDelete?.call();
+                } else {
+                  setState(() => _dx = 0);
+                }
+              },
               behavior: HitTestBehavior.opaque,
-              child: const Padding(
-                padding: EdgeInsets.only(right: 10),
-                child: Text('○',
-                    style: TextStyle(
-                        fontSize: 18, color: Color(0xFFDCE4F0), height: 1.1)),
-              ),
-            ),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      if (course != null)
-                        _CourseChip(course: course, fontSize: 10),
-                      if (categoryText.isNotEmpty) _CategoryChip(categoryText),
-                      Expanded(
-                        child: Text(t.title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                fontSize: 15, color: inkPrimary)),
+              child: _RowCard(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    GestureDetector(
+                      onTap: _complete,
+                      behavior: HitTestBehavior.opaque,
+                      child: const Padding(
+                        padding: EdgeInsets.only(right: 10),
+                        child: Text('○',
+                            style: TextStyle(
+                                fontSize: 18,
+                                color: Color(0xFFDCE4F0),
+                                height: 1.1)),
                       ),
-                    ],
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 3),
-                    child: Text(
-                        _subtitle(t),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: 11,
-                            color: widget.overdue ? _examInk : _rowMeta)),
-                  ),
-                  if (t.note.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Text(t.note,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style:
-                              const TextStyle(fontSize: 11, color: _rowNote)),
                     ),
-                ],
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              if (course != null)
+                                _CourseChip(course: course, fontSize: 10),
+                              if (categoryText.isNotEmpty)
+                                _CategoryChip(categoryText),
+                              Expanded(
+                                child: Text(t.title,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                        fontSize: 15, color: inkPrimary)),
+                              ),
+                            ],
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.only(top: 3),
+                            child: Text(_subtitle(t),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color:
+                                        widget.overdue ? _examInk : _rowMeta)),
+                          ),
+                          if (t.note.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Text(t.note,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      fontSize: 11, color: _rowNote)),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ],
-        ),
-      ),
+          ),
+        ],
       ),
     );
   }
@@ -1298,8 +1393,7 @@ class _DoneRow extends StatelessWidget {
             const Padding(
               padding: EdgeInsets.only(right: 10),
               // 鸿蒙端是「✓」这个字符（16 号），不是 Material 图标
-              child: Text('✓',
-                  style: TextStyle(fontSize: 16, color: _rowNote)),
+              child: Text('✓', style: TextStyle(fontSize: 16, color: _rowNote)),
             ),
             Expanded(
               child: Column(
@@ -1381,7 +1475,6 @@ class _TrayButton extends StatelessWidget {
   }
 }
 
-
 class _VirtualCourseRow extends StatelessWidget {
   final Course course;
   final int done;
@@ -1407,43 +1500,44 @@ class _VirtualCourseRow extends StatelessWidget {
         child: Opacity(
           opacity: allDone ? 0.72 : 1,
           child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-          decoration: BoxDecoration(
-            color: glassTintRow,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: glassEdgeSoft),
-            boxShadow: glassShadowRow,
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 4,
-                height: 26,
-                decoration: BoxDecoration(
-                  color: courseColorFor(course),
-                  borderRadius: BorderRadius.circular(2),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            decoration: BoxDecoration(
+              color: glassTintRow,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: glassEdgeSoft),
+              boxShadow: glassShadowRow,
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 4,
+                  height: 26,
+                  decoration: BoxDecoration(
+                    color: courseColorFor(course),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(course.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 15, color: inkPrimary)),
-              ),
-              if (allDone) ...[
-                const Icon(Icons.workspace_premium,
-                    size: 15, color: Color(0xFFE0A94E)),
-                const SizedBox(width: 3),
-                const Text('✓ 已完成',
-                    style: TextStyle(fontSize: 12, color: Color(0xFFE0A94E)))
-              ] else
-                Text('$done / $total 讲',
-                    style: const TextStyle(fontSize: 12, color: inkSecondary)),
-              const SizedBox(width: 4),
-              const Icon(Icons.chevron_right, size: 18, color: inkTertiary),
-            ],
-          ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(course.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 15, color: inkPrimary)),
+                ),
+                if (allDone) ...[
+                  const Icon(Icons.workspace_premium,
+                      size: 15, color: Color(0xFFE0A94E)),
+                  const SizedBox(width: 3),
+                  const Text('✓ 已完成',
+                      style: TextStyle(fontSize: 12, color: Color(0xFFE0A94E)))
+                ] else
+                  Text('$done / $total 讲',
+                      style:
+                          const TextStyle(fontSize: 12, color: inkSecondary)),
+                const SizedBox(width: 4),
+                const Icon(Icons.chevron_right, size: 18, color: inkTertiary),
+              ],
+            ),
           ),
         ),
       ),

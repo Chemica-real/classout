@@ -416,7 +416,7 @@ void main() {
       home: Scaffold(body: TodoPage(bundle: _demo(), onChanged: (_) {})),
     ));
     await tester.pumpAndSettle();
-    final toggle = find.textContaining('收起 ▴');
+    final toggle = find.textContaining('收起 ▴').last;
     if (toggle.evaluate().isEmpty) {
       // demo 可能没有已完成条目：直接跳过（该文案由下一轮的固定数据覆盖）
       return;
@@ -585,6 +585,41 @@ void main() {
     expect(find.text('确认删除'), findsOneWidget);
     await tester.tap(find.text('确认删除'));
     await tester.pumpAndSettle();
+    expect(last!.todos, isEmpty);
+  });
+
+  testWidgets('待办行左滑：露红底并弹确认，删除后移除', (tester) async {
+    final demo = _demo();
+    final t = Todo(
+      id: 991,
+      title: '左滑测试',
+      courseId: demo.courses.first.id,
+      status: TodoStatus.active,
+      ddl: '2026-11-20 23:59',
+      category: TodoCategory.homework,
+    );
+    final b = demo.copyWith(todos: [t]);
+    BackupBundle? last;
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: TodoPage(
+          bundle: b,
+          onChanged: (x) => last = x,
+          now: DateTime(2026, 11, 9, 9),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.drag(
+        find.byKey(const ValueKey('active-991')), const Offset(-100, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('删除这条待办？'), findsOneWidget);
+    await tester.tap(find.text('删除').last);
+    await tester.pumpAndSettle();
+    expect(last, isNotNull);
     expect(last!.todos, isEmpty);
   });
 }
