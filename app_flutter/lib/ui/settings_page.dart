@@ -598,11 +598,14 @@ class _SettingsPageState extends State<SettingsPage>
     return _Card(
       title: '学科调色盘',
       description: '10 个颜色会同时用于课表、待办和计划；点一个色块改 Hue / 饱和度 / 明度。',
-      child: Wrap(
-        spacing: 10,
-        runSpacing: 10,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          for (var i = 0; i < theme.courseColors.length; i++)
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              for (var i = 0; i < theme.courseColors.length; i++)
             GestureDetector(
               key: ValueKey('palette-$i'),
               onTap: () => _editPaletteColor(i),
@@ -620,6 +623,21 @@ class _SettingsPageState extends State<SettingsPage>
                         fontSize: 11, color: Colors.white)),
               ),
             ),
+            ],
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: () {
+                theme.applyCoursePalette('');
+                _s.coursePalette = '';
+                _saveSettings();
+                showToast('调色盘已恢复默认');
+              },
+              child: const Text('恢复默认',
+                  style: TextStyle(fontSize: 12, color: Color(0xFFA9B5C9))),
+            ),
+          ),
         ],
       ),
     );

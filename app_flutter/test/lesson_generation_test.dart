@@ -113,7 +113,9 @@ void main() {
 
   test('周次算得对（%N 用已有该课程待办数 + 1）', () {
     final b = _demo();
-    final existing = b.todos.where((t) => t.courseId == 1).length; // 演示数据里 2 条
+    // 鸿蒙 %N 只数 source=template 的待办，手填的不算
+    final existing =
+        b.todos.where((t) => t.courseId == 1 && t.source == 'template').length;
     final r = generateForLesson(
       courses: b.courses,
       rules: b.rules,

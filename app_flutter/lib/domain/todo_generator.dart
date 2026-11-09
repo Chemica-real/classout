@@ -179,7 +179,11 @@ GenerationOutcome generateMissedTodos({
         if (keys.contains(key)) continue;
         // 被删过的（进了黑名单）不再生成 —— 鸿蒙 `isBlacklisted` 同款
         if (blacklist.contains(key)) continue;
-        final n = todos.where((x) => x.courseId == s.course.id).length + 1;
+        final n = todos
+            .where((x) =>
+                x.courseId == s.course.id && x.source == 'template')
+            .length +
+        1;
         final week = weekOfDate(sem, parseDate(s.date));
         id++;
         out.add(Todo(
@@ -244,7 +248,9 @@ GenerationOutcome generateForLesson({
     templates: templates,
     s: s,
     existingKeys: [for (final t in todos) t.generationKey],
-    existingForCourse: todos.where((x) => x.courseId == course!.id).length,
+    existingForCourse: todos
+        .where((x) => x.courseId == course!.id && x.source == 'template')
+        .length,
   );
   final out = <Todo>[];
   var id = nextId;
