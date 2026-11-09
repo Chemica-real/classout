@@ -14,7 +14,7 @@ import 'package:flutter/material.dart';
 
 import '../data/backup.dart';
 import '../domain/categories.dart';
-import '../domain/dates.dart' show hhmmToMin;
+import '../domain/dates.dart' show hhmmToMin, formatDate;
 import '../domain/todo_list.dart';
 import '../model/types.dart';
 import 'app_frame.dart';
@@ -108,6 +108,7 @@ class _TodoPageState extends State<TodoPage> {
       s = TodoSections(
         _byTitle(s.pending), _byTitle(s.exams), _byTitle(s.tasks), s.done);
     }
+    final groups = groupActiveTodos(s.tasks, now: widget.now);
     final courses = {for (final c in bundle.courses) c.id: c};
     final hasTop = s.pending.isNotEmpty || s.exams.isNotEmpty;
 
@@ -198,33 +199,41 @@ class _TodoPageState extends State<TodoPage> {
                     ),
                 ],
 
-                // ---- 待办 ----
-                _SectionHeader(
-                  title: '待办',
-                  count: '${s.tasks.length} 条',
-                  countColor: _rowMeta,
-                  top: hasTop ? 14 : 0,
-                ),
-                if (s.tasks.isEmpty && _virtualCourses().isEmpty)
+                // ---- 今天 / 已逾期 / 以后（鸿蒙 TodoGroups）----
+                if (groups.today.isNotEmpty) ...[
+                  _SectionHeader(
+                    title: '今天',
+                    count: '${groups.today.length} 条',
+                    countColor: _rowMeta,
+                    top: hasTop ? 14 : 0,
+                  ),
+                  for (final t in groups.today) _active(t),
+                ],
+                if (groups.overdue.isNotEmpty) ...[
+                  _SectionHeader(
+                    title: '已逾期',
+                    count: '${groups.overdue.length} 条',
+                    countColor: _examInk,
+                    top: 14,
+                  ),
+                  for (final t in groups.overdue) _active(t, overdue: true),
+                ],
+                if (groups.later.isNotEmpty) ...[
+                  _SectionHeader(
+                    title: '以后',
+                    count: '${groups.later.length} 条',
+                    countColor: _rowMeta,
+                    top: 14,
+                  ),
+                  for (final t in groups.later) _active(t),
+                ],
+                if (groups.isEmpty && _virtualCourses().isEmpty)
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 10),
                     child: Text(
                       '暂无待办。下课之后，配了模板的课程会自动生成待办到这里。',
                       style: TextStyle(fontSize: 12, color: _rowHint),
                     ),
-                  ),
-                for (final t in s.tasks)
-                  _ActiveRow(
-                    key: ValueKey('active-${t.id}'),
-                    t: t,
-                    now: widget.now,
-                    course: courses[t.courseId],
-                    categoryText: categoryLabel(t.category, _custom),
-                    onComplete: () => widget.onChanged(_mutate(t.id, (x) {
-                      x.status = TodoStatus.done;
-                      x.doneAt = DateTime.now().millisecondsSinceEpoch;
-                    })),
-                    onOpen: () => _openEditor(context, existing: t),
                   ),
 
                 // ---- 虚拟课程文件夹（鸿蒙 1.10.0：以后与已完成之间）----
@@ -463,6 +472,20 @@ class _TodoPageState extends State<TodoPage> {
       widget.onSortChanged?.call(choice);
     }
   }
+
+  Widget _active(Todo t, {bool overdue = false}) => _ActiveRow(
+        key: ValueKey('active-${t.id}'),
+        t: t,
+        now: widget.now,
+        overdue: overdue,
+        course: {for (final c in widget.bundle.courses) c.id: c}[t.courseId],
+        categoryText: categoryLabel(t.category, _custom),
+        onComplete: () => widget.onChanged(_mutate(t.id, (x) {
+          x.status = TodoStatus.done;
+          x.doneAt = DateTime.now().millisecondsSinceEpoch;
+        })),
+        onOpen: () => _openEditor(context, existing: t),
+      );
 
   String _courseName(int id) {
     for (final c in widget.bundle.courses) {
@@ -1028,6 +1051,7 @@ class _ActiveRow extends StatefulWidget {
 
   /// 注入的时钟（null = 真实今天）
   final DateTime? now;
+  final bool overdue;
 
   const _ActiveRow({
     super.key,
@@ -1037,6 +1061,7 @@ class _ActiveRow extends StatefulWidget {
     required this.onComplete,
     required this.onOpen,
     this.now,
+    this.overdue = false,
   });
 
   @override
@@ -1065,6 +1090,18 @@ class _ActiveRowState extends State<_ActiveRow>
   void dispose() {
     _c.dispose();
     super.dispose();
+  }
+
+  String _subtitle(Todo t) {
+    final base = ddlText(t.ddl, now: widget.now);
+    if (!widget.overdue &&
+        t.ddl.length >= 16 &&
+        t.ddl.substring(0, 10) ==
+            formatDate(widget.now ?? DateTime.now())) {
+      final remain = remainText(t, now: widget.now);
+      if (remain.isNotEmpty) return '$remain · $base · 预计 ${t.estimateMin} 分钟';
+    }
+    return '$base · 预计 ${t.estimateMin} 分钟';
   }
 
   @override
@@ -1112,10 +1149,12 @@ class _ActiveRowState extends State<_ActiveRow>
                   Padding(
                     padding: const EdgeInsets.only(top: 3),
                     child: Text(
-                        '${ddlText(t.ddl, now: widget.now)} · 预计 ${t.estimateMin} 分钟',
+                        _subtitle(t),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 11, color: _rowMeta)),
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: widget.overdue ? _examInk : _rowMeta)),
                   ),
                   if (t.note.isNotEmpty)
                     Padding(

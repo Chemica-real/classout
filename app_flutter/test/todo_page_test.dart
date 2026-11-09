@@ -95,7 +95,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('待确认'), findsOneWidget);
     expect(find.text('即将考试'), findsOneWidget);
-    expect(find.text('待办'), findsWidgets);
+    final grouped = ['今天', '已逾期', '以后']
+        .any((x) => find.text(x).evaluate().isNotEmpty);
+    expect(grouped, isTrue, reason: 'active 待办至少落在今天/已逾期/以后之一');
     expect(find.text('已完成'), findsOneWidget);
     expect(find.text('第 3 周作业'), findsOneWidget);
     expect(find.text('线性代数 期中考试'), findsOneWidget);
@@ -419,6 +421,8 @@ void main() {
       // demo 可能没有已完成条目：直接跳过（该文案由下一轮的固定数据覆盖）
       return;
     }
+    await tester.ensureVisible(toggle);
+    await tester.pumpAndSettle();
     await tester.tap(toggle);
     await tester.pumpAndSettle();
     expect(find.textContaining('展开 ▾'), findsOneWidget);

@@ -112,3 +112,55 @@ String doneAtText(Todo t) {
   final d = DateTime.fromMillisecondsSinceEpoch(t.doneAt);
   return '${d.month}/${d.day} ${minToHHmm(d.hour * 60 + d.minute)} 完成';
 }
+
+// ---------------- 「今天 / 已逾期 / 以后」三段（鸿蒙 TodoGroups.ets） ----------------
+
+class TodoDayGroups {
+  final List<Todo> today;
+  final List<Todo> overdue;
+  final List<Todo> later;
+  const TodoDayGroups(this.today, this.overdue, this.later);
+
+  bool get isEmpty => today.isEmpty && overdue.isEmpty && later.isEmpty;
+}
+
+DateTime? _todoDay(Todo t) {
+  if (t.ddl.length < 10) return null;
+  return parseDate(t.ddl.substring(0, 10));
+}
+
+bool isOverdue(Todo t, {DateTime? now}) {
+  final d = _todoDay(t);
+  if (d == null) return false;
+  final today = DateTime((now ?? DateTime.now()).year,
+      (now ?? DateTime.now()).month, (now ?? DateTime.now()).day);
+  return d.isBefore(today);
+}
+
+TodoDayGroups groupActiveTodos(List<Todo> tasks, {DateTime? now}) {
+  final n = now ?? DateTime.now();
+  final today = DateTime(n.year, n.month, n.day);
+  final a = <Todo>[], b = <Todo>[], c = <Todo>[];
+  for (final t in tasks) {
+    final d = _todoDay(t);
+    if (d == null || d.isAfter(today)) {
+      c.add(t);
+    } else if (d.isBefore(today)) {
+      b.add(t);
+    } else {
+      a.add(t);
+    }
+  }
+  return TodoDayGroups(sortForList(a), sortForList(b), sortForList(c));
+}
+
+/// 今天条目倒计时：「还有 2 小时 5 分钟」/「还有 12 分钟」。
+String remainText(Todo t, {DateTime? now}) {
+  if (t.ddl.length < 16) return '';
+  final d = DateTime.tryParse(t.ddl.replaceFirst(' ', 'T'));
+  if (d == null) return '';
+  final diff = d.difference(now ?? DateTime.now());
+  if (diff.isNegative) return '已逾期';
+  if (diff.inMinutes < 60) return '还有 ${diff.inMinutes} 分钟';
+  return '还有 ${diff.inHours} 小时 ${diff.inMinutes % 60} 分钟';
+}
