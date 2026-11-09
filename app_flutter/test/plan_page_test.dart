@@ -839,4 +839,27 @@ void main() {
     expect(find.byKey(const ValueKey('plan-day-2026-10-16')), findsOneWidget);
     expect(find.byKey(const ValueKey('plan-day-2026-10-12')), findsNothing);
   });
+
+  testWidgets('双指捏合：日 → 三日 → 周，反向收回', (tester) async {
+    await _pump(tester, initialDay: DateTime(2026, 10, 16));
+    Future<void> pinch(double dx) async {
+      final a = await tester.startGesture(const Offset(140, 700));
+      final b = await tester.startGesture(const Offset(240, 700));
+      await tester.pump();
+      await a.moveBy(Offset(-dx, 0));
+      await b.moveBy(Offset(dx, 0));
+      await tester.pump();
+      await a.up();
+      await b.up();
+      await tester.pumpAndSettle();
+    }
+
+    await pinch(80);
+    expect(find.byKey(const ValueKey('plan-day-2026-10-15')), findsOneWidget);
+    await pinch(80);
+    expect(find.byKey(const ValueKey('plan-day-2026-10-12')), findsOneWidget);
+
+    await pinch(-60);
+    expect(find.byKey(const ValueKey('plan-day-2026-10-15')), findsOneWidget);
+  });
 }

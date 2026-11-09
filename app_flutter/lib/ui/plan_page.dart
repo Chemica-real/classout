@@ -107,6 +107,11 @@ class _PlanPageState extends State<PlanPage> {
   final List<({BackupBundle b, String label})> _undo = [];
   final List<({BackupBundle b, String label})> _redo = [];
 
+  /// 视图级双指：未选中块时捏合切 日/三日/周
+  final Map<int, Offset> _viewPointers = {};
+  double _viewStartDist = 0;
+  double _viewLastDist = 0;
+
   /// 待安排托盘是否展开（鸿蒙端 TraySummonBar ↔ TodoPool）
   /// 托盘展开状态（冷启动从 kv 读回，鸿蒙 `loadTrayOpen`）
   bool _trayOpen = planTrayOpen;
@@ -605,7 +610,12 @@ class _PlanPageState extends State<PlanPage> {
     // 鸿蒙：`bottom: bottomInset + FLOAT_GAP + bottomPaneH + FLOAT_GAP + DDL_MARK_ALLOW`
     // （bottomInset = 导航栏 + 一条缝），这里 `tabBarInset` 就等于 `bottomInset + FLOAT_GAP`
     final trayBlock = tabBarInset + floatGap + _trayH + floatGap + ddlMarkAllow;
-    return Stack(
+    return Listener(
+      onPointerDown: _onViewPointerDown,
+      onPointerMove: _onViewPointerMove,
+      onPointerUp: _onViewPointerUp,
+      onPointerCancel: _onViewPointerUp,
+      child: Stack(
       children: [
         Positioned.fill(
           child: SingleChildScrollView(
@@ -834,7 +844,65 @@ class _PlanPageState extends State<PlanPage> {
             ),
           ),
       ],
+      ),
     );
+  }
+
+  void _onViewPointerDown(PointerDownEvent e) {
+    _viewPointers[e.pointer] = e.position;
+    if (_viewPointers.length == 2) {
+      final p = _viewPointers.values.take(2).toList();
+      _viewStartDist = (p[0] - p[1]).distance;
+      _viewLastDist = _viewStartDist;
+    }
+  }
+
+  void _onViewPointerMove(PointerMoveEvent e) {
+    if (!_viewPointers.containsKey(e.pointer)) return;
+    _viewPointers[e.pointer] = e.position;
+    if (_viewPointers.length == 2 && _pinchId == 0) {
+      final p = _viewPointers.values.take(2).toList();
+      _viewLastDist = (p[0] - p[1]).distance;
+    }
+  }
+
+  void _onViewPointerUp(PointerEvent e) {
+    _viewPointers.remove(e.pointer);
+    if (_viewPointers.isEmpty && _viewStartDist > 1 && _pinchId == 0) {
+      final ratio = _viewLastDist / _viewStartDist;
+      _switchViewByPinch(ratio);
+    }
+    if (_viewPointers.isEmpty) {
+      _viewStartDist = 0;
+      _viewLastDist = 0;
+    }
+  }
+
+  void _switchViewByPinch(double ratio) {
+    if (ratio > 1.2) {
+      if (_weekView) return;
+      if (_threeDay) {
+        setState(() {
+          _weekView = true;
+          _threeDay = false;
+        });
+        _showHint('已切到周视图');
+      } else {
+        setState(() => _threeDay = true);
+        _showHint('已切到三日视图');
+      }
+    } else if (ratio < 0.8) {
+      if (_weekView) {
+        setState(() {
+          _weekView = false;
+          _threeDay = true;
+        });
+        _showHint('已切到三日视图');
+      } else if (_threeDay) {
+        setState(() => _threeDay = false);
+        _showHint('已切到日视图');
+      }
+    }
   }
 
   /// 托盘卡片上的「⚡ 找空档」：先选中它，再走和工具栏一样的那条路径
