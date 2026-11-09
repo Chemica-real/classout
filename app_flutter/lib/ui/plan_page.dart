@@ -2463,7 +2463,7 @@ class _Tray extends StatelessWidget {
                   child: Text('没有待安排的虚拟课时。',
                       style: TextStyle(fontSize: 13, color: Color(0xFF8B97AC))),
                 )
-              : _strip([for (final l in lessons) _lessonCard(l)])
+              : _lessonLayers()
         else if (pool.isEmpty)
           const Padding(
             padding: EdgeInsets.fromLTRB(12, 0, 12, 10),
@@ -2553,6 +2553,74 @@ class _Tray extends StatelessWidget {
   }
 
   /// 横向卡片条：卡片宽 140，间隔 8，左右 12（鸿蒙端 `Scroll` + `Row`）
+  /// 待安排课时按课程分层（鸿蒙 `lessonGroups()`）：一门课一层，层内横排；
+  /// 层数多时整区纵向滚，而不是把几十讲全部平铺成一长条。
+  List<List<VirtualLesson>> get _lessonGroups {
+    final byCourse = <int, List<VirtualLesson>>{};
+    for (final l in lessons) {
+      byCourse.putIfAbsent(l.courseId, () => []).add(l);
+    }
+    final keys = byCourse.keys.toList()..sort();
+    return [for (final k in keys) byCourse[k]!];
+  }
+
+  Widget _lessonLayers() {
+    final groups = _lessonGroups;
+    final height = math.min(groups.length * 102.0, 204.0);
+    return SizedBox(
+      height: height,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final g in groups)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 5, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: courseColorFor(courses[g.first.courseId]!),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              _courseShort(g.first.courseId),
+                              style: const TextStyle(
+                                  fontSize: 12, color: Colors.white),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text('剩 ${g.length} 讲',
+                              style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Color(0xD9D8C48A))),
+                        ],
+                      ),
+                    ),
+                    _strip([for (final l in g) _lessonCard(l)]),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _courseShort(int id) {
+    final c = courses[id];
+    if (c == null) return '课程';
+    return c.shortName.isNotEmpty ? c.shortName : c.name;
+  }
+
   Widget _strip(List<Widget> cards) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
