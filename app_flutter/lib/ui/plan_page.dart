@@ -145,6 +145,20 @@ class _PlanPageState extends State<PlanPage> {
   final Map<int, Offset> _pointers = {};
   double _pinchBaseDist = 0;
 
+  /// 日/三日横向画布：真正的 PageView（跟手、惯性、吸附由 Flutter 负责）。
+  PageController? _pager;
+  static const int _pagerCenter = 30;
+  DateTime? _pagerAnchor;
+  bool? _pagerThree;
+  bool _pagerSnapping = false;
+  Timer? _pagerSettle;
+
+  PageController? _weekPager;
+  DateTime? _weekAnchor;
+  bool _weekPagerSnapping = false;
+  Timer? _weekSettle;
+  static const int _weekPagerCenter = 30;
+
   // ---- 拖动 / 缩放（见 domain/plan_math.dart 的 moveRange / resizeRange / edgeScroll*）----
   final ScrollController _scroll = ScrollController();
 
@@ -358,10 +372,16 @@ class _PlanPageState extends State<PlanPage> {
   }
 
   void _shift(int days) {
+    if (_weekView) {
+      setState(() => _day = addDays(_day, days >= 0 ? 7 : -7));
+      _weekPagerToDay();
+      return;
+    }
     setState(() {
       _pageDir = days >= 0 ? 1 : -1;
       _day = addDays(_day, days);
     });
+    _pagerToDay();
   }
 
   void _openDayFromWeek(DateTime day, int minute) {
@@ -372,9 +392,17 @@ class _PlanPageState extends State<PlanPage> {
       _selectedBlockId = 0;
     });
     _showHint('${day.month}/${day.day} ${minToHHmm(minute)}');
+    _pagerToDay(animate: false);
   }
 
-  void _jumpToday() => setState(() => _day = today());
+  void _jumpToday() {
+    setState(() => _day = today());
+    if (_weekView) {
+      _weekPagerToDay();
+    } else {
+      _pagerToDay(animate: false);
+    }
+  }
 
   // ---------------- 数据 ----------------
 
@@ -648,6 +676,465 @@ class _PlanPageState extends State<PlanPage> {
     _place(day, slot, todo.estimateMin);
   }
 
+  // ---------------- 日/三日横滑画布 ----------------
+
+  void _ensurePager() {
+    if (_pager != null && _pagerThree == _threeDay) return;
+    _pager?.dispose();
+    _pagerAnchor = _day;
+    _pagerThree = _threeDay;
+    _pager = PageController(
+      initialPage: _pagerCenter,
+      viewportFraction: _threeDay ? (1 / 3) : 1.0,
+    );
+  }
+
+  int _pagerIndexFor(DateTime day) =>
+      _pagerCenter + day.difference(_pagerAnchor!).inDays;
+
+  void _pagerToDay({bool animate = true}) {
+    _ensurePager();
+    final idx = _pagerIndexFor(_day);
+    if (idx < 0 || idx > _pagerCenter * 2) {
+      // 走得太远：重开画布，把当前日放回正中。
+      _pager?.dispose();
+      _pager = null;
+      _ensurePager();
+      setState(() {});
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _pager == null || !_pager!.hasClients) return;
+      if (!animate) {
+        _pager!.jumpToPage(idx);
+      } else {
+        _pager!.animateToPage(idx,
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeOutCubic);
+      }
+    });
+  }
+
+  void _onPagerChanged(int index) {
+    final d = addDays(_pagerAnchor!, index - _pagerCenter);
+    if (formatDate(d) == formatDate(_day)) return;
+    setState(() {
+      _day = d;
+      _pageDir = index > _pagerCenter ? 1 : -1;
+      _selectedBlockId = 0;
+      _selectedTodoId = 0;
+      _selectedLessonId = 0;
+    });
+  }
+
+  Widget _axisColumn({double? height}) {
+    final h = height ?? (_axis.height() + 12);
+    final span = _axis.endMin - _axis.startMin;
+    return SizedBox(
+      width: _axisW,
+      height: h,
+      child: Stack(
+        children: [
+          for (final m in _axis.marks)
+            Positioned(
+              top: ((m - _axis.startMin) / span * h - 5).clamp(0.0, h - 10),
+              right: 6,
+              child: Text(minToHHmm(m),
+                  style: TextStyle(
+                      fontSize: height == null ? 12 : 7,
+                      color: const Color(0xFFCBD6E8))),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _pagerHeaderCell(DateTime d) {
+    const names = ['一', '二', '三', '四', '五', '六', '日'];
+    final selected = formatDate(d) == formatDate(_day);
+    final isToday = formatDate(d) == formatDate(widget.now());
+    return Container(
+      height: colHeadH,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: selected ? 0.10 : 0.03),
+        border: Border(
+            right: BorderSide(color: Colors.white.withValues(alpha: 0.08))),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text('${d.month}/${d.day} 周${names[weekdayOf(d) - 1]}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontSize: 14,
+                  height: 1.1,
+                  fontWeight: selected ? FontWeight.w500 : FontWeight.normal,
+                  color: selected ? inkPrimary : const Color(0xFFA9B5C9))),
+          if (isToday)
+            const Text('今天',
+                style: TextStyle(
+                    fontSize: 10, height: 1.1, color: Color(0xFF7FA8FF))),
+        ],
+      ),
+    );
+  }
+
+  Widget _pagerDay(DateTime d) {
+    final single = !_threeDay;
+    return Column(
+      children: [
+        if (_threeDay) _pagerHeaderCell(d),
+        SizedBox(
+          key: ValueKey('plan-day-${formatDate(d)}'),
+          height: _axis.height() + 12,
+          child: LayoutBuilder(builder: (ctx, cons) {
+            double dragDx = 0;
+            if (_dragId != 0 && _dragCol >= 0 && _dragCol < _days.length) {
+              final target = _days[_dragCol];
+              dragDx = target.difference(d).inDays * cons.maxWidth;
+            }
+            return _DayColumn(
+              axis: _axis,
+              now: widget.now(),
+              dragId: _dragId,
+              dragResize: _dragResize,
+              dragDeltaMin: _dragDeltaMin,
+              onDragStart: _startDrag,
+              onDragUpdate: _updateDrag,
+              onDragEnd: _endDrag,
+              onPointer: _onBlockPointer,
+              lessonTitles: {
+                for (final l in widget.bundle.lessons)
+                  l.id: lessonTitleOf(l, widget.bundle.courses),
+              },
+              lessonColors: {
+                for (final l in widget.bundle.lessons)
+                  l.id: courseColorFor(widget.bundle.courses
+                      .where((c) => c.id == l.courseId)
+                      .firstOrNull),
+              },
+              pinchId: _pinchId,
+              pinchEndMin: _pinchEndMin,
+              day: d,
+              sessions: _sessionsOn(d),
+              blocks: _blocksOn(d),
+              ddls: _ddlOn(d),
+              rests: _restsOn(d),
+              singleDay: single,
+              todoOf: _todoOf,
+              onTapMinute: (day, min) {
+                if (_selectedTodoId > 0 || _selectedLessonId > 0) {
+                  final todo = _todoOf(_selectedTodoId);
+                  _place(day, min, todo?.estimateMin ?? 90);
+                  return;
+                }
+                if (_selectedBlockId > 0) {
+                  setState(() => _selectedBlockId = 0);
+                  _showHint('');
+                  return;
+                }
+                _showHint('单击块选中它；再点一下打开详情。长按选中的块可以拖时间。');
+              },
+              onTapBlock: _onBlockTap,
+              onToggleDone: _toggleBlockDone,
+              selectedBlockId: _selectedBlockId,
+              courseLabelOf: (id) {
+                final c =
+                    widget.bundle.courses.where((x) => x.id == id).firstOrNull;
+                return c == null
+                    ? ''
+                    : (c.shortName.isNotEmpty ? c.shortName : c.name);
+              },
+              courseColorOf: (id) => courseColorFor(
+                  widget.bundle.courses.where((x) => x.id == id).firstOrNull),
+              onOpenTodo: widget.onOpenTodo,
+              dragDx: dragDx,
+            );
+          }),
+        ),
+      ],
+    );
+  }
+
+  void _queueSnapPager() {
+    _pagerSettle?.cancel();
+    _pagerSettle = Timer(const Duration(milliseconds: 120), _snapPager);
+  }
+
+  void _snapPager() {
+    if (_pagerSnapping || _pager == null || !_pager!.hasClients) return;
+    final page = _pager!.page;
+    if (page == null) return;
+    final idx = page.round().clamp(0, _pagerCenter * 2);
+    if ((page - idx).abs() < 0.01) return;
+    _pagerSnapping = true;
+    _pager!
+        .animateToPage(idx,
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic)
+        .whenComplete(() {
+      _pagerSnapping = false;
+    });
+  }
+
+  DateTime _mondayOf(DateTime d) => addDays(d, -(weekdayOf(d) - 1));
+
+  void _ensureWeekPager() {
+    if (_weekPager != null) return;
+    _weekAnchor = _mondayOf(_day);
+    _weekPager = PageController(
+      initialPage: _weekPagerCenter,
+      viewportFraction: 1,
+    );
+  }
+
+  void _weekPagerToDay({bool animate = true}) {
+    _ensureWeekPager();
+    final idx = _weekPagerCenter +
+        (_mondayOf(_day).difference(_weekAnchor!).inDays / 7).round();
+    if (idx < 0 || idx > _weekPagerCenter * 2) {
+      _weekPager?.dispose();
+      _weekPager = null;
+      _ensureWeekPager();
+      setState(() {});
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _weekPager == null || !_weekPager!.hasClients) return;
+      if (!animate) {
+        _weekPager!.jumpToPage(idx);
+      } else {
+        _weekPager!.animateToPage(idx,
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeOutCubic);
+      }
+    });
+  }
+
+  void _queueSnapWeek() {
+    _weekSettle?.cancel();
+    _weekSettle = Timer(const Duration(milliseconds: 120), _snapWeekPager);
+  }
+
+  void _snapWeekPager() {
+    if (_weekPagerSnapping || _weekPager == null || !_weekPager!.hasClients) {
+      return;
+    }
+    final page = _weekPager!.page;
+    if (page == null) return;
+    final idx = page.round().clamp(0, _weekPagerCenter * 2);
+    if ((page - idx).abs() < 0.01) return;
+    _weekPagerSnapping = true;
+    _weekPager!
+        .animateToPage(idx,
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic)
+        .whenComplete(() => _weekPagerSnapping = false);
+  }
+
+  void _onWeekPagerChanged(int index) {
+    _ensureWeekPager();
+    final monday = addDays(_weekAnchor!, (index - _weekPagerCenter) * 7);
+    final wd = weekdayOf(_day) - 1;
+    final d = addDays(monday, wd);
+    if (formatDate(d) == formatDate(_day)) return;
+    setState(() {
+      _day = d;
+      _selectedBlockId = 0;
+      _selectedTodoId = 0;
+      _selectedLessonId = 0;
+    });
+  }
+
+  Widget _weekHeaderCell(DateTime d) {
+    const names = ['一', '二', '三', '四', '五', '六', '日'];
+    final selected = formatDate(d) == formatDate(_day);
+    final isToday = formatDate(d) == formatDate(widget.now());
+    return SizedBox(
+      height: colHeadH,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text('周${names[weekdayOf(d) - 1]}',
+              maxLines: 1,
+              style: TextStyle(
+                  fontSize: 10,
+                  height: 1.1,
+                  fontWeight: selected ? FontWeight.w500 : FontWeight.normal,
+                  color: selected ? inkPrimary : const Color(0xFFA9B5C9))),
+          Text('${d.month}/${d.day}',
+              maxLines: 1,
+              style: TextStyle(
+                  fontSize: 9,
+                  height: 1.1,
+                  color: selected
+                      ? const Color(0xFFDCE4F0)
+                      : const Color(0xFF8B97AC))),
+          if (isToday)
+            const Text('今天',
+                maxLines: 1,
+                style: TextStyle(
+                    fontSize: 8, height: 1.1, color: Color(0xFF7FA8FF))),
+        ],
+      ),
+    );
+  }
+
+  Widget _weekPage(List<DateTime> days, double gridH) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            for (final d in days) Expanded(child: _weekHeaderCell(d)),
+          ],
+        ),
+        SizedBox(
+          height: gridH,
+          child: _WeekGrid(
+            axis: _axis,
+            axisW: _axisW,
+            days: days,
+            now: widget.now(),
+            height: gridH,
+            showAxis: false,
+            sessions: {for (final d in days) formatDate(d): _sessionsOn(d)},
+            blocks: {for (final d in days) formatDate(d): _blocksOn(d)},
+            rests: {for (final d in days) formatDate(d): _restsOn(d)},
+            todoOf: _todoOf,
+            onTapDay: _openDayFromWeek,
+            courseColorOf: (id) => courseColorFor(
+                widget.bundle.courses.where((x) => x.id == id).firstOrNull),
+            lessonTitles: {
+              for (final l in widget.bundle.lessons)
+                l.id: lessonTitleOf(l, widget.bundle.courses),
+            },
+            lessonColors: {
+              for (final l in widget.bundle.lessons)
+                l.id: courseColorFor(widget.bundle.courses
+                    .where((c) => c.id == l.courseId)
+                    .firstOrNull),
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _weekPagerView(BuildContext context) {
+    _ensureWeekPager();
+    final gridH = (MediaQuery.sizeOf(context).height -
+            widget.topInset -
+            _dayBarH -
+            floatGap -
+            tabBarInset -
+            _trayH -
+            colHeadH)
+        .clamp(160.0, 1200.0);
+    final totalH = gridH + colHeadH;
+    return SizedBox(
+      height: totalH,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: _axisW,
+            child: Column(
+              children: [
+                const SizedBox(height: colHeadH),
+                _axisColumn(height: gridH),
+              ],
+            ),
+          ),
+          Expanded(
+            child: NotificationListener<ScrollNotification>(
+              onNotification: (n) {
+                if (n is ScrollEndNotification) {
+                  if (ambientMotion) {
+                    _queueSnapWeek();
+                  } else {
+                    _snapWeekPager();
+                  }
+                } else if (ambientMotion && n is ScrollUpdateNotification) {
+                  _queueSnapWeek();
+                }
+                return false;
+              },
+              child: PageView.builder(
+                controller: _weekPager,
+                pageSnapping: false,
+                physics: _dragId != 0
+                    ? const NeverScrollableScrollPhysics()
+                    : const BouncingScrollPhysics(),
+                itemCount: _weekPagerCenter * 2 + 1,
+                onPageChanged: _onWeekPagerChanged,
+                itemBuilder: (ctx, i) {
+                  final monday =
+                      addDays(_weekAnchor!, (i - _weekPagerCenter) * 7);
+                  final days = [for (var k = 0; k < 7; k++) addDays(monday, k)];
+                  return _weekPage(days, gridH);
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _pagerView(BuildContext context) {
+    _ensurePager();
+    final gridH = _axis.height() + 12;
+    final totalH = gridH + (_threeDay ? colHeadH : 0.0);
+    return SizedBox(
+      height: totalH,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Column(
+            children: [
+              if (_threeDay) SizedBox(height: colHeadH, width: _axisW),
+              _axisColumn(),
+            ],
+          ),
+          Expanded(
+            child: NotificationListener<ScrollNotification>(
+              onNotification: (n) {
+                if (n is ScrollEndNotification) {
+                  if (ambientMotion) {
+                    _queueSnapPager();
+                  } else {
+                    _snapPager();
+                  }
+                } else if (ambientMotion && n is ScrollUpdateNotification) {
+                  _queueSnapPager();
+                }
+                return false;
+              },
+              child: PageView.builder(
+                controller: _pager,
+                // 鸿蒙是「连续画布 + 惯性停止后吸附」：PageView 默认的
+                // pageSnapping 会把一次甩动硬限制成一页；这里关掉它，
+                // 让惯性可以连续跑过多页，松手后再吸附到最近一天。
+                pageSnapping: false,
+                physics: _dragId != 0
+                    ? const NeverScrollableScrollPhysics()
+                    : const BouncingScrollPhysics(),
+                itemCount: _pagerCenter * 2 + 1,
+                onPageChanged: _onPagerChanged,
+                itemBuilder: (ctx, i) {
+                  final d = addDays(_pagerAnchor!, i - _pagerCenter);
+                  return _pagerDay(d);
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ---------------- 界面 ----------------
 
   @override
@@ -685,112 +1172,7 @@ class _PlanPageState extends State<PlanPage> {
               // padding，网格是满宽的（FLOAT_SIDE 只作用在日期栏/托盘这两个浮窗上）。
               // 安卓原来左右各留 10，双机对比时整张网格右移了 10vp。
               padding: EdgeInsets.fromLTRB(0, dayBarBlock, 0, trayBlock),
-              child: _animatedPage(Column(
-                children: [
-                  if (days.length > 1) _DayTitles(days: days, axisW: _axisW),
-                  if (_weekView)
-                    _WeekGrid(
-                      axis: _axis,
-                      axisW: _axisW,
-                      days: days,
-                      now: widget.now(),
-                      height: (MediaQuery.sizeOf(context).height -
-                              dayBarBlock -
-                              trayBlock -
-                              colHeadH)
-                          .clamp(160.0, 1200.0),
-                      sessions: {
-                        for (final d in days) formatDate(d): _sessionsOn(d)
-                      },
-                      blocks: {
-                        for (final d in days) formatDate(d): _blocksOn(d)
-                      },
-                      rests: {for (final d in days) formatDate(d): _restsOn(d)},
-                      todoOf: _todoOf,
-                      onTapDay: _openDayFromWeek,
-                      courseColorOf: (id) => courseColorFor(widget
-                          .bundle.courses
-                          .where((x) => x.id == id)
-                          .firstOrNull),
-                      lessonTitles: {
-                        for (final l in widget.bundle.lessons)
-                          l.id: lessonTitleOf(l, widget.bundle.courses),
-                      },
-                      lessonColors: {
-                        for (final l in widget.bundle.lessons)
-                          l.id: courseColorFor(widget.bundle.courses
-                              .where((c) => c.id == l.courseId)
-                              .firstOrNull),
-                      },
-                    )
-                  else
-                    _Grid(
-                      axis: _axis,
-                      axisW: _axisW,
-                      days: days,
-                      now: widget.now(),
-                      sessions: {
-                        for (final d in days) formatDate(d): _sessionsOn(d)
-                      },
-                      blocks: {
-                        for (final d in days) formatDate(d): _blocksOn(d)
-                      },
-                      ddls: {for (final d in days) formatDate(d): _ddlOn(d)},
-                      rests: {for (final d in days) formatDate(d): _restsOn(d)},
-                      todoOf: _todoOf,
-                      onTapMinute: (day, min) {
-                        if (_selectedTodoId > 0 || _selectedLessonId > 0) {
-                          final todo = _todoOf(_selectedTodoId);
-                          // 课时默认 90 分钟，待办用自己的预计耗时
-                          _place(day, min, todo?.estimateMin ?? 90);
-                          return;
-                        }
-                        if (_selectedBlockId > 0) {
-                          setState(() => _selectedBlockId = 0);
-                          _showHint('');
-                          return;
-                        }
-                        _showHint('单击块选中它；再点一下打开详情。长按选中的块可以拖时间。');
-                      },
-                      onTapBlock: _onBlockTap,
-                      onToggleDone: _toggleBlockDone,
-                      onOpenTodo: widget.onOpenTodo,
-                      selectedBlockId: _selectedBlockId,
-                      courseLabelOf: (id) {
-                        final c = widget.bundle.courses
-                            .where((x) => x.id == id)
-                            .firstOrNull;
-                        return c == null
-                            ? ''
-                            : (c.shortName.isNotEmpty ? c.shortName : c.name);
-                      },
-                      courseColorOf: (id) => courseColorFor(widget
-                          .bundle.courses
-                          .where((x) => x.id == id)
-                          .firstOrNull),
-                      dragId: _dragId,
-                      dragResize: _dragResize,
-                      dragDeltaMin: _dragDeltaMin,
-                      dragCol: _dragCol,
-                      onDragStart: _startDrag,
-                      onDragUpdate: _updateDrag,
-                      onDragEnd: _endDrag,
-                      onPointer: _onBlockPointer,
-                      lessonTitles: {
-                        for (final l in widget.bundle.lessons)
-                          l.id: lessonTitleOf(l, widget.bundle.courses),
-                      },
-                      lessonColors: {
-                        for (final l in widget.bundle.lessons)
-                          l.id: courseColorFor(widget.bundle.courses
-                              .where((c) => c.id == l.courseId)
-                              .firstOrNull),
-                      },
-                      pinchId: _pinchId,
-                      pinchEndMin: _pinchEndMin,
-                    ),
-                ],
-              )),
+              child: _weekView ? _weekPagerView(context) : _pagerView(context),
             ),
           ),
           // 日期条：叠在悬浮页头下面
@@ -823,16 +1205,22 @@ class _PlanPageState extends State<PlanPage> {
                 canUndo: _undo.isNotEmpty,
                 canRedo: _redo.isNotEmpty,
                 onToday: _jumpToday,
-                onDay: () => setState(() {
-                  _threeDay = false;
-                  _weekView = false;
-                  _selectedBlockId = 0;
-                }),
-                onThreeDay: () => setState(() {
-                  _threeDay = true;
-                  _weekView = false;
-                  _selectedBlockId = 0;
-                }),
+                onDay: () {
+                  setState(() {
+                    _threeDay = false;
+                    _weekView = false;
+                    _selectedBlockId = 0;
+                  });
+                  _pagerToDay(animate: false);
+                },
+                onThreeDay: () {
+                  setState(() {
+                    _threeDay = true;
+                    _weekView = false;
+                    _selectedBlockId = 0;
+                  });
+                  _pagerToDay(animate: false);
+                },
               ),
             ),
           ),
@@ -974,12 +1362,7 @@ class _PlanPageState extends State<PlanPage> {
   int _pageDir = 1;
 
   void _onSwipeEnd() {
-    if (!_swipeTracking || _dragId != 0 || _pinchId != 0) return;
-    if (_swipeDx.abs() < 60 || _swipeDx.abs() < _swipeDy.abs() * 1.3) {
-      return;
-    }
-    final dir = _swipeDx < 0 ? 1 : -1;
-    _shift(dir * _pageDaySpan);
+    // 日/三日/周的横向翻页都交给 PageView（跟手、惯性、吸附）。
   }
 
   Widget _animatedPage(Widget child) {
@@ -1518,6 +1901,7 @@ class _WeekGrid extends StatelessWidget {
   final List<DateTime> days;
   final DateTime now;
   final double height;
+  final bool showAxis;
   final Map<String, List<CourseSession>> sessions;
   final Map<String, List<PlanBlock>> blocks;
   final Map<String, List<RestWindow>> rests;
@@ -1533,6 +1917,7 @@ class _WeekGrid extends StatelessWidget {
     required this.days,
     required this.now,
     required this.height,
+    this.showAxis = true,
     required this.sessions,
     required this.blocks,
     required this.rests,
@@ -1563,21 +1948,22 @@ class _WeekGrid extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(
-              width: axisW,
-              child: Stack(
-                children: [
-                  for (final m in hours)
-                    Positioned(
-                      top: (_y(m) - 5).clamp(0.0, height - 10),
-                      right: 3,
-                      child: Text(minToHHmm(m),
-                          style: const TextStyle(
-                              fontSize: 7, color: Color(0xFFA9B5C9))),
-                    ),
-                ],
+            if (showAxis)
+              SizedBox(
+                width: axisW,
+                child: Stack(
+                  children: [
+                    for (final m in hours)
+                      Positioned(
+                        top: (_y(m) - 5).clamp(0.0, height - 10),
+                        right: 3,
+                        child: Text(minToHHmm(m),
+                            style: const TextStyle(
+                                fontSize: 7, color: Color(0xFFA9B5C9))),
+                      ),
+                  ],
+                ),
               ),
-            ),
             Expanded(
               child: Row(
                 children: [

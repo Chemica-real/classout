@@ -875,22 +875,14 @@ void main() {
 
   testWidgets('日视图左右滑：+1 天', (tester) async {
     await _pump(tester, initialDay: DateTime(2026, 10, 16));
-    final g = await tester.startGesture(const Offset(300, 500));
-    await tester.pump();
-    await g.moveBy(const Offset(-150, 0));
-    await tester.pump();
-    await g.up();
+    await tester.dragFrom(const Offset(300, 500), const Offset(-260, 0));
     await tester.pumpAndSettle();
     expect(find.text('10 月 17 日 周六'), findsOneWidget);
   });
 
   testWidgets('三日视图左右滑：+1 天', (tester) async {
     await _pump(tester, initialDay: DateTime(2026, 10, 16), threeDay: true);
-    final g = await tester.startGesture(const Offset(300, 500));
-    await tester.pump();
-    await g.moveBy(const Offset(-150, 0));
-    await tester.pump();
-    await g.up();
+    await tester.dragFrom(const Offset(300, 500), const Offset(-160, 0));
     await tester.pumpAndSettle();
     expect(find.text('10 月 17 日 周六'), findsOneWidget);
   });
@@ -899,11 +891,7 @@ void main() {
     await _pump(tester, initialDay: DateTime(2026, 10, 16));
     await tester.tap(find.text('周'));
     await tester.pumpAndSettle();
-    final g = await tester.startGesture(const Offset(300, 500));
-    await tester.pump();
-    await g.moveBy(const Offset(-150, 0));
-    await tester.pump();
-    await g.up();
+    await tester.dragFrom(const Offset(300, 500), const Offset(-260, 0));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('plan-day-2026-10-19')), findsOneWidget);
   });
