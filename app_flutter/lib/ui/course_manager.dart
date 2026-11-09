@@ -227,14 +227,20 @@ class _ManagerState extends State<_Manager> {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      type: MaterialType.transparency,
-      child: SafeArea(
-        child: Column(
-          children: [
-            _topBar(),
-            Expanded(child: _body()),
-          ],
+    return PopScope(
+      canPop: _mode == 'list',
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _mode != 'list') setState(() => _mode = 'list');
+      },
+      child: Material(
+        type: MaterialType.transparency,
+        child: SafeArea(
+          child: Column(
+            children: [
+              _topBar(),
+              Expanded(child: _body()),
+            ],
+          ),
         ),
       ),
     );

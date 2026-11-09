@@ -746,7 +746,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     await _resyncReminders();
     final b = _bundle;
     if (_settings.calendarSyncEnabled && b != null) {
-      await CalendarSync.sync(buildCalendarEvents(b, DateTime.now()));
+      await CalendarSync.sync(buildCalendarEvents(b, DateTime.now(),
+            leadMin: _settings.classLeadMin));
     }
     if (!mounted) return;
     setState(() => _syncing = false);

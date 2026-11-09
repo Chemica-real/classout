@@ -16,12 +16,14 @@ class CalendarEvent {
   final String description;
   final int startMs;
   final int endMs;
+  final int leadMin;
 
   const CalendarEvent({
     required this.title,
     required this.description,
     required this.startMs,
     required this.endMs,
+    this.leadMin = 15,
   });
 
   Map<String, dynamic> toJson() => {
@@ -29,6 +31,7 @@ class CalendarEvent {
         'description': description,
         'startMs': startMs,
         'endMs': endMs,
+        'leadMin': leadMin,
       };
 }
 
@@ -68,7 +71,8 @@ class CalendarSync {
 /// 从完整备份生成未来 4 周的课程事件 + 未完成待办的截止事件。
 /// 不写计划块，避免和待办截止事件重复；虚拟课程的计划块若已排，会以块的形式在
 /// 鸿蒙端同步，这里先保持“课程 + 截止”两条主线。
-List<CalendarEvent> buildCalendarEvents(BackupBundle b, DateTime now) {
+List<CalendarEvent> buildCalendarEvents(BackupBundle b, DateTime now,
+    {int leadMin = 15}) {
   final out = <CalendarEvent>[];
   final sem = b.semester;
   if (sem == null) return out;
@@ -95,6 +99,7 @@ List<CalendarEvent> buildCalendarEvents(BackupBundle b, DateTime now) {
         endMs: DateTime(d.year, d.month, d.day)
             .add(Duration(minutes: s.endMin))
             .millisecondsSinceEpoch,
+        leadMin: leadMin,
       ));
     }
   }

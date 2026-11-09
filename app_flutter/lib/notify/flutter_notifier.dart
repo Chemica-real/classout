@@ -112,15 +112,28 @@ class FlutterNotifier implements ReminderNotifier {
     // 到点确实唤醒了接收器，但通知栏没有任何 NotificationRecord；同一条用
     // `show()` 立刻弹就能显示。换成不精确模式后复测通过。
     // 提醒晚几分钟无所谓，**能弹出来**更重要，所以这里固定用 inexact。
-    await _plugin.zonedSchedule(
-      id: n.id,
-      scheduledDate: when,
-      notificationDetails: details,
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-      title: n.title,
-      body: n.body,
-      payload: n.kind,
-    );
+    // 有精确闹钟权限时用 exact，Doze 下不会被批量延后；没有则回退 inexact。
+    try {
+      await _plugin.zonedSchedule(
+        id: n.id,
+        scheduledDate: when,
+        notificationDetails: details,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        title: n.title,
+        body: n.body,
+        payload: n.kind,
+      );
+    } catch (_) {
+      await _plugin.zonedSchedule(
+        id: n.id,
+        scheduledDate: when,
+        notificationDetails: details,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        title: n.title,
+        body: n.body,
+        payload: n.kind,
+      );
+    }
   }
 
   @override

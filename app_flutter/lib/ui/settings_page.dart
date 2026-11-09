@@ -19,6 +19,7 @@ import '../domain/dates.dart';
 import '../domain/motto.dart';
 import '../domain/plan_math.dart';
 import '../domain/sync_cadence.dart';
+import '../domain/timetable.dart';
 import '../domain/validate.dart';
 import '../model/types.dart';
 import 'app_frame.dart';
@@ -196,7 +197,12 @@ class _SettingsPageState extends State<SettingsPage>
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
+    return PopScope(
+      canPop: _sub.isEmpty,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _sub.isNotEmpty) setState(() => _sub = '');
+      },
+      child: Stack(
       children: [
         Positioned.fill(
           child: SingleChildScrollView(
@@ -249,11 +255,59 @@ class _SettingsPageState extends State<SettingsPage>
           ),
         ),
       ],
+      ),
+    );
+  }
+
+  Widget _overviewCard() {
+    final b = widget.bundle;
+    final sem = b.semester;
+    var weekCourses = 0;
+    if (sem != null) {
+      final week = weekOfDate(sem, DateTime.now()).clamp(1, sem.totalWeeks);
+      weekCourses = computeWeekSessions(sem, b.courses, b.rules, b.overrides,
+              b.sectionTimes, week)
+          .length;
+    }
+    final openTodos = b.todos
+        .where((t) => t.status != TodoStatus.done && t.status != TodoStatus.archived)
+        .toList();
+    final scheduledIds = {for (final p in b.blocks) p.todoId};
+    final unscheduled = openTodos.where((t) => !scheduledIds.contains(t.id)).length;
+    Widget cell(String value, String label) => Expanded(
+          child: Column(
+            children: [
+              Text(value,
+                  style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w700,
+                      color: inkPrimary)),
+              const SizedBox(height: 2),
+              Text(label,
+                  style: const TextStyle(fontSize: 11, color: inkTertiary)),
+            ],
+          ),
+        );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Glass(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        child: Row(
+          children: [
+            cell('$weekCourses', '本周课程'),
+            Container(width: 1, height: 30, color: glassEdgeSoft),
+            cell('${openTodos.length}', '待办作业'),
+            Container(width: 1, height: 30, color: glassEdgeSoft),
+            cell('$unscheduled', '待安排'),
+          ],
+        ),
+      ),
     );
   }
 
   List<Widget> _settingsHome() {
     return [
+      _overviewCard(),
       _group('学期与课程', [
         _row(_svg('term'), '学期设置', _semesterName(),
             () => _openCourses('semester')),
@@ -924,7 +978,8 @@ class _SettingsPageState extends State<SettingsPage>
         if (mounted) showToast('没有日历权限，未开启');
         return;
       }
-      final events = buildCalendarEvents(widget.bundle, DateTime.now());
+      final events = buildCalendarEvents(widget.bundle, DateTime.now(),
+            leadMin: _s.classLeadMin);
       final n = await CalendarSync.sync(events);
       if (n < 0) {
         if (mounted) showToast('没有找到可写的系统日历');

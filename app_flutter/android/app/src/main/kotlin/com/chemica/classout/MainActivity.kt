@@ -120,6 +120,7 @@ class MainActivity : FlutterActivity() {
             val end = (e["endMs"] as? Number)?.toLong() ?: continue
             if (end <= start) continue
             val desc = (e["description"] as? String) ?: TAG_MARK
+            val leadMin = (e["leadMin"] as? Number)?.toInt() ?: 15
             val values = ContentValues().apply {
                 put(CalendarContract.Events.CALENDAR_ID, calId)
                 put(CalendarContract.Events.TITLE, title)
@@ -128,11 +129,22 @@ class MainActivity : FlutterActivity() {
                 put(CalendarContract.Events.DTSTART, start)
                 put(CalendarContract.Events.DTEND, end)
                 put(CalendarContract.Events.EVENT_TIMEZONE, TimeZone.getDefault().id)
-                put(CalendarContract.Events.HAS_ALARM, 0)
+                put(CalendarContract.Events.HAS_ALARM, 1)
             }
             try {
-                if (contentResolver.insert(CalendarContract.Events.CONTENT_URI, values) != null) {
+                val uri = contentResolver.insert(CalendarContract.Events.CONTENT_URI, values)
+                if (uri != null) {
                     inserted++
+                    val eventId = uri.lastPathSegment?.toLongOrNull()
+                    if (eventId != null && leadMin > 0) {
+                        val reminder = ContentValues().apply {
+                            put(CalendarContract.Reminders.EVENT_ID, eventId)
+                            put(CalendarContract.Reminders.MINUTES, leadMin)
+                            put(CalendarContract.Reminders.METHOD,
+                                CalendarContract.Reminders.METHOD_ALERT)
+                        }
+                        contentResolver.insert(CalendarContract.Reminders.CONTENT_URI, reminder)
+                    }
                 }
             } catch (_: Exception) {
                 // 单个事件失败不阻断整批
