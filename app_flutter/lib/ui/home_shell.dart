@@ -952,7 +952,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                             report: _runReport,
                             blacklistCount: _blacklistCount,
                             initialMode: 'backup',
-                            onRestore: _restoreBundle);
+                            onRestore: _restoreBundle,
+                            customCategories: _settings.customCategories);
                       },
                       onResetApp: _resetApp)
                   // 课表 / 待办 / 计划：页头都是**悬浮浮窗**，内容从它下面滑过

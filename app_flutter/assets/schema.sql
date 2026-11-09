@@ -32,9 +32,11 @@ CREATE TABLE IF NOT EXISTS course (
      teacher TEXT NOT NULL DEFAULT '',
      location TEXT NOT NULL DEFAULT '',
      color_index INTEGER NOT NULL DEFAULT 0,
+     color_hex TEXT NOT NULL DEFAULT '',
      auto_todo_enabled INTEGER NOT NULL DEFAULT 1,
      is_virtual INTEGER NOT NULL DEFAULT 0,
      lesson_duration_min INTEGER NOT NULL DEFAULT 90,
+     lesson_title_template TEXT NOT NULL DEFAULT '%c 第 %N 讲',
      note TEXT NOT NULL DEFAULT ''
    );
 

@@ -11,6 +11,8 @@
 
 import 'package:flutter/material.dart';
 
+import '../model/types.dart';
+
 // ============================ 一、颜色 ============================
 
 /// 页面背景渐变（0 / 0.5 / 1 三个色标）
@@ -51,6 +53,17 @@ const List<Color> defaultCourseColors = <Color>[
 List<Color> courseColors = List<Color>.of(defaultCourseColors);
 
 Color courseColor(int i) => courseColors[i % courseColors.length];
+
+/// 课程取色：优先自定义 colorHex，否则走全局调色盘的第 colorIndex 格。
+Color courseColorFor(Course? c) {
+  if (c == null) return courseColor(7);
+  final h = c.colorHex.trim().replaceFirst('#', '');
+  if (h.length == 6) {
+    final v = int.tryParse(h, radix: 16);
+    if (v != null) return Color(0xFF000000 | v);
+  }
+  return courseColor(c.colorIndex);
+}
 
 String colorToHex(Color c) {
   final r = (c.r * 255).round();

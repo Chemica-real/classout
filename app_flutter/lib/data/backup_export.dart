@@ -43,9 +43,11 @@ Map<String, dynamic> _course(Course c) => {
       'teacher': c.teacher,
       'location': c.location,
       'colorIndex': c.colorIndex,
+      'colorHex': c.colorHex,
       'autoTodoEnabled': c.autoTodoEnabled ? 1 : 0,
       'isVirtual': c.isVirtual ? 1 : 0,
       'lessonDurationMin': c.lessonDurationMin,
+      'lessonTitleTemplate': c.lessonTitleTemplate,
       'note': c.note,
     };
 

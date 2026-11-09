@@ -527,11 +527,9 @@ class _PlanPageState extends State<PlanPage> {
                         ? ''
                         : (c.shortName.isNotEmpty ? c.shortName : c.name);
                   },
-                  courseColorOf: (id) => courseColor(widget.bundle.courses
-                          .where((x) => x.id == id)
-                          .firstOrNull
-                          ?.colorIndex ??
-                      7),
+                  courseColorOf: (id) => courseColorFor(widget.bundle.courses
+                      .where((x) => x.id == id)
+                      .firstOrNull),
                   dragId: _dragId,
                   dragResize: _dragResize,
                   dragDeltaMin: _dragDeltaMin,
@@ -545,11 +543,9 @@ class _PlanPageState extends State<PlanPage> {
                   },
                   lessonColors: {
                     for (final l in widget.bundle.lessons)
-                      l.id: courseColor((widget.bundle.courses
-                              .where((c) => c.id == l.courseId)
-                              .firstOrNull
-                              ?.colorIndex) ??
-                          7),
+                      l.id: courseColorFor(widget.bundle.courses
+                          .where((c) => c.id == l.courseId)
+                          .firstOrNull),
                   },
                   pinchId: _pinchId,
                   pinchEndMin: _pinchEndMin,
@@ -2297,7 +2293,7 @@ class _Tray extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                   decoration: BoxDecoration(
-                    color: courseColor(course.colorIndex),
+                    color: courseColorFor(course),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(course.label,

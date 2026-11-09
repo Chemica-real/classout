@@ -207,9 +207,13 @@ class Course {
   String teacher;
   String location;
   int colorIndex;
+  /// 自定义颜色（#RRGGBB；空 = 用全局调色盘的第 colorIndex 格）
+  String colorHex;
   bool autoTodoEnabled;
   bool isVirtual;
   int lessonDurationMin;
+  /// 虚拟课时命名模板（%n 全名 / %c 简称 / %N 第几讲）
+  String lessonTitleTemplate;
   String note;
 
   Course({
@@ -220,9 +224,11 @@ class Course {
     this.teacher = '',
     this.location = '',
     this.colorIndex = 0,
+    this.colorHex = '',
     this.autoTodoEnabled = true,
     this.isVirtual = false,
     this.lessonDurationMin = 90,
+    this.lessonTitleTemplate = '%c 第 %N 讲',
     this.note = '',
   });
 
@@ -234,9 +240,12 @@ class Course {
         teacher: _str(j['teacher']),
         location: _str(j['location']),
         colorIndex: _int(j['colorIndex']),
+        colorHex: _str(j['colorHex']),
         autoTodoEnabled: _int(j['autoTodoEnabled'], 1) != 0,
         isVirtual: _int(j['isVirtual']) != 0,
         lessonDurationMin: _int(j['lessonDurationMin'], 90),
+        lessonTitleTemplate: _strOr(
+            j['lessonTitleTemplate'], '%c 第 %N 讲'),
         note: _str(j['note']),
       );
 

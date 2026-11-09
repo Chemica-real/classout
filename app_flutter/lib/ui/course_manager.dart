@@ -17,7 +17,9 @@ import 'package:flutter/material.dart';
 
 import '../data/backup.dart';
 import '../data/backup_export.dart';
+import '../domain/categories.dart';
 import '../domain/dates.dart';
+import '../domain/lesson_naming.dart';
 import '../domain/todo_generator.dart' show renderTitle;
 import '../domain/validate.dart';
 import '../domain/week_mask.dart';
@@ -107,6 +109,7 @@ Future<void> showCourseManager(
   int? blacklistCount,
   String initialMode = 'list',
   Future<void> Function(BackupBundle bundle)? onRestore,
+  List<String> customCategories = const [],
 }) {
   return showGeneralDialog<void>(
     context: context,
@@ -127,7 +130,8 @@ Future<void> showCourseManager(
             report: report,
             blacklistCount: blacklistCount,
             initialMode: initialMode,
-            onRestore: onRestore),
+            onRestore: onRestore,
+            customCategories: customCategories),
       ),
     ),
     transitionBuilder: (ctx, anim, _, child) {
@@ -154,6 +158,7 @@ class _Manager extends StatefulWidget {
   final int? blacklistCount;
   final String initialMode;
   final Future<void> Function(BackupBundle bundle)? onRestore;
+  final List<String> customCategories;
   const _Manager(
       {required this.bundle,
       required this.onChanged,
@@ -161,7 +166,8 @@ class _Manager extends StatefulWidget {
       this.report = '',
       this.blacklistCount,
       this.initialMode = 'list',
-      this.onRestore});
+      this.onRestore,
+      this.customCategories = const []});
 
   @override
   State<_Manager> createState() => _ManagerState();
@@ -288,6 +294,7 @@ class _ManagerState extends State<_Manager> {
           key: ValueKey('course-edit-${_editing?.id ?? 0}'),
           b: _b,
           existing: _editing,
+          customCategories: widget.customCategories,
           onClose: () => setState(() {
             _mode = 'list';
             _editing = null;
@@ -526,7 +533,7 @@ class _ManagerState extends State<_Manager> {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
-                      color: courseColor(c.colorIndex),
+                      color: courseColorFor(c),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
@@ -695,10 +702,12 @@ class _CourseEditor extends StatefulWidget {
 
   /// 保存 / 删除完成（外壳负责写回 + 提示 + 回列表）
   final void Function(_CourseEditResult res) onDone;
+  final List<String> customCategories;
   const _CourseEditor(
       {super.key,
       required this.b,
       this.existing,
+      this.customCategories = const [],
       required this.onClose,
       required this.onDone});
 
@@ -717,6 +726,13 @@ class _CourseEditorState extends State<_CourseEditor> {
   late final TextEditingController _location =
       TextEditingController(text: widget.existing?.location ?? '');
   late int _color = widget.existing?.colorIndex ?? 0;
+  late String _colorHex = widget.existing?.colorHex ?? '';
+  late String _lessonTitleTemplate =
+      widget.existing?.lessonTitleTemplate ?? lessonTitleDefault;
+  late final TextEditingController _lessonTitleCtl =
+      TextEditingController(text: _lessonTitleTemplate);
+  /// 新建课程在本地草稿里的 id（0 = 还没落草稿）
+  int _draftId = 0;
   late bool _auto = widget.existing?.autoTodoEnabled ?? true;
   late bool _virtual = widget.existing?.isVirtual ?? false;
 
@@ -724,16 +740,18 @@ class _CourseEditorState extends State<_CourseEditor> {
   late int _lessonDuration = widget.existing?.lessonDurationMin ?? 90;
 
   /// 虚拟课程的课时数（鸿蒙 1–50 的滑条；保存时按这个数增删 lesson）
-  late int _lessonCount = widget.b.lessons
-      .where((l) => l.courseId == (widget.existing?.id ?? 0))
-      .length
-      .clamp(1, 50);
+  late int _lessonCount = widget.existing == null
+      ? 14
+      : widget.b.lessons
+          .where((l) => l.courseId == (widget.existing?.id ?? 0))
+          .fold<int>(1, (m, l) => l.seq > m ? l.seq : m)
+          .clamp(1, 200);
 
   bool _confirmDelete = false;
   String? _error;
 
   Course? get existing => widget.existing;
-  int get _id => existing?.id ?? 0;
+  int get _id => existing?.id ?? _draftId;
 
   @override
   void dispose() {
@@ -741,6 +759,7 @@ class _CourseEditorState extends State<_CourseEditor> {
     _short.dispose();
     _teacher.dispose();
     _location.dispose();
+    _lessonTitleCtl.dispose();
     super.dispose();
   }
 
@@ -757,6 +776,113 @@ class _CourseEditorState extends State<_CourseEditor> {
             : a.sortOrder - b.sortOrder);
   /// 给虚拟课程加一讲（第 N 讲，N = 现有最大讲次 + 1）
 
+  /// 新建课程先落一份本地草稿：时段/模板弹窗需要真实 courseId；
+  /// 点击「保存课程」时才整份交给外壳，取消则草稿随页面丢弃。
+  bool _ensureDraftCourse() {
+    if (_id > 0) return true;
+    final name = _name.text.trim();
+    if (name.isEmpty) {
+      setState(() => _error = '先给课程起个名字');
+      return false;
+    }
+    final id = _nextId<Course>(_b.courses, (c) => c.id);
+    final draft = Course(
+      id: id,
+      semesterId: _b.semester?.id ?? 0,
+      name: name,
+      shortName: _short.text.trim(),
+      teacher: _teacher.text.trim(),
+      location: _location.text.trim(),
+      colorIndex: _color,
+      colorHex: _colorHex,
+      autoTodoEnabled: _auto,
+      isVirtual: _virtual,
+      lessonDurationMin: _lessonDuration,
+      lessonTitleTemplate: _lessonTitleTemplate,
+    );
+    setState(() {
+      _b = _with(_b, courses: [..._b.courses, draft]);
+      _draftId = id;
+    });
+    return true;
+  }
+
+  Future<void> _pickCustomColor() async {
+    var hsv = HSVColor.fromColor(
+        _colorHex.length == 7
+            ? (() {
+                final v = int.tryParse(_colorHex.substring(1), radix: 16);
+                return v == null
+                    ? courseColors[_color]
+                    : Color(0xFF000000 | v);
+              })()
+            : courseColors[_color]);
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          backgroundColor: const Color(0xFF141B2A),
+          title: const Text('课程颜色',
+              style: TextStyle(color: inkPrimary)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                  height: 44,
+                  decoration: BoxDecoration(
+                      color: hsv.toColor(),
+                      borderRadius: BorderRadius.circular(10))),
+              _hsvRow('色相', hsv.hue, 0, 360,
+                  (v) => setLocal(() => hsv = hsv.withHue(v))),
+              _hsvRow('饱和', hsv.saturation, 0, 1,
+                  (v) => setLocal(() => hsv = hsv.withSaturation(v))),
+              _hsvRow('明度', hsv.value, 0, 1,
+                  (v) => setLocal(() => hsv = hsv.withValue(v))),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('保存',
+                    style: TextStyle(color: accentBlue))),
+          ],
+        ),
+      ),
+    );
+    if (saved == true) {
+      final c = hsv.toColor();
+      setState(() => _colorHex =
+          '#${((c.r * 255).round()).toRadixString(16).padLeft(2, '0')}'
+          '${((c.g * 255).round()).toRadixString(16).padLeft(2, '0')}'
+          '${((c.b * 255).round()).toRadixString(16).padLeft(2, '0')}');
+    }
+  }
+
+  Widget _hsvRow(String label, double value, double min, double max,
+      ValueChanged<double> onChanged) {
+    return Row(
+      children: [
+        SizedBox(
+            width: 36,
+            child: Text(label,
+                style:
+                    const TextStyle(fontSize: 11, color: Color(0xFF94A0B5)))),
+        Expanded(
+          child: Slider(
+            value: value,
+            min: min,
+            max: max,
+            activeColor: accentBlue,
+            onChanged: onChanged,
+          ),
+        ),
+      ],
+    );
+  }
+
   void _save() {
     final name = _name.text.trim();
     if (name.isEmpty) {
@@ -771,12 +897,14 @@ class _CourseEditorState extends State<_CourseEditor> {
       teacher: _teacher.text.trim(),
       location: _location.text.trim(),
       colorIndex: _color,
+      colorHex: _colorHex,
       autoTodoEnabled: _auto,
       isVirtual: _virtual,
       lessonDurationMin: _lessonDuration,
+      lessonTitleTemplate: _lessonTitleTemplate,
       note: existing?.note ?? '',
     );
-    final courses = _id > 0
+    final courses = _b.courses.any((c) => c.id == _id)
         ? _b.courses.map((c) => c.id == _id ? course : c).toList()
         : [..._b.courses, course];
 
@@ -808,7 +936,8 @@ class _CourseEditorState extends State<_CourseEditor> {
             id: _nextId<VirtualLesson>(lessons, (l) => l.id),
             courseId: cid,
             seq: seq,
-            title: '第 $seq 讲',
+            title: renderLessonTitle(
+                _lessonTitleTemplate, name, _short.text.trim(), seq),
             durationMin: 0,
           ),
         ];
@@ -832,7 +961,49 @@ class _CourseEditorState extends State<_CourseEditor> {
         deleted: true));
   }
 
+  Future<bool> _confirmRemove(String title, String detail) async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: const Color(0xFF141C2B),
+            title: Text(title, style: const TextStyle(color: inkPrimary)),
+            content: Text(detail,
+                style: const TextStyle(color: Color(0xFF9BA7BD))),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('取消')),
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child:
+                      const Text('删除', style: TextStyle(color: Colors.red))),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  Future<void> _removeRule(SessionRule r) async {
+    if (!await _confirmRemove('删除这个时段？', '删除后这节课会从课表里消失。')) {
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _b = _with(
+        _b, rules: _b.rules.where((x) => x.id != r.id).toList()));
+  }
+
+  Future<void> _removeTemplate(TodoTemplate t) async {
+    if (!await _confirmRemove(
+        '删除这个模板？', '删除后这门课不会再按它自动生成待办。')) {
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _b = _with(
+        _b, templates: _b.templates.where((x) => x.id != t.id).toList()));
+  }
+
   Future<void> _editRule(SessionRule? r) async {
+    if (!_ensureDraftCourse()) return;
     final next = await showDialog<BackupBundle>(
       context: context,
       builder: (_) => _RuleDialog(b: _b, courseId: _id, existing: r),
@@ -841,9 +1012,14 @@ class _CourseEditorState extends State<_CourseEditor> {
   }
 
   Future<void> _editTemplate(TodoTemplate? t) async {
+    if (!_ensureDraftCourse()) return;
     final next = await showDialog<BackupBundle>(
       context: context,
-      builder: (_) => _TemplateDialog(b: _b, courseId: _id, existing: t),
+      builder: (_) => _TemplateDialog(
+          b: _b,
+          courseId: _id,
+          existing: t,
+          customCategories: widget.customCategories),
     );
     if (next != null) setState(() => _b = next);
   }
@@ -851,6 +1027,7 @@ class _CourseEditorState extends State<_CourseEditor> {
   /// 鸿蒙 `CourseView` 是整页子页（顶栏由外壳画，标题「新增课程 / 编辑课程」）
   @override
   Widget build(BuildContext context) {
+    final name = _name.text.trim();
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       child: Column(
@@ -893,7 +1070,29 @@ class _CourseEditorState extends State<_CourseEditor> {
                           ),
                       ],
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        if (_colorHex.isNotEmpty)
+                          Text('自定义 ${_colorHex.toUpperCase()}',
+                              style: const TextStyle(
+                                  fontSize: 11, color: Color(0xFF7FA8FF))),
+                        const Spacer(),
+                        if (_colorHex.isNotEmpty)
+                          TextButton(
+                              onPressed: () => setState(() => _colorHex = ''),
+                              child: const Text('清除',
+                                  style: TextStyle(
+                                      fontSize: 12, color: Color(0xFFA9B5C9)))),
+                        TextButton(
+                          onPressed: _pickCustomColor,
+                          child: const Text('调色…',
+                              style: TextStyle(
+                                  fontSize: 12, color: Color(0xFFE8B25C))),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
                     _switchRow(
                       '下课后自动生成待办',
                       _auto,
@@ -907,7 +1106,7 @@ class _CourseEditorState extends State<_CourseEditor> {
                       sub: '比如 CS106L：没有固定上课时间，是一串等着被排进计划的课时',
                     ),
                     if (_virtual) ...[
-                      // 鸿蒙：讲数只用 1–50 的滑条（用户明确说"不要设计那么多按钮"）
+                      // 鸿蒙 1.10：讲数 1–200（滚轮；这里先保持滑条，下一步换滚轮）
                       Text('共多少讲（当前 $_lessonCount）',
                           style: const TextStyle(
                               fontSize: 12, color: Color(0xFF94A0B5))),
@@ -924,8 +1123,8 @@ class _CourseEditorState extends State<_CourseEditor> {
                           key: const ValueKey('lesson-count-slider'),
                           value: _lessonCount.toDouble(),
                           min: 1,
-                          max: 50,
-                          divisions: 49,
+                          max: 200,
+                          divisions: 199,
                           activeColor: const Color(0xFF2E6BE6),
                           inactiveColor:
                               Colors.white.withValues(alpha: 0.16),
@@ -943,7 +1142,7 @@ class _CourseEditorState extends State<_CourseEditor> {
                               style: const TextStyle(
                                   fontSize: 12, color: Color(0xFF7FA8FF))),
                           const Spacer(),
-                          const Text('50',
+                          const Text('200',
                               style: TextStyle(
                                   fontSize: 10, color: Color(0xFF8B97AC))),
                         ],
@@ -968,12 +1167,62 @@ class _CourseEditorState extends State<_CourseEditor> {
                             style: const TextStyle(
                                 fontSize: 12, color: Color(0xFF7FA8FF))),
                       ),
+                      const SizedBox(height: 8),
+                      const Text('课时命名模板（%n 全名 / %c 简称 / %N 第几讲）',
+                          style: TextStyle(
+                              fontSize: 12, color: Color(0xFF94A0B5))),
+                      const SizedBox(height: 4),
+                      TextField(
+                        controller: _lessonTitleCtl,
+                        style: const TextStyle(
+                            color: inkPrimary, fontSize: 14),
+                        decoration: InputDecoration(
+                          hintText: lessonTitleDefault,
+                          hintStyle: const TextStyle(
+                              color: Color(0xFF8B97AC), fontSize: 12),
+                          filled: true,
+                          fillColor: const Color(0x14FFFFFF),
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide.none),
+                        ),
+                        onChanged: (v) =>
+                            setState(() => _lessonTitleTemplate = v),
+                      ),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          for (final v in lessonTitleVars)
+                            _Chip(
+                              text: lessonTitleVarLabels[
+                                  lessonTitleVars.indexOf(v)],
+                              selected: false,
+                              onTap: () => setState(() {
+                                _lessonTitleCtl.text =
+                                    '${_lessonTitleCtl.text}%$v';
+                                _lessonTitleCtl.selection =
+                                    TextSelection.collapsed(
+                                        offset: _lessonTitleCtl.text.length);
+                                _lessonTitleTemplate = _lessonTitleCtl.text;
+                              }),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '预览：${renderLessonTitle(_lessonTitleTemplate, name, _short.text.trim(), 1)} / '
+                        '${renderLessonTitle(_lessonTitleTemplate, name, _short.text.trim(), 2)}',
+                        style: const TextStyle(
+                            fontSize: 11, color: Color(0xFF7BD69A)),
+                      ),
                       const Text(
                           '课时排进计划、打勾完成之后，会像真课下课一样按下面的模板生成待办。',
                           style: TextStyle(
                               fontSize: 11, color: Color(0xFF7BD69A))),
                     ],
-                    if (_id > 0) ...[
+                    ...[
                       _sectionTitle(
                           _virtual ? '上课时段（虚拟课程可留空）' : '上课时段（${_rules.length}）',
                           url: '+ 添加时段',
@@ -986,12 +1235,7 @@ class _CourseEditorState extends State<_CourseEditor> {
                         _row(
                           ruleText(r),
                           onEdit: () => _editRule(r),
-                          onDelete: () {
-                            setState(() => _b = _with(_b,
-                                rules: _b.rules
-                                    .where((x) => x.id != r.id)
-                                    .toList()));
-                          },
+                          onDelete: () => _removeRule(r),
                         ),
                       _sectionTitle('待办生成模板（${_templates.length}）',
                           url: '+ 添加模板',
@@ -1006,12 +1250,7 @@ class _CourseEditorState extends State<_CourseEditor> {
                           '「${t.titleTemplate}」 · ${_ddlRuleText(t)} · ${t.estimateMin} 分钟'
                           '${t.enabled ? '' : ' · 已停用'}',
                           onEdit: () => _editTemplate(t),
-                          onDelete: () {
-                            setState(() => _b = _with(_b,
-                                templates: _b.templates
-                                    .where((x) => x.id != t.id)
-                                    .toList()));
-                          },
+                          onDelete: () => _removeTemplate(t),
                         ),
                     ],
             const SizedBox(height: 8),
@@ -1023,7 +1262,7 @@ class _CourseEditorState extends State<_CourseEditor> {
                   child: _sheetButton('保存课程', _save,
                       key: const ValueKey('course-save')),
                 ),
-                if (_id > 0) ...[
+                if (existing != null) ...[
                   const SizedBox(width: 10),
                   _sheetButton('删除课程',
                       () => setState(() => _confirmDelete = true),
@@ -1033,7 +1272,7 @@ class _CourseEditorState extends State<_CourseEditor> {
               ],
             ),
             // 鸿蒙 `DeleteConfirmRow`：说明 + 取消 + 删除（红底小胶囊），不是"再点一次同一个按钮"
-            if (_confirmDelete && _id > 0)
+            if (_confirmDelete && existing != null)
               Padding(
                 padding: const EdgeInsets.only(top: 10),
                 child: Row(
@@ -1422,8 +1661,12 @@ class _TemplateDialog extends StatefulWidget {
   final BackupBundle b;
   final int courseId;
   final TodoTemplate? existing;
+  final List<String> customCategories;
   const _TemplateDialog(
-      {required this.b, required this.courseId, this.existing});
+      {required this.b,
+      required this.courseId,
+      this.existing,
+      this.customCategories = const []});
 
   @override
   State<_TemplateDialog> createState() => _TemplateDialogState();
@@ -1435,8 +1678,8 @@ class _TemplateDialogState extends State<_TemplateDialog> {
   late String _rule = widget.existing?.ddlRule ?? 'next_session';
   late final TextEditingController _param =
       TextEditingController(text: widget.existing?.ddlParam ?? '');
-  late int _estimate = widget.existing?.estimateMin ?? 60;
-  late final String _category = widget.existing?.category ?? 'homework';
+  late int _estimate = widget.existing?.estimateMin ?? 90;
+  late String _category = widget.existing?.category ?? 'homework';
   late final bool _enabled = widget.existing?.enabled ?? true;
   String? _error;
   int _caret = 0;
@@ -1645,6 +1888,19 @@ class _TemplateDialogState extends State<_TemplateDialog> {
                   ],
                 ),
               ],
+              const _Label('待办类别（生成时写进 category）'),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final c in allCategoryOptions(widget.customCategories))
+                    _Chip(
+                      text: c.label,
+                      selected: _category == c.key,
+                      onTap: () => setState(() => _category = c.key),
+                    ),
+                ],
+              ),
               const _Label('预计耗时（排计划时用来算块长）'),
               Wrap(
                 spacing: 6,

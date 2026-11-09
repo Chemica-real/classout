@@ -24,6 +24,9 @@ class SqliteRepo implements ClassOutRepo {
         'INTEGER NOT NULL DEFAULT 90');
     _ensureColumn(raw, 'virtual_lesson', 'duration_min',
         'INTEGER NOT NULL DEFAULT 0');
+    _ensureColumn(raw, 'course', 'color_hex', "TEXT NOT NULL DEFAULT ''");
+    _ensureColumn(raw, 'course', 'lesson_title_template',
+        "TEXT NOT NULL DEFAULT '%c 第 %N 讲'");
     return SqliteRepo._(raw);
   }
 
@@ -83,9 +86,11 @@ class SqliteRepo implements ClassOutRepo {
           'teacher': c.teacher,
           'location': c.location,
           'color_index': c.colorIndex,
+          'color_hex': c.colorHex,
           'auto_todo_enabled': c.autoTodoEnabled ? 1 : 0,
           'is_virtual': c.isVirtual ? 1 : 0,
           'lesson_duration_min': c.lessonDurationMin,
+          'lesson_title_template': c.lessonTitleTemplate,
           'note': c.note,
         });
       }

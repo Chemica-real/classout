@@ -471,7 +471,7 @@ class _BodyState extends State<_Body> {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
-                      color: courseColor(course.colorIndex),
+                      color: courseColorFor(course),
                       borderRadius: BorderRadius.circular(5),
                     ),
                     child: Text(course.label,

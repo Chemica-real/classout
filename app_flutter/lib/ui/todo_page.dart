@@ -493,7 +493,7 @@ class _TodoPageState extends State<TodoPage> {
                 leading: Container(
                   width: 4,
                   height: 20,
-                  color: courseColor(c.colorIndex),
+                  color: courseColorFor(c),
                 ),
                 trailing: _courseFilter == c.id
                     ? const Icon(Icons.check, color: accentBlue)
@@ -671,7 +671,7 @@ class _CourseChip extends StatelessWidget {
       padding:
           EdgeInsets.symmetric(horizontal: fontSize >= 11 ? 5 : 4, vertical: 1),
       decoration: BoxDecoration(
-        color: courseColor(course.colorIndex),
+        color: courseColorFor(course),
         borderRadius: BorderRadius.circular(fontSize >= 11 ? 4 : 3),
       ),
       child: Text(course.label,
@@ -1381,7 +1381,7 @@ class _VirtualCourseRow extends StatelessWidget {
                 width: 4,
                 height: 26,
                 decoration: BoxDecoration(
-                  color: courseColor(course.colorIndex),
+                  color: courseColorFor(course),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),

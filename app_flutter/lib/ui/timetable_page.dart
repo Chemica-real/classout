@@ -347,7 +347,7 @@ class _SessionBlock extends StatelessWidget {
     final body = Container(
       padding: const EdgeInsets.fromLTRB(4, 2, 3, 2),
       decoration: BoxDecoration(
-        color: courseColor(s.course.colorIndex),
+        color: courseColorFor(s.course),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Column(

@@ -467,4 +467,28 @@ void main() {
     expect(find.textContaining('todo: 6'), findsOneWidget);
     expect(find.textContaining('rest_window: '), findsOneWidget);
   });
+
+  testWidgets('新增课程：同一次编辑里就能加模板并保存', (tester) async {
+    final repo = await _pump(tester);
+    final before = (await repo.load())!;
+    await _tapVisible(tester, find.text('+ 新增课程'));
+    expect(find.text('新增课程'), findsOneWidget);
+    expect(find.textContaining('上课时段'), findsWidgets);
+    expect(find.textContaining('待办生成模板'), findsWidgets);
+
+    final name = find.widgetWithText(TextField, '高等数学');
+    await tester.enterText(name, '验收新课程');
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.text('+ 添加模板'));
+    expect(find.text('添加生成模板'), findsOneWidget);
+    // 类别选择在弹窗里
+    expect(find.text('待办类别（生成时写进 category）'), findsOneWidget);
+    await _tapVisible(tester, find.byKey(const ValueKey('template-save')));
+    await _tapVisible(tester, find.byKey(const ValueKey('course-save')));
+
+    final saved = (await repo.load())!;
+    expect(saved.courses.length, before.courses.length + 1);
+    final course = saved.courses.lastWhere((c) => c.name == '验收新课程');
+    expect(saved.templates.where((t) => t.courseId == course.id).length, 1);
+  });
 }
