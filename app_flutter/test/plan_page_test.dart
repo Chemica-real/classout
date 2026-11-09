@@ -68,7 +68,7 @@ Future<void> _revealBlock(WidgetTester tester, Finder block) async {
       .position;
   for (var i = 0; i < 6; i++) {
     final rect = tester.getRect(block);
-    if (rect.top > 110) return;
+    if (rect.top > 190) return;
     pos.jumpTo((pos.pixels - 60).clamp(0.0, pos.maxScrollExtent));
     await tester.pumpAndSettle();
   }
