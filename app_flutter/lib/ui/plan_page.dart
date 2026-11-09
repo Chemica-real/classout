@@ -863,12 +863,27 @@ class _PlanPageState extends State<PlanPage> {
     _pagerSettle = Timer(const Duration(milliseconds: 120), _snapPager);
   }
 
+  void _maybeRecenterPager() {
+    if (_pager == null || !_pager!.hasClients) return;
+    final page = _pager!.page?.round();
+    if (page == null) return;
+    if (page < 6 || page > _pagerCenter * 2 - 6) {
+      // 画布窗口快滑到边上了：以当前日重新居中，页面数量保持 61 天，
+      // 视觉上是同一天，所以可以无限继续滑。
+      setState(() => _pagerAnchor = _day);
+      _pager!.jumpToPage(_pagerCenter);
+    }
+  }
+
   void _snapPager() {
     if (_pagerSnapping || _pager == null || !_pager!.hasClients) return;
     final page = _pager!.page;
     if (page == null) return;
     final idx = page.round().clamp(0, _pagerCenter * 2);
-    if ((page - idx).abs() < 0.01) return;
+    if ((page - idx).abs() < 0.01) {
+      _maybeRecenterPager();
+      return;
+    }
     _pagerSnapping = true;
     _pager!
         .animateToPage(idx,
@@ -876,6 +891,7 @@ class _PlanPageState extends State<PlanPage> {
             curve: Curves.easeOutCubic)
         .whenComplete(() {
       _pagerSnapping = false;
+      _maybeRecenterPager();
     });
   }
 
@@ -918,6 +934,16 @@ class _PlanPageState extends State<PlanPage> {
     _weekSettle = Timer(const Duration(milliseconds: 120), _snapWeekPager);
   }
 
+  void _maybeRecenterWeek() {
+    if (_weekPager == null || !_weekPager!.hasClients) return;
+    final page = _weekPager!.page?.round();
+    if (page == null) return;
+    if (page < 6 || page > _weekPagerCenter * 2 - 6) {
+      setState(() => _weekAnchor = _mondayOf(_day));
+      _weekPager!.jumpToPage(_weekPagerCenter);
+    }
+  }
+
   void _snapWeekPager() {
     if (_weekPagerSnapping || _weekPager == null || !_weekPager!.hasClients) {
       return;
@@ -925,13 +951,19 @@ class _PlanPageState extends State<PlanPage> {
     final page = _weekPager!.page;
     if (page == null) return;
     final idx = page.round().clamp(0, _weekPagerCenter * 2);
-    if ((page - idx).abs() < 0.01) return;
+    if ((page - idx).abs() < 0.01) {
+      _maybeRecenterWeek();
+      return;
+    }
     _weekPagerSnapping = true;
     _weekPager!
         .animateToPage(idx,
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOutCubic)
-        .whenComplete(() => _weekPagerSnapping = false);
+        .whenComplete(() {
+      _weekPagerSnapping = false;
+      _maybeRecenterWeek();
+    });
   }
 
   void _onWeekPagerChanged(int index) {
