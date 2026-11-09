@@ -53,3 +53,9 @@ app_flutter/**/*.iml
 # 生成软著材料的 PDF 依赖（本地安装，别入库）
 /tools/pylibs/
 __pycache__/
+
+# Android 正式签名：key.properties / *.jks 只留在本机，绝不入库
+app_flutter/android/key.properties
+app_flutter/android/app/*.jks
+app_flutter/android/app/*.keystore
+.signing/
