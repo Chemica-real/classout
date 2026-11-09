@@ -997,6 +997,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                                 topInset: _headerH,
                                 window: _settings.planWindow,
                                 restWindows: bundle.restWindows,
+                                customCategories: _settings.customCategories,
                                 onOpenTodo: _openTodoById,
                                 onTrayPref: (open) {
                                   planTrayOpen = open;

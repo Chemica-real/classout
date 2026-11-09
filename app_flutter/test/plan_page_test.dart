@@ -790,4 +790,21 @@ void main() {
     await g.up();
     await tester.pumpAndSettle();
   });
+
+  testWidgets('待安排：待办页有标签+课程筛选，切换页清选中', (tester) async {
+    await _pump(tester);
+    if (find.byKey(const ValueKey('pool-tag-filter')).evaluate().isEmpty) {
+      await tester.tap(find.byKey(const ValueKey('tray-toggle')));
+      await tester.pumpAndSettle();
+    }
+    expect(find.byKey(const ValueKey('pool-tag-filter')), findsOneWidget);
+    expect(find.byKey(const ValueKey('pool-course-filter')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('pool-tag-filter')));
+    await tester.pumpAndSettle();
+    expect(find.text('全部标签'), findsWidgets);
+    await tester.tap(find.text('作业').last);
+    await tester.pumpAndSettle();
+    expect(find.text('作业'), findsWidgets);
+  });
 }

@@ -20,6 +20,7 @@ import 'app_frame.dart';
 import 'block_editor.dart';
 import 'timetable_page.dart' show gridPad;
 import 'palette.dart';
+import '../domain/categories.dart';
 
 /// 三日视图列头高度（鸿蒙 `H_COLHEAD = 34`）
 const double colHeadH = 34;
@@ -60,6 +61,9 @@ class PlanPage extends StatefulWidget {
   /// 用真实时钟的话，同一条测试白天过、半夜挂（23:25 之后直到 24:00 都被
   /// "睡觉 23:30–24:00" 挡住）—— 实测踩过一次。
   final DateTime Function() now;
+
+  /// 待安排·标签筛选用的自定义类型
+  final List<String> customCategories;
   const PlanPage({
     super.key,
     required this.bundle,
@@ -73,6 +77,7 @@ class PlanPage extends StatefulWidget {
     this.initialDay,
     this.initialThreeDay = false,
     this.now = DateTime.now,
+    this.customCategories = const [],
   });
 
   @override
@@ -92,6 +97,10 @@ class _PlanPageState extends State<PlanPage> {
 
   /// 待安排当前页：0 待办 / 1 虚拟课程（鸿蒙 POOL_PAGE_*）
   int _trayPage = 0;
+
+  /// 待安排筛选：标签（''=全部）与课程（-1=全部，0=无课程，>0=课程 id）
+  String _poolTag = '';
+  int _poolCourse = -1;
 
   /// 待安排托盘是否展开（鸿蒙端 TraySummonBar ↔ TodoPool）
   /// 托盘展开状态（冷启动从 kv 读回，鸿蒙 `loadTrayOpen`）
@@ -361,11 +370,98 @@ class _PlanPageState extends State<PlanPage> {
   /// 可以排进计划的虚拟课程课时：未完成、且还没排过
   List<VirtualLesson> get _lessonPool => [
         for (final l in widget.bundle.lessons)
-          if (!l.done && !widget.bundle.blocks.any((b) => b.lessonId == l.id)) l
+          if (!l.done &&
+              !widget.bundle.blocks.any((b) => b.lessonId == l.id) &&
+              (_poolCourse <= 0 || l.courseId == _poolCourse))
+            l
       ];
 
-  List<Todo> get _pool =>
-      sortPoolTodos(selectPoolTodos(widget.bundle.todos, widget.bundle.blocks));
+  List<Todo> get _pool {
+    var list = selectPoolTodos(widget.bundle.todos, widget.bundle.blocks);
+    if (_poolTag.isNotEmpty) {
+      list = list.where((t) => t.category == _poolTag).toList();
+    }
+    if (_poolCourse >= 0) {
+      list = list.where((t) => t.courseId == _poolCourse).toList();
+    }
+    return sortPoolTodos(list);
+  }
+
+  Future<void> _pickPoolTag() async {
+    final opts = allCategoryOptions(widget.customCategories);
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: const Color(0xFF0E1420),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: const Text('全部标签',
+                  style: TextStyle(color: inkPrimary)),
+              trailing: _poolTag.isEmpty
+                  ? const Icon(Icons.check, color: accentBlue)
+                  : null,
+              onTap: () => Navigator.pop(ctx, ''),
+            ),
+            for (final o in opts)
+              ListTile(
+                title: Text(o.label,
+                    style: const TextStyle(color: inkPrimary)),
+                trailing: _poolTag == o.key
+                    ? const Icon(Icons.check, color: accentBlue)
+                    : null,
+                onTap: () => Navigator.pop(ctx, o.key),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (choice != null && mounted) {
+      setState(() {
+        _poolTag = choice;
+        _selectedTodoId = 0;
+        _hint = '';
+      });
+    }
+  }
+
+  Future<void> _pickPoolCourse() async {
+    final choices = <(int, String)>[
+      (-1, '全部课程'),
+      (0, '无课程'),
+      for (final c in widget.bundle.courses)
+        (c.id, c.shortName.isNotEmpty ? c.shortName : c.name),
+    ];
+    final choice = await showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: const Color(0xFF0E1420),
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            for (final e in choices)
+              ListTile(
+                title: Text(e.$2,
+                    style: const TextStyle(color: inkPrimary)),
+                trailing: _poolCourse == e.$1
+                    ? const Icon(Icons.check, color: accentBlue)
+                    : null,
+                onTap: () => Navigator.pop(ctx, e.$1),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (choice != null && mounted) {
+      setState(() {
+        _poolCourse = choice;
+        _selectedTodoId = 0;
+        _selectedLessonId = 0;
+        _hint = '';
+      });
+    }
+  }
 
   Todo? _todoOf(int id) {
     for (final t in widget.bundle.todos) {
@@ -600,7 +696,18 @@ class _PlanPageState extends State<PlanPage> {
               pool: _pool,
               lessons: _lessonPool,
               page: _trayPage,
-              onPage: (p) => setState(() => _trayPage = p),
+              onPage: (p) => setState(() {
+                _trayPage = p;
+                _selectedTodoId = 0;
+                _selectedLessonId = 0;
+                _dragId = 0;
+                _hint = '';
+              }),
+              tag: _poolTag,
+              courseFilter: _poolCourse,
+              customCategories: widget.customCategories,
+              onPickTag: _pickPoolTag,
+              onPickCourse: _pickPoolCourse,
               selectedLessonId: _selectedLessonId,
               courses: {for (final c in widget.bundle.courses) c.id: c},
               selectedId: _selectedTodoId,
@@ -745,7 +852,18 @@ class _PlanPageState extends State<PlanPage> {
     ));
   }
 
-  /// 虚拟课时的一讲（鸿蒙端 autoPlaceLesson）：固定 90 分钟，从"现在"往后找。
+  int _lessonDurationOf(VirtualLesson l) {
+    Course? course;
+    for (final c in widget.bundle.courses) {
+      if (c.id == l.courseId) course = c;
+    }
+    final raw = l.durationMin > 0
+        ? l.durationMin
+        : (course?.lessonDurationMin ?? 90);
+    return ((raw / 5).round() * 5).clamp(15, 200);
+  }
+
+  /// 虚拟课时的一讲：时长 = 单讲覆盖 → 课程默认 → 90，再 5 分钟取整/夹取。
   void _findSlotForLesson(VirtualLesson l) {
     final day = _day;
     final busy = <List<int>>[
@@ -758,13 +876,14 @@ class _PlanPageState extends State<PlanPage> {
     final now = widget.now();
     final isToday = formatDate(day) == formatDate(now);
     final from = isToday ? (now.hour * 60 + now.minute) : _axis.startMin;
-    final slot = findFreeSlot(_axis, busy, rest, 90, from);
+    final duration = _lessonDurationOf(l);
+    final slot = findFreeSlot(_axis, busy, rest, duration, from);
     if (slot < 0) {
       _showHint('这天（或剩余时间）排不下了，换一天试试');
       return;
     }
     setState(() => _selectedLessonId = l.id);
-    _place(day, slot, 90);
+    _place(day, slot, duration);
   }
 
   /// 原始指针：两指时按间距比例缩放当前块；单指/抬指时结束
@@ -2020,6 +2139,11 @@ class _Tray extends StatelessWidget {
   final List<Todo> pool;
   final int page;
   final ValueChanged<int> onPage;
+  final String tag;
+  final int courseFilter;
+  final List<String> customCategories;
+  final VoidCallback onPickTag;
+  final VoidCallback onPickCourse;
 
   /// 虚拟课程的课时（待排）
   final List<VirtualLesson> lessons;
@@ -2037,6 +2161,11 @@ class _Tray extends StatelessWidget {
     required this.pool,
     required this.page,
     required this.onPage,
+    required this.tag,
+    required this.courseFilter,
+    required this.customCategories,
+    required this.onPickTag,
+    required this.onPickCourse,
     required this.lessons,
     required this.courses,
     required this.selectedId,
@@ -2075,7 +2204,7 @@ class _Tray extends StatelessWidget {
                     fontWeight: FontWeight.w500,
                     color: inkPrimary)),
             const SizedBox(width: 6),
-            Text('${pool.length + lessons.length}',
+            Text('${pool.length}',
                 style: const TextStyle(fontSize: 12, color: accentBlue)),
             const Spacer(),
             const Text('展开 ▴',
@@ -2146,6 +2275,11 @@ class _Tray extends StatelessWidget {
             ],
           ),
         ),
+        if (!lessonPage)
+          _filterRow('标签', _tagText, onPickTag,
+              key: const ValueKey('pool-tag-filter')),
+        _filterRow('课程', _courseText, onPickCourse,
+            key: const ValueKey('pool-course-filter')),
         if (lessonPage)
           lessons.isEmpty
               ? const Padding(
@@ -2167,8 +2301,55 @@ class _Tray extends StatelessWidget {
     );
   }
 
+  String get _tagText {
+    if (tag.isEmpty) return '全部标签';
+    return categoryLabel(tag, customCategories);
+  }
+
+  String get _courseText {
+    if (courseFilter < 0) return '全部课程';
+    if (courseFilter == 0) return '无课程';
+    for (final c in courses.values) {
+      if (c.id == courseFilter) {
+        return c.shortName.isNotEmpty ? c.shortName : c.name;
+      }
+    }
+    return '全部课程';
+  }
+
+  Widget _filterRow(String label, String value, VoidCallback onTap,
+      {required Key key}) {
+    return GestureDetector(
+      key: key,
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        height: 30,
+        child: Row(
+          children: [
+            SizedBox(
+              width: 34,
+              child: Text(label,
+                  style: const TextStyle(
+                      fontSize: 12, color: Color(0xFF8B97AC))),
+            ),
+            Expanded(
+              child: Text(value,
+                  style: const TextStyle(
+                      fontSize: 13, color: Color(0xFFC3CDDE))),
+            ),
+            const Icon(Icons.expand_more,
+                size: 16, color: Color(0xFF8B97AC)),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _pageChip(String text, int index, {required Key key}) {
-    final selected = page == index;
+    final selected = index == 0
+        ? (lessons.isEmpty || page == 0)
+        : (lessons.isNotEmpty && page == 1);
     return GestureDetector(
       key: key,
       onTap: () => onPage(index),
@@ -2204,6 +2385,14 @@ class _Tray extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  int _lessonDuration(VirtualLesson l) {
+    final course = courses[l.courseId];
+    final raw = l.durationMin > 0
+        ? l.durationMin
+        : (course?.lessonDurationMin ?? 90);
+    return ((raw / 5).round() * 5).clamp(15, 200);
   }
 
   /// 课时卡片上的标题（鸿蒙端 `lessonTitle`）：没起名就「课程简称 第 N 讲」
@@ -2246,10 +2435,11 @@ class _Tray extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 14, color: inkPrimary)),
-            const Padding(
-              padding: EdgeInsets.only(top: 2),
-              child: Text('90 分钟',
-                  style: TextStyle(fontSize: 12, color: Color(0xFFD8C48A))),
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text('${_lessonDuration(l)} 分钟',
+                  style: const TextStyle(
+                      fontSize: 12, color: Color(0xFFD8C48A))),
             ),
             GestureDetector(
               key: ValueKey('pool-lesson-find-${l.id}'),
