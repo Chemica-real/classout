@@ -1615,21 +1615,38 @@ class _WeekGrid extends StatelessWidget {
                                 left: 1,
                                 right: 1,
                                 child: Container(
+                                  // 与日/三日的课程灰带一致：白 0.10、圆角、居中灰字；
+                                  // 课程色只属于计划块。
                                   decoration: BoxDecoration(
-                                    color: courseColorFor(s.course)
-                                        .withValues(alpha: 0.45),
-                                    borderRadius: BorderRadius.circular(2),
+                                    color: Colors.white.withValues(alpha: 0.10),
+                                    borderRadius: BorderRadius.circular(3),
                                   ),
                                   padding:
                                       const EdgeInsets.symmetric(horizontal: 1),
-                                  alignment: Alignment.topLeft,
-                                  child: Text(s.course.label,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                          fontSize: 5.5,
-                                          height: 1.0,
-                                          color: Color(0xFFF2F5FA))),
+                                  alignment: Alignment.center,
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(s.course.label,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          textAlign: TextAlign.center,
+                                          style: const TextStyle(
+                                              fontSize: 6,
+                                              height: 1.0,
+                                              color: Color(0xFFA9B5C9))),
+                                      if (_y(s.endMin) - _y(s.startMin) > 14 &&
+                                          s.location.isNotEmpty)
+                                        Text(s.location,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            textAlign: TextAlign.center,
+                                            style: const TextStyle(
+                                                fontSize: 5,
+                                                height: 1.0,
+                                                color: Color(0xFF8B97AC))),
+                                    ],
+                                  ),
                                 ),
                               ),
                             // 计划块
@@ -1643,13 +1660,15 @@ class _WeekGrid extends StatelessWidget {
                                 child: Opacity(
                                   opacity: b.done ? 0.5 : 0.95,
                                   child: Container(
+                                    // 与日/三日计划块一致：课程/课时实色底、圆角、
+                                    // 考试红框、完成半透明；只缩字号和内边距。
                                     decoration: BoxDecoration(
                                       color: b.lessonId > 0
                                           ? (lessonColors[b.lessonId] ??
                                               const Color(0xFF4A5B75))
                                           : courseColorOf(
                                               todoOf(b.todoId)?.courseId ?? 0),
-                                      borderRadius: BorderRadius.circular(2),
+                                      borderRadius: BorderRadius.circular(3),
                                       border: todoOf(b.todoId)?.category ==
                                               TodoCategory.exam
                                           ? Border.all(
@@ -1659,14 +1678,35 @@ class _WeekGrid extends StatelessWidget {
                                     ),
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 1),
-                                    alignment: Alignment.topLeft,
-                                    child: Text(_title(b),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                            fontSize: 5.5,
-                                            height: 1.0,
-                                            color: Color(0xFFF2F5FA))),
+                                    alignment: Alignment.centerLeft,
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        if (_y(b.endMin) - _y(b.startMin) > 8)
+                                          Padding(
+                                            padding:
+                                                const EdgeInsets.only(right: 1),
+                                            child: Text(b.done ? '●' : '○',
+                                                style: TextStyle(
+                                                    fontSize: 5,
+                                                    height: 1.0,
+                                                    color: b.done
+                                                        ? const Color(
+                                                            0xFF7FA8FF)
+                                                        : Colors.white)),
+                                          ),
+                                        Flexible(
+                                          child: Text(_title(b),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                  fontSize: 5.5,
+                                                  height: 1.0,
+                                                  fontWeight: FontWeight.w500,
+                                                  color: Color(0xFFF2F5FA))),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
