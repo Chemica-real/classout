@@ -147,7 +147,6 @@ class _PlanPageState extends State<PlanPage> {
 
   // ---- 拖动 / 缩放（见 domain/plan_math.dart 的 moveRange / resizeRange / edgeScroll*）----
   final ScrollController _scroll = ScrollController();
-  final GlobalKey _gridKey = GlobalKey();
 
   /// 正在拖的块 id（0 = 没在拖）
   int _dragId = 0;
@@ -194,12 +193,10 @@ class _PlanPageState extends State<PlanPage> {
 
   /// 网格在屏幕上的可视范围（自动滚动要用）
   Rect? _gridRect() {
-    final ctx = _gridKey.currentContext;
-    if (ctx == null) return null;
-    final box = ctx.findRenderObject() as RenderBox?;
-    if (box == null) return null;
-    final off = box.localToGlobal(Offset.zero);
-    return off & box.size;
+    final screen = MediaQuery.sizeOf(context);
+    final top = widget.topInset + _dayBarH + floatGap;
+    final bottom = screen.height - tabBarInset - _trayH - 12;
+    return Rect.fromLTRB(_axisW, top, screen.width, bottom);
   }
 
   /// 全局 x 落在第几列（用鸿蒙 PlanLayout 的同一套列几何）
@@ -360,7 +357,12 @@ class _PlanPageState extends State<PlanPage> {
     return [for (var i = -1; i <= 1; i++) addDays(_day, i)];
   }
 
-  void _shift(int days) => setState(() => _day = addDays(_day, days));
+  void _shift(int days) {
+    setState(() {
+      _pageDir = days >= 0 ? 1 : -1;
+      _day = addDays(_day, days);
+    });
+  }
 
   void _openDayFromWeek(DateTime day, int minute) {
     setState(() {
@@ -683,12 +685,11 @@ class _PlanPageState extends State<PlanPage> {
               // padding，网格是满宽的（FLOAT_SIDE 只作用在日期栏/托盘这两个浮窗上）。
               // 安卓原来左右各留 10，双机对比时整张网格右移了 10vp。
               padding: EdgeInsets.fromLTRB(0, dayBarBlock, 0, trayBlock),
-              child: Column(
+              child: _animatedPage(Column(
                 children: [
                   if (days.length > 1) _DayTitles(days: days, axisW: _axisW),
                   if (_weekView)
                     _WeekGrid(
-                      key: _gridKey,
                       axis: _axis,
                       axisW: _axisW,
                       days: days,
@@ -724,7 +725,6 @@ class _PlanPageState extends State<PlanPage> {
                     )
                   else
                     _Grid(
-                      key: _gridKey,
                       axis: _axis,
                       axisW: _axisW,
                       days: days,
@@ -790,7 +790,7 @@ class _PlanPageState extends State<PlanPage> {
                       pinchEndMin: _pinchEndMin,
                     ),
                 ],
-              ),
+              )),
             ),
           ),
           // 日期条：叠在悬浮页头下面
@@ -969,13 +969,35 @@ class _PlanPageState extends State<PlanPage> {
         pos.dx <= rect.right;
   }
 
+  int get _pageDaySpan => _weekView ? 7 : 1;
+
+  int _pageDir = 1;
+
   void _onSwipeEnd() {
     if (!_swipeTracking || _dragId != 0 || _pinchId != 0) return;
     if (_swipeDx.abs() < 60 || _swipeDx.abs() < _swipeDy.abs() * 1.3) {
       return;
     }
     final dir = _swipeDx < 0 ? 1 : -1;
-    _shift(_weekView ? dir * 7 : dir);
+    _shift(dir * _pageDaySpan);
+  }
+
+  Widget _animatedPage(Widget child) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 230),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: (c, animation) => SlideTransition(
+        position:
+            Tween<Offset>(begin: Offset(_pageDir * 0.10, 0), end: Offset.zero)
+                .animate(animation),
+        child: FadeTransition(opacity: animation, child: c),
+      ),
+      child: KeyedSubtree(
+        key: ValueKey('plan-page-${formatDate(_day)}-$_weekView-$_threeDay'),
+        child: child,
+      ),
+    );
   }
 
   void _onViewPointerMove(PointerMoveEvent e) {
@@ -1506,7 +1528,6 @@ class _WeekGrid extends StatelessWidget {
   final Map<int, Color> lessonColors;
 
   const _WeekGrid({
-    super.key,
     required this.axis,
     required this.axisW,
     required this.days,
@@ -1783,7 +1804,6 @@ class _Grid extends StatelessWidget {
   final int pinchEndMin;
 
   const _Grid({
-    super.key,
     required this.axis,
     required this.axisW,
     required this.days,
