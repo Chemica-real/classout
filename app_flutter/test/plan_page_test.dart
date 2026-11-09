@@ -603,8 +603,13 @@ void main() {
 
     final c16 = tester.getCenter(find.byKey(const ValueKey('plan-day-2026-10-16')));
     final c17 = tester.getCenter(find.byKey(const ValueKey('plan-day-2026-10-17')));
-    await _longPressDrag(
-        tester, block, Offset(c17.dx - c16.dx, 0));
+    final g = await tester.startGesture(tester.getCenter(block));
+    await tester.pump(const Duration(milliseconds: 600));
+    await g.moveBy(Offset(c17.dx - c16.dx, 0));
+    await tester.pump();
+    // 预览必须已经画到目标列；不能还停在原列，松手才瞬移。
+    expect(tester.getCenter(block).dx, closeTo(c17.dx, 30));
+    await g.up();
     await tester.pumpAndSettle();
 
     final b = h.last;
@@ -854,12 +859,69 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    await pinch(80);
-    expect(find.byKey(const ValueKey('plan-day-2026-10-15')), findsOneWidget);
-    await pinch(80);
-    expect(find.byKey(const ValueKey('plan-day-2026-10-12')), findsOneWidget);
-
+    // 捏合 = 缩小：日 → 三日 → 周
     await pinch(-60);
     expect(find.byKey(const ValueKey('plan-day-2026-10-15')), findsOneWidget);
+    await pinch(-60);
+    expect(find.byKey(const ValueKey('plan-day-2026-10-12')), findsOneWidget);
+
+    // 张开 = 放大：周 → 三日 → 日
+    await pinch(80);
+    expect(find.byKey(const ValueKey('plan-day-2026-10-15')), findsOneWidget);
+    await pinch(80);
+    expect(find.byKey(const ValueKey('plan-day-2026-10-16')), findsOneWidget);
+    expect(find.byKey(const ValueKey('plan-day-2026-10-12')), findsNothing);
+  });
+
+  testWidgets('日视图左右滑：+1 天', (tester) async {
+    await _pump(tester, initialDay: DateTime(2026, 10, 16));
+    final g = await tester.startGesture(const Offset(300, 500));
+    await tester.pump();
+    await g.moveBy(const Offset(-150, 0));
+    await tester.pump();
+    await g.up();
+    await tester.pumpAndSettle();
+    expect(find.text('10 月 17 日 周六'), findsOneWidget);
+  });
+
+  testWidgets('三日视图左右滑：+1 天', (tester) async {
+    await _pump(tester, initialDay: DateTime(2026, 10, 16), threeDay: true);
+    final g = await tester.startGesture(const Offset(300, 500));
+    await tester.pump();
+    await g.moveBy(const Offset(-150, 0));
+    await tester.pump();
+    await g.up();
+    await tester.pumpAndSettle();
+    expect(find.text('10 月 17 日 周六'), findsOneWidget);
+  });
+
+  testWidgets('周视图左右滑：+7 天', (tester) async {
+    await _pump(tester, initialDay: DateTime(2026, 10, 16));
+    await tester.tap(find.text('周'));
+    await tester.pumpAndSettle();
+    final g = await tester.startGesture(const Offset(300, 500));
+    await tester.pump();
+    await g.moveBy(const Offset(-150, 0));
+    await tester.pump();
+    await g.up();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('plan-day-2026-10-19')), findsOneWidget);
+  });
+
+  testWidgets('拖块到屏幕下边缘：停住也会持续自动滚', (tester) async {
+    await _pump(tester, initialDay: DateTime(2026, 10, 16));
+    final before = _demo().blocks.firstWhere((b) => b.date == '2026-10-16');
+    final block = find.byKey(ValueKey('plan-block-${before.id}'));
+    await _revealBlock(tester, block);
+    await _selectBlock(tester, block);
+    final scroll = tester.state<ScrollableState>(find.byType(Scrollable).first);
+    final start = scroll.position.pixels;
+    final g = await tester.startGesture(tester.getCenter(block));
+    await tester.pump(const Duration(milliseconds: 600));
+    await g.moveBy(const Offset(0, 520)); // 手指压到可视区下边缘
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(scroll.position.pixels, greaterThan(start));
+    await g.up();
+    await tester.pumpAndSettle();
   });
 }

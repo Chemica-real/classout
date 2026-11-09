@@ -111,6 +111,10 @@ class _PlanPageState extends State<PlanPage> {
   final Map<int, Offset> _viewPointers = {};
   double _viewStartDist = 0;
   double _viewLastDist = 0;
+  bool _swipeTracking = false;
+  Offset _swipeStart = Offset.zero;
+  double _swipeDx = 0;
+  double _swipeDy = 0;
 
   /// 待安排托盘是否展开（鸿蒙端 TraySummonBar ↔ TodoPool）
   /// 托盘展开状态（冷启动从 kv 读回，鸿蒙 `loadTrayOpen`）
@@ -163,10 +167,16 @@ class _PlanPageState extends State<PlanPage> {
   /// 预览用的偏移（分钟）：拖动过程中只改这个，松手才写数据
   int _dragDeltaMin = 0;
 
+  /// 贴边自动滚动：手指停在边缘时由定时器持续推视图（不是只在 move 事件里跳）
+  Timer? _autoScrollTimer;
+  int _autoScrollDir = 0;
+  int _autoScrollStep = 0;
+
   @override
   void dispose() {
     _hintTimer?.cancel();
     _nowTicker?.cancel();
+    _autoScrollTimer?.cancel();
     _scroll.dispose();
     super.dispose();
   }
@@ -202,45 +212,79 @@ class _PlanPageState extends State<PlanPage> {
   void _startDrag(PlanBlock b, bool resize, Offset pos) {
     // 两步模型（domain `canBeginDrag`）：只有已选中的块才能开始拖
     if (!canBeginDrag(_selectedBlockId, b.id)) return;
+    // 长按开始拖块时，禁止这一次指针再被当成「左右翻页」
+    _swipeTracking = false;
     setState(() {
       _dragId = b.id;
       _dragResize = resize;
       _dragTouchStartY = pos.dy;
+      _dragLastY = pos.dy;
       _dragCol = resize ? -1 : _colOfGlobal(pos.dx);
       _dragScrollStart = _scroll.hasClients ? _scroll.offset : 0;
       _dragDeltaMin = 0;
     });
   }
 
-  void _updateDrag(Offset pos) {
+  void _applyDragDelta() {
     if (_dragId == 0) return;
-    final globalY = pos.dy;
-    if (!_dragResize) _dragCol = _colOfGlobal(pos.dx);
-    // 贴边自动滚动：手指在上下 edgeZone 内就把视图推一推
-    const edgeZone = 56.0;
-    const maxStep = 14.0;
-    final rect = _gridRect();
-    if (rect != null) {
-      final dir = edgeScrollDirection(globalY.round(), rect.top.round(),
-          rect.bottom.round(), edgeZone.round());
-      if (dir != 0 && _scroll.hasClients) {
-        final depth = edgeScrollDepth(globalY.round(), rect.top.round(),
-            rect.bottom.round(), edgeZone.round());
-        final step = edgeScrollStep(depth, edgeZone.round(), maxStep.round());
-        final target = (_scroll.offset + dir * step)
-            .clamp(0.0, _scroll.position.maxScrollExtent);
-        _scroll.jumpTo(target);
-      }
-    }
     // 块的位移 = 手指位移 + 滚动量（符号必须是加，见 fixtures 里那条断言）
     final scrollDelta =
         (_scroll.hasClients ? _scroll.offset : 0) - _dragScrollStart;
     final offset = dragOffsetWithScroll(
-        (globalY - _dragTouchStartY).round(), scrollDelta.round());
+        (_dragLastY - _dragTouchStartY).round(), scrollDelta.round());
     setState(() => _dragDeltaMin = snap(offset));
   }
 
+  void _autoScrollTick() {
+    if (_dragId == 0 || _autoScrollDir == 0 || !_scroll.hasClients) {
+      _autoScrollTimer?.cancel();
+      _autoScrollTimer = null;
+      return;
+    }
+    final target = (_scroll.offset + _autoScrollDir * _autoScrollStep)
+        .clamp(0.0, _scroll.position.maxScrollExtent);
+    if ((target - _scroll.offset).abs() < 0.5) return;
+    _scroll.jumpTo(target);
+    _applyDragDelta();
+  }
+
+  void _updateAutoScroll(double y) {
+    // 边缘按**可视区域**算，不能用网格内容的高度：网格比屏幕高，
+    // 原来拿 grid 的 rect.bottom 永远到不了屏幕底边，自动滚动几乎不触发。
+    final screenH = MediaQuery.sizeOf(context).height;
+    final top = (widget.topInset + _dayBarH + floatGap).round();
+    final bottom = (screenH - tabBarInset - _trayH - 12).round();
+    const edgeZone = 56;
+    const maxStep = 14;
+    final dir = edgeScrollDirection(y.round(), top, bottom, edgeZone);
+    if (dir == 0 || !_scroll.hasClients) {
+      _autoScrollDir = 0;
+      _autoScrollTimer?.cancel();
+      _autoScrollTimer = null;
+      return;
+    }
+    final depth = edgeScrollDepth(y.round(), top, bottom, edgeZone);
+    _autoScrollDir = dir;
+    _autoScrollStep = edgeScrollStep(depth, edgeZone, maxStep);
+    _autoScrollTimer ??= Timer.periodic(
+        const Duration(milliseconds: 16), (_) => _autoScrollTick());
+  }
+
+  double _dragLastY = 0;
+
+  void _updateDrag(Offset pos) {
+    if (_dragId == 0) return;
+    final globalY = pos.dy;
+    _dragLastY = globalY;
+    if (!_dragResize) _dragCol = _colOfGlobal(pos.dx);
+    _updateAutoScroll(globalY);
+    _applyDragDelta();
+  }
+
   void _endDrag() {
+    _autoScrollDir = 0;
+    _autoScrollTimer?.cancel();
+    _autoScrollTimer = null;
     final id = _dragId;
     final resize = _dragResize;
     final delta = _dragDeltaMin;
@@ -269,21 +313,23 @@ class _PlanPageState extends State<PlanPage> {
     } else {
       _showHint('挪到 ${minToHHmm(range[0])}-${minToHHmm(range[1])}');
     }
-    _commit(_withBlocks([
-      for (final x in widget.bundle.blocks)
-        if (x.id != id)
-          x
-        else
-          PlanBlock(
-            id: x.id,
-            todoId: x.todoId,
-            lessonId: x.lessonId,
-            date: targetDate,
-            startMin: range[0],
-            endMin: range[1],
-            done: x.done,
-          ),
-    ]), '调整计划块');
+    _commit(
+        _withBlocks([
+          for (final x in widget.bundle.blocks)
+            if (x.id != id)
+              x
+            else
+              PlanBlock(
+                id: x.id,
+                todoId: x.todoId,
+                lessonId: x.lessonId,
+                date: targetDate,
+                startMin: range[0],
+                endMin: range[1],
+                done: x.done,
+              ),
+        ]),
+        '调整计划块');
   }
 
   @override
@@ -418,8 +464,7 @@ class _PlanPageState extends State<PlanPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              title: const Text('全部标签',
-                  style: TextStyle(color: inkPrimary)),
+              title: const Text('全部标签', style: TextStyle(color: inkPrimary)),
               trailing: _poolTag.isEmpty
                   ? const Icon(Icons.check, color: accentBlue)
                   : null,
@@ -427,8 +472,7 @@ class _PlanPageState extends State<PlanPage> {
             ),
             for (final o in opts)
               ListTile(
-                title: Text(o.label,
-                    style: const TextStyle(color: inkPrimary)),
+                title: Text(o.label, style: const TextStyle(color: inkPrimary)),
                 trailing: _poolTag == o.key
                     ? const Icon(Icons.check, color: accentBlue)
                     : null,
@@ -463,8 +507,7 @@ class _PlanPageState extends State<PlanPage> {
           children: [
             for (final e in choices)
               ListTile(
-                title: Text(e.$2,
-                    style: const TextStyle(color: inkPrimary)),
+                title: Text(e.$2, style: const TextStyle(color: inkPrimary)),
                 trailing: _poolCourse == e.$1
                     ? const Icon(Icons.check, color: accentBlue)
                     : null,
@@ -616,250 +659,282 @@ class _PlanPageState extends State<PlanPage> {
       onPointerUp: _onViewPointerUp,
       onPointerCancel: _onViewPointerUp,
       child: Stack(
-      children: [
-        Positioned.fill(
-          child: SingleChildScrollView(
-            controller: _scroll,
-            // 拖块期间锁住滚动：不锁的话外层滚动视图会抢走竖直拖动，
-            // 变成"网格整体滚走、块只挪一点点"（dragOffsetWithScroll 的补偿会抵消掉大半）。
-            // 贴边自动滚动由 _updateDrag 自己 jumpTo，所以锁住不影响那个功能。
-            physics: _dragId != 0
-                ? const NeverScrollableScrollPhysics()
-                : const ClampingScrollPhysics(),
-            // ⚠️ 左右 **不**留 FLOAT_SIDE：鸿蒙 `PlanDayView` 的滚动内容只给了上下
-            // padding，网格是满宽的（FLOAT_SIDE 只作用在日期栏/托盘这两个浮窗上）。
-            // 安卓原来左右各留 10，双机对比时整张网格右移了 10vp。
-            padding: EdgeInsets.fromLTRB(0, dayBarBlock, 0, trayBlock),
-            child: Column(
-              children: [
-                if (days.length > 1 && days.length <= 3)
-                  _DayTitles(days: days, axisW: _axisW),
-                _Grid(
-                  key: _gridKey,
-                  axis: _axis,
-                  axisW: _axisW,
-                  days: days,
-                  now: widget.now(),
-                  sessions: {
-                    for (final d in days) formatDate(d): _sessionsOn(d)
-                  },
-                  blocks: {for (final d in days) formatDate(d): _blocksOn(d)},
-                  ddls: {for (final d in days) formatDate(d): _ddlOn(d)},
-                  rests: {for (final d in days) formatDate(d): _restsOn(d)},
-                  todoOf: _todoOf,
-                  onTapMinute: (day, min) {
-                    if (_selectedTodoId > 0 || _selectedLessonId > 0) {
-                      final todo = _todoOf(_selectedTodoId);
-                      // 课时默认 90 分钟，待办用自己的预计耗时
-                      _place(day, min, todo?.estimateMin ?? 90);
-                      return;
-                    }
-                    if (_selectedBlockId > 0) {
-                      setState(() => _selectedBlockId = 0);
-                      _showHint('');
-                      return;
-                    }
-                    _showHint('单击块选中它；再点一下打开详情。长按选中的块可以拖时间。');
-                  },
-                  onTapBlock: _onBlockTap,
-                  onToggleDone: _toggleBlockDone,
-                  onOpenTodo: widget.onOpenTodo,
-                  selectedBlockId: _selectedBlockId,
-                  courseLabelOf: (id) {
-                    final c = widget.bundle.courses
-                        .where((x) => x.id == id)
-                        .firstOrNull;
-                    return c == null
-                        ? ''
-                        : (c.shortName.isNotEmpty ? c.shortName : c.name);
-                  },
-                  courseColorOf: (id) => courseColorFor(widget.bundle.courses
-                      .where((x) => x.id == id)
-                      .firstOrNull),
-                  dragId: _dragId,
-                  dragResize: _dragResize,
-                  dragDeltaMin: _dragDeltaMin,
-                  onDragStart: _startDrag,
-                  onDragUpdate: _updateDrag,
-                  onDragEnd: _endDrag,
-                  onPointer: _onBlockPointer,
-                  lessonTitles: {
-                    for (final l in widget.bundle.lessons)
-                      l.id: lessonTitleOf(l, widget.bundle.courses),
-                  },
-                  lessonColors: {
-                    for (final l in widget.bundle.lessons)
-                      l.id: courseColorFor(widget.bundle.courses
-                          .where((c) => c.id == l.courseId)
-                          .firstOrNull),
-                  },
-                  pinchId: _pinchId,
-                  pinchEndMin: _pinchEndMin,
-                ),
-              ],
-            ),
-          ),
-        ),
-        // 日期条：叠在悬浮页头下面
-        Positioned(
-          left: 0,
-          right: 0,
-          top: widget.topInset,
-          child: MeasureSize(
-            onSize: (size) {
-              if ((size.height - _dayBarH).abs() > 0.5) {
-                setState(() => _dayBarH = size.height);
-              }
-            },
-            child: _DayBar(
-              day: _day,
-              // 「今天 / 逾期 N 天」也走注入的时钟（截图/测试才能钉在 10/16）
-              today: widget.now(),
-              threeDay: _threeDay,
-              weekView: _weekView,
-              onWeek: () => setState(() {
-                _weekView = true;
-                _threeDay = false;
-                _selectedBlockId = 0;
-              }),
-              // 鸿蒙 DayBarFloat 的 ‹ › 永远只挪 1 天（三日视图也一样，不是"三日一跳"）
-              onPrev: () => _shift(-1),
-              onNext: () => _shift(1),
-              onUndo: _undoPlan,
-              onRedo: _redoPlan,
-              canUndo: _undo.isNotEmpty,
-              canRedo: _redo.isNotEmpty,
-              onToday: _jumpToday,
-              onDay: () => setState(() {
-                _threeDay = false;
-                _weekView = false;
-                _selectedBlockId = 0;
-              }),
-              onThreeDay: () => setState(() {
-                _threeDay = true;
-                _weekView = false;
-                _selectedBlockId = 0;
-              }),
-            ),
-          ),
-        ),
-        // 待安排托盘：浮在导航栏之上
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: tabBarInset,
-          child: MeasureSize(
-            onSize: (size) {
-              if ((size.height - _trayH).abs() > 0.5) {
-                setState(() => _trayH = size.height);
-              }
-            },
-            child: _Tray(
-              pool: _pool,
-              lessons: _lessonPool,
-              page: _trayPage,
-              onPage: (p) => setState(() {
-                _trayPage = p;
-                _selectedTodoId = 0;
-                _selectedLessonId = 0;
-                _dragId = 0;
-                _hint = '';
-              }),
-              tag: _poolTag,
-              courseFilter: _poolCourse,
-              customCategories: widget.customCategories,
-              onPickTag: _pickPoolTag,
-              onPickCourse: _pickPoolCourse,
-              selectedLessonId: _selectedLessonId,
-              courses: {for (final c in widget.bundle.courses) c.id: c},
-              selectedId: _selectedTodoId,
-              open: _trayOpen,
-              onToggle: () {
-                setState(() => _trayOpen = !_trayOpen);
-                widget.onTrayPref?.call(_trayOpen);
-              },
-              onSelect: (id) {
-                setState(() {
-                  _selectedTodoId = _selectedTodoId == id ? 0 : id;
-                  _selectedLessonId = 0;
-                });
-                _showHint(_selectedTodoId > 0 ? '现在点网格空白处放下它' : '');
-              },
-              onSelectLesson: (id) {
-                setState(() {
-                  _selectedLessonId = _selectedLessonId == id ? 0 : id;
-                  _selectedTodoId = 0;
-                });
-                _showHint(_selectedLessonId > 0 ? '现在点网格空白处放下它' : '');
-              },
-              onPlace: _placeFromPool,
-              onPlaceLesson: _findSlotForLesson,
-            ),
-          ),
-        ),
-        // 双指缩放：屏幕正中的深色 ±NN min 提示（鸿蒙 `pinchLabel`，30 号粗体）
-        if (_pinchLabel.isNotEmpty)
+        children: [
           Positioned.fill(
-            child: IgnorePointer(
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 24, vertical: 14),
-                  decoration: BoxDecoration(
-                    color: const Color(0xE00C121C), // rgba(12,18,28,0.88)
-                    borderRadius: BorderRadius.circular(16),
+            child: SingleChildScrollView(
+              controller: _scroll,
+              // 拖块期间锁住滚动：不锁的话外层滚动视图会抢走竖直拖动，
+              // 变成"网格整体滚走、块只挪一点点"（dragOffsetWithScroll 的补偿会抵消掉大半）。
+              // 贴边自动滚动由 _updateDrag 自己 jumpTo，所以锁住不影响那个功能。
+              physics: _dragId != 0
+                  ? const NeverScrollableScrollPhysics()
+                  : const ClampingScrollPhysics(),
+              // ⚠️ 左右 **不**留 FLOAT_SIDE：鸿蒙 `PlanDayView` 的滚动内容只给了上下
+              // padding，网格是满宽的（FLOAT_SIDE 只作用在日期栏/托盘这两个浮窗上）。
+              // 安卓原来左右各留 10，双机对比时整张网格右移了 10vp。
+              padding: EdgeInsets.fromLTRB(0, dayBarBlock, 0, trayBlock),
+              child: Column(
+                children: [
+                  if (days.length > 1) _DayTitles(days: days, axisW: _axisW),
+                  _Grid(
+                    key: _gridKey,
+                    axis: _axis,
+                    axisW: _axisW,
+                    days: days,
+                    now: widget.now(),
+                    sessions: {
+                      for (final d in days) formatDate(d): _sessionsOn(d)
+                    },
+                    blocks: {for (final d in days) formatDate(d): _blocksOn(d)},
+                    ddls: {for (final d in days) formatDate(d): _ddlOn(d)},
+                    rests: {for (final d in days) formatDate(d): _restsOn(d)},
+                    todoOf: _todoOf,
+                    onTapMinute: (day, min) {
+                      if (_selectedTodoId > 0 || _selectedLessonId > 0) {
+                        final todo = _todoOf(_selectedTodoId);
+                        // 课时默认 90 分钟，待办用自己的预计耗时
+                        _place(day, min, todo?.estimateMin ?? 90);
+                        return;
+                      }
+                      if (_selectedBlockId > 0) {
+                        setState(() => _selectedBlockId = 0);
+                        _showHint('');
+                        return;
+                      }
+                      _showHint('单击块选中它；再点一下打开详情。长按选中的块可以拖时间。');
+                    },
+                    onTapBlock: _onBlockTap,
+                    onToggleDone: _toggleBlockDone,
+                    onOpenTodo: widget.onOpenTodo,
+                    selectedBlockId: _selectedBlockId,
+                    courseLabelOf: (id) {
+                      final c = widget.bundle.courses
+                          .where((x) => x.id == id)
+                          .firstOrNull;
+                      return c == null
+                          ? ''
+                          : (c.shortName.isNotEmpty ? c.shortName : c.name);
+                    },
+                    courseColorOf: (id) => courseColorFor(widget.bundle.courses
+                        .where((x) => x.id == id)
+                        .firstOrNull),
+                    dragId: _dragId,
+                    dragResize: _dragResize,
+                    dragDeltaMin: _dragDeltaMin,
+                    dragCol: _dragCol,
+                    onDragStart: _startDrag,
+                    onDragUpdate: _updateDrag,
+                    onDragEnd: _endDrag,
+                    onPointer: _onBlockPointer,
+                    lessonTitles: {
+                      for (final l in widget.bundle.lessons)
+                        l.id: lessonTitleOf(l, widget.bundle.courses),
+                    },
+                    lessonColors: {
+                      for (final l in widget.bundle.lessons)
+                        l.id: courseColorFor(widget.bundle.courses
+                            .where((c) => c.id == l.courseId)
+                            .firstOrNull),
+                    },
+                    pinchId: _pinchId,
+                    pinchEndMin: _pinchEndMin,
                   ),
-                  child: Text(_pinchLabel,
-                      style: const TextStyle(
-                          fontSize: 30,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white)),
-                ),
+                ],
               ),
             ),
           ),
-        // 瞬时提示：悬浮在网格上方，不参与布局（鸿蒙端 showHint 的深色小胶囊）
-        if (_hint.isNotEmpty)
+          // 日期条：叠在悬浮页头下面
           Positioned(
-            left: 24,
-            right: 24,
-            top: widget.topInset + _dayBarH + 8,
-            child: IgnorePointer(
-              child: Center(
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                  decoration: BoxDecoration(
-                    color: const Color(0xDB0C121C), // rgba(12,18,28,0.86)
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Text(_hint,
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style:
-                          const TextStyle(fontSize: 12, color: Colors.white)),
-                ),
+            left: 0,
+            right: 0,
+            top: widget.topInset,
+            child: MeasureSize(
+              onSize: (size) {
+                if ((size.height - _dayBarH).abs() > 0.5) {
+                  setState(() => _dayBarH = size.height);
+                }
+              },
+              child: _DayBar(
+                day: _day,
+                // 「今天 / 逾期 N 天」也走注入的时钟（截图/测试才能钉在 10/16）
+                today: widget.now(),
+                threeDay: _threeDay,
+                weekView: _weekView,
+                onWeek: () => setState(() {
+                  _weekView = true;
+                  _threeDay = false;
+                  _selectedBlockId = 0;
+                }),
+                // 鸿蒙 DayBarFloat 的 ‹ › 永远只挪 1 天（三日视图也一样，不是"三日一跳"）
+                onPrev: () => _shift(-1),
+                onNext: () => _shift(1),
+                onUndo: _undoPlan,
+                onRedo: _redoPlan,
+                canUndo: _undo.isNotEmpty,
+                canRedo: _redo.isNotEmpty,
+                onToday: _jumpToday,
+                onDay: () => setState(() {
+                  _threeDay = false;
+                  _weekView = false;
+                  _selectedBlockId = 0;
+                }),
+                onThreeDay: () => setState(() {
+                  _threeDay = true;
+                  _weekView = false;
+                  _selectedBlockId = 0;
+                }),
               ),
             ),
           ),
-      ],
+          // 待安排托盘：浮在导航栏之上
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: tabBarInset,
+            child: MeasureSize(
+              onSize: (size) {
+                if ((size.height - _trayH).abs() > 0.5) {
+                  setState(() => _trayH = size.height);
+                }
+              },
+              child: _Tray(
+                pool: _pool,
+                lessons: _lessonPool,
+                page: _trayPage,
+                onPage: (p) => setState(() {
+                  _trayPage = p;
+                  _selectedTodoId = 0;
+                  _selectedLessonId = 0;
+                  _dragId = 0;
+                  _hint = '';
+                }),
+                tag: _poolTag,
+                courseFilter: _poolCourse,
+                customCategories: widget.customCategories,
+                onPickTag: _pickPoolTag,
+                onPickCourse: _pickPoolCourse,
+                selectedLessonId: _selectedLessonId,
+                courses: {for (final c in widget.bundle.courses) c.id: c},
+                selectedId: _selectedTodoId,
+                open: _trayOpen,
+                onToggle: () {
+                  setState(() => _trayOpen = !_trayOpen);
+                  widget.onTrayPref?.call(_trayOpen);
+                },
+                onSelect: (id) {
+                  setState(() {
+                    _selectedTodoId = _selectedTodoId == id ? 0 : id;
+                    _selectedLessonId = 0;
+                  });
+                  _showHint(_selectedTodoId > 0 ? '现在点网格空白处放下它' : '');
+                },
+                onSelectLesson: (id) {
+                  setState(() {
+                    _selectedLessonId = _selectedLessonId == id ? 0 : id;
+                    _selectedTodoId = 0;
+                  });
+                  _showHint(_selectedLessonId > 0 ? '现在点网格空白处放下它' : '');
+                },
+                onPlace: _placeFromPool,
+                onPlaceLesson: _findSlotForLesson,
+              ),
+            ),
+          ),
+          // 双指缩放：屏幕正中的深色 ±NN min 提示（鸿蒙 `pinchLabel`，30 号粗体）
+          if (_pinchLabel.isNotEmpty)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xE00C121C), // rgba(12,18,28,0.88)
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Text(_pinchLabel,
+                        style: const TextStyle(
+                            fontSize: 30,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white)),
+                  ),
+                ),
+              ),
+            ),
+          // 瞬时提示：悬浮在网格上方，不参与布局（鸿蒙端 showHint 的深色小胶囊）
+          if (_hint.isNotEmpty)
+            Positioned(
+              left: 24,
+              right: 24,
+              top: widget.topInset + _dayBarH + 8,
+              child: IgnorePointer(
+                child: Center(
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: const Color(0xDB0C121C), // rgba(12,18,28,0.86)
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Text(_hint,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style:
+                            const TextStyle(fontSize: 12, color: Colors.white)),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
 
   void _onViewPointerDown(PointerDownEvent e) {
     _viewPointers[e.pointer] = e.position;
+    if (_viewPointers.length == 1) {
+      _swipeStart = e.position;
+      _swipeDx = 0;
+      _swipeDy = 0;
+      _swipeTracking = _insidePlanViewport(e.position);
+    }
     if (_viewPointers.length == 2) {
+      _swipeTracking = false;
       final p = _viewPointers.values.take(2).toList();
       _viewStartDist = (p[0] - p[1]).distance;
       _viewLastDist = _viewStartDist;
     }
   }
 
+  bool _insidePlanViewport(Offset pos) {
+    final rect = _gridRect();
+    if (rect == null) return false;
+    final screenH = MediaQuery.sizeOf(context).height;
+    final top = widget.topInset + _dayBarH + floatGap;
+    final bottom = screenH - tabBarInset - _trayH - 12;
+    return pos.dy >= top &&
+        pos.dy <= bottom &&
+        pos.dx >= rect.left &&
+        pos.dx <= rect.right;
+  }
+
+  void _onSwipeEnd() {
+    if (!_swipeTracking || _dragId != 0 || _pinchId != 0) return;
+    if (_swipeDx.abs() < 60 || _swipeDx.abs() < _swipeDy.abs() * 1.3) {
+      return;
+    }
+    final dir = _swipeDx < 0 ? 1 : -1;
+    _shift(_weekView ? dir * 7 : dir);
+  }
+
   void _onViewPointerMove(PointerMoveEvent e) {
     if (!_viewPointers.containsKey(e.pointer)) return;
     _viewPointers[e.pointer] = e.position;
+    if (_viewPointers.length == 1 && _swipeTracking) {
+      _swipeDx = e.position.dx - _swipeStart.dx;
+      _swipeDy = e.position.dy - _swipeStart.dy;
+    }
     if (_viewPointers.length == 2 && _pinchId == 0) {
       final p = _viewPointers.values.take(2).toList();
       _viewLastDist = (p[0] - p[1]).distance;
@@ -867,19 +942,35 @@ class _PlanPageState extends State<PlanPage> {
   }
 
   void _onViewPointerUp(PointerEvent e) {
+    final wasSingle = _viewPointers.length == 1;
     _viewPointers.remove(e.pointer);
     if (_viewPointers.isEmpty && _viewStartDist > 1 && _pinchId == 0) {
       final ratio = _viewLastDist / _viewStartDist;
       _switchViewByPinch(ratio);
+    } else if (_viewPointers.isEmpty && wasSingle) {
+      _onSwipeEnd();
     }
     if (_viewPointers.isEmpty) {
       _viewStartDist = 0;
       _viewLastDist = 0;
+      _swipeTracking = false;
     }
   }
 
   void _switchViewByPinch(double ratio) {
+    // 和鸿蒙一致：**张开 = 放大**（周 → 三日 → 日），捏合 = 缩小（日 → 三日 → 周）
     if (ratio > 1.2) {
+      if (_weekView) {
+        setState(() {
+          _weekView = false;
+          _threeDay = true;
+        });
+        _showHint('已切到三日视图');
+      } else if (_threeDay) {
+        setState(() => _threeDay = false);
+        _showHint('已切到日视图');
+      }
+    } else if (ratio < 0.8) {
       if (_weekView) return;
       if (_threeDay) {
         setState(() {
@@ -890,17 +981,6 @@ class _PlanPageState extends State<PlanPage> {
       } else {
         setState(() => _threeDay = true);
         _showHint('已切到三日视图');
-      }
-    } else if (ratio < 0.8) {
-      if (_weekView) {
-        setState(() {
-          _weekView = false;
-          _threeDay = true;
-        });
-        _showHint('已切到三日视图');
-      } else if (_threeDay) {
-        setState(() => _threeDay = false);
-        _showHint('已切到日视图');
       }
     }
   }
@@ -955,21 +1035,23 @@ class _PlanPageState extends State<PlanPage> {
                 : l)
             .toList()
         : widget.bundle.lessons;
-    _commit(BackupBundle(
-      app: widget.bundle.app,
-      version: widget.bundle.version,
-      exportedAt: widget.bundle.exportedAt,
-      semesters: widget.bundle.semesters,
-      sectionTimes: widget.bundle.sectionTimes,
-      courses: widget.bundle.courses,
-      rules: widget.bundle.rules,
-      overrides: widget.bundle.overrides,
-      todos: widget.bundle.todos,
-      blocks: blocks,
-      restWindows: widget.bundle.restWindows,
-      templates: widget.bundle.templates,
-      lessons: lessons,
-    ), '切换课时完成');
+    _commit(
+        BackupBundle(
+          app: widget.bundle.app,
+          version: widget.bundle.version,
+          exportedAt: widget.bundle.exportedAt,
+          semesters: widget.bundle.semesters,
+          sectionTimes: widget.bundle.sectionTimes,
+          courses: widget.bundle.courses,
+          rules: widget.bundle.rules,
+          overrides: widget.bundle.overrides,
+          todos: widget.bundle.todos,
+          blocks: blocks,
+          restWindows: widget.bundle.restWindows,
+          templates: widget.bundle.templates,
+          lessons: lessons,
+        ),
+        '切换课时完成');
   }
 
   int _lessonDurationOf(VirtualLesson l) {
@@ -977,9 +1059,8 @@ class _PlanPageState extends State<PlanPage> {
     for (final c in widget.bundle.courses) {
       if (c.id == l.courseId) course = c;
     }
-    final raw = l.durationMin > 0
-        ? l.durationMin
-        : (course?.lessonDurationMin ?? 90);
+    final raw =
+        l.durationMin > 0 ? l.durationMin : (course?.lessonDurationMin ?? 90);
     return ((raw / 5).round() * 5).clamp(15, 200);
   }
 
@@ -1191,10 +1272,7 @@ class _DayBar extends StatelessWidget {
                 style: TextStyle(fontSize: 22, color: accentBlue)),
           ),
           const SizedBox(width: 6),
-          _Chip(
-              text: '日',
-              selected: !threeDay && !weekView,
-              onTap: onDay),
+          _Chip(text: '日', selected: !threeDay && !weekView, onTap: onDay),
           _Chip(text: '三日', selected: threeDay, onTap: onThreeDay),
           _Chip(text: '周', selected: weekView, onTap: onWeek),
           const SizedBox(width: 4),
@@ -1361,6 +1439,9 @@ class _Grid extends StatelessWidget {
   final int dragId;
   final bool dragResize;
   final int dragDeltaMin;
+
+  /// 拖动中的目标列（-1 = 不跨天 / 缩放）；用来把块预览画到目标天
+  final int dragCol;
   final void Function(PlanBlock, bool resize, Offset pos) onDragStart;
   final void Function(Offset pos) onDragUpdate;
   final VoidCallback onDragEnd;
@@ -1394,6 +1475,7 @@ class _Grid extends StatelessWidget {
     required this.dragId,
     required this.dragResize,
     required this.dragDeltaMin,
+    required this.dragCol,
     required this.onDragStart,
     required this.onDragUpdate,
     required this.onDragEnd,
@@ -1407,6 +1489,16 @@ class _Grid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final h = axis.height();
+    // 跨天拖拽预览：把被拖的块从原列摘出来，临时画到目标列（松手才真正改日期）。
+    PlanBlock? dragged;
+    if (dragId != 0) {
+      for (final list in blocks.values) {
+        for (final b in list) {
+          if (b.id == dragId) dragged = b;
+        }
+      }
+    }
+
     // ⚠️ 必须是**透明**的（对照鸿蒙端真机：网格底下是壁纸，只有细横线）：
     // 之前套了一层 Glass，壁纸被灰白面板盖住，双机对比时一眼就看出来。
     return Padding(
@@ -1439,6 +1531,12 @@ class _Grid extends StatelessWidget {
               // 只画列与列之间，单日视图没有 —— 画在日期列的上层会被课程块压住）
               child: LayoutBuilder(builder: (ctx, c) {
                 final colW = c.maxWidth / days.length;
+                double dragDx = 0;
+                if (dragged != null && dragCol >= 0) {
+                  final src =
+                      days.indexWhere((d) => formatDate(d) == dragged!.date);
+                  if (src >= 0) dragDx = (dragCol - src) * colW;
+                }
                 return Stack(
                   children: [
                     Row(
@@ -1466,6 +1564,7 @@ class _Grid extends StatelessWidget {
                               ddls: ddls[formatDate(d)] ?? const [],
                               rests: rests[formatDate(d)] ?? const [],
                               singleDay: days.length == 1,
+                              dragDx: dragDx,
                               todoOf: todoOf,
                               onTapMinute: onTapMinute,
                               onTapBlock: onTapBlock,
@@ -1519,6 +1618,7 @@ class _DayColumn extends StatelessWidget {
   final List<DdlGroup> ddls;
   final List<RestWindow> rests;
   final bool singleDay;
+  final double dragDx;
   final Todo? Function(int) todoOf;
   final void Function(DateTime, int) onTapMinute;
   final void Function(PlanBlock) onTapBlock;
@@ -1549,6 +1649,7 @@ class _DayColumn extends StatelessWidget {
     required this.ddls,
     required this.rests,
     required this.singleDay,
+    required this.dragDx,
     required this.todoOf,
     required this.onTapMinute,
     required this.onTapBlock,
@@ -1569,6 +1670,7 @@ class _DayColumn extends StatelessWidget {
       },
       // 单日视图没有竖分隔线（鸿蒙 `ColumnSeparators` 只在 `viewCols > COLS_DAY` 时画）
       child: Stack(
+        clipBehavior: Clip.none,
         children: [
           // 不可排时段（"睡觉""午休"）：斜纹淡标记，压在最下面
           for (final w in rests)
@@ -1629,6 +1731,7 @@ class _DayColumn extends StatelessWidget {
               dragging: dragId == b.id,
               resizing: dragId == b.id && dragResize,
               dragDeltaMin: dragId == b.id ? dragDeltaMin : 0,
+              dragDx: dragId == b.id ? dragDx : 0,
               onTap: () => onTapBlock(b),
               onToggleDone: () => onToggleDone(b),
               onDragStart: onDragStart,
@@ -1793,6 +1896,7 @@ class _Block extends StatelessWidget {
   final bool dragging;
   final bool resizing;
   final int dragDeltaMin;
+  final double dragDx;
 
   /// 虚拟课时的标题/课程色（todoId=0 且 lessonId>0 时用）
   final String? lessonTitle;
@@ -1825,6 +1929,7 @@ class _Block extends StatelessWidget {
     required this.dragging,
     required this.resizing,
     required this.dragDeltaMin,
+    required this.dragDx,
     this.lessonTitle,
     this.lessonColor,
     required this.pinchEndMin,
@@ -1983,31 +2088,34 @@ class _Block extends StatelessWidget {
           onLongPressMoveUpdate: (e) => onDragUpdate(e.globalPosition),
           onLongPressEnd: (_) => onDragEnd(),
           onLongPressCancel: onDragEnd,
-          child: Opacity(
-            key: ValueKey('plan-block-${block.id}'),
-            opacity: opacity,
-            child: Container(
-              decoration: BoxDecoration(
-                color: color,
-                borderRadius: BorderRadius.circular(6),
-                border: showBorder
-                    ? Border.all(
-                        color: selected || dragging
-                            ? const Color(0xFFF2F5FA)
-                            : const Color(0xFFFF5A5A),
-                        width: 2)
-                    : null,
-                boxShadow: isExam && !selected
-                    ? const [
-                        BoxShadow(
-                            color: Color(0x8CFF5A5A),
-                            blurRadius: 7,
-                            offset: Offset.zero)
-                      ]
-                    : null,
+          child: Transform.translate(
+            offset: Offset(dragDx, 0),
+            child: Opacity(
+              key: ValueKey('plan-block-${block.id}'),
+              opacity: opacity,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(6),
+                  border: showBorder
+                      ? Border.all(
+                          color: selected || dragging
+                              ? const Color(0xFFF2F5FA)
+                              : const Color(0xFFFF5A5A),
+                          width: 2)
+                      : null,
+                  boxShadow: isExam && !selected
+                      ? const [
+                          BoxShadow(
+                              color: Color(0x8CFF5A5A),
+                              blurRadius: 7,
+                              offset: Offset.zero)
+                        ]
+                      : null,
+                ),
+                clipBehavior: Clip.hardEdge,
+                child: content,
               ),
-              clipBehavior: Clip.hardEdge,
-              child: content,
             ),
           ),
         ),
@@ -2517,11 +2625,10 @@ class _Tray extends StatelessWidget {
               child: Text(text,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                      fontSize: 11, color: Color(0xFFC3CDDE))),
+                  style:
+                      const TextStyle(fontSize: 11, color: Color(0xFFC3CDDE))),
             ),
-            const Icon(Icons.expand_more,
-                size: 12, color: Color(0xFF8B97AC)),
+            const Icon(Icons.expand_more, size: 12, color: Color(0xFF8B97AC)),
           ],
         ),
       ),
@@ -2600,8 +2707,7 @@ class _Tray extends StatelessWidget {
                           const SizedBox(width: 6),
                           Text('剩 ${g.length} 讲',
                               style: const TextStyle(
-                                  fontSize: 11,
-                                  color: Color(0xD9D8C48A))),
+                                  fontSize: 11, color: Color(0xD9D8C48A))),
                         ],
                       ),
                     ),
@@ -2639,9 +2745,8 @@ class _Tray extends StatelessWidget {
 
   int _lessonDuration(VirtualLesson l) {
     final course = courses[l.courseId];
-    final raw = l.durationMin > 0
-        ? l.durationMin
-        : (course?.lessonDurationMin ?? 90);
+    final raw =
+        l.durationMin > 0 ? l.durationMin : (course?.lessonDurationMin ?? 90);
     return ((raw / 5).round() * 5).clamp(15, 200);
   }
 
@@ -2688,8 +2793,8 @@ class _Tray extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(top: 2),
               child: Text('${_lessonDuration(l)} 分钟',
-                  style: const TextStyle(
-                      fontSize: 12, color: Color(0xFFD8C48A))),
+                  style:
+                      const TextStyle(fontSize: 12, color: Color(0xFFD8C48A))),
             ),
             GestureDetector(
               key: ValueKey('pool-lesson-find-${l.id}'),
