@@ -35,7 +35,7 @@ ClassOUT 的「管理课程 → 备份与恢复 → 导出备份」产出**纯 J
 |---|---|
 | `semesters` | `id, name, startDate, totalWeeks, firstDayOfWeek, showWeekend` |
 | `sectionTimes` | `semesterId, section, startMin, endMin, flexible` |
-| `courses` | `id, semesterId, name, shortName, teacher, location, colorIndex, autoTodoEnabled, isVirtual, lessonDurationMin, note` |
+| `courses` | `id, semesterId, name, shortName, teacher, location, colorIndex, colorHex, autoTodoEnabled, isVirtual, lessonDurationMin, lessonTitleTemplate, note` |
 | `rules` | `id, courseId, weekday, startSection, endSection, weeksMask, location, isQuiz` |
 | `overrides` | `id, courseId, date, kind, newDate, newStartSection, newEndSection, newLocation` |
 | `templates` | `id, courseId, sortOrder, enabled, titleTemplate, ddlRule, ddlParam, estimateMin, category, submitChannel, note` |
