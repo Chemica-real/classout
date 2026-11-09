@@ -362,6 +362,16 @@ class _PlanPageState extends State<PlanPage> {
 
   void _shift(int days) => setState(() => _day = addDays(_day, days));
 
+  void _openDayFromWeek(DateTime day, int minute) {
+    setState(() {
+      _day = day;
+      _weekView = false;
+      _threeDay = true;
+      _selectedBlockId = 0;
+    });
+    _showHint('${day.month}/${day.day} ${minToHHmm(minute)}');
+  }
+
   void _jumpToday() => setState(() => _day = today());
 
   // ---------------- 数据 ----------------
@@ -676,69 +686,109 @@ class _PlanPageState extends State<PlanPage> {
               child: Column(
                 children: [
                   if (days.length > 1) _DayTitles(days: days, axisW: _axisW),
-                  _Grid(
-                    key: _gridKey,
-                    axis: _axis,
-                    axisW: _axisW,
-                    days: days,
-                    now: widget.now(),
-                    sessions: {
-                      for (final d in days) formatDate(d): _sessionsOn(d)
-                    },
-                    blocks: {for (final d in days) formatDate(d): _blocksOn(d)},
-                    ddls: {for (final d in days) formatDate(d): _ddlOn(d)},
-                    rests: {for (final d in days) formatDate(d): _restsOn(d)},
-                    todoOf: _todoOf,
-                    onTapMinute: (day, min) {
-                      if (_selectedTodoId > 0 || _selectedLessonId > 0) {
-                        final todo = _todoOf(_selectedTodoId);
-                        // 课时默认 90 分钟，待办用自己的预计耗时
-                        _place(day, min, todo?.estimateMin ?? 90);
-                        return;
-                      }
-                      if (_selectedBlockId > 0) {
-                        setState(() => _selectedBlockId = 0);
-                        _showHint('');
-                        return;
-                      }
-                      _showHint('单击块选中它；再点一下打开详情。长按选中的块可以拖时间。');
-                    },
-                    onTapBlock: _onBlockTap,
-                    onToggleDone: _toggleBlockDone,
-                    onOpenTodo: widget.onOpenTodo,
-                    selectedBlockId: _selectedBlockId,
-                    courseLabelOf: (id) {
-                      final c = widget.bundle.courses
+                  if (_weekView)
+                    _WeekGrid(
+                      key: _gridKey,
+                      axis: _axis,
+                      axisW: _axisW,
+                      days: days,
+                      now: widget.now(),
+                      height: (MediaQuery.sizeOf(context).height -
+                              dayBarBlock -
+                              trayBlock -
+                              colHeadH)
+                          .clamp(160.0, 1200.0),
+                      sessions: {
+                        for (final d in days) formatDate(d): _sessionsOn(d)
+                      },
+                      blocks: {
+                        for (final d in days) formatDate(d): _blocksOn(d)
+                      },
+                      rests: {for (final d in days) formatDate(d): _restsOn(d)},
+                      todoOf: _todoOf,
+                      onTapDay: _openDayFromWeek,
+                      courseColorOf: (id) => courseColorFor(widget
+                          .bundle.courses
                           .where((x) => x.id == id)
-                          .firstOrNull;
-                      return c == null
-                          ? ''
-                          : (c.shortName.isNotEmpty ? c.shortName : c.name);
-                    },
-                    courseColorOf: (id) => courseColorFor(widget.bundle.courses
-                        .where((x) => x.id == id)
-                        .firstOrNull),
-                    dragId: _dragId,
-                    dragResize: _dragResize,
-                    dragDeltaMin: _dragDeltaMin,
-                    dragCol: _dragCol,
-                    onDragStart: _startDrag,
-                    onDragUpdate: _updateDrag,
-                    onDragEnd: _endDrag,
-                    onPointer: _onBlockPointer,
-                    lessonTitles: {
-                      for (final l in widget.bundle.lessons)
-                        l.id: lessonTitleOf(l, widget.bundle.courses),
-                    },
-                    lessonColors: {
-                      for (final l in widget.bundle.lessons)
-                        l.id: courseColorFor(widget.bundle.courses
-                            .where((c) => c.id == l.courseId)
-                            .firstOrNull),
-                    },
-                    pinchId: _pinchId,
-                    pinchEndMin: _pinchEndMin,
-                  ),
+                          .firstOrNull),
+                      lessonTitles: {
+                        for (final l in widget.bundle.lessons)
+                          l.id: lessonTitleOf(l, widget.bundle.courses),
+                      },
+                      lessonColors: {
+                        for (final l in widget.bundle.lessons)
+                          l.id: courseColorFor(widget.bundle.courses
+                              .where((c) => c.id == l.courseId)
+                              .firstOrNull),
+                      },
+                    )
+                  else
+                    _Grid(
+                      key: _gridKey,
+                      axis: _axis,
+                      axisW: _axisW,
+                      days: days,
+                      now: widget.now(),
+                      sessions: {
+                        for (final d in days) formatDate(d): _sessionsOn(d)
+                      },
+                      blocks: {
+                        for (final d in days) formatDate(d): _blocksOn(d)
+                      },
+                      ddls: {for (final d in days) formatDate(d): _ddlOn(d)},
+                      rests: {for (final d in days) formatDate(d): _restsOn(d)},
+                      todoOf: _todoOf,
+                      onTapMinute: (day, min) {
+                        if (_selectedTodoId > 0 || _selectedLessonId > 0) {
+                          final todo = _todoOf(_selectedTodoId);
+                          // 课时默认 90 分钟，待办用自己的预计耗时
+                          _place(day, min, todo?.estimateMin ?? 90);
+                          return;
+                        }
+                        if (_selectedBlockId > 0) {
+                          setState(() => _selectedBlockId = 0);
+                          _showHint('');
+                          return;
+                        }
+                        _showHint('单击块选中它；再点一下打开详情。长按选中的块可以拖时间。');
+                      },
+                      onTapBlock: _onBlockTap,
+                      onToggleDone: _toggleBlockDone,
+                      onOpenTodo: widget.onOpenTodo,
+                      selectedBlockId: _selectedBlockId,
+                      courseLabelOf: (id) {
+                        final c = widget.bundle.courses
+                            .where((x) => x.id == id)
+                            .firstOrNull;
+                        return c == null
+                            ? ''
+                            : (c.shortName.isNotEmpty ? c.shortName : c.name);
+                      },
+                      courseColorOf: (id) => courseColorFor(widget
+                          .bundle.courses
+                          .where((x) => x.id == id)
+                          .firstOrNull),
+                      dragId: _dragId,
+                      dragResize: _dragResize,
+                      dragDeltaMin: _dragDeltaMin,
+                      dragCol: _dragCol,
+                      onDragStart: _startDrag,
+                      onDragUpdate: _updateDrag,
+                      onDragEnd: _endDrag,
+                      onPointer: _onBlockPointer,
+                      lessonTitles: {
+                        for (final l in widget.bundle.lessons)
+                          l.id: lessonTitleOf(l, widget.bundle.courses),
+                      },
+                      lessonColors: {
+                        for (final l in widget.bundle.lessons)
+                          l.id: courseColorFor(widget.bundle.courses
+                              .where((c) => c.id == l.courseId)
+                              .firstOrNull),
+                      },
+                      pinchId: _pinchId,
+                      pinchEndMin: _pinchEndMin,
+                    ),
                 ],
               ),
             ),
@@ -1366,16 +1416,13 @@ class _DayTitles extends StatelessWidget {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // 三列时列宽只有 ~105vp：等比缩小，绝不折行（折行会撑破 34 高）
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                            '${days[i].month}/${days[i].day} '
-                            '周${weekdayCn[weekdayOf(days[i]) - 1]}',
+                      if (days.length >= 7) ...[
+                        // 周视图 7 列每列只有 ~44vp：拆成「周一 / 11/9」两行，
+                        // 不能再用「11/9 周一」一整串，否则相邻列会糊在一起。
+                        Text('周${weekdayCn[weekdayOf(days[i]) - 1]}',
                             maxLines: 1,
-                            softWrap: false,
                             style: TextStyle(
-                                fontSize: 14,
+                                fontSize: 10,
                                 height: 1.1,
                                 fontWeight: i == center
                                     ? FontWeight.w500
@@ -1383,17 +1430,51 @@ class _DayTitles extends StatelessWidget {
                                 color: i == center
                                     ? inkPrimary
                                     : const Color(0xFFA9B5C9))),
-                      ),
-                      if (formatDate(days[i]) == now)
-                        const FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text('今天',
+                        Text('${days[i].month}/${days[i].day}',
+                            maxLines: 1,
+                            style: TextStyle(
+                                fontSize: 9,
+                                height: 1.1,
+                                color: i == center
+                                    ? const Color(0xFFDCE4F0)
+                                    : const Color(0xFF8B97AC))),
+                        if (formatDate(days[i]) == now)
+                          const Text('今天',
                               maxLines: 1,
                               style: TextStyle(
-                                  fontSize: 12,
+                                  fontSize: 8,
                                   height: 1.1,
                                   color: Color(0xFF7FA8FF))),
+                      ] else ...[
+                        // 三列时列宽只有 ~105vp：等比缩小，绝不折行
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                              '${days[i].month}/${days[i].day} '
+                              '周${weekdayCn[weekdayOf(days[i]) - 1]}',
+                              maxLines: 1,
+                              softWrap: false,
+                              style: TextStyle(
+                                  fontSize: 14,
+                                  height: 1.1,
+                                  fontWeight: i == center
+                                      ? FontWeight.w500
+                                      : FontWeight.normal,
+                                  color: i == center
+                                      ? inkPrimary
+                                      : const Color(0xFFA9B5C9))),
                         ),
+                        if (formatDate(days[i]) == now)
+                          const FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text('今天',
+                                maxLines: 1,
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    height: 1.1,
+                                    color: Color(0xFF7FA8FF))),
+                          ),
+                      ],
                     ],
                   ),
                 ),
@@ -1406,6 +1487,213 @@ class _DayTitles extends StatelessWidget {
 }
 
 // ---------------- 网格 ----------------
+
+/// 鸿蒙 `WeekCanvas`：整周整天压成一屏，只读；点某天 → 放大到以该天为中心的三日。
+/// 和日/三日网格用同一份 sessions/blocks，但不是把 1 分钟的网格缩小 7 份。
+class _WeekGrid extends StatelessWidget {
+  final TimeAxis axis;
+  final double axisW;
+  final List<DateTime> days;
+  final DateTime now;
+  final double height;
+  final Map<String, List<CourseSession>> sessions;
+  final Map<String, List<PlanBlock>> blocks;
+  final Map<String, List<RestWindow>> rests;
+  final Todo? Function(int) todoOf;
+  final void Function(DateTime, int) onTapDay;
+  final Color Function(int) courseColorOf;
+  final Map<int, String> lessonTitles;
+  final Map<int, Color> lessonColors;
+
+  const _WeekGrid({
+    super.key,
+    required this.axis,
+    required this.axisW,
+    required this.days,
+    required this.now,
+    required this.height,
+    required this.sessions,
+    required this.blocks,
+    required this.rests,
+    required this.todoOf,
+    required this.onTapDay,
+    required this.courseColorOf,
+    required this.lessonTitles,
+    required this.lessonColors,
+  });
+
+  double _y(int minute) =>
+      (minute - axis.startMin) / (axis.endMin - axis.startMin) * height;
+
+  String _title(PlanBlock b) {
+    final t = todoOf(b.todoId);
+    if (t != null) return t.title;
+    final l = lessonTitles[b.lessonId];
+    return l == null || l.isEmpty ? '计划块' : l;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hours = axis.marks;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: SizedBox(
+        height: height,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: axisW,
+              child: Stack(
+                children: [
+                  for (final m in hours)
+                    Positioned(
+                      top: (_y(m) - 5).clamp(0.0, height - 10),
+                      right: 3,
+                      child: Text(minToHHmm(m),
+                          style: const TextStyle(
+                              fontSize: 7, color: Color(0xFFA9B5C9))),
+                    ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Row(
+                children: [
+                  for (final d in days)
+                    Expanded(
+                      child: GestureDetector(
+                        key: ValueKey('plan-day-${formatDate(d)}'),
+                        behavior: HitTestBehavior.opaque,
+                        onTapUp: (e) {
+                          final minute = axis.startMin +
+                              (e.localPosition.dy /
+                                      height *
+                                      (axis.endMin - axis.startMin))
+                                  .round();
+                          onTapDay(d, minute);
+                        },
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            // 今天列淡淡高亮
+                            if (formatDate(d) == formatDate(now))
+                              Positioned.fill(
+                                child: Container(
+                                    color:
+                                        Colors.white.withValues(alpha: 0.06)),
+                              ),
+                            // 禁排底纹
+                            for (final w in rests[formatDate(d)] ?? const [])
+                              Positioned(
+                                top: _y(w.startMin),
+                                height: (_y(w.endMin) - _y(w.startMin))
+                                    .clamp(1.0, height),
+                                left: 0,
+                                right: 0,
+                                child: Container(
+                                    color:
+                                        Colors.white.withValues(alpha: 0.045)),
+                              ),
+                            // 小时线
+                            for (final m in hours)
+                              Positioned(
+                                top: _y(m),
+                                left: 0,
+                                right: 0,
+                                child: Container(
+                                    height: 1,
+                                    color:
+                                        Colors.white.withValues(alpha: 0.07)),
+                              ),
+                            // 课程灰/彩带
+                            for (final s in sessions[formatDate(d)] ?? const [])
+                              Positioned(
+                                top: _y(s.startMin),
+                                height: (_y(s.endMin) - _y(s.startMin))
+                                    .clamp(1.0, height),
+                                left: 1,
+                                right: 1,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: courseColorFor(s.course)
+                                        .withValues(alpha: 0.45),
+                                    borderRadius: BorderRadius.circular(2),
+                                  ),
+                                  padding:
+                                      const EdgeInsets.symmetric(horizontal: 1),
+                                  alignment: Alignment.topLeft,
+                                  child: Text(s.course.label,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                          fontSize: 5.5,
+                                          height: 1.0,
+                                          color: Color(0xFFF2F5FA))),
+                                ),
+                              ),
+                            // 计划块
+                            for (final b in blocks[formatDate(d)] ?? const [])
+                              Positioned(
+                                top: _y(b.startMin),
+                                height: (_y(b.endMin) - _y(b.startMin))
+                                    .clamp(1.0, height),
+                                left: 1,
+                                right: 1,
+                                child: Opacity(
+                                  opacity: b.done ? 0.5 : 0.95,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: b.lessonId > 0
+                                          ? (lessonColors[b.lessonId] ??
+                                              const Color(0xFF4A5B75))
+                                          : courseColorOf(
+                                              todoOf(b.todoId)?.courseId ?? 0),
+                                      borderRadius: BorderRadius.circular(2),
+                                      border: todoOf(b.todoId)?.category ==
+                                              TodoCategory.exam
+                                          ? Border.all(
+                                              color: const Color(0xFFFF5A5A),
+                                              width: 1.5)
+                                          : null,
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 1),
+                                    alignment: Alignment.topLeft,
+                                    child: Text(_title(b),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                            fontSize: 5.5,
+                                            height: 1.0,
+                                            color: Color(0xFFF2F5FA))),
+                                  ),
+                                ),
+                              ),
+                            // 当前时间红线
+                            if (formatDate(d) == formatDate(now) &&
+                                now.hour * 60 + now.minute >= axis.startMin &&
+                                now.hour * 60 + now.minute <= axis.endMin)
+                              Positioned(
+                                top: _y(now.hour * 60 + now.minute),
+                                left: 0,
+                                right: 0,
+                                child: Container(
+                                    height: 1, color: const Color(0xFFFF5A5F)),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _Grid extends StatelessWidget {
   final TimeAxis axis;
