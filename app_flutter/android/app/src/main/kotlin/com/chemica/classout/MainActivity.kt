@@ -5,7 +5,6 @@ import android.content.ContentValues
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.provider.CalendarContract
-import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -22,9 +21,6 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // 调试/演示时保持屏幕常亮；只在本 App 前台生效，退出即恢复系统策略。
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        window.decorView.keepScreenOn = true
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
