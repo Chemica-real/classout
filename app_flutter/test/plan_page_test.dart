@@ -807,4 +807,36 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('作业'), findsWidgets);
   });
+
+  testWidgets('撤销/重做：拖动后可撤销回原位，再重做', (tester) async {
+    final h = await _pump(tester, initialDay: DateTime(2026, 10, 16));
+    final before = _demo().blocks.firstWhere((b) => b.date == '2026-10-16');
+    final block = find.byKey(ValueKey('plan-block-${before.id}'));
+    await _revealBlock(tester, block);
+    await _selectBlock(tester, block);
+    await _longPressDrag(tester, block, const Offset(0, 60));
+    await tester.pumpAndSettle();
+    expect(_byIdBlock(h.last!, before.id).startMin, before.startMin + 60);
+
+    await tester.tap(find.byIcon(Icons.undo));
+    await tester.pumpAndSettle();
+    expect(_byIdBlock(h.last!, before.id).startMin, before.startMin);
+
+    await tester.tap(find.byIcon(Icons.redo));
+    await tester.pumpAndSettle();
+    expect(_byIdBlock(h.last!, before.id).startMin, before.startMin + 60);
+  });
+
+  testWidgets('周视图：7 列、可切回日/三日', (tester) async {
+    await _pump(tester, initialDay: DateTime(2026, 10, 16));
+    await tester.tap(find.text('周'));
+    await tester.pumpAndSettle();
+    for (var d = 12; d <= 18; d++) {
+      expect(find.byKey(ValueKey('plan-day-2026-10-$d')), findsOneWidget);
+    }
+    await tester.tap(find.text('日'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('plan-day-2026-10-16')), findsOneWidget);
+    expect(find.byKey(const ValueKey('plan-day-2026-10-12')), findsNothing);
+  });
 }

@@ -89,6 +89,7 @@ class _PlanPageState extends State<PlanPage> {
 
   late DateTime _day;
   late bool _threeDay;
+  bool _weekView = false;
   int _selectedTodoId = 0; // 托盘里选中、等着落到网格上的那条
   int _selectedLessonId = 0; // 托盘里选中的虚拟课程课时（0 = 没选）
 
@@ -101,6 +102,10 @@ class _PlanPageState extends State<PlanPage> {
   /// 待安排筛选：标签（''=全部）与课程（-1=全部，0=无课程，>0=课程 id）
   String _poolTag = '';
   int _poolCourse = -1;
+
+  /// 计划撤销/重做：快照整份 bundle（最多 30 步）
+  final List<({BackupBundle b, String label})> _undo = [];
+  final List<({BackupBundle b, String label})> _redo = [];
 
   /// 待安排托盘是否展开（鸿蒙端 TraySummonBar ↔ TodoPool）
   /// 托盘展开状态（冷启动从 kv 读回，鸿蒙 `loadTrayOpen`）
@@ -257,7 +262,7 @@ class _PlanPageState extends State<PlanPage> {
     } else {
       _showHint('挪到 ${minToHHmm(range[0])}-${minToHHmm(range[1])}');
     }
-    widget.onChanged(_withBlocks([
+    _commit(_withBlocks([
       for (final x in widget.bundle.blocks)
         if (x.id != id)
           x
@@ -271,7 +276,7 @@ class _PlanPageState extends State<PlanPage> {
             endMin: range[1],
             done: x.done,
           ),
-    ]));
+    ]), '调整计划块');
   }
 
   @override
@@ -287,6 +292,10 @@ class _PlanPageState extends State<PlanPage> {
   TimeAxis get _axis => TimeAxis(widget.window);
 
   List<DateTime> get _days {
+    if (_weekView) {
+      final monday = addDays(_day, -(weekdayOf(_day) - 1));
+      return [for (var i = 0; i < 7; i++) addDays(monday, i)];
+    }
     if (!_threeDay) return [_day];
     // 鸿蒙 `dayDates(date, 3)`：**[前一天, 当天, 后一天]** —— 当天在正中间。
     // 以前写成 [当天, +1, +2]，当天就落在最左列了（用户实测："今日不是显示在正中间"）。
@@ -472,6 +481,29 @@ class _PlanPageState extends State<PlanPage> {
 
   // ---------------- 改动 ----------------
 
+  void _commit(BackupBundle next, String label) {
+    _undo.add((b: widget.bundle, label: label));
+    if (_undo.length > 30) _undo.removeAt(0);
+    _redo.clear();
+    widget.onChanged(next);
+  }
+
+  void _undoPlan() {
+    if (_undo.isEmpty) return;
+    final last = _undo.removeLast();
+    _redo.add((b: widget.bundle, label: last.label));
+    widget.onChanged(last.b);
+    _showHint('已撤销：${last.label}');
+  }
+
+  void _redoPlan() {
+    if (_redo.isEmpty) return;
+    final next = _redo.removeLast();
+    _undo.add((b: widget.bundle, label: next.label));
+    widget.onChanged(next.b);
+    _showHint('已重做：${next.label}');
+  }
+
   BackupBundle _withBlocks(List<PlanBlock> blocks) => BackupBundle(
         app: widget.bundle.app,
         version: widget.bundle.version,
@@ -504,7 +536,7 @@ class _PlanPageState extends State<PlanPage> {
         endMin: end,
         done: false,
       );
-      widget.onChanged(_withBlocks([...widget.bundle.blocks, block]));
+      _commit(_withBlocks([...widget.bundle.blocks, block]), '排入课时');
       setState(() => _selectedLessonId = 0);
       _showHint('已排到 ${minToHHmm(startMin)}');
       return;
@@ -519,7 +551,7 @@ class _PlanPageState extends State<PlanPage> {
       endMin: end,
       done: false,
     );
-    widget.onChanged(_withBlocks([...widget.bundle.blocks, block]));
+    _commit(_withBlocks([...widget.bundle.blocks, block]), '排入计划');
     setState(() => _selectedTodoId = 0);
     // 鸿蒙 `doPlace()` 的提示带标题和时段（比「已排到」多信息）
     _showHint('已安排：${todo.title}'
@@ -583,7 +615,8 @@ class _PlanPageState extends State<PlanPage> {
             padding: EdgeInsets.fromLTRB(0, dayBarBlock, 0, trayBlock),
             child: Column(
               children: [
-                if (days.length > 1) _DayTitles(days: days, axisW: _axisW),
+                if (days.length > 1 && days.length <= 3)
+                  _DayTitles(days: days, axisW: _axisW),
                 _Grid(
                   key: _gridKey,
                   axis: _axis,
@@ -666,16 +699,28 @@ class _PlanPageState extends State<PlanPage> {
               // 「今天 / 逾期 N 天」也走注入的时钟（截图/测试才能钉在 10/16）
               today: widget.now(),
               threeDay: _threeDay,
+              weekView: _weekView,
+              onWeek: () => setState(() {
+                _weekView = true;
+                _threeDay = false;
+                _selectedBlockId = 0;
+              }),
               // 鸿蒙 DayBarFloat 的 ‹ › 永远只挪 1 天（三日视图也一样，不是"三日一跳"）
               onPrev: () => _shift(-1),
               onNext: () => _shift(1),
+              onUndo: _undoPlan,
+              onRedo: _redoPlan,
+              canUndo: _undo.isNotEmpty,
+              canRedo: _redo.isNotEmpty,
               onToday: _jumpToday,
               onDay: () => setState(() {
                 _threeDay = false;
+                _weekView = false;
                 _selectedBlockId = 0;
               }),
               onThreeDay: () => setState(() {
                 _threeDay = true;
+                _weekView = false;
                 _selectedBlockId = 0;
               }),
             ),
@@ -835,7 +880,7 @@ class _PlanPageState extends State<PlanPage> {
                 : l)
             .toList()
         : widget.bundle.lessons;
-    widget.onChanged(BackupBundle(
+    _commit(BackupBundle(
       app: widget.bundle.app,
       version: widget.bundle.version,
       exportedAt: widget.bundle.exportedAt,
@@ -849,7 +894,7 @@ class _PlanPageState extends State<PlanPage> {
       restWindows: widget.bundle.restWindows,
       templates: widget.bundle.templates,
       lessons: lessons,
-    ));
+    ), '切换课时完成');
   }
 
   int _lessonDurationOf(VirtualLesson l) {
@@ -983,8 +1028,14 @@ class _DayBar extends StatelessWidget {
   final DateTime day;
   final DateTime today;
   final bool threeDay;
+  final bool weekView;
+  final VoidCallback onWeek;
   final VoidCallback onPrev;
   final VoidCallback onNext;
+  final VoidCallback onUndo;
+  final VoidCallback onRedo;
+  final bool canUndo;
+  final bool canRedo;
   final VoidCallback onToday;
   final VoidCallback onDay;
   final VoidCallback onThreeDay;
@@ -993,8 +1044,14 @@ class _DayBar extends StatelessWidget {
     required this.day,
     required this.today,
     required this.threeDay,
+    required this.weekView,
+    required this.onWeek,
     required this.onPrev,
     required this.onNext,
+    required this.onUndo,
+    required this.onRedo,
+    required this.canUndo,
+    required this.canRedo,
     required this.onToday,
     required this.onDay,
     required this.onThreeDay,
@@ -1013,6 +1070,18 @@ class _DayBar extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(8, 10, 12, 8),
       child: Row(
         children: [
+          _BarTap(
+            onTap: canUndo ? onUndo : null,
+            child: Icon(Icons.undo,
+                size: 18,
+                color: canUndo ? accentBlue : const Color(0xFF4B5668)),
+          ),
+          _BarTap(
+            onTap: canRedo ? onRedo : null,
+            child: Icon(Icons.redo,
+                size: 18,
+                color: canRedo ? accentBlue : const Color(0xFF4B5668)),
+          ),
           _BarTap(
             onTap: onPrev,
             // 鸿蒙 `DayBarFloat` 用的是文字箭头 `Text('‹')` 22 号（不是 Material 图标）
@@ -1047,8 +1116,12 @@ class _DayBar extends StatelessWidget {
                 style: TextStyle(fontSize: 22, color: accentBlue)),
           ),
           const SizedBox(width: 6),
-          _Chip(text: '日', selected: !threeDay, onTap: onDay),
+          _Chip(
+              text: '日',
+              selected: !threeDay && !weekView,
+              onTap: onDay),
           _Chip(text: '三日', selected: threeDay, onTap: onThreeDay),
+          _Chip(text: '周', selected: weekView, onTap: onWeek),
           const SizedBox(width: 4),
           GestureDetector(
             onTap: onToday,
@@ -1064,7 +1137,7 @@ class _DayBar extends StatelessWidget {
 
 class _BarTap extends StatelessWidget {
   final Widget child;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   const _BarTap({required this.child, required this.onTap});
 
   @override
@@ -1073,7 +1146,7 @@ class _BarTap extends StatelessWidget {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 5),
         child: child,
       ),
     );
@@ -1094,8 +1167,8 @@ class _Chip extends StatelessWidget {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
-        margin: const EdgeInsets.only(right: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        margin: const EdgeInsets.only(right: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
         decoration: BoxDecoration(
           color: selected
               ? const Color(0xFF2E6BE6)
@@ -1159,11 +1232,15 @@ class _DayTitles extends StatelessWidget {
                                     : const Color(0xFFA9B5C9))),
                       ),
                       if (formatDate(days[i]) == now)
-                        const Text('今天',
-                            style: TextStyle(
-                                fontSize: 12,
-                                height: 1.1,
-                                color: Color(0xFF7FA8FF))),
+                        const FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text('今天',
+                              maxLines: 1,
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  height: 1.1,
+                                  color: Color(0xFF7FA8FF))),
+                        ),
                     ],
                   ),
                 ),
@@ -1748,9 +1825,13 @@ class _Block extends StatelessWidget {
                           color: inkPrimary)),
                 ),
                 const SizedBox(width: 6),
-                Text(minToHHmm(block.startMin),
-                    style:
-                        const TextStyle(fontSize: 9, color: Color(0xFFCBD6E8))),
+                Flexible(
+                  child: Text(minToHHmm(block.startMin),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 9, color: Color(0xFFCBD6E8))),
+                ),
               ],
             ),
           )
